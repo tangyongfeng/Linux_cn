@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何在 Quagga BGP 路由器中设置 IPv6 的 BGP 对等体和过滤</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Sarmed Rahman 在之前的教程中，我们演示了如何使用Quagga建立一个完备的BGP路由器和配置前缀过滤。在本教程中，我们会向你演示如何创建IPv6 BGP对等体并通过BGP通告IPv6前缀。同 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/09/ru-he-zai-quagga-bgp-lu-you-qi-zhong-she-zhi-ipv6-de-bgp-dui-deng-ti-he-guo-lu.html" rel="bookmark"
+           title="Permalink to 如何在 Quagga BGP 路由器中设置 IPv6 的 BGP 对等体和过滤">如何在 Quagga BGP 路由器中设置 IPv6 的 BGP 对等体和过滤</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-09-04T17:39:00+02:00">
+                Published: Fri 04 September 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Sarmed Rahman</p>
+<p>在之前的教程中，我们演示了如何使用Quagga建立一个<a href="/article-4232-1.html">完备的BGP路由器</a>和配置<a href="http://xmodulo.com/filter-bgp-routes-quagga-bgp-router.html">前缀过滤</a>。在本教程中，我们会向你演示如何创建IPv6 BGP对等体并通过BGP通告IPv6前缀。同时我们也将演示如何使用前缀列表和路由映射特性来过滤通告的或者获取到的IPv6前缀。</p>
+<h3>拓扑</h3>
+<p>教程中，我们主要参考如下拓扑。</p>
+<p><img alt="" src="/data/attachment/album/201509/04/173911o1e7oo1d9m1coao8.jpg"></p>
+<p>服务供应商A和B希望在他们之间建立一个IPv6的BGP对等体。他们的IPv6地址和AS信息如下所示。</p>
+<ul>
+<li>对等体IP块: 2001:DB8:3::/64</li>
+<li>供应商A: AS 100, 2001:DB8:1::/48</li>
+<li>供应商B: AS 200, 2001:DB8:2::/48</li>
+</ul>
+<h3>CentOS/RHEL安装Quagga</h3>
+<p>如果Quagga还没有安装，我们可以先使用yum安装。</p>
+<div class="highlight"><pre><span></span><code># yum install quagga 
+</code></pre></div>
+
+<p>在CentOS/RHEL 7，SELinux策略会默认的阻止对于/usr/sbin/zebra配置目录的写操作，这会对我们将要介绍的安装操作有所影响。因此我们需要像下面这样关闭这个策略。如果你使用的是CentOS/RHEL 6可以跳过这一步。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> setsebool -P zebra_write_config 1 
+</code></pre></div>
+
+<h3>创建配置文件</h3>
+<p>在安装过后，我们先创建配置文件zebra/bgpd作为配置流程的开始。</p>
+<div class="highlight"><pre><span></span><code># cp /usr/share/doc/quagga-XXXXX/zebra.conf.sample /etc/quagga/zebra.conf
+# cp /usr/share/doc/quagga-XXXXX/bgpd.conf.sample /etc/quagga/bgpd.conf
+</code></pre></div>
+
+<p>然后，允许这些服务开机自启。</p>
+<p><strong>在 CentOS/RHEL 6:</strong></p>
+<div class="highlight"><pre><span></span><code># service zebra start; service bgpd start
+# chkconfig zebra on; chkconfig bgpd on 
+</code></pre></div>
+
+<p><strong>在 CentOS/RHEL 7:</strong></p>
+<div class="highlight"><pre><span></span><code># systemctl start zebra; systemctl start bgpd
+# systemctl enable zebra; systmectl enable bgpd 
+</code></pre></div>
+
+<p>Quagga内部提供一个叫作vtysh的shell，其界面与那些主流路由厂商Cisco或Juniper十分相似。启动vtysh shell命令行：</p>
+<div class="highlight"><pre><span></span><code># vtysh
+</code></pre></div>
+
+<p>提示符将改为：</p>
+<div class="highlight"><pre><span></span><code>router-a#
+</code></pre></div>
+
+<p>或</p>
+<div class="highlight"><pre><span></span><code>router-b# 
+</code></pre></div>
+
+<p>在教程的其余部分，这个提示可以表明你正身处在哪个路由的vtysh shell中。</p>
+<h3>为Zebra指定日志文件</h3>
+<p>来为Zebra配置日志文件，这会有助于调试。</p>
+<p>首先，进入全局配置模式通过输入：</p>
+<div class="highlight"><pre><span></span><code>router-a# configure terminal 
+</code></pre></div>
+
+<p>提示符将变更成：</p>
+<div class="highlight"><pre><span></span><code>router-a(config)#
+</code></pre></div>
+
+<p>指定日志文件的位置。然后退出配置模式：</p>
+<div class="highlight"><pre><span></span><code><span class="n">router</span><span class="o">-</span><span class="n">a</span><span class="p">(</span><span class="n">config</span><span class="p">)</span><span class="c1"># log file /var/log/quagga/quagga.log</span>
+<span class="n">router</span><span class="o">-</span><span class="n">a</span><span class="p">(</span><span class="n">config</span><span class="p">)</span><span class="c1"># exit </span>
+</code></pre></div>
+
+<p>保存配置通过：</p>
+<div class="highlight"><pre><span></span><code>router-a# write 
+</code></pre></div>
+
+<h3>配置接口IP地址</h3>
+<p>现在，让我们为Quagga的物理接口配置IP地址。</p>
+<p>首先，查看一下vtysh中现有的接口。</p>
+<div class="highlight"><pre><span></span><code><span class="nv">router</span><span class="o">-</span><span class="nv">a</span>#<span class="w"> </span><span class="k">show</span><span class="w"> </span><span class="nv">interfaces</span><span class="w"> </span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="kd">interface</span><span class="w"> </span><span class="nx">eth0</span>
+<span class="nx">ipv6</span><span class="w"> </span><span class="nx">address</span><span class="w"> </span><span class="mi">2001</span><span class="p">:</span><span class="nx">db8</span><span class="p">:</span><span class="mi">3</span><span class="o">::</span><span class="mi">2</span><span class="o">/</span><span class="mi">64</span>
+
+<span class="kd">interface</span><span class="w"> </span><span class="nx">eth1</span>
+<span class="nx">ipv6</span><span class="w"> </span><span class="nx">address</span><span class="w"> </span><span class="mi">2001</span><span class="p">:</span><span class="nx">db8</span><span class="p">:</span><span class="mi">2</span><span class="o">::</span><span class="mi">1</span><span class="o">/</span><span class="mi">64</span>
+</code></pre></div>
+
+<p>由于两台路由的eth0端口同属一个子网，即2001：DB8：3::/64，你应该可以相互ping通。在保证ping通的情况下，我们开始下面的内容。</p>
+<div class="highlight"><pre><span></span><code>router-a# ping ipv6 2001:db8:3::2 
+</code></pre></div>
+
+<p>via: <a href="http://xmodulo.com/ipv6-bgp-peering-filtering-quagga-bgp-router.html">http://xmodulo.com/ipv6-bgp-peering-filtering-quagga-bgp-router.html</a></p>
+<p>作者：<a href="http://xmodulo.com/author/sarmed">Sarmed Rahman</a> 译者：<a href="https://github.com/martin2011qi">martin2011qi</a> 校对：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创翻译，<a href="http://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

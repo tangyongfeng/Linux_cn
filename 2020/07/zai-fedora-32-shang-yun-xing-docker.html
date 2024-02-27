@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在 Fedora 32 上运行 Docker</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Kevin "eonfge" Degeling 随着 Fedora 32 的发布，Docker 的普通用户面临着一个小挑战。在编写本文时，Fedora 32 不支持 Docker。虽然还有其他选择，例如 Podman 和 Buildah …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2020/07/zai-fedora-32-shang-yun-xing-docker.html" rel="bookmark"
+           title="Permalink to 在 Fedora 32 上运行 Docker">在 Fedora 32 上运行 Docker</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2020-07-20T09:16:00+02:00">
+                Published: Mon 20 July 2020
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Kevin &quot;eonfge&quot; Degeling</p>
+<p><img alt="" src="/data/attachment/album/202007/20/091610at2kkkkfea89ifg9.png"></p>
+<p>随着 Fedora 32 的发布，<a href="https://docs.docker.com/">Docker</a> 的普通用户面临着一个小挑战。在编写本文时，Fedora 32 不支持 Docker。虽然还有其他选择，例如 <a href="https://podman.io/getting-started/">Podman</a> 和 <a href="https://buildah.io/">Buildah</a>，但是对于许多现有用户而言，现在切换可能不是最佳时机。因此，本文可以帮助你在 Fedora 32 上设置 Docker 环境。</p>
+<h3>步骤 0：消除冲突</h3>
+<p>此步骤适用于从 Fedora 30 或 31 升级的任何用户。如果全新安装的 Fedora 32，那么可以跳到步骤 1。</p>
+<p>删除 docker 及其所有相关组件：</p>
+<div class="highlight"><pre><span></span><code>sudo dnf remove docker-*
+sudo dnf config-manager --disable docker-*
+</code></pre></div>
+
+<h3>步骤 1：系统准备</h3>
+<p>在 Fedora 的最后两个版本中，操作系统已迁移到两项新技术： CGroups 和用于防火墙的 NFTables。尽管这些新技术的详细信息不在本教程的讨论范围之内，但是令人遗憾的是，Docker 还不支持这些新技术。因此，你必须进行一些更改才能在 Fedora 上使用 Docker。</p>
+<h4>启用旧的 CGroups</h4>
+<p>Fedora 仍然支持 CGroups 的先前实现，可以使用以下命令启用它：</p>
+<div class="highlight"><pre><span></span><code>sudo grubby --update-kernel=ALL --args=&quot;systemd.unified_cgroup_hierarchy=0&quot;
+</code></pre></div>
+
+<h4>在防火墙中将 Docker 列入白名单</h4>
+<p>为了让 Docker 具有网络访问权限，需要两个命令：</p>
+<div class="highlight"><pre><span></span><code>sudo firewall-cmd --permanent --zone=trusted --add-interface=docker0
+sudo firewall-cmd --permanent --zone=FedoraWorkstation --add-masquerade
+</code></pre></div>
+
+<p>第一个命令将 Docker 接口添加到受信任的环境，它允许 Docker 建立远程连接。第二个命令将允许 Docker 建立本地连接。当有多个 Docker 容器作为开发环境时，这特别有用。</p>
+<h3>步骤 2：安装 Moby</h3>
+<p><a href="https://mobyproject.org/">Moby</a> 是 Docker 的开源白牌版本。它基于相同的代码，但不带商标。它包含在 Fedora 的主仓库中，因此很容易安装：</p>
+<div class="highlight"><pre><span></span><code>sudo dnf install moby-engine docker-compose
+</code></pre></div>
+
+<p>这将安装 <code>moby-engine</code>、<code>docker-compose</code>、<code>containerd</code> 和其他一些相关的库。安装完成后，你必须启用系统级守护程序才能运行 Docker：</p>
+<div class="highlight"><pre><span></span><code>sudo systemctl enable docker
+</code></pre></div>
+
+<h3>步骤 3：重新启动并测试</h3>
+<p>为了确保正确处理所有系统和设置，你现在必须重启计算机：</p>
+<div class="highlight"><pre><span></span><code>sudo systemctl reboot
+</code></pre></div>
+
+<p>之后，你可以使用 Docker hello-world 包来验证安装：</p>
+<div class="highlight"><pre><span></span><code>sudo docker run hello-world
+</code></pre></div>
+
+<p>除非遇到问题，不然你就会看到来自 Docker 的问候！</p>
+<h4>以管理员身份运行</h4>
+<p>可选地，你现在还可以将用户添加到 Docker 的组帐户中，以便无需输入 <code>sudo</code> 即可启动 Docker 镜像：</p>
+<div class="highlight"><pre><span></span><code>sudo groupadd docker
+sudo usermod -aG docker $USER
+</code></pre></div>
+
+<p>注销并登录以使更改生效。如果以管理员权限运行容器的想法让你有所顾虑，那么你应该研究 Podman。</p>
+<h3>总结</h3>
+<p>从现在起，Docker 将按照你的习惯工作，包括 <code>docker-compose</code> 和所有与 <code>docker</code> 相关的工具。不要忘记查看官方文档，这在很多情况下可以为你提供帮助。</p>
+<p>Fedora 32 上 Docker 的当前状态并不理想。缺少官方软件包可能会困扰一些人，有一个<a href="https://github.com/docker/for-linux/issues/955">上游问题</a>对此进行了讨论。对 <a href="https://github.com/moby/moby/issues/40360">CGroups</a> 和 <a href="https://github.com/moby/moby/issues/26824">NFTables</a> 缺少支持更多是技术问题，但是你可以查看它们在其公共问题上的进展。</p>
+<p>这些指导应可以让你就像什么都没有发生一样继续工作。如果这不能满足你的需求，请不要忘记到 Moby 或 Docker Github 页面去寻求解决你的技术问题，或者看看 Podman，长期来看，它可能会更加强大。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

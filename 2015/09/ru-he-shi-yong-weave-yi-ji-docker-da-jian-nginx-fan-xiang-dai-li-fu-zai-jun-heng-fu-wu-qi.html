@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何使用 Weave 以及 Docker 搭建 Nginx 反向代理/负载均衡服务器</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Arun Pyasi Hi， 今天我们将会学习如何使用 Weave 和 Docker 搭建 Nginx 的反向代理/负载均衡服务器。Weave 可以创建一个虚拟网络将 Docker 容器彼 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/09/ru-he-shi-yong-weave-yi-ji-docker-da-jian-nginx-fan-xiang-dai-li-fu-zai-jun-heng-fu-wu-qi.html" rel="bookmark"
+           title="Permalink to 如何使用 Weave 以及 Docker 搭建 Nginx 反向代理/负载均衡服务器">如何使用 Weave 以及 Docker 搭建 Nginx 反向代理/负载均衡服务器</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-09-05T09:46:00+02:00">
+                Published: Sat 05 September 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Arun Pyasi</p>
+<p>Hi， 今天我们将会学习如何使用 Weave 和 Docker 搭建 Nginx 的反向代理/负载均衡服务器。Weave 可以创建一个虚拟网络将 Docker 容器彼此连接在一起，支持跨主机部署及自动发现。它可以让我们更加专注于应用的开发，而不是基础架构。Weave 提供了一个如此棒的环境，仿佛它的所有容器都属于同个网络，不需要端口/映射/连接等的配置。容器中的应用提供的服务在 weave 网络中可以轻易地被外部世界访问，不论你的容器运行在哪里。在这个教程里我们将会使用 weave 快速并且简单地将 nginx web 服务器部署为一个负载均衡器，反向代理一个运行在 Amazon Web Services 里面多个节点上的 docker 容器中的简单 php 应用。这里我们将会介绍 WeaveDNS，它提供一个不需要改变代码就可以让容器利用主机名找到的简单方式，并且能够让其他容器通过主机名连接彼此。</p>
+<p>在这篇教程里，我们将使用 nginx 来将负载均衡分配到一个运行 Apache 的容器集合。最简单轻松的方法就是使用 Weave 来把运行在 ubuntu 上的 docker 容器中的 nginx 配置成负载均衡服务器。</p>
+<p><img alt="" src="/data/attachment/album/201509/04/225406vtaktumy2tvaopxy.jpg"></p>
+<h3>1. 搭建 AWS 实例</h3>
+<p>首先，我们需要搭建 Amzaon Web Service 实例，这样才能在 ubuntu 下用 weave 跑 docker 容器。我们将会使用<a href="http://console.aws.amazon.com/">AWS 命令行</a> 来搭建和配置两个 AWS EC2 实例。在这里，我们使用最小的可用实例，t1.micro。我们需要一个有效的<strong>Amazon Web Services 账户</strong>使用 AWS 命令行界面来搭建和配置。我们先在 AWS 命令行界面下使用下面的命令将 github 上的 weave 仓库克隆下来。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/weaveworks/guides
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>weave-gs/aws-nginx-ubuntu-simple
+</code></pre></div>
+
+<p>在克隆完仓库之后，我们执行下面的脚本，这个脚本将会部署两个 t1.micro 实例，每个实例中都是 ubuntu 作为操作系统并用 weave 跑着 docker 容器。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>./demo-aws-setup.sh
+</code></pre></div>
+
+<p>在这里，我们将会在以后用到这些实例的 IP 地址。这些地址储存在一个 weavedemo.env 文件中，这个文件创建于执行 demo-aws-setup.sh 脚本期间。为了获取这些 IP 地址，我们需要执行下面的命令，命令输出类似下面的信息。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cat<span class="w"> </span>weavedemo.env
+
+<span class="nb">export</span><span class="w"> </span><span class="nv">WEAVE_AWS_DEMO_HOST1</span><span class="o">=</span><span class="m">52</span>.26.175.175
+<span class="nb">export</span><span class="w"> </span><span class="nv">WEAVE_AWS_DEMO_HOST2</span><span class="o">=</span><span class="m">52</span>.26.83.141
+<span class="nb">export</span><span class="w"> </span><span class="nv">WEAVE_AWS_DEMO_HOSTCOUNT</span><span class="o">=</span><span class="m">2</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">WEAVE_AWS_DEMO_HOSTS</span><span class="o">=(</span><span class="m">52</span>.26.175.175<span class="w"> </span><span class="m">52</span>.26.83.141<span class="o">)</span>
+</code></pre></div>
+
+<p>请注意这些不是固定的 IP 地址，AWS 会为我们的实例动态地分配 IP 地址。</p>
+<p>我们在 bash 下执行下面的命令使环境变量生效。</p>
+<div class="highlight"><pre><span></span><code> . ./weavedemo.env
+</code></pre></div>
+
+<h3>2. 启动 Weave 和 WeaveDNS</h3>
+<p>在安装完实例之后，我们将会在每台主机上启动 weave 以及 weavedns。Weave 以及 weavedns 使得我们能够轻易地将容器部署到一个全新的基础架构以及配置中， 不需要改变代码，也不需要去理解像 Ambassador 容器以及 Link 机制之类的概念。下面是在第一台主机上启动 weave 以及 weavedns 的命令。</p>
+<div class="highlight"><pre><span></span><code>ssh -i weavedemo-key.pem ubuntu@$WEAVE_AWS_DEMO_HOST1
+$ sudo weave launch
+$ sudo weave launch-dns 10.2.1.1/24
+</code></pre></div>
+
+<p>下一步，我也准备在第二台主机上启动 weave 以及 weavedns。</p>
+<div class="highlight"><pre><span></span><code>ssh -i weavedemo-key.pem ubuntu@$WEAVE_AWS_DEMO_HOST2
+$ sudo weave launch $WEAVE_AWS_DEMO_HOST1
+$ sudo weave launch-dns 10.2.1.2/24
+</code></pre></div>
+
+<h3>3. 启动应用容器</h3>
+<p>现在，我们准备跨两台主机启动六个容器，这两台主机都用 Apache2 Web 服务实例跑着简单的 php 网站。为了在第一个 Apache2 Web 服务器实例跑三个容器， 我们将会使用下面的命令。</p>
+<div class="highlight"><pre><span></span><code>ssh -i weavedemo-key.pem ubuntu@$WEAVE_AWS_DEMO_HOST1
+$ sudo weave run --with-dns 10.3.1.1/24 -h ws1.weave.local fintanr/weave-gs-nginx-apache
+$ sudo weave run --with-dns 10.3.1.2/24 -h ws2.weave.local fintanr/weave-gs-nginx-apache
+$ sudo weave run --with-dns 10.3.1.3/24 -h ws3.weave.local fintanr/weave-gs-nginx-apache
+</code></pre></div>
+
+<p>在那之后，我们将会在第二个实例上启动另外三个容器，请使用下面的命令。</p>
+<div class="highlight"><pre><span></span><code>ssh -i weavedemo-key.pem ubuntu@$WEAVE_AWS_DEMO_HOST2
+$ sudo weave run --with-dns 10.3.1.4/24 -h ws4.weave.local fintanr/weave-gs-nginx-apache
+$ sudo weave run --with-dns 10.3.1.5/24 -h ws5.weave.local fintanr/weave-gs-nginx-apache
+$ sudo weave run --with-dns 10.3.1.6/24 -h ws6.weave.local fintanr/weave-gs-nginx-apache
+</code></pre></div>
+
+<p>注意: 在这里，--with-dns 选项告诉容器使用 weavedns 来解析主机名，-h x.weave.local 则使得 weavedns 能够解析该主机。</p>
+<h3>4. 启动 Nginx 容器</h3>
+<p>在应用容器如预期的运行后，我们将会启动 nginx 容器，它将会在六个应用容器服务之间轮询并提供反向代理或者负载均衡。 为了启动 nginx 容器，请使用下面的命令。</p>
+<div class="highlight"><pre><span></span><code><span class="nx">ssh</span><span class="w"> </span><span class="o">-</span><span class="nx">i</span><span class="w"> </span><span class="nx">weavedemo</span><span class="o">-</span><span class="nx">key</span><span class="p">.</span><span class="nx">pem</span><span class="w"> </span><span class="nx">ubuntu</span><span class="err">@$</span><span class="nx">WEAVE_AWS_DEMO_HOST1</span>
+<span class="err">$</span><span class="w"> </span><span class="nx">sudo</span><span class="w"> </span><span class="nx">weave</span><span class="w"> </span><span class="nx">run</span><span class="w"> </span><span class="o">--</span><span class="nx">with</span><span class="o">-</span><span class="nx">dns</span><span class="w"> </span><span class="m m-Double">10.3.1.7</span><span class="o">/</span><span class="mi">24</span><span class="w"> </span><span class="o">-</span><span class="nx">ti</span><span class="w"> </span><span class="o">-</span><span class="nx">h</span><span class="w"> </span><span class="nx">nginx</span><span class="p">.</span><span class="nx">weave</span><span class="p">.</span><span class="nx">local</span><span class="w"> </span><span class="o">-</span><span class="nx">d</span><span class="w"> </span><span class="o">-</span><span class="nx">p</span><span class="w"> </span><span class="mi">80</span><span class="p">:</span><span class="mi">80</span><span class="w"> </span><span class="nx">fintanr</span><span class="o">/</span><span class="nx">weave</span><span class="o">-</span><span class="nx">gs</span><span class="o">-</span><span class="nx">nginx</span><span class="o">-</span><span class="nx">simple</span>
+</code></pre></div>
+
+<p>因此，我们的 nginx 容器在 $WEAVE<em>AWS</em>DEMO_HOST1 上公开地暴露成为一个 http 服务器。</p>
+<h3>5. 测试负载均衡服务器</h3>
+<p>为了测试我们的负载均衡服务器是否可以工作，我们执行一段可以发送 http 请求给 nginx 容器的脚本。我们将会发送6个请求，这样我们就能看到 nginx 在一次的轮询中服务于每台 web 服务器之间。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>./access-aws-hosts.sh
+
+<span class="o">{</span>
+<span class="s2">&quot;message&quot;</span><span class="w"> </span>:<span class="w"> </span><span class="s2">&quot;Hello Weave - nginx example&quot;</span>,
+<span class="s2">&quot;hostname&quot;</span><span class="w"> </span>:<span class="w"> </span><span class="s2">&quot;ws1.weave.local&quot;</span>,
+<span class="s2">&quot;date&quot;</span><span class="w"> </span>:<span class="w"> </span><span class="s2">&quot;2015-06-26 12:24:23&quot;</span>
+<span class="o">}</span>
+<span class="o">{</span>
+<span class="s2">&quot;message&quot;</span><span class="w"> </span>:<span class="w"> </span><span class="s2">&quot;Hello Weave - nginx example&quot;</span>,
+<span class="s2">&quot;hostname&quot;</span><span class="w"> </span>:<span class="w"> </span><span class="s2">&quot;ws2.weave.local&quot;</span>,
+<span class="s2">&quot;date&quot;</span><span class="w"> </span>:<span class="w"> </span><span class="s2">&quot;2015-06-26 12:24:23&quot;</span>
+<span class="o">}</span>
+<span class="o">{</span>
+<span class="s2">&quot;message&quot;</span><span class="w"> </span>:<span class="w"> </span><span class="s2">&quot;Hello Weave - nginx example&quot;</span>,
+<span class="s2">&quot;hostname&quot;</span><span class="w"> </span>:<span class="w"> </span><span class="s2">&quot;ws3.weave.local&quot;</span>,
+<span class="s2">&quot;date&quot;</span><span class="w"> </span>:<span class="w"> </span><span class="s2">&quot;2015-06-26 12:24:23&quot;</span>
+<span class="o">}</span>
+<span class="o">{</span>
+<span class="s2">&quot;message&quot;</span><span class="w"> </span>:<span class="w"> </span><span class="s2">&quot;Hello Weave - nginx example&quot;</span>,
+<span class="s2">&quot;hostname&quot;</span><span class="w"> </span>:<span class="w"> </span><span class="s2">&quot;ws4.weave.local&quot;</span>,
+<span class="s2">&quot;date&quot;</span><span class="w"> </span>:<span class="w"> </span><span class="s2">&quot;2015-06-26 12:24:23&quot;</span>
+<span class="o">}</span>
+<span class="o">{</span>
+<span class="s2">&quot;message&quot;</span><span class="w"> </span>:<span class="w"> </span><span class="s2">&quot;Hello Weave - nginx example&quot;</span>,
+<span class="s2">&quot;hostname&quot;</span><span class="w"> </span>:<span class="w"> </span><span class="s2">&quot;ws5.weave.local&quot;</span>,
+<span class="s2">&quot;date&quot;</span><span class="w"> </span>:<span class="w"> </span><span class="s2">&quot;2015-06-26 12:24:23&quot;</span>
+<span class="o">}</span>
+<span class="o">{</span>
+<span class="s2">&quot;message&quot;</span><span class="w"> </span>:<span class="w"> </span><span class="s2">&quot;Hello Weave - nginx example&quot;</span>,
+<span class="s2">&quot;hostname&quot;</span><span class="w"> </span>:<span class="w"> </span><span class="s2">&quot;ws6.weave.local&quot;</span>,
+<span class="s2">&quot;date&quot;</span><span class="w"> </span>:<span class="w"> </span><span class="s2">&quot;2015-06-26 12:24:23&quot;</span>
+<span class="o">}</span>
+</code></pre></div>
+
+<h3>结束语</h3>
+<p>我们最终成功地将 nginx 配置成一个反向代理/负载均衡服务器，通过使用 weave 以及运行在 AWS（Amazon Web Service）EC2 里面的 ubuntu 服务器中的 docker。从上面的步骤输出可以清楚的看到我们已经成功地配置了 nginx。我们可以看到请求在一次轮询中被发送到6个应用容器，这些容器在 Apache2 Web 服务器中跑着 PHP 应用。在这里，我们部署了一个容器化的 PHP 应用，使用 nginx 横跨多台在 AWS EC2 上的主机而不需要改变代码，利用 weavedns 使得每个容器连接在一起，只需要主机名就够了，眼前的这些便捷， 都要归功于 weave 以及 weavedns。</p>
+<p>如果你有任何的问题、建议、反馈，请在评论中注明，这样我们才能够做得更好，谢谢:-）</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

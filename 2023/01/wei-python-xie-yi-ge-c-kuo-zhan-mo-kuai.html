@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>为 Python 写一个 C++ 扩展模块</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Stephan Avenwedde 使用 C 扩展为 Python 提供特定功能。 在前一篇文章中，我介绍了 六个 Python 解释器。在大多数系统上，CPython 是默认的解释器，而且 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2023/01/wei-python-xie-yi-ge-c-kuo-zhan-mo-kuai.html" rel="bookmark"
+           title="Permalink to 为 Python 写一个 C++ 扩展模块">为 Python 写一个 C++ 扩展模块</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2023-01-02T17:35:18+01:00">
+                Published: Mon 02 January 2023
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Stephan Avenwedde</p>
+<p><img alt="" src="/data/attachment/album/202301/02/173501o26htajatlpj0lqt.jpg"></p>
+<blockquote>
+<p>使用 C 扩展为 Python 提供特定功能。</p>
+</blockquote>
+<p>在前一篇文章中，我介绍了 <a href="https://opensource.com/article/22/9/python-interpreters-2022">六个 Python 解释器</a>。在大多数系统上，CPython 是默认的解释器，而且根据民意调查显示，它还是最流行的解释器。Cpython 的独有功能是使用扩展 API 用 C 语言编写 Python 模块。用 C 语言编写 Python 模块允许你将计算密集型代码转移到 C，同时保留 Python 的易用性。</p>
+<p>在本文中，我将向你展示如何编写一个 C++ 扩展模块。使用 C++ 而不是 C，因为大多数编译器通常都能理解这两种语言。我必须提前说明缺点：以这种方式构建的 Python 模块不能移植到其他解释器中。它们只与 CPython 解释器配合工作。因此，如果你正在寻找一种可移植性更好的与 C 语言模块交互的方式，考虑下使用 <a href="https://docs.python.org/3/library/ctypes.html#module-ctypes">ctypes</a> 模块。</p>
+<h3>源代码</h3>
+<p>和往常一样，你可以在 <a href="https://github.com/hANSIc99/PythonCppExtension">GitHub</a> 上找到相关的源代码。仓库中的 C++ 文件有以下用途：</p>
+<ul>
+<li><code>my_py_module.cpp</code>: Python 模块 <code>MyModule</code> 的定义</li>
+<li><code>my_cpp_class.h</code>: 一个头文件 - 只有一个暴露给 Python 的 C++ 类</li>
+<li><code>my_class_py_type.h/cpp</code>: Python 形式的 C++ 类</li>
+<li><code>pydbg.cpp</code>: 用于调试的单独应用程序</li>
+</ul>
+<p>本文构建的 Python 模块不会有任何实际用途，但它是一个很好的示例。</p>
+<h3>构建模块</h3>
+<p>在查看源代码之前，你可以检查它是否能在你的系统上编译。<a href="https://opensource.com/article/21/5/cmake">我使用 CMake</a> 来创建构建的配置信息，因此你的系统上必须安装 CMake。为了配置和构建这个模块，可以让 Python 去执行这个过程：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python3<span class="w"> </span>setup.py<span class="w"> </span>build
+</code></pre></div>
+
+<p>或者手动执行：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cmake<span class="w"> </span>-B<span class="w"> </span>build
+$<span class="w"> </span>cmake<span class="w"> </span>--build<span class="w"> </span>build
+</code></pre></div>
+
+<p>之后，在 <code>/build</code> 子目录下你会有一个名为 <code>MyModule. so</code> 的文件。</p>
+<h3>定义扩展模块</h3>
+<p>首先，看一下 <code>my_py_module.cpp</code> 文件，尤其是 <code>PyInit_MyModule</code> 函数：</p>
+<div class="highlight"><pre><span></span><code>PyMODINIT_FUNC
+PyInit_MyModule(void) {
+    PyObject* module = PyModule_Create(&amp;my_module);
+
+    PyObject *myclass = PyType_FromSpec(&amp;spec_myclass);
+    if (myclass == NULL){
+        return NULL;
+    }
+    Py_INCREF(myclass);
+
+    if(PyModule_AddObject(module, &quot;MyClass&quot;, myclass) &lt; 0){
+        Py_DECREF(myclass);
+        Py_DECREF(module);
+        return NULL;
+    }
+    return module;
+}
+</code></pre></div>
+
+<p>这是本例中最重要的代码，因为它是 CPython 的入口点。一般来说，当一个 Python C 扩展被编译并作为共享对象二进制文件提供时，CPython 会在同名二进制文件中（<code>&lt;ModuleName&gt;.so</code>）搜索 <code>PyInit_&lt;ModuleName&gt;</code> 函数，并在试图导入时执行它。</p>
+<p>无论是声明还是实例，所有 Python 类型都是 <a href="https://docs.python.org/release/3.9.1/c-api/structures.html?highlight=pyobject#c.PyObject">PyObject</a> 的一个指针。在此函数的第一部分中，<code>module</code> 通过 <code>PyModule_Create(...)</code> 创建的。正如你在 <code>module</code> 详述（<code>my_py_module</code>，同名文件）中看到的，它没有任何特殊的功能。</p>
+<p>之后，调用 <a href="https://docs.python.org/3/c-api/type.html#c.PyType_FromSpec">PyType_FromSpec</a> 为自定义类型 <code>MyClass</code> 创建一个 Python <a href="https://docs.python.org/3/c-api/typeobj.html#heap-types">堆类型</a> 定义。一个堆类型对应于一个 Python 类，然后将它赋值给 <code>MyModule</code> 模块。</p>
+<p><em>注意，如果其中一个函数返回失败，则必须减少以前创建的复制对象的引用计数，以便解释器删除它们。</em></p>
+<h3>指定 Python 类型</h3>
+<p><code>MyClass</code> 详述在 <a href="https://github.com/hANSIc99/PythonCppExtension/blob/main/my_class_py_type.h">my_class_py_type.h</a> 中可以找到，它作为 <a href="https://docs.python.org/3/c-api/type.html#c.PyType_Spec">PyType_Spec</a> 的一个实例：</p>
+<div class="highlight"><pre><span></span><code>static PyType_Spec spec_myclass = {
+    &quot;MyClass&quot;,                                  // name
+    sizeof(MyClassObject) + sizeof(MyClass),    // basicsize
+    0,                                          // itemsize
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,   // flags
+    MyClass_slots                               // slots
+};
+</code></pre></div>
+
+<p>它定义了一些基本类型信息，它的大小包括 Python 表示的大小（<code>MyClassObject</code>）和普通 C++ 类的大小（<code>MyClass</code>）。<code>MyClassObject</code> 定义如下：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">typedef</span><span class="w"> </span><span class="nx">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">PyObject_HEAD</span>
+<span class="w">    </span><span class="nx">int</span><span class="w">         </span><span class="nx">m_value</span><span class="p">;</span>
+<span class="w">    </span><span class="nx">MyClass</span><span class="o">*</span><span class="w">    </span><span class="nx">m_myclass</span><span class="p">;</span>
+<span class="p">}</span><span class="w"> </span><span class="nx">MyClassObject</span><span class="p">;</span>
+</code></pre></div>
+
+<p>Python 表示的话就是 <a href="https://docs.python.org/release/3.9.1/c-api/structures.html?highlight=pyobject#c.PyObject">PyObject</a> 类型，由 <code>PyObject_HEAD</code> 宏和其他一些成员定义。成员 <code>m_value</code> 视为普通类成员，而成员 <code>m_myclass</code> 只能在 C++ 代码内部访问。</p>
+<p><a href="https://docs.python.org/release/3.9.1/c-api/type.html?highlight=pytype_slot#c.PyType_Slot">PyType_Slot</a> 定义了一些其他功能：</p>
+<div class="highlight"><pre><span></span><code>static PyType_Slot MyClass_slots[] = {
+    {Py_tp_new,     (void*)MyClass_new},
+    {Py_tp_init,    (void*)MyClass_init},
+    {Py_tp_dealloc, (void*)MyClass_Dealloc},
+    {Py_tp_members, MyClass_members},
+    {Py_tp_methods, MyClass_methods},
+    {0, 0} /* Sentinel */
+};
+</code></pre></div>
+
+<p>在这里，设置了一些初始化和析构函数的跳转，还有普通的类方法和成员，还可以设置其他功能，如分配初始属性字典，但这是可选的。这些定义通常以一个哨兵结束，包含 <code>NULL</code> 值。</p>
+<p>要完成类型详述，还包括下面的方法和成员表：</p>
+<div class="highlight"><pre><span></span><code>static PyMethodDef MyClass_methods[] = {
+    {&quot;addOne&quot;, (PyCFunction)MyClass_addOne, METH_NOARGS,  PyDoc_STR(&quot;Return an incrmented integer&quot;)},
+    {NULL, NULL} /* Sentinel <span class="gs">*/</span>
+<span class="gs">};</span>
+
+<span class="gs">static struct PyMemberDef MyClass_members[] = {</span>
+<span class="gs">    {&quot;value&quot;, T_INT, offsetof(MyClassObject, m_value)},</span>
+<span class="gs">    {NULL} /*</span> Sentinel */
+};
+</code></pre></div>
+
+<p>在方法表中，定义了 Python 方法 <code>addOne</code>，它指向相关的 C++ 函数 <code>MyClass_addOne</code>。它充当了一个包装器，它在 C++ 类中调用 <code>addOne()</code> 方法。</p>
+<p>在成员表中，只有一个为演示目的而定义的成员。不幸的是，在 <a href="https://docs.python.org/release/3.9.1/c-api/structures.html?highlight=pymemberdef#c.PyMemberDef">PyMemberDef</a> 中使用的 <a href="https://en.cppreference.com/w/cpp/types/offsetof">offsetof</a> 不允许添加 C++ 类型到 <code>MyClassObject</code>。如果你试图放置一些 C++ 类型的容器（如 <a href="https://en.cppreference.com/w/cpp/utility/optional">std::optional</a>），编译器会抱怨一些内存布局相关的警告。</p>
+<h3>初始化和析构</h3>
+<p><code>MyClass_new</code> 方法只为 <code>MyClassObject</code> 提供一些初始值，并为其类型分配内存：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">PyObject</span><span class="w"> </span><span class="o">*</span><span class="nx">MyClass_new</span><span class="p">(</span><span class="nx">PyTypeObject</span><span class="w"> </span><span class="o">*</span><span class="k">type</span><span class="p">,</span><span class="w"> </span><span class="nx">PyObject</span><span class="w"> </span><span class="o">*</span><span class="nx">args</span><span class="p">,</span><span class="w"> </span><span class="nx">PyObject</span><span class="w"> </span><span class="o">*</span><span class="nx">kwds</span><span class="p">){</span>
+<span class="w">    </span><span class="nx">std</span><span class="o">::</span><span class="nx">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;MtClass_new() called!&quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="nx">std</span><span class="o">::</span><span class="nx">endl</span><span class="p">;</span>
+
+<span class="w">    </span><span class="nx">MyClassObject</span><span class="w"> </span><span class="o">*</span><span class="kp">self</span><span class="p">;</span>
+<span class="w">    </span><span class="kp">self</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="p">(</span><span class="nx">MyClassObject</span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="k">type</span><span class="o">-&gt;</span><span class="nx">tp_alloc</span><span class="p">(</span><span class="k">type</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span>
+<span class="w">    </span><span class="k">if</span><span class="p">(</span><span class="kp">self</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="nx">NULL</span><span class="p">){</span><span class="w"> </span><span class="c1">// -&gt; 分配成功</span>
+<span class="w">        </span><span class="c1">// 赋初始值</span>
+<span class="w">        </span><span class="kp">self</span><span class="o">-&gt;</span><span class="nx">m_value</span><span class="w">   </span><span class="p">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">        </span><span class="kp">self</span><span class="o">-&gt;</span><span class="nx">m_myclass</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">NULL</span><span class="p">;</span><span class="w"> </span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="p">(</span><span class="nx">PyObject</span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="kp">self</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>实际的初始化发生在 <code>MyClass_init</code> 中，它对应于 Python 中的 <a href="https://docs.python.org/3/library/dataclasses.html?highlight=__init__">__init__()</a> 方法：</p>
+<div class="highlight"><pre><span></span><code><span class="nb nb-Type">int</span><span class="w"> </span><span class="n">MyClass_init</span><span class="p">(</span><span class="n">PyObject</span><span class="w"> </span><span class="o">*</span><span class="bp">self</span><span class="p">,</span><span class="w"> </span><span class="n">PyObject</span><span class="w"> </span><span class="o">*</span><span class="n">args</span><span class="p">,</span><span class="w"> </span><span class="n">PyObject</span><span class="w"> </span><span class="o">*</span><span class="n">kwds</span><span class="p">){</span>
+
+<span class="w">    </span><span class="p">((</span><span class="n">MyClassObject</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="bp">self</span><span class="p">)</span><span class="o">-&gt;</span><span class="n">m_value</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">123</span><span class="p">;</span>
+
+<span class="w">    </span><span class="n">MyClassObject</span><span class="o">*</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">MyClassObject</span><span class="o">*</span><span class="p">)</span><span class="bp">self</span><span class="p">;</span>
+<span class="w">    </span><span class="n">m</span><span class="o">-&gt;</span><span class="n">m_myclass</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">MyClass</span><span class="o">*</span><span class="p">)</span><span class="n">PyObject_Malloc</span><span class="p">(</span><span class="n">sizeof</span><span class="p">(</span><span class="n">MyClass</span><span class="p">));</span>
+
+<span class="w">    </span><span class="k">if</span><span class="p">(</span><span class="o">!</span><span class="n">m</span><span class="o">-&gt;</span><span class="n">m_myclass</span><span class="p">){</span>
+<span class="w">        </span><span class="n">PyErr_SetString</span><span class="p">(</span><span class="n">PyExc_RuntimeError</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;Memory allocation failed&quot;</span><span class="p">);</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="n">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">new</span><span class="w"> </span><span class="p">(</span><span class="n">m</span><span class="o">-&gt;</span><span class="n">m_myclass</span><span class="p">)</span><span class="w"> </span><span class="n">MyClass</span><span class="p">();</span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="n">catch</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">exception</span><span class="o">&amp;</span><span class="w"> </span><span class="n">ex</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">PyObject_Free</span><span class="p">(</span><span class="n">m</span><span class="o">-&gt;</span><span class="n">m_myclass</span><span class="p">);</span>
+<span class="w">        </span><span class="n">m</span><span class="o">-&gt;</span><span class="n">m_myclass</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">NULL</span><span class="p">;</span>
+<span class="w">        </span><span class="n">m</span><span class="o">-&gt;</span><span class="n">m_value</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">        </span><span class="n">PyErr_SetString</span><span class="p">(</span><span class="n">PyExc_RuntimeError</span><span class="p">,</span><span class="w"> </span><span class="n">ex</span><span class="o">.</span><span class="n">what</span><span class="p">());</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="n">catch</span><span class="p">(</span><span class="o">...</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">PyObject_Free</span><span class="p">(</span><span class="n">m</span><span class="o">-&gt;</span><span class="n">m_myclass</span><span class="p">);</span>
+<span class="w">        </span><span class="n">m</span><span class="o">-&gt;</span><span class="n">m_myclass</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">NULL</span><span class="p">;</span>
+<span class="w">        </span><span class="n">m</span><span class="o">-&gt;</span><span class="n">m_value</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">        </span><span class="n">PyErr_SetString</span><span class="p">(</span><span class="n">PyExc_RuntimeError</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;Initialization failed&quot;</span><span class="p">);</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>如果你想在初始化过程中传递参数，必须在此时调用 <a href="https://docs.python.org/3/c-api/arg.html#c.PyArg_ParseTuple">PyArg_ParseTuple</a>。简单起见，本例将忽略初始化过程中传递的所有参数。在函数的第一部分中，<code>PyObject</code> 指针（<code>self</code>）被强转为 <code>MyClassObject</code> 类型的指针，以便访问其他成员。此外，还分配了 C++ 类的内存，并执行了构造函数。</p>
+<p>注意，为了防止内存泄漏，必须仔细执行异常处理和内存分配（还有释放）。当引用计数将为零时，<code>MyClass_dealloc</code> 函数负责释放所有相关的堆内存。在文档中有一个章节专门讲述关于 C 和 C++ 扩展的内存管理。</p>
+<h3>包装方法</h3>
+<p>从 Python 类中调用相关的 C++ 类方法很简单：</p>
+<div class="highlight"><pre><span></span><code>PyObject* MyClass_addOne(PyObject *self, PyObject <span class="gs">*args){</span>
+<span class="gs">    assert(self);</span>
+
+<span class="gs">    MyClassObject*</span> _self = reinterpret_cast&lt;MyClassObject*&gt;(self);
+    unsigned long val = _self-&gt;m_myclass-&gt;addOne();
+    return PyLong_FromUnsignedLong(val);
+}
+</code></pre></div>
+
+<p>同样，<code>PyObject</code> 参数（<code>self</code>）被强转为 <code>MyClassObject</code> 类型以便访问 <code>m_myclass</code>，它指向 C++ 对应类实例的指针。有了这些信息，调用 <code>addOne()</code> 类方法，并且结果以 <a href="https://docs.python.org/3/c-api/long.html">Python 整数对象</a> 返回。</p>
+<h3>3 种方法调试</h3>
+<p>出于调试目的，在调试配置中编译 CPython 解释器是很有价值的。详细描述参阅 <a href="https://docs.python.org/3/c-api/intro.html#debugging-builds">官方文档</a>。只要下载了预安装的解释器的其他调试符号，就可以按照下面的步骤进行操作。</p>
+<h4>GNU 调试器</h4>
+<p>当然，老式的 <a href="https://opensource.com/article/21/3/debug-code-gdb">GNU 调试器（GDB）</a> 也可以派上用场。源码中包含了一个 <a href="https://github.com/hANSIc99/PythonCppExtension/blob/main/gdbinit">gdbinit</a> 文件，定义了一些选项和断点，另外还有一个 <a href="https://github.com/hANSIc99/PythonCppExtension/blob/main/gdb.sh">gdb.sh</a> 脚本，它会创建一个调试构建并启动一个 GDB 会话：</p>
+<p><img alt="Gnu 调试器（GDB）对于 Python C 和 C++ 扩展非常有用" src="/data/attachment/album/202301/02/173519zsbmmmlmfbksttbo.png"></p>
+<p>GDB 使用脚本文件 <a href="https://github.com/hANSIc99/PythonCppExtension/blob/main/main.py">main.py</a> 调用 CPython 解释器，它允许你轻松定义你想要使用 Python 扩展模块执行的所有操作。</p>
+<h4>C++ 应用</h4>
+<p>另一种方法是将 CPython 解释器嵌入到一个单独的 C++ 应用程序中。可以在仓库的 <a href="https://github.com/hANSIc99/PythonCppExtension/blob/main/pydbg.cpp">pydbg.cpp</a> 文件中找到：</p>
+<div class="highlight"><pre><span></span><code><span class="nb">int</span> <span class="n">main</span><span class="p">(</span><span class="nb">int</span> <span class="n">argc</span><span class="p">,</span> <span class="n">char</span> <span class="o">*</span><span class="n">argv</span><span class="p">[],</span> <span class="n">char</span> <span class="o">*</span><span class="n">envp</span><span class="p">[])</span>
+<span class="p">{</span>
+    <span class="n">Py_SetProgramName</span><span class="p">(</span><span class="n">L</span><span class="s2">&quot;DbgPythonCppExtension&quot;</span><span class="p">);</span>
+    <span class="n">Py_Initialize</span><span class="p">();</span>
+
+    <span class="n">PyObject</span> <span class="o">*</span><span class="n">pmodule</span> <span class="o">=</span> <span class="n">PyImport_ImportModule</span><span class="p">(</span><span class="s2">&quot;MyModule&quot;</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span><span class="err">!</span><span class="n">pmodule</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">PyErr_Print</span><span class="p">();</span>
+        <span class="n">std</span><span class="p">::</span><span class="n">cerr</span> <span class="o">&lt;&lt;</span> <span class="s2">&quot;Failed to import module MyModule&quot;</span> <span class="o">&lt;&lt;</span> <span class="n">std</span><span class="p">::</span><span class="n">endl</span><span class="p">;</span>
+        <span class="k">return</span> <span class="o">-</span><span class="mi">1</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="n">PyObject</span> <span class="o">*</span><span class="n">myClassType</span> <span class="o">=</span> <span class="n">PyObject_GetAttrString</span><span class="p">(</span><span class="n">pmodule</span><span class="p">,</span> <span class="s2">&quot;MyClass&quot;</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span><span class="err">!</span><span class="n">myClassType</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">std</span><span class="p">::</span><span class="n">cerr</span> <span class="o">&lt;&lt;</span> <span class="s2">&quot;Unable to get type MyClass from MyModule&quot;</span> <span class="o">&lt;&lt;</span> <span class="n">std</span><span class="p">::</span><span class="n">endl</span><span class="p">;</span>
+        <span class="k">return</span> <span class="o">-</span><span class="mi">1</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="n">PyObject</span> <span class="o">*</span><span class="n">myClassInstance</span> <span class="o">=</span> <span class="n">PyObject_CallObject</span><span class="p">(</span><span class="n">myClassType</span><span class="p">,</span> <span class="n">NULL</span><span class="p">);</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="err">!</span><span class="n">myClassInstance</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">std</span><span class="p">::</span><span class="n">cerr</span> <span class="o">&lt;&lt;</span> <span class="s2">&quot;Instantioation of MyClass failed&quot;</span> <span class="o">&lt;&lt;</span> <span class="n">std</span><span class="p">::</span><span class="n">endl</span><span class="p">;</span>
+        <span class="k">return</span> <span class="o">-</span><span class="mi">1</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="n">Py_DecRef</span><span class="p">(</span><span class="n">myClassInstance</span><span class="p">);</span> <span class="o">//</span> <span class="n">invoke</span> <span class="n">deallocation</span>
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>使用 <a href="https://docs.python.org/3/extending/embedding.html#very-high-level-embedding">高级接口</a>，可以导入扩展模块并对其执行操作。它允许你在本地 IDE 环境中进行调试，还能让你更好地控制传递或来自扩展模块的变量。</p>
+<p>缺点是创建一个额外的应用程序的成本很高。</p>
+<h4>VSCode 和 VSCodium LLDB 扩展</h4>
+<p>使用像 <a href="https://github.com/vadimcn/vscode-lldb">CodeLLDB</a> 这样的调试器扩展可能是最方便的调试选项。仓库包含了一些 VSCode/VSCodium 的配置文件，用于构建扩展，如 <a href="https://github.com/hANSIc99/PythonCppExtension/blob/main/.vscode/tasks.json">task.json</a>、<a href="https://github.com/microsoft/vscode-cmake-tools">CMake Tools</a> 和调用调试器（<a href="https://github.com/hANSIc99/PythonCppExtension/blob/main/.vscode/launch.json">launch.json</a>）。这种方法结合了前面几种方法的优点：在图形 IDE 中调试，在 Python 脚本文件中定义操作，甚至在解释器提示符中动态定义操作。</p>
+<p><img alt="VSCodium 有一个集成的调试器。" src="/data/attachment/album/202301/02/173519c6idmm5m1inmim11.png"></p>
+<h3>用 C++ 扩展 Python</h3>
+<p>Python 的所有功能也可以从 C 或 C++ 扩展中获得。虽然用 Python 写代码通常认为是一件容易的事情，但用 C 或 C++ 扩展 Python 代码是一件痛苦的事情。另一方面，虽然原生 Python 代码比 C++ 慢，但 C 或 C++ 扩展可以将计算密集型任务提升到原生机器码的速度。</p>
+<p>你还必须考虑 ABI 的使用。稳定的 ABI 提供了一种方法来保持旧版本 CPython 的向后兼容性，如 <a href="https://docs.python.org/3/c-api/stable.html">文档</a> 所述。</p>
+<p>最后，你必须自己权衡利弊。如果你决定使用 C 语言来扩展 Python 中的一些功能，你已经看到了如何实现它。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在 Linux 中使用 SSD（固态驱动器）：启用 TRIM</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Don Watkins 当我在运行 Linux 的计算机上安装我的第一块固态驱动器（SSD）后，我开始探索如何用好它们。SSD 在操作方式上与传统磁 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/02/zai-linux-zhong-shi-yong-ssdgu-tai-qu-dong-qi-qi-yong-trim.html" rel="bookmark"
+           title="Permalink to 在 Linux 中使用 SSD（固态驱动器）：启用 TRIM">在 Linux 中使用 SSD（固态驱动器）：启用 TRIM</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-02-05T18:49:00+01:00">
+                Published: Sun 05 February 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Don Watkins</p>
+<p><img alt="" src="/data/attachment/album/201702/05/184842xf7yyd74l774yb77.jpg"></p>
+<p>当我在运行 Linux 的计算机上安装我的第一块固态驱动器（SSD）后，我开始探索如何用好它们。SSD 在操作方式上与传统磁性驱动器不同，并且它们需要在软件上另行处理以达到功能优化。</p>
+<p>在传统磁盘驱动器上，删除时所删除的文件不会从磁盘中完全删除。这就是为什么你可以恢复已删除的文件的原因。基本上，文件系统仅引用磁盘上文件的位置，并且当文件被删除时，该引用被擦除，以允许你在这些空间中写入新数据覆盖原来的数据。然而，对于 SSD，新数据只能写在驱动器上完全新的或已擦除的单元上。因为必须在写入之前清除空间，如果在写入文件时尚未有足够的可用空间，则必须首先擦除该空间。这可能会对性能产生负面影响。</p>
+<p>如果操作系统在写入新数据之前就擦除了未使用的空间，而不是在写入时同时进行擦除，则可以提高文件保存性能。这种做法就是 <a href="https://en.wikipedia.org/wiki/Trim_(computing)">TRIM</a>。 TRIM 命令本质上允许你的操作系统告诉驱动器哪些区域的数据不再使用，以便擦除它们，加快驱动器将来的写入，可以 SSD 的用户提供更佳的体验。</p>
+<p>在 Linux 中，<code>fstrim</code> 提供此功能，它可以为写入新数据而准备驱动器，并延长驱动器的使用寿命。由于在我使用的 Linux 发行版上 SSD 的 trim 不是自动的，所以必须去调度该操作，否则 SSD 的性能会随着时间的推移而降低。</p>
+<p>为了在驱动器上运行 <code>fstrim</code>，驱动器本身以及其上的文件系统必须支持 TRIM。在文件系统挂载过程中可以启用 TRIM。例如，为了将设备 <code>/dev/sda2</code> 启用 TRIM 挂载到 <code>/mnt</code>，你要运行：</p>
+<div class="highlight"><pre><span></span><code>mount -t ext4 -o discard /dev/sda2 /mnt
+</code></pre></div>
+
+<p>一旦启用，TRIM 过程本身就相当简单。TRIM SSD 也可以在命令行或 cron 任务中手动完成。作为超级用户（使用 <code>su</code> 或 <code>sudo</code>），运行 <code>fstrim / -v</code> 以完成手动 trim，或者设置 cron 任务以在计算机未使用时定期为你运行此命令。对于 <code>fstrim</code> 的完整选项列表请参考它的 <a href="http://man7.org/linux/man-pages/man8/fstrim.8.html">man 手册</a>。</p>
+<p>硬件支持根据使用的驱动器接口类型如 PCI、<a href="https://en.wikipedia.org/wiki/Trim_(computing)#ATA">ATA</a>、<a href="https://en.wikipedia.org/wiki/Trim_(computing)#SCSI">SCSI</a> 还是 <a href="https://en.wikipedia.org/wiki/Trim_(computing)#SD.2FMMC">SD/MMC</a> 而有所不同。你需要咨询你的 Linux 供应商以了解你的特定发行版是如何支持 TRIM 的。</p>
+<p>例如，红帽提供以下 <a href="https://access.redhat.com/documentation/en-US/Red_Hat_Enterprise_Linux/6/html/Storage_Administration_Guide/ch-ssd.html">SSD 磁盘指南</a>。“性能随着所使用的块数接近磁盘容量而降低，性能影响程度因供应商而异，但是所有设备都会遇到一些性能降低。为了解决性能降低问题，主机系统（例如 Linux 内核）使用丢弃请求以通知存储器给定范围的块不再使用。”</p>
+<p><a href="https://wiki.debian.org/SSDOptimization">Debian wiki</a> 提供了 SSD 使用的一些基本注意事项：使用 Linux 3.2 或更高版本内核，使用 SSD 的最新固件，使用 EXT4 文件系统，并且“在正常工作负载下有足够的 DRAM 用来操作而不用使用交换空间“。</p>
+<p>via: <a href="https://opensource.com/article/17/1/solid-state-drives-linux-enabling-trim-ssds">https://opensource.com/article/17/1/solid-state-drives-linux-enabling-trim-ssds</a></p>
+<p>作者：<a href="https://opensource.com/users/don-watkins">Don Watkins</a> 译者：<a href="https://github.com/geekpi">geekpi</a> 校对：<a href="https://github.com/%E6%A0%A1%E5%AF%B9%E8%80%85ID">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创编译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

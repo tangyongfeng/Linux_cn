@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何在 CentOS 7.0 上配置 Ceph 存储</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Kashif Siddique Ceph 是一个将数据存储在单一分布式计算机集群上的开源软件平台。当你计划构建一个云时，你首先需要决定如何 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/11/ru-he-zai-centos-70-shang-pei-zhi-ceph-cun-chu.html" rel="bookmark"
+           title="Permalink to 如何在 CentOS 7.0 上配置 Ceph 存储">如何在 CentOS 7.0 上配置 Ceph 存储</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-11-22T17:22:36+01:00">
+                Published: Sun 22 November 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Kashif Siddique</p>
+<p>Ceph 是一个将数据存储在单一分布式计算机集群上的开源软件平台。当你计划构建一个云时，你首先需要决定如何实现你的存储。开源的 Ceph 是红帽原生技术之一，它基于称为 RADOS 的对象存储系统，用一组网关 API 表示块、文件、和对象模式中的数据。由于它自身开源的特性，这种便携存储平台能在公有云和私有云上安装和使用。Ceph 集群的拓扑结构是按照备份和信息分布设计的，这种内在设计能提供数据完整性。它的设计目标就是容错、通过正确配置能运行于商业硬件和一些更高级的系统。</p>
+<p>Ceph 能在任何 Linux 发行版上安装，但为了能正确运行，它需要最近的内核以及其它最新的库。在这篇指南中，我们会使用最小化安装的 CentOS-7.0。</p>
+<p><img alt="" src="/data/attachment/album/201511/22/171650gqt6y2brqq8q4ty7.png"></p>
+<h3>系统资源</h3>
+<div class="highlight"><pre><span></span><code>**CEPH-STORAGE**
+OS: CentOS Linux 7 (Core)
+RAM:1 GB
+CPU:1 CPU
+DISK: 20
+Network: 45.79.136.163
+FQDN: ceph-storage.linoxide.com
+
+**CEPH-NODE**
+OS: CentOS Linux 7 (Core)
+RAM:1 GB
+CPU:1 CPU
+DISK: 20
+Network: 45.79.171.138
+FQDN: ceph-node.linoxide.com
+</code></pre></div>
+
+<h3>安装前的配置</h3>
+<p>在安装 Ceph 存储之前，我们要在每个节点上完成一些步骤。第一件事情就是确保每个节点的网络已经配置好并且能相互访问。</p>
+<p><strong>配置 Hosts</strong></p>
+<p>要在每个节点上配置 hosts 条目，要像下面这样打开默认的 hosts 配置文件（LCTT 译注：或者做相应的 DNS 解析）。</p>
+<div class="highlight"><pre><span></span><code># vi /etc/hosts
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">root@ceph-node ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">ssh</span><span class="o">-</span><span class="n">copy</span><span class="o">-</span><span class="n">id</span><span class="w"> </span><span class="n">ceph</span><span class="nv">@ceph</span><span class="o">-</span><span class="n">storage</span>
+</code></pre></div>
+
+<p><img alt="SSH key" src="/data/attachment/album/201511/22/172239jldoo6qay763zoo6.png"></p>
+<h3>配置 PID 数目</h3>
+<p>要配置 PID 数目的值，我们会使用下面的命令检查默认的内核值。默认情况下，是一个小的最大线程数 32768。</p>
+<p>如下图所示通过编辑系统配置文件配置该值为一个更大的数。</p>
+<p><img alt="更改 PID 值" src="/data/attachment/album/201511/22/172240uda7i37i8ggypv7p.png"></p>
+<h3>配置管理节点服务器</h3>
+<p>配置并验证了所有网络后，我们现在使用 ceph 用户安装 ceph-deploy。通过打开文件检查 hosts 条目（LCTT 译注：你也可以用 DNS 解析来完成）。</p>
+<div class="highlight"><pre><span></span><code># vim /etc/hosts
+ceph-storage 45.79.136.163
+ceph-node 45.79.171.138
+</code></pre></div>
+
+<p>运行下面的命令添加它的库。</p>
+<div class="highlight"><pre><span></span><code># rpm -Uhv http://ceph.com/rpm-giant/el7/noarch/ceph-release-1-0.el7.noarch.rpm
+</code></pre></div>
+
+<p><img alt="添加 Ceph 仓仓库" src="/data/attachment/album/201511/22/172240c16xjn6bnqhyyq78.png"></p>
+<p>或者创建一个新文件并更新 Ceph 库参数，别忘了替换你当前的 Release 和版本号。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">root@ceph-storage ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">vi</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">yum</span><span class="p">.</span><span class="n">repos</span><span class="p">.</span><span class="n">d</span><span class="o">/</span><span class="n">ceph</span><span class="p">.</span><span class="n">repo</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code># ceph-deploy new storage
+</code></pre></div>
+
+<p><img alt="设置 ceph 集群" src="/data/attachment/album/201511/22/172241tchhr2fqtnjl5cnl.png"></p>
+<p>如果成功执行了上面的命令，你会看到它新建了配置文件。</p>
+<p>现在配置 Ceph 默认的配置文件，用任意编辑器打开它并在会影响你公共网络的 global 参数下面添加以下两行。</p>
+<div class="highlight"><pre><span></span><code># vim ceph.conf
+osd pool default size = 1
+public network = 45.79.0.0/16
+</code></pre></div>
+
+<h3>安装 Ceph</h3>
+<p>现在我们准备在和 Ceph 集群关联的每个节点上安装 Ceph。我们使用下面的命令在 ceph-storage 和 ceph-node 上安装 Ceph。</p>
+<div class="highlight"><pre><span></span><code># ceph-deploy install ceph-node ceph-storage
+</code></pre></div>
+
+<p><img alt="安装 ceph" src="/data/attachment/album/201511/22/172241jjgjbjbgbzbvvh5n.png"></p>
+<p>处理所有所需仓库和安装所需软件包会需要一些时间。</p>
+<p>当两个节点上的 ceph 安装过程都完成后，我们下一步会通过在相同节点上运行以下命令创建监视器并收集密钥。</p>
+<div class="highlight"><pre><span></span><code># ceph-deploy mon create-initial
+</code></pre></div>
+
+<p><img alt="Ceph 初始化监视器" src="/data/attachment/album/201511/22/172242hybyb9duf07afzc9.png"></p>
+<h3>设置 OSD 和 OSD 守护进程</h3>
+<p>现在我们会设置磁盘存储，首先运行下面的命令列出你所有可用的磁盘。</p>
+<div class="highlight"><pre><span></span><code># ceph-deploy disk list ceph-storage
+</code></pre></div>
+
+<p>结果中会列出你存储节点中使用的磁盘，你会用它们来创建 OSD。让我们运行以下命令，请使用你的磁盘名称。</p>
+<div class="highlight"><pre><span></span><code># ceph-deploy disk zap storage:sda
+# ceph-deploy disk zap storage:sdb
+</code></pre></div>
+
+<p>为了最后完成 OSD 配置，运行下面的命令配置日志磁盘以及数据磁盘。</p>
+<div class="highlight"><pre><span></span><code># ceph-deploy osd prepare storage:sdb:/dev/sda
+# ceph-deploy osd activate storage:/dev/sdb1:/dev/sda1
+</code></pre></div>
+
+<p>你需要在所有节点上运行相同的命令，它会清除你磁盘上的所有东西。之后为了集群能运转起来，我们需要使用以下命令从 ceph 管理节点复制不同的密钥和配置文件到所有相关节点。</p>
+<div class="highlight"><pre><span></span><code># ceph-deploy admin ceph-node ceph-storage
+</code></pre></div>
+
+<h3>测试 Ceph</h3>
+<p>我们快完成了 Ceph 集群设置，让我们在 ceph 管理节点上运行下面的命令检查正在运行的 ceph 状态。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> ceph status
+<span class="gh">#</span> ceph health
+HEALTH_OK
+</code></pre></div>
+
+<p>如果你在 ceph status 中没有看到任何错误信息，就意味着你成功地在 CentOS 7 上安装了 ceph 存储集群。</p>
+<h3>总结</h3>
+<p>在这篇详细的文章中我们学习了如何使用两台安装了 CentOS 7 的虚拟机设置 Ceph 存储集群，这能用于备份或者作为用于其它虚拟机的本地存储。我们希望这篇文章能对你有所帮助。当你试着安装的时候记得分享你的经验。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Docker 的镜像并不安全！</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: titanous 最近使用Docker下载“官方”容器镜像的时候，我发现这样一句话： ubuntu:14.04: The image you are pulling has been verified （您所拉取的镜像已经经过验证） 起初 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li class="active"><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/01/docker-de-jing-xiang-bing-bu-an-quan.html" rel="bookmark"
+           title="Permalink to Docker 的镜像并不安全！">Docker 的镜像并不安全！</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-01-19T15:36:00+01:00">
+                Published: Mon 19 January 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/guan-dian">观点</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: titanous</p>
+<p>最近使用Docker下载“官方”容器镜像的时候，我发现这样一句话：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ubuntu</span><span class="o">:</span><span class="mf">14.04</span><span class="o">:</span><span class="w"> </span><span class="n">The</span><span class="w"> </span><span class="n">image</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="n">are</span><span class="w"> </span><span class="n">pulling</span><span class="w"> </span><span class="n">has</span><span class="w"> </span><span class="n">been</span><span class="w"> </span><span class="n">verified</span><span class="w"> </span><span class="err">（您所拉取的镜像已经经过验证）</span>
+</code></pre></div>
+
+<p>起初我以为这条信息引自Docker<a href="https://blog.docker.com/2014/10/docker-1-3-signed-images-process-injection-security-options-mac-shared-directories/">大力推广</a>的镜像签名系统，因此也就没有继续跟进。后来，研究加密摘要系统的时候——Docker用这套系统来对镜像进行安全加固——我才有机会更深入的发现，逻辑上整个与镜像安全相关的部分具有一系列系统性问题。</p>
+<p><img alt="" src="/data/attachment/album/201501/19/104004n7eort68zxjslt72.png"></p>
+<p>Docker所报告的，一个已下载的镜像经过“验证”，它基于的仅仅是一个标记清单（signed manifest)，而Docker却从未据此清单对镜像的校验和进行验证。一名攻击者以此可以提供任意所谓具有标记清单的镜像。一系列严重漏洞的大门就此敞开。</p>
+<p>镜像经由HTTPS服务器下载后，通过一个未加密的管道流进入Docker守护进程：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">decompress</span><span class="o">]</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="o">[</span><span class="n">tarsum</span><span class="o">]</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="o">[</span><span class="n">unpack</span><span class="o">]</span>
+</code></pre></div>
+
+<p>这条管道的性能没有问题，但是却完全没有经过加密。不可信的输入在签名验证之前是不应当进入管道的。不幸的是，Docker在上面处理镜像的三个步骤中，都没有对校验和进行验证。</p>
+<p>然而，不论Docker如何<a href="https://blog.docker.com/2014/10/docker-1-3-signed-images-process-injection-security-options-mac-shared-directories/">声明</a>，实际上镜像的校验和（Checksum）从未经过校验。下面是Docker与镜像校验和的验证相关的代码<a href="https://titanous.com/posts/docker-insecurity#fn:0">片段</a>，即使我提交了校验和不匹配的镜像，都无法触发警告信息。</p>
+<div class="highlight"><pre><span></span><code><span class="k">if</span><span class="w"> </span><span class="nv">img</span>.<span class="nv">Checksum</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nv">img</span>.<span class="nv">Checksum</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="nv">checksum</span><span class="w"> </span>{
+<span class="w">  </span><span class="nv">log</span>.<span class="nv">Warnf</span><span class="ss">(</span><span class="err">&quot;image layer checksum mismatch: computed %q,</span>
+<span class="w">             </span><span class="nv">expected</span><span class="w"> </span><span class="o">%</span><span class="nv">q</span><span class="err">&quot;, checksum, img.Checksum)</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<h3>不安全的处理管道</h3>
+<p><strong>解压缩</strong></p>
+<p>Docker支持三种压缩算法：gzip、bzip2和xz。前两种使用Go的标准库实现，是<a href="https://en.wikipedia.org/wiki/Memory_safety">内存安全（memory-safe)</a>的，因此这里我预计的攻击类型应该是拒绝服务类的攻击，包括CPU和内存使用上的当机或过载等等。</p>
+<p>第三种压缩算法，xz，比较有意思。因为没有现成的Go实现，Docker 通过<a href="https://github.com/docker/docker/blob/0874f9ab77a7957633cd835241a76ee4406196d8/pkg/archive/archive.go#L91-L95">执行(exec)</a>xz二进制命令来实现解压缩。</p>
+<p>xz二进制程序来自于<a href="http://tukaani.org/xz/">XZ Utils</a>项目，由<a href="https://titanous.com/posts/docker-insecurity#fn:1">大概</a>2万行C代码生成而来。而C语言不是一门内存安全的语言。这意味着C程序的恶意输入，在这里也就是Docker镜像的XZ Utils解包程序，潜在地存在可能会执行任意代码的风险。</p>
+<p>Docker以root权限<em>运行</em> xz 命令，更加恶化了这一潜在威胁。这意味着如果在xz中出现了一个漏洞，对docker pull命令的调用就会导致用户整个系统的完全沦陷。</p>
+<p><strong>Tarsum</strong></p>
+<p>对tarsum的使用，其出发点是好的，但却是最大的败笔。为了得到任意一个加密tar文件的准确校验和，Docker先对tar文件进行解密，然后求出特定部分的哈希值，同时排除剩余的部分，而这些步骤的<a href="https://github.com/docker/docker/blob/0874f9ab77a7957633cd835241a76ee4406196d8/pkg/tarsum/tarsum_spec.md">顺序都是固定的</a>。</p>
+<p>由于其生成校验和的步骤固定，它解码不可信数据的过程就有可能被设计成<a href="https://titanous.com/posts/docker-insecurity#fn:2">攻破tarsum的代码</a>。这里潜在的攻击既包括拒绝服务攻击，还有逻辑上的漏洞攻击，可能导致文件被感染、忽略、进程被篡改、植入等等，这一切攻击的同时，校验和可能都是不变的。</p>
+<p><strong>解包</strong></p>
+<p>解包的过程包括tar解码和生成硬盘上的文件。这一过程尤其危险，因为在解包写入硬盘的过程中有另外三个<a href="https://titanous.com/posts/docker-insecurity#fn:3">已报告的漏洞</a>。</p>
+<p>任何情形下未经验证的数据都不应当解包后直接写入硬盘。</p>
+<h3>libtrust</h3>
+<p>Docker的工具包<a href="https://github.com/docker/libtrust">libtrust</a>，号称“通过一个分布式的信任图表进行认证和访问控制”。很不幸，对此官方没有任何具体的说明，看起来它好像是实现了一些<a href="https://tools.ietf.org/html/draft-ietf-jose-json-web-signature-11">javascript对象标记和加密</a>规格以及其他一些未说明的算法。</p>
+<p>使用libtrust下载一个清单经过签名和认证的镜像，就可以触发下面这条不准确的信息（说不准确，是因为事实上它验证的只是清单，并非真正的镜像）：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ubuntu</span><span class="o">:</span><span class="mf">14.04</span><span class="o">:</span><span class="w"> </span><span class="n">The</span><span class="w"> </span><span class="n">image</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="n">are</span><span class="w"> </span><span class="n">pulling</span><span class="w"> </span><span class="n">has</span><span class="w"> </span><span class="n">been</span><span class="w"> </span><span class="n">verified</span><span class="o">(</span><span class="err">您所拉取的镜像已经经过验证</span><span class="o">)</span>
+</code></pre></div>
+
+<p>目前只有Docker公司“官方”发布的镜像清单使用了这套签名系统，但是上次我参加Docker<a href="https://titanous.com/posts/docker-insecurity#fn:4">管理咨询委员会</a>的会议讨论时，我所理解的是，Docker公司正计划在未来扩大部署这套系统。他们的目标是以Docker公司为中心，控制一个认证授权机构，对镜像进行签名和（或）客户认证。</p>
+<p>我试图从Docker的代码中找到签名秘钥，但是没找到。好像它并不像我们所期望的把密钥嵌在二进制代码中，而是在每次镜像下载前，由Docker守护进程<a href="https://github.com/docker/docker/blob/0874f9ab77a7957633cd835241a76ee4406196d8/trust/trusts.go#L38">通过HTTPS从CDN</a>远程获取。这是一个多么糟糕的方案，有无数种攻击手段可能会将可信密钥替换成恶意密钥。这些攻击包括但不限于：CDN供应商出问题、CDN初始密钥出现问题、客户端下载时的中间人攻击等等。</p>
+<h3>补救</h3>
+<p>研究结束前，我<a href="https://github.com/docker/docker/issues/9719">报告</a>了一些在tarsum系统中发现的问题，但是截至目前我报告的这些问题仍然没有修复。</p>
+<p>要改进Docker镜像下载系统的安全问题，我认为应当有以下措施：</p>
+<p><strong>摒弃tarsum并且真正对镜像本身进行验证</strong></p>
+<p>出于安全原因tarsum应当被摒弃，同时，镜像在完整下载后、其他步骤开始前，就对镜像的加密签名进行验证。</p>
+<p><strong>添加权限隔离</strong></p>
+<p>镜像的处理过程中涉及到解压缩或解包的步骤必须在隔离的进程（容器？）中进行，即只给予其操作所需的最小权限。任何场景下都不应当使用root运行xz这样的解压缩工具。</p>
+<p><strong>替换 libtrust</strong></p>
+<p>应当用<a href="http://theupdateframework.com/">更新框架(The Update Framework)</a>替换掉libtrust，这是专门设计用来解决软件二进制签名此类实际问题的。其威胁模型非常全方位，能够解决libtrust中未曾考虑到的诸多问题，目前已经有了完整的说明文档。除了已有的Python实现，我已经开始着手用<a href="https://github.com/flynn/go-tuf">Go语言实现</a>的工作，也欢迎大家的贡献。</p>
+<p>作为将更新框架加入Docker的一部分，还应当加入一个本地密钥存储池，将root密钥与registry的地址进行映射，这样用户就可以拥有他们自己的签名密钥，而不必使用Docker公司的了。</p>
+<p>我注意到使用非Docker公司官方的第三方仓库往往会是一种非常糟糕的用户体验。Docker也会将第三方的仓库内容降为二等地位来看待，即使不因为技术上的原因。这个问题不仅仅是生态问题，还是一个终端用户的安全问题。针对第三方仓库的全方位、去中心化的安全模型既必须又迫切。我希望Docker公司在重新设计他们的安全模型和镜像认证系统时能采纳这一点。</p>
+<h3>结论</h3>
+<p>Docker用户应当意识到负责下载镜像的代码是非常不安全的。用户们应当只下载那些出处没有问题的镜像。目前，这里的“没有问题”并<strong>不</strong>包括Docker公司的“可信（trusted）”镜像，例如官方的Ubuntu和其他基础镜像。</p>
+<p>最好的选择就是在本地屏蔽 index.docker.io，然后使用docker load命令在导入Docker之前手动下载镜像并对其进行验证。Red Hat的安全博客有一篇<a href="https://securityblog.redhat.com/2014/12/18/before-you-initiate-a-docker-pull/">很好的文章</a>，大家可以看看。</p>
+<p>感谢Lewis Marshall指出tarsum从未真正验证。</p>
+<p>参考</p>
+<ul>
+<li><a href="https://github.com/docker/docker/blob/0874f9ab77a7957633cd835241a76ee4406196d8/image/image.go#L114-L116">校验和的代码</a></li>
+<li><a href="http://cloc.sourceforge.net/">cloc</a>介绍了18141行没有空格没有注释的C代码，以及5900行的header代码，版本号为v5.2.0。</li>
+<li><a href="http://www.saurik.com/id/17">Android中也发现了</a>类似的bug，能够感染已签名包中的任意文件。同样出现问题的还有<a href="http://blogs.technet.com/b/srd/archive/2013/12/10/ms13-098-update-to-enhance-the-security-of-authenticode.aspx">Windows的Authenticode</a>认证系统，二进制文件会被篡改。</li>
+<li>特别的：<a href="https://web.nvd.nist.gov/view/vuln/detail?vulnId=CVE-2014-6407">CVE-2014-6407</a>、 <a href="https://web.nvd.nist.gov/view/vuln/detail?vulnId=CVE-2014-9356">CVE-2014-9356</a>以及 <a href="https://web.nvd.nist.gov/view/vuln/detail?vulnId=CVE-2014-9357">CVE-2014-9357</a>。目前已有两个Docker<a href="https://groups.google.com/d/topic/docker-user/nFAz-B-n4Bw/discussion">安全发布</a>有了回应。</li>
+<li>参见<a href="https://docs.google.com/document/d/1JfWNzfwptsMgSx82QyWH_Aj0DRKyZKxYQ1aursxNorg/edit?pli=1">2014-10-28 DGAB会议记录</a>的第8页。</li>
+</ul>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 stunnel 保护 telnet 连接</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Curt Warfield Telnet 是一种客户端-服务端协议，通过 TCP 的 23 端口连接到远程服务器。Telnet 并不加密数据，因此它被认为是不安全的，因为 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/06/shi-yong-stunnel-bao-hu-telnet-lian-jie.html" rel="bookmark"
+           title="Permalink to 使用 stunnel 保护 telnet 连接">使用 stunnel 保护 telnet 连接</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-06-06T13:46:36+02:00">
+                Published: Thu 06 June 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Curt Warfield</p>
+<p><img alt="" src="/data/attachment/album/201906/06/134640cuu5x9ni09y696my.jpg"></p>
+<p>Telnet 是一种客户端-服务端协议，通过 TCP 的 23 端口连接到远程服务器。Telnet 并不加密数据，因此它被认为是不安全的，因为数据是以明文形式发送的，所以密码很容易被嗅探。但是，仍有老旧系统需要使用它。这就是用到 <strong>stunnel</strong> 的地方。</p>
+<p>stunnel 旨在为使用不安全连接协议的程序增加 SSL 加密。本文将以 telnet 为例介绍如何使用它。</p>
+<h3>服务端安装</h3>
+<p><a href="https://fedoramagazine.org/howto-use-sudo/">使用 sudo</a> 安装 stunnel 以及 telnet 的服务端和客户端：</p>
+<div class="highlight"><pre><span></span><code>sudo dnf -y install stunnel telnet-server telnet
+</code></pre></div>
+
+<p>添加防火墙规则，在提示时输入你的密码：</p>
+<div class="highlight"><pre><span></span><code><span class="n">firewall</span><span class="o">-</span><span class="n">cmd</span><span class="w"> </span><span class="o">--</span><span class="n">add</span><span class="o">-</span><span class="n">service</span><span class="o">=</span><span class="n">telnet</span><span class="w"> </span><span class="o">--</span><span class="n">perm</span>
+<span class="n">firewall</span><span class="o">-</span><span class="n">cmd</span><span class="w"> </span><span class="o">--</span><span class="n">reload</span>
+</code></pre></div>
+
+<p>接下来，生成 RSA 私钥和 SSL 证书：</p>
+<div class="highlight"><pre><span></span><code>openssl genrsa 2048 &gt; stunnel.key
+openssl req -new -key stunnel.key -x509 -days 90 -out stunnel.crt
+</code></pre></div>
+
+<p>系统将一次提示你输入以下信息。当询问 <code>Common Name</code> 时，你必须输入正确的主机名或 IP 地址，但是你可以按回车键跳过其他所有内容。</p>
+<div class="highlight"><pre><span></span><code><span class="n">You</span><span class="w"> </span><span class="n">are</span><span class="w"> </span><span class="n">about</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">asked</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">enter</span><span class="w"> </span><span class="n">information</span><span class="w"> </span><span class="n">that</span><span class="w"> </span><span class="n">will</span><span class="w"> </span><span class="n">be</span>
+<span class="n">incorporated</span><span class="w"> </span><span class="n">into</span><span class="w"> </span><span class="n">your</span><span class="w"> </span><span class="n">certificate</span><span class="w"> </span><span class="n">request</span><span class="p">.</span>
+<span class="n">What</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="n">are</span><span class="w"> </span><span class="n">about</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">enter</span><span class="w"> </span><span class="n">is</span><span class="w"> </span><span class="n">what</span><span class="w"> </span><span class="n">is</span><span class="w"> </span><span class="n">called</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">Distinguished</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="n">or</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">DN</span><span class="p">.</span>
+<span class="n">There</span><span class="w"> </span><span class="n">are</span><span class="w"> </span><span class="n">quite</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">few</span><span class="w"> </span><span class="n">fields</span><span class="w"> </span><span class="n">but</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="n">can</span><span class="w"> </span><span class="n">leave</span><span class="w"> </span><span class="n">some</span><span class="w"> </span><span class="n">blank</span>
+<span class="n">For</span><span class="w"> </span><span class="n">some</span><span class="w"> </span><span class="n">fields</span><span class="w"> </span><span class="n">there</span><span class="w"> </span><span class="n">will</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="k">default</span><span class="w"> </span><span class="n">value</span><span class="p">,</span>
+<span class="n">If</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="n">enter</span><span class="w"> </span><span class="sc">&#39;.&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">field</span><span class="w"> </span><span class="n">will</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">left</span><span class="w"> </span><span class="n">blank</span><span class="p">.</span>
+<span class="o">-----</span>
+<span class="n">Country</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="mi">2</span><span class="w"> </span><span class="n">letter</span><span class="w"> </span><span class="n">code</span><span class="p">)</span><span class="w"> </span><span class="p">[</span><span class="n">XX</span><span class="p">]</span><span class="o">:</span>
+<span class="n">State</span><span class="w"> </span><span class="n">or</span><span class="w"> </span><span class="n">Province</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="n">full</span><span class="w"> </span><span class="n">name</span><span class="p">)</span><span class="w"> </span><span class="p">[]</span><span class="o">:</span>
+<span class="n">Locality</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="n">eg</span><span class="p">,</span><span class="w"> </span><span class="n">city</span><span class="p">)</span><span class="w"> </span><span class="p">[</span><span class="n">Default</span><span class="w"> </span><span class="n">City</span><span class="p">]</span><span class="o">:</span>
+<span class="n">Organization</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="n">eg</span><span class="p">,</span><span class="w"> </span><span class="n">company</span><span class="p">)</span><span class="w"> </span><span class="p">[</span><span class="n">Default</span><span class="w"> </span><span class="n">Company</span><span class="w"> </span><span class="n">Ltd</span><span class="p">]</span><span class="o">:</span>
+<span class="n">Organizational</span><span class="w"> </span><span class="n">Unit</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="n">eg</span><span class="p">,</span><span class="w"> </span><span class="n">section</span><span class="p">)</span><span class="w"> </span><span class="p">[]</span><span class="o">:</span>
+<span class="n">Common</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="n">eg</span><span class="p">,</span><span class="w"> </span><span class="n">your</span><span class="w"> </span><span class="n">name</span><span class="w"> </span><span class="n">or</span><span class="w"> </span><span class="n">your</span><span class="w"> </span><span class="n">server</span><span class="err">&#39;</span><span class="n">s</span><span class="w"> </span><span class="n">hostname</span><span class="p">)</span><span class="w"> </span><span class="p">[]</span><span class="o">:</span>
+<span class="n">Email</span><span class="w"> </span><span class="n">Address</span><span class="w"> </span><span class="p">[]</span>
+</code></pre></div>
+
+<p>将 RSA 密钥和 SSL 证书合并到单个 <code>.pem</code> 文件中，并将其复制到 SSL 证书目录：</p>
+<div class="highlight"><pre><span></span><code>cat stunnel.crt stunnel.key &gt; stunnel.pem
+sudo cp stunnel.pem /etc/pki/tls/certs/
+</code></pre></div>
+
+<p>现在可以定义服务和用于加密连接的端口了。选择尚未使用的端口。此例使用 450 端口进行隧道传输 telnet。编辑或创建 <code>/etc/stunnel/telnet.conf</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="n">cert</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">pki</span><span class="o">/</span><span class="n">tls</span><span class="o">/</span><span class="n">certs</span><span class="o">/</span><span class="n">stunnel</span><span class="p">.</span><span class="n">pem</span>
+<span class="n">sslVersion</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">TLSv1</span>
+<span class="n">chroot</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">/</span><span class="nf">var</span><span class="o">/</span><span class="n">run</span><span class="o">/</span><span class="n">stunnel</span>
+<span class="n">setuid</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">nobody</span>
+<span class="n">setgid</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">nobody</span>
+<span class="n">pid</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">/</span><span class="n">stunnel</span><span class="p">.</span><span class="n">pid</span>
+<span class="n">socket</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nl">l</span><span class="p">:</span><span class="n">TCP_NODELAY</span><span class="o">=</span><span class="mi">1</span>
+<span class="n">socket</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nl">r</span><span class="p">:</span><span class="n">TCP_NODELAY</span><span class="o">=</span><span class="mi">1</span>
+<span class="o">[</span><span class="n">telnet</span><span class="o">]</span>
+<span class="n">accept</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">450</span>
+<span class="k">connect</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">23</span>
+</code></pre></div>
+
+<p><code>accept</code> 选项是服务器将监听传入 telnet 请求的接口。<code>connect</code> 选项是 telnet 服务器的内部监听接口。</p>
+<p>接下来，创建一个 systemd 单元文件的副本来覆盖原来的版本：</p>
+<div class="highlight"><pre><span></span><code>sudo cp /usr/lib/systemd/system/stunnel.service /etc/systemd/system
+</code></pre></div>
+
+<p>编辑 <code>/etc/systemd/system/stunnel.service</code> 来添加两行。这些行在启动时为服务创建 chroot 监狱。</p>
+<div class="highlight"><pre><span></span><code><span class="k">[Unit]</span>
+<span class="na">Description</span><span class="o">=</span><span class="s">TLS tunnel for network daemons</span>
+<span class="na">After</span><span class="o">=</span><span class="s">syslog.target network.target</span>
+
+<span class="k">[Service]</span>
+<span class="na">ExecStart</span><span class="o">=</span><span class="s">/usr/bin/stunnel</span>
+<span class="na">Type</span><span class="o">=</span><span class="s">forking</span>
+<span class="na">PrivateTmp</span><span class="o">=</span><span class="s">true</span>
+<span class="na">ExecStartPre</span><span class="o">=</span><span class="s">-/usr/bin/mkdir /var/run/stunnel</span>
+<span class="na">ExecStartPre</span><span class="o">=</span><span class="s">/usr/bin/chown -R nobody:nobody /var/run/stunnel</span>
+
+<span class="k">[Install]</span>
+<span class="na">WantedBy</span><span class="o">=</span><span class="s">multi-user.target</span>
+</code></pre></div>
+
+<p>接下来，配置 SELinux 以在你刚刚指定的新端口上监听 telnet：</p>
+<div class="highlight"><pre><span></span><code>sudo semanage port -a -t telnetd_port_t -p tcp 450
+</code></pre></div>
+
+<p>最后，添加新的防火墙规则：</p>
+<div class="highlight"><pre><span></span><code><span class="n">firewall</span><span class="o">-</span><span class="n">cmd</span><span class="w"> </span><span class="o">--</span><span class="n">add</span><span class="o">-</span><span class="n">port</span><span class="o">=</span><span class="mi">450</span><span class="o">/</span><span class="n">tcp</span><span class="w"> </span><span class="o">--</span><span class="n">perm</span>
+<span class="n">firewall</span><span class="o">-</span><span class="n">cmd</span><span class="w"> </span><span class="o">--</span><span class="n">reload</span>
+</code></pre></div>
+
+<p>现在你可以启用并启动 telnet 和 stunnel。</p>
+<div class="highlight"><pre><span></span><code><span class="n">systemctl</span><span class="w"> </span><span class="n">enable</span><span class="w"> </span><span class="n">telnet</span><span class="p">.</span><span class="n">socket</span><span class="w"> </span><span class="n">stunnel</span><span class="nv">@telnet</span><span class="p">.</span><span class="n">service</span><span class="w"> </span><span class="c1">--now</span>
+</code></pre></div>
+
+<p>要注意 <code>systemctl</code> 命令是有顺序的。systemd 和 stunnel 包默认提供额外的<a href="https://fedoramagazine.org/systemd-template-unit-files/">模板单元文件</a>。该模板允许你将 stunnel 的多个配置文件放到 <code>/etc/stunnel</code> 中，并使用文件名启动该服务。例如，如果你有一个 <code>foobar.conf</code> 文件，那么可以使用 <code>systemctl start stunnel@foobar.service</code> 启动该 stunnel 实例，而无需自己编写任何单元文件。</p>
+<p>如果需要，可以将此 stunnel 模板服务设置为在启动时启动：</p>
+<div class="highlight"><pre><span></span><code><span class="n">systemctl</span><span class="w"> </span><span class="n">enable</span><span class="w"> </span><span class="n">stunnel</span><span class="nv">@telnet</span><span class="p">.</span><span class="n">service</span>
+</code></pre></div>
+
+<h3>客户端安装</h3>
+<p>本文的这部分假设你在客户端系统上以普通用户（<a href="https://fedoramagazine.org/howto-use-sudo/">拥有 sudo 权限</a>）身份登录。安装 stunnel 和 telnet 客户端：</p>
+<div class="highlight"><pre><span></span><code>dnf -y install stunnel telnet
+</code></pre></div>
+
+<p>将 <code>stunnel.pem</code> 从远程服务器复制到客户端的 <code>/etc/pki/tls/certs</code> 目录。在此例中，远程 telnet 服务器的 IP 地址为 <code>192.168.1.143</code>。</p>
+<div class="highlight"><pre><span></span><code><span class="n">sudo</span><span class="w"> </span><span class="n">scp</span><span class="w"> </span><span class="n">myuser</span><span class="mf">@192.168.1.143</span><span class="o">:/</span><span class="n">etc</span><span class="o">/</span><span class="n">pki</span><span class="o">/</span><span class="n">tls</span><span class="o">/</span><span class="n">certs</span><span class="o">/</span><span class="n">stunnel</span><span class="p">.</span><span class="n">pem</span>
+<span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">pki</span><span class="o">/</span><span class="n">tls</span><span class="o">/</span><span class="n">certs</span><span class="o">/</span>
+</code></pre></div>
+
+<p>创建 <code>/etc/stunnel/telnet.conf</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="n">cert</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">pki</span><span class="o">/</span><span class="n">tls</span><span class="o">/</span><span class="n">certs</span><span class="o">/</span><span class="n">stunnel</span><span class="p">.</span><span class="n">pem</span>
+<span class="n">client</span><span class="o">=</span><span class="n">yes</span>
+<span class="o">[</span><span class="n">telnet</span><span class="o">]</span>
+<span class="n">accept</span><span class="o">=</span><span class="mi">450</span>
+<span class="k">connect</span><span class="o">=</span><span class="mf">192.168.1.143</span><span class="err">:</span><span class="mi">450</span>
+</code></pre></div>
+
+<p><code>accept</code> 选项是用于 telnet 会话的端口。<code>connect</code> 选项是你远程服务器的 IP 地址以及监听的端口。</p>
+<p>接下来，启用并启动 stunnel：</p>
+<div class="highlight"><pre><span></span><code><span class="n">systemctl</span><span class="w"> </span><span class="n">enable</span><span class="w"> </span><span class="n">stunnel</span><span class="nv">@telnet</span><span class="p">.</span><span class="n">service</span><span class="w"> </span><span class="c1">--now</span>
+</code></pre></div>
+
+<p>测试你的连接。由于有一条已建立的连接，你会 <code>telnet</code> 到 <code>localhost</code> 而不是远程 telnet 服务器的主机名或者 IP 地址。</p>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="nx">user</span><span class="err">@</span><span class="nx">client</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="err">$</span><span class="w"> </span><span class="nx">telnet</span><span class="w"> </span><span class="nx">localhost</span><span class="w"> </span><span class="mi">450</span>
+<span class="nx">Trying</span><span class="w"> </span><span class="o">::</span><span class="mi">1</span><span class="o">...</span>
+<span class="nx">telnet</span><span class="p">:</span><span class="w"> </span><span class="nx">connect</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">address</span><span class="w"> </span><span class="o">::</span><span class="mi">1</span><span class="p">:</span><span class="w"> </span><span class="nx">Connection</span><span class="w"> </span><span class="nx">refused</span>
+<span class="nx">Trying</span><span class="w"> </span><span class="m m-Double">127.0.0.1</span><span class="o">...</span>
+<span class="nx">Connected</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">localhost</span><span class="p">.</span>
+<span class="nx">Escape</span><span class="w"> </span><span class="nx">character</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="err">&#39;</span><span class="o">^</span><span class="p">]</span><span class="err">&#39;</span><span class="p">.</span>
+
+<span class="nx">Kernel</span><span class="w"> </span><span class="m m-Double">5.0.9</span><span class="o">-</span><span class="mi">301</span><span class="p">.</span><span class="nx">fc30</span><span class="p">.</span><span class="nx">x86_64</span><span class="w"> </span><span class="nx">on</span><span class="w"> </span><span class="nx">an</span><span class="w"> </span><span class="nx">x86_64</span><span class="w"> </span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="nx">server</span><span class="w"> </span><span class="nx">login</span><span class="p">:</span><span class="w"> </span><span class="nx">myuser</span>
+<span class="nx">Password</span><span class="p">:</span><span class="w"> </span><span class="nx">XXXXXXX</span>
+<span class="nx">Last</span><span class="w"> </span><span class="nx">login</span><span class="p">:</span><span class="w"> </span><span class="nx">Sun</span><span class="w"> </span><span class="nx">May</span><span class="w">  </span><span class="mi">5</span><span class="w"> </span><span class="mi">14</span><span class="p">:</span><span class="mi">28</span><span class="p">:</span><span class="mi">22</span><span class="w"> </span><span class="nx">from</span><span class="w"> </span><span class="nx">localhost</span>
+<span class="p">[</span><span class="nx">myuser</span><span class="err">@</span><span class="nx">server</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="err">$</span>
+</code></pre></div>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

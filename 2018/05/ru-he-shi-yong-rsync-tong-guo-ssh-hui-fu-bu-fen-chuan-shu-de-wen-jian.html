@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何使用 rsync 通过 SSH 恢复部分传输的文件</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Sk 由于诸如电源故障、网络故障或用户干预等各种原因，使用 scp 命令通过 SSH 复制的大型文件可能会中断、取消或损坏。有 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/05/ru-he-shi-yong-rsync-tong-guo-ssh-hui-fu-bu-fen-chuan-shu-de-wen-jian.html" rel="bookmark"
+           title="Permalink to 如何使用 rsync 通过 SSH 恢复部分传输的文件">如何使用 rsync 通过 SSH 恢复部分传输的文件</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-05-02T21:36:09+02:00">
+                Published: Wed 02 May 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Sk</p>
+<p><img alt="" src="/data/attachment/album/201805/02/213612q358zdhp490d299o.png"></p>
+<p>由于诸如电源故障、网络故障或用户干预等各种原因，使用 <code>scp</code> 命令通过 SSH 复制的大型文件可能会中断、取消或损坏。有一天，我将 Ubuntu 16.04 ISO 文件复制到我的远程系统。不幸的是断电了，网络连接立即断了。结果么？复制过程终止！这只是一个简单的例子。Ubuntu ISO 并不是那么大，一旦电源恢复，我就可以重新启动复制过程。但在生产环境中，当你在传输大型文件时，你可能并不希望这样做。</p>
+<p>而且，你不能继续使用 <code>scp</code> 命令恢复被中止的进度。因为，如果你这样做，它只会覆盖现有的文件。这时你会怎么做？别担心！这是 <code>rsync</code> 派上用场的地方！<code>rsync</code> 可以帮助你恢复中断的复制或下载过程。对于那些好奇的人，<code>rsync</code> 是一个快速、多功能的文件复制程序，可用于复制和传输远程和本地系统中的文件或文件夹。</p>
+<p>它提供了大量控制其各种行为的选项，并允许非常灵活地指定要复制的一组文件。它以增量传输算法而闻名，它通过仅发送源文件和目标中现有文件之间的差异来减少通过网络发送的数据量。 <code>rsync</code> 广泛用于备份和镜像，以及日常使用中改进的复制命令。</p>
+<p>就像 <code>scp</code> 一样，<code>rsync</code> 也会通过 SSH 复制文件。如果你想通过 SSH 下载或传输大文件和文件夹，我建议您使用 <code>rsync</code>。请注意，应该在两边（远程和本地系统）都安装 <code>rsync</code> 来恢复部分传输的文件。</p>
+<h3>使用 rsync 恢复部分传输的文件</h3>
+<p>好吧，让我给你看一个例子。我将使用命令将 Ubuntu 16.04 ISO 从本地系统复制到远程系统：</p>
+<div class="highlight"><pre><span></span><code><span class="n">$</span><span class="w"> </span><span class="n">scp</span><span class="w"> </span><span class="n">Soft_Backup</span><span class="o">/</span><span class="n">OS</span><span class="err">\</span><span class="w"> </span><span class="n">Images</span><span class="o">/</span><span class="n">Linux</span><span class="o">/</span><span class="n">ubuntu</span><span class="mf">-16.04</span><span class="o">-</span><span class="n">desktop</span><span class="o">-</span><span class="n">amd64</span><span class="p">.</span><span class="n">iso</span><span class="w"> </span><span class="n">sk</span><span class="mf">@192.168.43.2</span><span class="o">:/</span><span class="n">home</span><span class="o">/</span><span class="n">sk</span><span class="o">/</span>
+</code></pre></div>
+
+<p>这里，</p>
+<ul>
+<li><code>sk</code>是我的远程系统的用户名</li>
+<li><code>192.168.43.2</code> 是远程机器的 IP 地址。</li>
+</ul>
+<p>现在，我按下 <code>CTRL+C</code> 结束它。</p>
+<p>示例输出：</p>
+<div class="highlight"><pre><span></span><code><span class="n">sk</span><span class="mf">@192.168.43.2</span><span class="err">&#39;</span><span class="n">s</span><span class="w"> </span><span class="n">password</span><span class="o">:</span><span class="w"> </span>
+<span class="n">ubuntu</span><span class="mf">-16.04</span><span class="o">-</span><span class="n">desktop</span><span class="o">-</span><span class="n">amd64</span><span class="p">.</span><span class="n">iso</span><span class="w"> </span><span class="mi">26</span><span class="o">%</span><span class="w"> </span><span class="mi">372</span><span class="n">MB</span><span class="w"> </span><span class="mf">26.2</span><span class="n">MB</span><span class="o">/</span><span class="n">s</span><span class="w"> </span><span class="mo">00</span><span class="o">:</span><span class="mi">39</span><span class="w"> </span><span class="n">ETA</span><span class="o">^</span><span class="n">c</span>
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/201805/02/213614i0dswohruxoiawhk.png"></p>
+<p>正如你在上面的输出中看到的，当它达到 26％ 时，我终止了复制过程。</p>
+<p>如果我重新运行上面的命令，它只会覆盖现有的文件。换句话说，复制过程不会在我断开的地方恢复。</p>
+<p>为了恢复复制过程，我们可以使用 <code>rsync</code> 命令，如下所示。</p>
+<div class="highlight"><pre><span></span><code><span class="n">$</span><span class="w"> </span><span class="n">rsync</span><span class="w"> </span><span class="o">-</span><span class="n">P</span><span class="w"> </span><span class="o">-</span><span class="n">rsh</span><span class="o">=</span><span class="n">ssh</span><span class="w"> </span><span class="n">Soft_Backup</span><span class="o">/</span><span class="n">OS</span><span class="err">\</span><span class="w"> </span><span class="n">Images</span><span class="o">/</span><span class="n">Linux</span><span class="o">/</span><span class="n">ubuntu</span><span class="mf">-16.04</span><span class="o">-</span><span class="n">desktop</span><span class="o">-</span><span class="n">amd64</span><span class="p">.</span><span class="n">iso</span><span class="w"> </span><span class="n">sk</span><span class="mf">@192.168.43.2</span><span class="o">:/</span><span class="n">home</span><span class="o">/</span><span class="n">sk</span><span class="o">/</span>
+</code></pre></div>
+
+<p>示例输出：</p>
+<div class="highlight"><pre><span></span><code><span class="n">sk</span><span class="mf">@192.168.1.103</span><span class="err">&#39;</span><span class="n">s</span><span class="w"> </span><span class="n">password</span><span class="o">:</span>
+<span class="n">sending</span><span class="w"> </span><span class="n">incremental</span><span class="w"> </span><span class="n">file</span><span class="w"> </span><span class="n">list</span>
+<span class="n">ubuntu</span><span class="mf">-16.04</span><span class="o">-</span><span class="n">desktop</span><span class="o">-</span><span class="n">amd64</span><span class="p">.</span><span class="n">iso</span>
+<span class="w">                   </span><span class="mf">380.56</span><span class="n">M</span><span class="w"> </span><span class="mi">26</span><span class="o">%</span><span class="w"> </span><span class="mf">41.05</span><span class="n">MB</span><span class="o">/</span><span class="n">s</span><span class="w"> </span><span class="mi">0</span><span class="o">:</span><span class="mo">00</span><span class="o">:</span><span class="mi">25</span>
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/201805/02/213615k7apaepa00xazmdw.png"></p>
+<p>看见了吗？现在，复制过程在我们之前断开的地方恢复了。你也可以像下面那样使用 <code>-partial</code> 而不是 <code>-P</code> 参数。</p>
+<div class="highlight"><pre><span></span><code><span class="n">$</span><span class="w"> </span><span class="n">rsync</span><span class="w"> </span><span class="o">--</span><span class="n">partial</span><span class="w"> </span><span class="o">-</span><span class="n">rsh</span><span class="o">=</span><span class="n">ssh</span><span class="w"> </span><span class="n">Soft_Backup</span><span class="o">/</span><span class="n">OS</span><span class="err">\</span><span class="w"> </span><span class="n">Images</span><span class="o">/</span><span class="n">Linux</span><span class="o">/</span><span class="n">ubuntu</span><span class="mf">-16.04</span><span class="o">-</span><span class="n">desktop</span><span class="o">-</span><span class="n">amd64</span><span class="p">.</span><span class="n">iso</span><span class="w"> </span><span class="n">sk</span><span class="mf">@192.168.43.2</span><span class="o">:/</span><span class="n">home</span><span class="o">/</span><span class="n">sk</span><span class="o">/</span>
+</code></pre></div>
+
+<p>这里，参数 <code>-partial</code> 或 <code>-P</code> 告诉 <code>rsync</code> 命令保留部分下载的文件并恢复进度。</p>
+<p>或者，我们也可以使用以下命令通过 SSH 恢复部分传输的文件。</p>
+<div class="highlight"><pre><span></span><code><span class="n">$</span><span class="w"> </span><span class="n">rsync</span><span class="w"> </span><span class="o">-</span><span class="n">avP</span><span class="w"> </span><span class="n">Soft_Backup</span><span class="o">/</span><span class="n">OS</span><span class="err">\</span><span class="w"> </span><span class="n">Images</span><span class="o">/</span><span class="n">Linux</span><span class="o">/</span><span class="n">ubuntu</span><span class="mf">-16.04</span><span class="o">-</span><span class="n">desktop</span><span class="o">-</span><span class="n">amd64</span><span class="p">.</span><span class="n">iso</span><span class="w"> </span><span class="n">sk</span><span class="mf">@192.168.43.2</span><span class="o">:/</span><span class="n">home</span><span class="o">/</span><span class="n">sk</span><span class="o">/</span>
+</code></pre></div>
+
+<p>或者，</p>
+<div class="highlight"><pre><span></span><code><span class="n">rsync</span><span class="w"> </span><span class="o">-</span><span class="n">av</span><span class="w"> </span><span class="o">--</span><span class="n">partial</span><span class="w"> </span><span class="n">Soft_Backup</span><span class="o">/</span><span class="n">OS</span><span class="err">\</span><span class="w"> </span><span class="n">Images</span><span class="o">/</span><span class="n">Linux</span><span class="o">/</span><span class="n">ubuntu</span><span class="mf">-16.04</span><span class="o">-</span><span class="n">desktop</span><span class="o">-</span><span class="n">amd64</span><span class="p">.</span><span class="n">iso</span><span class="w"> </span><span class="n">sk</span><span class="mf">@192.168.43.2</span><span class="o">:/</span><span class="n">home</span><span class="o">/</span><span class="n">sk</span><span class="o">/</span>
+</code></pre></div>
+
+<p>就是这样了。你现在知道如何使用 <code>rsync</code> 命令恢复取消、中断和部分下载的文件。正如你所看到的，它也不是那么难。如果两个系统都安装了 <code>rsync</code>，我们可以轻松地通过上面描述的那样恢复复制的进度。</p>
+<p>如果你觉得本教程有帮助，请在你的社交、专业网络上分享，并支持我们。还有更多的好东西。敬请关注！</p>
+<p>干杯!</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

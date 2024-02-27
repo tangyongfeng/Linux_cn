@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>OpenSSL 在 Apache 和 Dovecot 下的使用（二）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: CARLA SCHRODER 本篇中，Carla Schroder 会解释如何使用 OpenSSL 保护你的 Postfix/Dovecot 邮件服务器 在上周，作为我们 OpenSSL 系列的一部分，我们学习了如何配置 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/02/openssl-zai-apache-he-dovecot-xia-de-shi-yong-er.html" rel="bookmark"
+           title="Permalink to OpenSSL 在 Apache 和 Dovecot 下的使用（二）">OpenSSL 在 Apache 和 Dovecot 下的使用（二）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-02-03T09:48:00+01:00">
+                Published: Fri 03 February 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: CARLA SCHRODER</p>
+<p><img alt="OpenSSL" src="/data/attachment/album/201702/02/235041fw9cfcmi6646xw59.jpg" title="OpenSSL"></p>
+<blockquote>
+<p>本篇中，Carla Schroder 会解释如何使用 OpenSSL 保护你的 Postfix/Dovecot 邮件服务器</p>
+</blockquote>
+<p>在<a href="/article-8167-1.html">上周</a>，作为我们 OpenSSL 系列的一部分，我们学习了如何配置 Apache 以使用 OpenSSL 并强制所有会话使用 HTTPS。 今天，我们将使用 OpenSSL 保护我们的 Postfix/Dovecot 邮件服务器。这些示例基于前面的教程; 请参阅最后的参考资料部分，了解本系列中以前的所有教程的链接。</p>
+<p>你需要配置 Postfix 以及 Dovecot 都使用 OpenSSL，我们将使用我们在<a href="/article-8167-1.html">OpenSSL 在 Apache 和 Dovecot 下的使用（一）</a>中创建的密钥和证书。</p>
+<h3>Postfix 配置</h3>
+<p>你必须编辑 <code>/etc/postfix/main.cf</code> 以及 <code>/etc/postfix/master.cf</code>。实例的 <code>main.cf</code> 是完整的配置，基于我们先前的教程。替换成你自己的 OpenSSL 密钥和证书名以及本地网络地址。</p>
+<div class="highlight"><pre><span></span><code><span class="nx">compatibility_level</span><span class="p">=</span><span class="mi">2</span>
+<span class="nx">smtpd_banner</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="err">$</span><span class="nx">myhostname</span><span class="w"> </span><span class="nx">ESMTP</span><span class="w"> </span><span class="err">$</span><span class="nx">mail_name</span><span class="w"> </span><span class="p">(</span><span class="nx">Ubuntu</span><span class="o">/</span><span class="nx">GNU</span><span class="p">)</span>
+<span class="nx">biff</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">no</span>
+<span class="nx">append_dot_mydomain</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">no</span>
+
+<span class="nx">myhostname</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">localhost</span>
+<span class="nx">alias_maps</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">hash</span><span class="p">:</span><span class="o">/</span><span class="nx">etc</span><span class="o">/</span><span class="nx">aliases</span>
+<span class="nx">alias_database</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">hash</span><span class="p">:</span><span class="o">/</span><span class="nx">etc</span><span class="o">/</span><span class="nx">aliases</span>
+<span class="nx">myorigin</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="err">$</span><span class="nx">myhostname</span>
+<span class="nx">mynetworks</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="m m-Double">127.0.0.0</span><span class="o">/</span><span class="mi">8</span><span class="w"> </span><span class="p">[</span><span class="o">::</span><span class="nx">ffff</span><span class="p">:</span><span class="m m-Double">127.0.0.0</span><span class="p">]</span><span class="o">/</span><span class="mi">104</span><span class="w"> </span><span class="p">[</span><span class="o">::</span><span class="mi">1</span><span class="p">]</span><span class="o">/</span><span class="mi">128</span><span class="w"> </span><span class="m m-Double">192.168.0.0</span><span class="o">/</span><span class="mi">24</span>
+<span class="nx">mailbox_size_limit</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mi">0</span>
+<span class="nx">recipient_delimiter</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="o">+</span>
+<span class="nx">inet_interfaces</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">all</span>
+
+<span class="nx">virtual_mailbox_domains</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="o">/</span><span class="nx">etc</span><span class="o">/</span><span class="nx">postfix</span><span class="o">/</span><span class="nx">vhosts</span><span class="p">.</span><span class="nx">txt</span>
+<span class="nx">virtual_mailbox_base</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="o">/</span><span class="nx">home</span><span class="o">/</span><span class="nx">vmail</span>
+<span class="nx">virtual_mailbox_maps</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">hash</span><span class="p">:</span><span class="o">/</span><span class="nx">etc</span><span class="o">/</span><span class="nx">postfix</span><span class="o">/</span><span class="nx">vmaps</span><span class="p">.</span><span class="nx">txt</span>
+<span class="nx">virtual_minimum_uid</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mi">1000</span>
+<span class="nx">virtual_uid_maps</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">static</span><span class="p">:</span><span class="mi">5000</span>
+<span class="nx">virtual_gid_maps</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">static</span><span class="p">:</span><span class="mi">5000</span>
+<span class="nx">virtual_transport</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">lmtp</span><span class="p">:</span><span class="nx">unix</span><span class="p">:</span><span class="k">private</span><span class="o">/</span><span class="nx">dovecot</span><span class="o">-</span><span class="nx">lmtp</span>
+
+<span class="nx">smtpd_tls_cert_file</span><span class="p">=</span><span class="o">/</span><span class="nx">etc</span><span class="o">/</span><span class="nx">ssl</span><span class="o">/</span><span class="nx">certs</span><span class="o">/</span><span class="nx">test</span><span class="o">-</span><span class="nx">com</span><span class="p">.</span><span class="nx">pem</span>
+<span class="nx">smtpd_tls_key_file</span><span class="p">=</span><span class="o">/</span><span class="nx">etc</span><span class="o">/</span><span class="nx">ssl</span><span class="o">/</span><span class="k">private</span><span class="o">/</span><span class="nx">test</span><span class="o">-</span><span class="nx">com</span><span class="p">.</span><span class="nx">key</span>
+<span class="nx">smtpd_use_tls</span><span class="p">=</span><span class="nx">yes</span>
+
+<span class="nx">smtpd_sasl_auth_enable</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">yes</span>
+<span class="nx">smtpd_sasl_type</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">dovecot</span>
+<span class="nx">smtpd_sasl_path</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="k">private</span><span class="o">/</span><span class="nx">auth</span>
+<span class="nx">smtpd_sasl_authenticated_header</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">yes</span>
+</code></pre></div>
+
+<p>在 <code>master.cf</code> 取消 <code>submission inet</code> 部分的注释，并编辑 <code>smtpd_recipient_restrictions</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span>submission inet n  -  y  -  - smtpd
+  -o syslog_name=postfix/submission
+  -o smtpd_tls_security_level=encrypt
+  -o smtpd_sasl_auth_enable=yes
+  -o milter_macro_daemon_name=ORIGINATING
+  -o smtpd_recipient_restrictions=permit_mynetworks,permit_sasl_authenticated,reject
+  -o smtpd_tls_wrappermode=no
+</code></pre></div>
+
+<p>完成后重新加载 Postfix：</p>
+<div class="highlight"><pre><span></span><code><span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">service</span><span class="w"> </span><span class="n">postfix</span><span class="w"> </span><span class="n">reload</span>
+</code></pre></div>
+
+<h3>Dovecot 配置</h3>
+<p>在我们以前的教程中，我们为 Dovecot 创建了一个单一配置文件 <code>/etc/dovecot/dovecot.conf</code>，而不是使用多个默认配置文件。这是一个基于我们以前的教程的完整配置。再说一次，使用你自己的 OpenSSL 密钥和证书，以及你自己的 <code>userdb</code> 的 home 文件：</p>
+<div class="highlight"><pre><span></span><code><span class="n">protocols</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">imap</span><span class="w"> </span><span class="n">pop3</span><span class="w"> </span><span class="n">lmtp</span>
+<span class="n">log_path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="n">dovecot</span><span class="o">.</span><span class="n">log</span>
+<span class="n">info_log_path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="n">dovecot</span><span class="o">-</span><span class="n">info</span><span class="o">.</span><span class="n">log</span>
+<span class="n">disable_plaintext_auth</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">no</span>
+<span class="n">mail_location</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">maildir</span><span class="p">:</span><span class="o">~/.</span><span class="n">Mail</span>
+<span class="n">pop3_uidl_format</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">%</span><span class="n">g</span>
+<span class="n">auth_mechanisms</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">plain</span>
+
+<span class="n">passdb</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">driver</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">passwd</span><span class="o">-</span><span class="n">file</span>
+<span class="w">  </span><span class="n">args</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">dovecot</span><span class="o">/</span><span class="n">passwd</span>
+<span class="p">}</span>
+
+<span class="n">userdb</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">driver</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">static</span>
+<span class="w">  </span><span class="n">args</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">uid</span><span class="o">=</span><span class="n">vmail</span><span class="w"> </span><span class="n">gid</span><span class="o">=</span><span class="n">vmail</span><span class="w"> </span><span class="n">home</span><span class="o">=/</span><span class="n">home</span><span class="o">/</span><span class="n">vmail</span><span class="o">/</span><span class="n">studio</span><span class="o">/%</span><span class="n">u</span>
+<span class="p">}</span>
+
+<span class="n">service</span><span class="w"> </span><span class="n">lmtp</span><span class="w"> </span><span class="p">{</span>
+<span class="w"> </span><span class="n">unix_listener</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">spool</span><span class="o">/</span><span class="n">postfix</span><span class="o">/</span><span class="n">private</span><span class="o">/</span><span class="n">dovecot</span><span class="o">-</span><span class="n">lmtp</span><span class="w"> </span><span class="p">{</span>
+<span class="w">   </span><span class="n">group</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">postfix</span>
+<span class="w">   </span><span class="n">mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0600</span>
+<span class="w">   </span><span class="n">user</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">postfix</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="n">protocol</span><span class="w"> </span><span class="n">lmtp</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">postmaster_address</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">postmaster</span><span class="err">@</span><span class="n">studio</span>
+<span class="p">}</span>
+
+<span class="n">service</span><span class="w"> </span><span class="n">lmtp</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">user</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">vmail</span>
+<span class="p">}</span>
+
+<span class="n">service</span><span class="w"> </span><span class="n">auth</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">unix_listener</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">spool</span><span class="o">/</span><span class="n">postfix</span><span class="o">/</span><span class="n">private</span><span class="o">/</span><span class="n">auth</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0660</span>
+<span class="w">        </span><span class="n">user</span><span class="o">=</span><span class="n">postfix</span>
+<span class="w">        </span><span class="n">group</span><span class="o">=</span><span class="n">postfix</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="w"> </span><span class="p">}</span>
+
+<span class="n">ssl</span><span class="o">=</span><span class="n">required</span>
+<span class="n">ssl_cert</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">&lt;/</span><span class="n">etc</span><span class="o">/</span><span class="n">ssl</span><span class="o">/</span><span class="n">certs</span><span class="o">/</span><span class="n">test</span><span class="o">-</span><span class="n">com</span><span class="o">.</span><span class="n">pem</span>
+<span class="n">ssl_key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">&lt;/</span><span class="n">etc</span><span class="o">/</span><span class="n">ssl</span><span class="o">/</span><span class="n">private</span><span class="o">/</span><span class="n">test</span><span class="o">-</span><span class="n">com</span><span class="o">.</span><span class="n">key</span>
+</code></pre></div>
+
+<p>重启 Dovecot:</p>
+<div class="highlight"><pre><span></span><code><span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">service</span><span class="w"> </span><span class="n">postfix</span><span class="w"> </span><span class="n">reload</span>
+</code></pre></div>
+
+<h3>用 telnet 测试</h3>
+<p>就像我们以前一样，现在我们可以通过使用 telnet 发送消息来测试我们的设置。 但是等等，你说 telnet 不支持 TLS/SSL，那么这样怎么办呢？首先通过使用 <code>openssl s_client</code> 打开一个加密会话。<code>openssl s_client</code> 的输出将显示你的证书及其指纹和大量其它信息，以便你知道你的服务器正在使用正确的证书。会话建立后输入的命令都是不以数字开头的：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>openssl<span class="w"> </span>s_client<span class="w"> </span>-starttls<span class="w"> </span>smtp<span class="w"> </span>-connect<span class="w"> </span>studio:25
+CONNECTED<span class="o">(</span><span class="m">00000003</span><span class="o">)</span>
+<span class="o">[</span>masses<span class="w"> </span>of<span class="w"> </span>output<span class="w"> </span>snipped<span class="o">]</span>
+<span class="w">    </span>Verify<span class="w"> </span><span class="k">return</span><span class="w"> </span>code:<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="o">(</span>ok<span class="o">)</span>
++OK<span class="w"> </span>Dovecot<span class="w"> </span>ready
+user<span class="w"> </span>alrac@studio<span class="w"> </span>
++OK
+pass<span class="w"> </span>password
++OK<span class="w"> </span>Logged<span class="w"> </span><span class="k">in</span>.
+list
++OK<span class="w"> </span><span class="m">5</span><span class="w"> </span>messages:
+<span class="m">1</span><span class="w"> </span><span class="m">499</span>
+<span class="m">2</span><span class="w"> </span><span class="m">504</span>
+<span class="m">3</span><span class="w"> </span><span class="m">514</span>
+<span class="m">4</span><span class="w"> </span><span class="m">513</span>
+<span class="m">5</span><span class="w"> </span><span class="m">565</span>
+.
+retr<span class="w"> </span><span class="m">5</span>
++OK<span class="w"> </span><span class="m">565</span><span class="w"> </span>octets
+Return-Path:<span class="w"> </span>&lt;carla@domain.com&gt;
+Delivered-To:<span class="w"> </span>alrac@studio
+Received:<span class="w"> </span>from<span class="w"> </span>localhost
+<span class="w">        </span>by<span class="w"> </span>studio.alrac.net<span class="w"> </span><span class="o">(</span>Dovecot<span class="o">)</span><span class="w"> </span>with<span class="w"> </span>LMTP<span class="w"> </span>id<span class="w"> </span>y8G5C8aablgKIQAAYelYQA
+<span class="w">        </span><span class="k">for</span><span class="w"> </span>&lt;alrac@studio&gt;<span class="p">;</span><span class="w"> </span>Thu,<span class="w"> </span><span class="m">05</span><span class="w"> </span>Jan<span class="w"> </span><span class="m">2017</span><span class="w"> </span><span class="m">11</span>:13:10<span class="w"> </span>-0800
+Received:<span class="w"> </span>from<span class="w"> </span>studio<span class="w"> </span><span class="o">(</span>localhost<span class="w"> </span><span class="o">[</span><span class="m">127</span>.0.0.1<span class="o">])</span>
+<span class="w">        </span>by<span class="w"> </span>localhost<span class="w"> </span><span class="o">(</span>Postfix<span class="o">)</span><span class="w"> </span>with<span class="w"> </span>ESMTPS<span class="w"> </span>id<span class="w"> </span>B9B529FE59
+<span class="w">        </span><span class="k">for</span><span class="w"> </span>&lt;alrac@studio&gt;<span class="p">;</span><span class="w"> </span>Thu,<span class="w">  </span><span class="m">5</span><span class="w"> </span>Jan<span class="w"> </span><span class="m">2017</span><span class="w"> </span><span class="m">11</span>:12:13<span class="w"> </span>-0800<span class="w"> </span><span class="o">(</span>PST<span class="o">)</span>
+subject:<span class="w"> </span>TLS/SSL<span class="w"> </span><span class="nb">test</span>
+Message-Id:<span class="w"> </span>&lt;<span class="m">20170105191240</span>.B9B529FE59@localhost&gt;
+Date:<span class="w"> </span>Thu,<span class="w">  </span><span class="m">5</span><span class="w"> </span>Jan<span class="w"> </span><span class="m">2017</span><span class="w"> </span><span class="m">11</span>:12:13<span class="w"> </span>-0800<span class="w"> </span><span class="o">(</span>PST<span class="o">)</span>
+From:<span class="w"> </span>carla@domain.com
+
+Hello,<span class="w"> </span>we<span class="w"> </span>are<span class="w"> </span>testing<span class="w"> </span>TLS/SSL.<span class="w"> </span>Looking<span class="w"> </span>good<span class="w"> </span>so<span class="w"> </span>far.
+.
+quit
++OK<span class="w"> </span>Logging<span class="w"> </span>out.
+closed
+</code></pre></div>
+
+<h3>现在做什么？</h3>
+<p>现在你有一个功能良好的，具有合适的 TLS/SSL 保护的邮件服务器了。我鼓励你深入学习 Postfix 以及 Dovecot； 这些教程中的示例尽可能地简单，不包括对安全性、防病毒扫描程序、垃圾邮件过滤器或任何其他高级功能的调整。我认为当你有一个基本工作系统时更容易学习高级功能。</p>
+<p>下周回到 openSUSE 包管理备忘录上。</p>
+<h3>资源</h3>
+<ul>
+<li><a href="/article-8167-1.html">为 Apache 和 Dovecot 使用 OpenSSL</a></li>
+<li><a href="/article-8071-1.html">如何在 Ubuntu Linux 上构建电子邮件服务器</a></li>
+<li><a href="/article-8077-1.html">在 Ubuntu Linux 上构建电子邮件服务器：第2部分</a></li>
+<li><a href="/article-8088-1.html">在 Ubuntu Linux 上构建电子邮件服务器：第3部分</a></li>
+<li><a href="https://www.linux.com/learn/apache-ubuntu-linux-beginners">给初学者看的在 Ubuntu Linux 上使用 Apache</a></li>
+<li><a href="https://www.linux.com/learn/apache-ubuntu-linux-beginners-part-2">给初学者看的在 Ubuntu Linux 上使用 Apache：第二部分</a></li>
+<li><a href="https://www.linux.com/learn/apache-centos-linux-beginners">给初学者看的在 CentOS Linux 上使用 Apache</a></li>
+<li><a href="https://www.linux.com/learn/quieting-scary-web-browser-ssl-alerts">消灭让人害怕的 web 浏览器 SSL 警告</a></li>
+</ul>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

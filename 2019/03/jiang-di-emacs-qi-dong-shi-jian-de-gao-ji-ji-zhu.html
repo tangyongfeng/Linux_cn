@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>降低 Emacs 启动时间的高级技术</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Joe Schafer 《Emacs Start Up Profiler》 的作者教你六项减少 Emacs 启动时间的技术。 简而言之：做下面几个步骤： 使用 Esup 进行性能检测。 调整垃圾回收 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/03/jiang-di-emacs-qi-dong-shi-jian-de-gao-ji-ji-zhu.html" rel="bookmark"
+           title="Permalink to 降低 Emacs 启动时间的高级技术">降低 Emacs 启动时间的高级技术</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-03-17T10:30:56+01:00">
+                Published: Sun 17 March 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Joe Schafer</p>
+<p><img alt="" src="/data/attachment/album/201903/17/103034nsteggtntystu7gz.jpg"></p>
+<blockquote>
+<p>《<a href="https://github.com/jschaf/esup">Emacs Start Up Profiler</a>》 的作者教你六项减少 Emacs 启动时间的技术。</p>
+</blockquote>
+<p>简而言之：做下面几个步骤：</p>
+<ol>
+<li>使用 Esup 进行性能检测。</li>
+<li>调整垃圾回收的阀值。</li>
+<li>使用 use-package 来自动（延迟）加载所有东西。</li>
+<li>不要使用会引起立即加载的辅助函数。</li>
+<li>参考我的 <a href="https://github.com/jschaf/dotfiles/blob/master/emacs/start.el">配置</a>。</li>
+</ol>
+<h3>从 .emacs.d 的失败到现在</h3>
+<p>我最近宣布了 .emacs.d 的第三次失败，并完成了第四次 Emacs 配置的迭代。演化过程为：</p>
+<ol>
+<li>拷贝并粘贴 elisp 片段到 <code>~/.emacs</code> 中，希望它能工作。</li>
+<li>借助 <code>el-get</code> 来以更结构化的方式来管理依赖关系。</li>
+<li>放弃自己从零配置，以 Spacemacs 为基础。</li>
+<li>厌倦了 Spacemacs 的复杂性，基于 <code>use-package</code> 重写配置。</li>
+</ol>
+<p>本文汇聚了三次重写和创建 《<a href="https://github.com/jschaf/esup">Emacs Start Up Profiler</a>》过程中的技巧。非常感谢 Spacemacs、use-package 等背后的团队。没有这些无私的志愿者，这项任务将会困难得多。</p>
+<h3>不过守护进程模式又如何呢</h3>
+<p>在我们开始之前，让我反驳一下优化 Emacs 时的常见观念：“Emacs 旨在作为守护进程来运行的，因此你只需要运行一次而已。”</p>
+<p>这个观点很好，只不过：</p>
+<ul>
+<li>速度总是越快越好。</li>
+<li>配置 Emacs 时，可能会有不得不通过重启 Emacs 的情况。例如，你可能为 <code>post-command-hook</code> 添加了一个运行缓慢的 <code>lambda</code> 函数，很难删掉它。</li>
+<li>重启 Emacs 能帮你验证不同会话之间是否还能保留配置。</li>
+</ul>
+<h3>1、估算当前以及最佳的启动时间</h3>
+<p>第一步是测量当前的启动时间。最简单的方法就是在启动时显示后续步骤进度的信息。</p>
+<div class="highlight"><pre><span></span><code>;; Use a hook so the message doesn&#39;t get clobbered by other messages.
+(add-hook &#39;emacs-startup-hook
+    (lambda ()
+        (message &quot;Emacs ready in %s with %d garbage collections.&quot;
+            (format &quot;%.2f seconds&quot;
+                (float-time
+                    (time-subtract after-init-time before-init-time)))
+        gcs-done)))
+</code></pre></div>
+
+<p>第二步、测量最佳的启动速度，以便了解可能的情况。我的是 0.3 秒。</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># -q ignores personal Emacs files but loads the site files.</span>
+<span class="n">emacs</span><span class="w"> </span><span class="o">-</span><span class="n">q</span><span class="w"> </span><span class="o">--</span><span class="n">eval</span><span class="o">=</span><span class="s1">&#39;(message &quot;</span><span class="si">%s</span><span class="s1">&quot; (emacs-init-time))&#39;</span><span class="w"> </span>
+
+<span class="p">;;</span><span class="w"> </span><span class="n">For</span><span class="w"> </span><span class="n">macOS</span><span class="w"> </span><span class="n">users</span><span class="p">:</span>
+<span class="n">open</span><span class="w"> </span><span class="o">-</span><span class="n">n</span><span class="w"> </span><span class="o">/</span><span class="n">Applications</span><span class="o">/</span><span class="n">Emacs</span><span class="o">.</span><span class="n">app</span><span class="w"> </span><span class="o">--</span><span class="n">args</span><span class="w"> </span><span class="o">-</span><span class="n">q</span><span class="w"> </span><span class="o">--</span><span class="n">eval</span><span class="o">=</span><span class="s1">&#39;(message &quot;</span><span class="si">%s</span><span class="s1">&quot; (emacs-init-time))&#39;</span><span class="w">  </span>
+</code></pre></div>
+
+<h3>2、检测 Emacs 启动指标对你大有帮助</h3>
+<p>《<a href="https://github.com/jschaf/esup">Emacs StartUp Profiler</a>》（ESUP）将会给你顶层语句执行的详细指标。</p>
+<p><img alt="esup.png" src="/data/attachment/album/201903/17/103100aubbxhjbh5fuu3b5.png"></p>
+<p><em>图 1: Emacs Start Up Profiler 截图</em></p>
+<blockquote>
+<p>警告：Spacemacs 用户需要注意，ESUP 目前与 Spacemacs 的 init.el 文件有冲突。遵照 <a href="https://github.com/jschaf/esup/issues/48">https://github.com/jschaf/esup/issues/48</a> 上说的进行升级。</p>
+</blockquote>
+<h3>3、调高启动时垃圾回收的阀值</h3>
+<p>这为我节省了 <strong>0.3 秒</strong>。</p>
+<p>Emacs 默认值是 760kB，这在现代机器看来极其保守。真正的诀窍在于初始化完成后再把它降到合理的水平。这为我节省了 0.3 秒。</p>
+<div class="highlight"><pre><span></span><code><span class="c">;; Make startup faster by reducing the frequency of garbage</span>
+<span class="c">;; collection.  The default is 800 kilobytes.  Measured in bytes.</span>
+(setq gc-cons-threshold (* 50 1000 1000))
+
+<span class="c">;; The rest of the init file.</span>
+
+<span class="c">;; Make gc pauses faster by decreasing the threshold.</span>
+(setq gc-cons-threshold (* 2 1000 1000))
+</code></pre></div>
+
+<p><em>~/.emacs.d/init.el</em></p>
+<h3>4、不要 require 任何东西，而是使用 use-package 来自动加载</h3>
+<p>让 Emacs 变坏的最好方法就是减少要做的事情。<code>require</code> 会立即加载源文件，但是很少会出现需要在启动阶段就立即需要这些功能的。</p>
+<p>在 <a href="https://github.com/jwiegley/use-package">use-package</a> 中你只需要声明好需要哪个包中的哪个功能，<code>use-package</code> 就会帮你完成正确的事情。它看起来是这样的：</p>
+<div class="highlight"><pre><span></span><code><span class="p">(</span><span class="n">use</span><span class="o">-</span><span class="n">package</span><span class="w"> </span><span class="n">evil</span><span class="o">-</span><span class="n">lisp</span><span class="o">-</span><span class="n">state</span><span class="w"> </span><span class="p">;</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">Melpa</span><span class="w"> </span><span class="n">package</span><span class="w"> </span><span class="n">name</span>
+
+<span class="w">  </span><span class="p">:</span><span class="n">defer</span><span class="w"> </span><span class="n">t</span><span class="w"> </span><span class="p">;</span><span class="w"> </span><span class="n">autoload</span><span class="w"> </span><span class="n">this</span><span class="w"> </span><span class="n">package</span>
+
+<span class="w">  </span><span class="p">:</span><span class="n">init</span><span class="w"> </span><span class="p">;</span><span class="w"> </span><span class="n">Code</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">run</span><span class="w"> </span><span class="n">immediately</span><span class="o">.</span>
+<span class="w">  </span><span class="p">(</span><span class="n">setq</span><span class="w"> </span><span class="n">evil</span><span class="o">-</span><span class="n">lisp</span><span class="o">-</span><span class="n">state</span><span class="o">-</span><span class="n">global</span><span class="w"> </span><span class="n">nil</span><span class="p">)</span>
+
+<span class="w">  </span><span class="p">:</span><span class="n">config</span><span class="w"> </span><span class="p">;</span><span class="w"> </span><span class="n">Code</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">run</span><span class="w"> </span><span class="n">after</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">package</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">loaded</span><span class="o">.</span>
+<span class="w">  </span><span class="p">(</span><span class="n">abn</span><span class="o">/</span><span class="n">define</span><span class="o">-</span><span class="n">leader</span><span class="o">-</span><span class="n">keys</span><span class="w"> </span><span class="s2">&quot;k&quot;</span><span class="w"> </span><span class="n">evil</span><span class="o">-</span><span class="n">lisp</span><span class="o">-</span><span class="n">state</span><span class="o">-</span><span class="n">map</span><span class="p">))</span>
+</code></pre></div>
+
+<p>可以通过查看 <code>features</code> 变量来查看 Emacs 现在加载了那些包。想要更好看的输出可以使用 <a href="https://gist.github.com/RockyRoad29/bd4ca6fdb41196a71662986f809e2b1c">lpkg explorer</a> 或者我在 <a href="https://github.com/jschaf/dotfiles/blob/master/emacs/funcs/abn-funcs-benchmark.el">abn-funcs-benchmark.el</a> 中的变体。输出看起来类似这样的：</p>
+<div class="highlight"><pre><span></span><code><span class="mi">479</span><span class="w"> </span><span class="n">features</span><span class="w"> </span><span class="n">currently</span><span class="w"> </span><span class="n">loaded</span>
+<span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="n">abn</span><span class="o">-</span><span class="n">funcs</span><span class="o">-</span><span class="n">benchmark</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="n">Users</span><span class="o">/</span><span class="n">jschaf</span><span class="o">/.</span><span class="n">dotfiles</span><span class="o">/</span><span class="n">emacs</span><span class="o">/</span><span class="n">funcs</span><span class="o">/</span><span class="n">abn</span><span class="o">-</span><span class="n">funcs</span><span class="o">-</span><span class="n">benchmark</span><span class="o">.</span><span class="n">el</span>
+<span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="n">evil</span><span class="o">-</span><span class="n">surround</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="n">Users</span><span class="o">/</span><span class="n">jschaf</span><span class="o">/.</span><span class="n">emacs</span><span class="o">.</span><span class="n">d</span><span class="o">/</span><span class="n">elpa</span><span class="o">/</span><span class="n">evil</span><span class="o">-</span><span class="n">surround</span><span class="o">-</span><span class="mf">20170910.1952</span><span class="o">/</span><span class="n">evil</span><span class="o">-</span><span class="n">surround</span><span class="o">.</span><span class="n">elc</span>
+<span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="n">misearch</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="n">Applications</span><span class="o">/</span><span class="n">Emacs</span><span class="o">.</span><span class="n">app</span><span class="o">/</span><span class="n">Contents</span><span class="o">/</span><span class="n">Resources</span><span class="o">/</span><span class="n">lisp</span><span class="o">/</span><span class="n">misearch</span><span class="o">.</span><span class="n">elc</span>
+<span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="n">multi</span><span class="o">-</span><span class="n">isearch</span><span class="p">:</span><span class="w"> </span><span class="n">nil</span>
+<span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="o">&lt;</span><span class="n">many</span><span class="w"> </span><span class="n">more</span><span class="o">&gt;</span>
+</code></pre></div>
+
+<h3>5、不要使用辅助函数来设置模式</h3>
+<p>通常，Emacs 包会建议通过运行一个辅助函数来设置键绑定。下面是一些例子：</p>
+<ul>
+<li><code>(evil-escape-mode)</code></li>
+<li><code>(windmove-default-keybindings) ; 设置快捷键。</code></li>
+<li><code>(yas-global-mode 1) ; 复杂的片段配置。</code></li>
+</ul>
+<p>可以通过 <code>use-package</code> 来对此进行重构以提高启动速度。这些辅助函数只会让你立即加载那些尚用不到的包。</p>
+<p>下面这个例子告诉你如何自动加载 <code>evil-escape-mode</code>。</p>
+<div class="highlight"><pre><span></span><code><span class="p">;;</span><span class="w"> </span><span class="n">The</span><span class="w"> </span><span class="n">definition</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="n">evil</span><span class="o">-</span><span class="n">escape</span><span class="o">-</span><span class="n">mode</span><span class="o">.</span>
+<span class="p">(</span><span class="n">define</span><span class="o">-</span><span class="n">minor</span><span class="o">-</span><span class="n">mode</span><span class="w"> </span><span class="n">evil</span><span class="o">-</span><span class="n">escape</span><span class="o">-</span><span class="n">mode</span>
+<span class="w">  </span><span class="p">(</span><span class="k">if</span><span class="w"> </span><span class="n">evil</span><span class="o">-</span><span class="n">escape</span><span class="o">-</span><span class="n">mode</span>
+<span class="w">      </span><span class="p">(</span><span class="n">add</span><span class="o">-</span><span class="n">hook</span><span class="w"> </span><span class="s1">&#39;pre-command-hook &#39;</span><span class="n">evil</span><span class="o">-</span><span class="n">escape</span><span class="o">-</span><span class="n">pre</span><span class="o">-</span><span class="n">command</span><span class="o">-</span><span class="n">hook</span><span class="p">)</span>
+<span class="w">    </span><span class="p">(</span><span class="n">remove</span><span class="o">-</span><span class="n">hook</span><span class="w"> </span><span class="s1">&#39;pre-command-hook &#39;</span><span class="n">evil</span><span class="o">-</span><span class="n">escape</span><span class="o">-</span><span class="n">pre</span><span class="o">-</span><span class="n">command</span><span class="o">-</span><span class="n">hook</span><span class="p">)))</span>
+
+<span class="p">;;</span><span class="w"> </span><span class="n">Before</span><span class="p">:</span>
+<span class="p">(</span><span class="n">evil</span><span class="o">-</span><span class="n">escape</span><span class="o">-</span><span class="n">mode</span><span class="p">)</span>
+
+<span class="p">;;</span><span class="w"> </span><span class="n">After</span><span class="p">:</span>
+<span class="p">(</span><span class="n">use</span><span class="o">-</span><span class="n">package</span><span class="w"> </span><span class="n">evil</span><span class="o">-</span><span class="n">escape</span>
+<span class="w">  </span><span class="p">:</span><span class="n">defer</span><span class="w"> </span><span class="n">t</span>
+<span class="w">  </span><span class="p">;;</span><span class="w"> </span><span class="n">Only</span><span class="w"> </span><span class="n">needed</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">functions</span><span class="w"> </span><span class="n">without</span><span class="w"> </span><span class="n">an</span><span class="w"> </span><span class="n">autoload</span><span class="w"> </span><span class="n">comment</span><span class="w"> </span><span class="p">(;;;</span><span class="c1">###autoload).</span>
+<span class="w">  </span><span class="p">:</span><span class="n">commands</span><span class="w"> </span><span class="p">(</span><span class="n">evil</span><span class="o">-</span><span class="n">escape</span><span class="o">-</span><span class="n">pre</span><span class="o">-</span><span class="n">command</span><span class="o">-</span><span class="n">hook</span><span class="p">)</span><span class="w"> </span>
+
+<span class="w">  </span><span class="p">;;</span><span class="w"> </span><span class="n">Adding</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">hook</span><span class="w"> </span><span class="n">won</span><span class="s1">&#39;t load the function until we invoke it.</span>
+<span class="w">  </span><span class="p">;;</span><span class="w"> </span><span class="n">With</span><span class="w"> </span><span class="n">pre</span><span class="o">-</span><span class="n">command</span><span class="o">-</span><span class="n">hook</span><span class="p">,</span><span class="w"> </span><span class="n">that</span><span class="w"> </span><span class="n">means</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">first</span><span class="w"> </span><span class="n">command</span><span class="w"> </span><span class="n">we</span><span class="w"> </span><span class="n">run</span><span class="w"> </span><span class="n">will</span>
+<span class="w">  </span><span class="p">;;</span><span class="w"> </span><span class="nb">load</span><span class="w"> </span><span class="n">evil</span><span class="o">-</span><span class="n">escape</span><span class="o">.</span>
+<span class="w">  </span><span class="p">:</span><span class="n">init</span><span class="w"> </span><span class="p">(</span><span class="n">add</span><span class="o">-</span><span class="n">hook</span><span class="w"> </span><span class="s1">&#39;pre-command-hook &#39;</span><span class="n">evil</span><span class="o">-</span><span class="n">escape</span><span class="o">-</span><span class="n">pre</span><span class="o">-</span><span class="n">command</span><span class="o">-</span><span class="n">hook</span><span class="p">))</span>
+</code></pre></div>
+
+<p>下面来看一个关于 <code>org-babel</code> 的例子，这个例子更为复杂。我们通常的配置时这样的：</p>
+<div class="highlight"><pre><span></span><code><span class="p">(</span><span class="n">org</span><span class="o">-</span><span class="n">babel</span><span class="o">-</span><span class="n">do</span><span class="o">-</span><span class="nb">load</span><span class="o">-</span><span class="n">languages</span>
+<span class="w"> </span><span class="s1">&#39;org-babel-load-languages</span>
+<span class="w"> </span><span class="s1">&#39;((shell . t)</span>
+<span class="w">   </span><span class="p">(</span><span class="n">emacs</span><span class="o">-</span><span class="n">lisp</span><span class="w"> </span><span class="o">.</span><span class="w"> </span><span class="n">nil</span><span class="p">)))</span>
+</code></pre></div>
+
+<p>这不是个好的配置，因为 <code>org-babel-do-load-languages</code> 定义在 <code>org.el</code> 中，而该文件有超过 2 万 4 千行的代码，需要花 0.2 秒来加载。通过查看源代码可以看到 <code>org-babel-do-load-languages</code> 仅仅只是加载 <code>ob-&lt;lang&gt;</code> 包而已，像这样：</p>
+<div class="highlight"><pre><span></span><code><span class="p">;;</span><span class="w"> </span><span class="n">From</span><span class="w"> </span><span class="n">org</span><span class="o">.</span><span class="n">el</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">org</span><span class="o">-</span><span class="n">babel</span><span class="o">-</span><span class="n">do</span><span class="o">-</span><span class="nb">load</span><span class="o">-</span><span class="n">languages</span><span class="w"> </span><span class="n">function</span><span class="o">.</span>
+<span class="p">(</span><span class="n">require</span><span class="w"> </span><span class="p">(</span><span class="n">intern</span><span class="w"> </span><span class="p">(</span><span class="n">concat</span><span class="w"> </span><span class="s2">&quot;ob-&quot;</span><span class="w"> </span><span class="n">lang</span><span class="p">)))</span>
+</code></pre></div>
+
+<p>而在 <code>ob-&lt;lang&gt;.el</code> 文件中，我们只关心其中的两个方法 <code>org-babel-execute:&lt;lang&gt;</code> 和 <code>org-babel-expand-body:&lt;lang&gt;</code>。我们可以延时加载 org-babel 相关功能而无需调用 <code>org-babel-do-load-languages</code>，像这样：</p>
+<div class="highlight"><pre><span></span><code><span class="p">;;</span><span class="w"> </span><span class="n">Avoid</span><span class="w"> </span><span class="err">`</span><span class="n">org</span><span class="o">-</span><span class="n">babel</span><span class="o">-</span><span class="n">do</span><span class="o">-</span><span class="nb">load</span><span class="o">-</span><span class="n">languages</span><span class="s1">&#39; since it does an eager require.</span>
+<span class="p">(</span><span class="n">use</span><span class="o">-</span><span class="n">package</span><span class="w"> </span><span class="n">ob</span><span class="o">-</span><span class="n">python</span>
+<span class="w">  </span><span class="p">:</span><span class="n">defer</span><span class="w"> </span><span class="n">t</span>
+<span class="w">  </span><span class="p">:</span><span class="n">ensure</span><span class="w"> </span><span class="n">org</span><span class="o">-</span><span class="n">plus</span><span class="o">-</span><span class="n">contrib</span>
+<span class="w">  </span><span class="p">:</span><span class="n">commands</span><span class="w"> </span><span class="p">(</span><span class="n">org</span><span class="o">-</span><span class="n">babel</span><span class="o">-</span><span class="n">execute</span><span class="p">:</span><span class="n">python</span><span class="p">))</span>
+
+<span class="p">(</span><span class="n">use</span><span class="o">-</span><span class="n">package</span><span class="w"> </span><span class="n">ob</span><span class="o">-</span><span class="n">shell</span>
+<span class="w">  </span><span class="p">:</span><span class="n">defer</span><span class="w"> </span><span class="n">t</span>
+<span class="w">  </span><span class="p">:</span><span class="n">ensure</span><span class="w"> </span><span class="n">org</span><span class="o">-</span><span class="n">plus</span><span class="o">-</span><span class="n">contrib</span>
+<span class="w">  </span><span class="p">:</span><span class="n">commands</span>
+<span class="w">  </span><span class="p">(</span><span class="n">org</span><span class="o">-</span><span class="n">babel</span><span class="o">-</span><span class="n">execute</span><span class="p">:</span><span class="n">sh</span>
+<span class="w">   </span><span class="n">org</span><span class="o">-</span><span class="n">babel</span><span class="o">-</span><span class="n">expand</span><span class="o">-</span><span class="n">body</span><span class="p">:</span><span class="n">sh</span>
+
+<span class="w">   </span><span class="n">org</span><span class="o">-</span><span class="n">babel</span><span class="o">-</span><span class="n">execute</span><span class="p">:</span><span class="n">bash</span>
+<span class="w">   </span><span class="n">org</span><span class="o">-</span><span class="n">babel</span><span class="o">-</span><span class="n">expand</span><span class="o">-</span><span class="n">body</span><span class="p">:</span><span class="n">bash</span><span class="p">))</span>
+</code></pre></div>
+
+<h3>6、使用惰性定时器来推迟加载非立即需要的包</h3>
+<p>我推迟加载了 9 个包，这帮我节省了 <strong>0.4 秒</strong>。</p>
+<p>有些包特别有用，你希望可以很快就能使用它们，但是它们本身在 Emacs 启动过程中又不是必须的。这些软件包包括：</p>
+<ul>
+<li><code>recentf</code>：保存最近的编辑过的那些文件。</li>
+<li><code>saveplace</code>：保存访问过文件的光标位置。</li>
+<li><code>server</code>：开启 Emacs 守护进程。</li>
+<li><code>autorevert</code>：自动重载被修改过的文件。</li>
+<li><code>paren</code>：高亮匹配的括号。</li>
+<li><code>projectile</code>：项目管理工具。</li>
+<li><code>whitespace</code>：高亮行尾的空格。</li>
+</ul>
+<p>不要 <code>require</code> 这些软件包，<strong>而是等到空闲 N 秒后再加载它们</strong>。我在 1 秒后加载那些比较重要的包，在 2 秒后加载其他所有的包。</p>
+<div class="highlight"><pre><span></span><code><span class="p">(</span><span class="nx">use</span><span class="o">-</span><span class="kn">package</span><span class="w"> </span><span class="nx">recentf</span>
+<span class="w">  </span><span class="p">;;</span><span class="w"> </span><span class="nx">Loads</span><span class="w"> </span><span class="nx">after</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="nx">second</span><span class="w"> </span><span class="nx">of</span><span class="w"> </span><span class="nx">idle</span><span class="w"> </span><span class="nx">time</span><span class="p">.</span>
+<span class="w">  </span><span class="p">:</span><span class="nx">defer</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span>
+
+<span class="p">(</span><span class="nx">use</span><span class="o">-</span><span class="kn">package</span><span class="w"> </span><span class="nx">uniquify</span>
+<span class="w">  </span><span class="p">;;</span><span class="w"> </span><span class="nx">Less</span><span class="w"> </span><span class="nx">important</span><span class="w"> </span><span class="nx">than</span><span class="w"> </span><span class="nx">recentf</span><span class="p">.</span>
+<span class="w">  </span><span class="p">:</span><span class="nx">defer</span><span class="w"> </span><span class="mi">2</span><span class="p">)</span>
+</code></pre></div>
+
+<h3>不值得的优化</h3>
+<p>不要费力把你的 Emacs 配置文件编译成字节码了。这只节省了大约 0.05 秒。把配置文件编译成字节码还可能导致源文件与编译后的文件不一致从而难以重现错误进行调试。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

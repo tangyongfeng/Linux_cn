@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Prometheus 入门</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Michael Zamot 学习安装 Prometheus 监控和警报系统并编写它的查询。 Prometheus 是一个开源的监控和警报系统，它直接从目标主机上运行的代理 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/08/prometheus-ru-men.html" rel="bookmark"
+           title="Permalink to Prometheus 入门">Prometheus 入门</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-08-16T11:42:25+02:00">
+                Published: Fri 16 August 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Michael Zamot</p>
+<blockquote>
+<p>学习安装 Prometheus 监控和警报系统并编写它的查询。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/201908/16/113724zqe12khkdye2mesy.jpg"></p>
+<p><a href="https://prometheus.io/">Prometheus</a> 是一个开源的监控和警报系统，它直接从目标主机上运行的代理程序中抓取指标，并将收集的样本集中存储在其服务器上。也可以使用像 <code>collectd_exporter</code> 这样的插件推送指标，尽管这不是 Promethius 的默认行为，但在主机位于防火墙后面或位于安全策略禁止打开端口的某些环境中它可能很有用。</p>
+<p>Prometheus 是<a href="https://www.cncf.io/">云原生计算基金会（CNCF）</a>的一个项目。它使用<ruby> 联合模型 <rt>  federation model </rt></ruby>进行扩展，该模型使得一个 Prometheus 服务器能够抓取另一个 Prometheus 服务器的数据。这允许创建分层拓扑，其中中央系统或更高级别的 Prometheus 服务器可以抓取已从下级实例收集的聚合数据。</p>
+<p>除 Prometheus 服务器外，其最常见的组件是<a href="https://prometheus.io/docs/alerting/alertmanager/">警报管理器</a>及其输出器。</p>
+<p>警报规则可以在 Prometheus 中创建，并配置为向警报管理器发送自定义警报。然后，警报管理器处理和管理这些警报，包括通过电子邮件或第三方服务（如 <a href="https://en.wikipedia.org/wiki/PagerDuty">PagerDuty</a>）等不同机制发送通知。</p>
+<p>Prometheus 的输出器可以是库、进程、设备或任何其他能将 Prometheus 抓取的指标公开出去的东西。 这些指标可在端点 <code>/metrics</code> 中获得，它允许 Prometheus 无需代理直接抓取它们。本文中的教程使用 <code>node_exporter</code> 来公开目标主机的硬件和操作系统指标。输出器的输出是明文的、高度可读的，这是 Prometheus 的优势之一。</p>
+<p>此外，你可以将 Prometheus 作为后端，配置 <a href="https://grafana.com/">Grafana</a> 来提供数据可视化和仪表板功能。</p>
+<h3>理解 Prometheus 的配置文件</h3>
+<p>抓取 <code>/metrics</code> 的间隔秒数控制了时间序列数据库的粒度。这在配置文件中定义为 <code>scrape_interval</code> 参数，默认情况下设置为 60 秒。</p>
+<p>在 <code>scrape_configs</code> 部分中为每个抓取作业设置了目标。每个作业都有自己的名称和一组标签，可以帮助你过滤、分类并更轻松地识别目标。一项作业可以有很多目标。</p>
+<h3>安装 Prometheus</h3>
+<p>在本教程中，为简单起见，我们将使用 Docker 安装 Prometheus 服务器和 <code>node_exporter</code>。Docker 应该已经在你的系统上正确安装和配置。对于更深入、自动化的方法，我推荐 Steve Ovens 的文章《<a href="https://opensource.com/article/18/3/how-use-ansible-set-system-monitoring-prometheus">如何使用 Ansible 与 Prometheus 建立系统监控</a>》。</p>
+<p>在开始之前，在工作目录中创建 Prometheus 配置文件 <code>prometheus.yml</code>，如下所示：</p>
+<div class="highlight"><pre><span></span><code><span class="n">global</span><span class="o">:</span>
+<span class="w">  </span><span class="n">scrape_interval</span><span class="o">:</span><span class="w">     </span><span class="mi">15</span><span class="n">s</span>
+<span class="w">  </span><span class="n">evaluation_interval</span><span class="o">:</span><span class="w"> </span><span class="mi">15</span><span class="n">s</span>
+
+<span class="n">scrape_configs</span><span class="o">:</span>
+<span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="n">job_name</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;prometheus&#39;</span>
+
+<span class="w">        </span><span class="n">static_configs</span><span class="o">:</span>
+<span class="w">        </span><span class="o">-</span><span class="w"> </span><span class="n">targets</span><span class="o">:</span><span class="w"> </span><span class="o">[</span><span class="s1">&#39;localhost:9090&#39;</span><span class="o">]</span>
+
+<span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="n">job_name</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;webservers&#39;</span>
+
+<span class="w">        </span><span class="n">static_configs</span><span class="o">:</span>
+<span class="w">        </span><span class="o">-</span><span class="w"> </span><span class="n">targets</span><span class="o">:</span><span class="w"> </span><span class="o">[</span><span class="s1">&#39;&lt;node exporter node IP&gt;:9100&#39;</span><span class="o">]</span>
+</code></pre></div>
+
+<p>通过运行以下命令用 Docker 启动 Prometheus：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>-p<span class="w"> </span><span class="m">9090</span>:9090<span class="w"> </span>-v
+/path/to/prometheus.yml:/etc/prometheus/prometheus.yml
+prom/prometheus
+</code></pre></div>
+
+<p>默认情况下，Prometheus 服务器将使用端口 9090。如果此端口已在使用，你可以通过在上一个命令的后面添加参数 <code>--web.listen-address="&lt;IP of machine&gt;:&lt;port&gt;"</code> 来更改它。</p>
+<p>在要监视的计算机中，使用以下命令下载并运行 <code>node_exporter</code> 容器：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;/proc:/host/proc&quot;</span><span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;/sys:/host/sys&quot;</span><span class="w"> </span>-v
+<span class="s2">&quot;/:/rootfs&quot;</span><span class="w"> </span>--net<span class="o">=</span><span class="s2">&quot;host&quot;</span><span class="w"> </span>prom/node-exporter<span class="w"> </span>--path.procfs
+/host/proc<span class="w"> </span>--path.sysfs<span class="w"> </span>/host/sys<span class="w"> </span>--collector.filesystem.ignored-
+mount-points<span class="w"> </span><span class="s2">&quot;^/(sys|proc|dev|host|etc)(</span>$<span class="s2">|/)&quot;</span>
+</code></pre></div>
+
+<p>出于本文练习的目的，你可以在同一台机器上安装 <code>node_exporter</code> 和 Prometheus。请注意，生产环境中在 Docker 下运行 <code>node_exporter</code> 是不明智的 —— 这仅用于测试目的。</p>
+<p>要验证 <code>node_exporter</code> 是否正在运行，请打开浏览器并导航到 <code>http://&lt;IP of Node exporter host&gt;:9100/metrics</code>，这将显示收集到的所有指标；也即是 Prometheus 将要抓取的相同指标。</p>
+<p><img alt="" src="/data/attachment/album/201908/16/114228jkd2fid5l6des02d.png"></p>
+<p>要确认 Prometheus 服务器安装成功，打开浏览器并导航至：<a href="http://localhost:9090">http://localhost:9090</a>。</p>
+<p>你应该看到了 Prometheus 的界面。单击“Status”，然后单击“Targets”。在 “Status” 下，你应该看到你的机器被列为 “UP”。</p>
+<p><img alt="" src="/data/attachment/album/201908/16/114230j6imj2jk76i5ji72.png"></p>
+<h3>使用 Prometheus 查询</h3>
+<p>现在是时候熟悉一下 <a href="https://prometheus.io/docs/prometheus/latest/querying/basics/">PromQL</a>（Prometheus 的查询语法）及其图形化 Web 界面了。转到 Prometheus 服务器上的 <code>http://localhost:9090/graph</code>。你将看到一个查询编辑器和两个选项卡：“Graph” 和 “Console”。</p>
+<p>Prometheus 将所有数据存储为时间序列，使用指标名称标识每个数据。例如，指标 <code>node_filesystem_avail_bytes</code> 显示可用的文件系统空间。指标的名称可以在表达式框中使用，以选择具有此名称的所有时间序列并生成即时向量。如果需要，可以使用选择器和标签（一组键值对）过滤这些时间序列，例如：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">node_filesystem_avail_bytes</span><span class="p">{</span><span class="nx">fstype</span><span class="p">=</span><span class="s">&quot;ext4&quot;</span><span class="p">}</span>
+</code></pre></div>
+
+<p>过滤时，你可以匹配“完全相等”（<code>=</code>）、“不等于”（<code>!=</code>），“正则匹配”（<code>=~</code>）和“正则排除匹配”（<code>!~</code>）。以下示例说明了这一点：</p>
+<p>要过滤 <code>node_filesystem_avail_bytes</code> 以显示 ext4 和 XFS 文件系统：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">node_filesystem_avail_bytes</span><span class="p">{</span><span class="nx">fstype</span><span class="p">=</span><span class="o">~</span><span class="s">&quot;ext4|xfs&quot;</span><span class="p">}</span>
+</code></pre></div>
+
+<p>要排除匹配：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">node_filesystem_avail_bytes</span><span class="p">{</span><span class="nx">fstype</span><span class="o">!=</span><span class="s">&quot;xfs&quot;</span><span class="p">}</span>
+</code></pre></div>
+
+<p>你还可以使用方括号得到从当前时间往回的一系列样本。你可以使用 <code>s</code> 表示秒，<code>m</code> 表示分钟，<code>h</code> 表示小时，<code>d</code> 表示天，<code>w</code> 表示周，而 <code>y</code> 表示年。使用时间范围时，返回的向量将是范围向量。</p>
+<p>例如，以下命令生成从五分钟前到现在的样本：</p>
+<div class="highlight"><pre><span></span><code>node_memory_MemAvailable_bytes[5m]
+</code></pre></div>
+
+<p>Prometheus 还包括了高级查询的功能，例如：</p>
+<div class="highlight"><pre><span></span><code><span class="mf">100</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="p">(</span><span class="mf">1</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">avg</span><span class="w"> </span><span class="n">by</span><span class="p">(</span><span class="n">instance</span><span class="p">)(</span><span class="n">irate</span><span class="p">(</span><span class="n">node_cpu_seconds_total</span><span class="err">{</span><span class="n">job</span><span class="o">=</span><span class="err">&#39;</span><span class="n">webservers</span><span class="err">&#39;</span><span class="p">,</span><span class="n">mode</span><span class="o">=</span><span class="err">&#39;</span><span class="n">idle</span><span class="err">&#39;}[</span><span class="mf">5</span><span class="n">m</span><span class="err">]</span><span class="p">)))</span>
+</code></pre></div>
+
+<p>请注意标签如何用于过滤作业和模式。指标 <code>node_cpu_seconds_total</code> 返回一个计数器，<code>irate()</code>函数根据范围间隔的最后两个数据点计算每秒的变化率（意味着该范围可以小于五分钟）。要计算 CPU 总体使用率，可以使用 <code>node_cpu_seconds_total</code> 指标的空闲（<code>idle</code>）模式。处理器的空闲比例与繁忙比例相反，因此从 1 中减去 <code>irate</code> 值。要使其为百分比，请将其乘以 100。</p>
+<p><img alt="" src="/data/attachment/album/201908/16/114230gac19gscc881xmt5.png"></p>
+<h3>了解更多</h3>
+<p>Prometheus 是一个功能强大、可扩展、轻量级、易于使用和部署的监视工具，对于每个系统管理员和开发人员来说都是必不可少的。出于这些原因和其他原因，许多公司正在将 Prometheus 作为其基础设施的一部分。</p>
+<p>要了解有关 Prometheus 及其功能的更多信息，我建议使用以下资源：</p>
+<ul>
+<li>关于 <a href="https://prometheus.io/docs/prometheus/latest/querying/basics/">PromQL</a></li>
+<li>什么是 <a href="https://github.com/prometheus/node_exporter#collectors">node_exporters 集合</a></li>
+<li><a href="https://prometheus.io/docs/prometheus/latest/querying/functions/">Prometheus 函数</a></li>
+<li><a href="https://opensource.com/article/18/8/open-source-monitoring-tools">4 个开源监控工具</a></li>
+<li><a href="https://opensource.com/article/18/8/now-available-open-source-guide-devops-monitoring-tools">现已推出：DevOps 监控工具的开源指南</a></li>
+</ul>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

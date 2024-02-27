@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>通过 ncurses 在终端创建一个冒险游戏</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Jim Hall 怎样使用 curses 函数读取键盘并操作屏幕。 我之前的文章介绍了 ncurses 库，并提供了一个简单的程序展示了一些将文本放 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/02/tong-guo-ncurses-zai-zhong-duan-chuang-jian-yi-ge-mou-xian-you-xi.html" rel="bookmark"
+           title="Permalink to 通过 ncurses 在终端创建一个冒险游戏">通过 ncurses 在终端创建一个冒险游戏</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-02-25T09:38:00+01:00">
+                Published: Sun 25 February 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Jim Hall</p>
+<p><img alt="" src="/data/attachment/album/201802/25/100828w9xu9oaiyptt8oah.jpg"></p>
+<blockquote>
+<p>怎样使用 curses 函数读取键盘并操作屏幕。</p>
+</blockquote>
+<p>我<a href="/article-9348-1.html">之前的文章</a>介绍了 ncurses 库，并提供了一个简单的程序展示了一些将文本放到屏幕上的 curses 函数。在接下来的文章中，我将介绍如何使用其它的 curses 函数。</p>
+<h3>探险</h3>
+<p>当我逐渐长大，家里有了一台苹果 II 电脑。我和我兄弟正是在这台电脑上自学了如何用 AppleSoft BASIC 写程序。我在写了一些数学智力游戏之后，继续创造游戏。作为 80 年代的人，我已经是龙与地下城桌游的粉丝，在游戏中角色扮演一个追求打败怪物并在陌生土地上抢掠的战士或者男巫，所以我创建一个基本的冒险游戏也在情理之中。</p>
+<p>AppleSoft BASIC 支持一种简洁的特性：在标准分辨率图形模式（GR 模式）下，你可以检测屏幕上特定点的颜色。这为创建一个冒险游戏提供了捷径。比起创建并更新周期性传送到屏幕的内存地图，我现在可以依赖 GR 模式为我维护地图，我的程序还可以在玩家的角色（LCTT 译注：此处 character 双关一个代表玩家的角色，同时也是一个字符）在屏幕四处移动的时候查询屏幕。通过这种方式，我让电脑完成了大部分艰难的工作。因此，我的自顶向下的冒险游戏使用了块状的 GR 模式图形来展示我的游戏地图。</p>
+<p>我的冒险游戏使用了一张简单的地图，上面有一大片绿地伴着山脉从中间蔓延向下和一个在左上方的大湖。我要粗略地为桌游战役绘制这个地图，其中包含一个允许玩家穿过到远处的狭窄通道。</p>
+<p><img alt="" src="/data/attachment/album/201802/24/215504fa44evgot8t66fye.jpg"></p>
+<p><em>图 1. 一个有湖和山的简单桌游地图</em></p>
+<p>你可以用 curses 绘制这个地图，并用字符代表草地、山脉和水。接下来，我描述怎样使用 curses 那样做，以及如何在 Linux 终端创建和进行类似的一个冒险游戏。</p>
+<h3>构建程序</h3>
+<p>在我的上一篇文章，我提到了大多数 curses 程序以相同的一组指令获取终端类型和设置 curses 环境：</p>
+<div class="highlight"><pre><span></span><code>initscr();
+cbreak();
+noecho();
+</code></pre></div>
+
+<p>在这个程序，我添加了另外的语句：</p>
+<div class="highlight"><pre><span></span><code>keypad(stdscr, TRUE);
+</code></pre></div>
+
+<p>这里的 <code>TRUE</code> 标志允许 curses 从用户终端读取小键盘和功能键。如果你想要在你的程序中使用上下左右方向键，你需要使用这里的 <code>keypad(stdscr, TRUE)</code>。</p>
+<p>这样做了之后，你现在可以开始在终端屏幕上绘图了。curses 函数包括了一系列在屏幕上绘制文本的方法。在我之前的文章中，我展示了 <code>addch()</code> 和 <code>addstr()</code> 函数以及在添加文本之前先移动到指定屏幕位置的对应函数 <code>mvaddch()</code> 和 <code>mvaddstr()</code>。为了在终端上创建这个冒险游戏的地图，你可以使用另外一组函数：<code>vline()</code> 和 <code>hline()</code>，以及它们对应的函数 <code>mvvline()</code> 和 <code>mvhline()</code>。这些 mv 函数接受屏幕坐标、一个要绘制的字符和要重复此字符的次数的参数。例如，<code>mvhline(1, 2, '-', 20)</code> 将会绘制一条开始于第一行第二列并由 20 个横线组成的线段。</p>
+<p>为了以编程方式绘制地图到终端屏幕上，让我们先定义这个 <code>draw_map()</code> 函数：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span>define GRASS     &#39; &#39;
+<span class="gh">#</span>define EMPTY     &#39;.&#39;
+<span class="gh">#</span>define WATER     &#39;~&#39;
+<span class="gh">#</span>define MOUNTAIN  &#39;^&#39;
+<span class="gh">#</span>define PLAYER    &#39;*&#39;
+
+void draw_map(void)
+{
+    int y, x;
+
+    /* 绘制探索地图 <span class="gs">*/</span>
+
+<span class="gs">    /*</span> 背景 <span class="gs">*/</span>
+
+<span class="gs">    for (y = 0; y &lt; LINES; y++) {</span>
+<span class="gs">        mvhline(y, 0, GRASS, COLS);</span>
+<span class="gs">    }</span>
+
+<span class="gs">    /*</span> 山和山道 <span class="gs">*/</span>
+
+<span class="gs">    for (x = COLS / 2; x &lt; COLS *</span> 3 / 4; x++) {
+        mvvline(0, x, MOUNTAIN, LINES);
+    }
+
+    mvhline(LINES / 4, 0, GRASS, COLS);
+
+    /* 湖 */
+
+    for (y = 1; y &lt; LINES / 2; y++) {
+        mvhline(y, 1, WATER, COLS / 3);
+    }
+}
+</code></pre></div>
+
+<p>在绘制这副地图时，记住填充大块字符到屏幕所使用的 <code>mvvline()</code> 和 <code>mvhline()</code> 函数。我绘制从 0 列开始的字符水平线（<code>mvhline</code>）以创建草地区域，直到占满整个屏幕的高度和宽度。我绘制从 0 行开始的多条垂直线（<code>mvvline</code>）在此上添加了山脉，绘制单行水平线添加了一条山道（<code>mvhline</code>）。并且，我通过绘制一系列短水平线（<code>mvhline</code>）创建了湖。这种绘制重叠方块的方式看起来似乎并没有效率，但是记住在我们调用 <code>refresh()</code> 函数之前 curses 并不会真正更新屏幕。</p>
+<p>绘制完地图，创建游戏就还剩下进入循环让程序等待用户按下上下左右方向键中的一个然后让玩家图标正确移动了。如果玩家想要移动的地方是空的，就应该允许玩家到那里。</p>
+<p>你可以把 curses 当做捷径使用。比起在程序中实例化一个版本的地图并复制到屏幕这么复杂，你可以让屏幕为你跟踪所有东西。<code>inch()</code> 函数和相关联的 <code>mvinch()</code> 函数允许你探测屏幕的内容。这让你可以查询 curses 以了解玩家想要移动到的位置是否被水填满或者被山阻挡。这样做你需要一个之后会用到的一个帮助函数：</p>
+<div class="highlight"><pre><span></span><code>int is_move_okay(int y, int x)
+{
+    int testch;
+
+    /* 如果要进入的位置可以进入，返回 true */
+
+    testch = mvinch(y, x);
+    return ((testch == GRASS) || (testch == EMPTY));
+}
+</code></pre></div>
+
+<p>如你所见，这个函数探测行 <code>x</code>、列 <code>y</code> 并在空间未被占据的时候返回 <code>true</code>，否则返回 <code>false</code>。</p>
+<p>这样我们写移动循环就很容易了：从键盘获取一个键值然后根据是上下左右键移动用户字符。这里是一个这种循环的简单版本：</p>
+<div class="highlight"><pre><span></span><code><span class="w">    </span><span class="nt">do</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="err">ch</span><span class="w"> </span><span class="err">=</span><span class="w"> </span><span class="err">getch()</span><span class="p">;</span>
+
+<span class="w">        </span><span class="c">/* 测试输入的值并获取方向 */</span>
+
+<span class="w">        </span><span class="err">switch</span><span class="w"> </span><span class="err">(ch)</span><span class="w"> </span><span class="err">{</span>
+<span class="w">        </span><span class="err">case</span><span class="w"> </span><span class="n">KEY_UP</span><span class="p">:</span>
+<span class="w">            </span><span class="n">if</span><span class="w"> </span><span class="p">((</span><span class="n">y</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nf">is_move_okay</span><span class="p">(</span><span class="n">y</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">x</span><span class="p">))</span><span class="w"> </span><span class="err">{</span>
+<span class="w">                </span><span class="n">y</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">            </span><span class="nt">break</span><span class="o">;</span>
+<span class="w">        </span><span class="nt">case</span><span class="w"> </span><span class="nt">KEY_DOWN</span><span class="o">:</span>
+<span class="w">            </span><span class="nt">if</span><span class="w"> </span><span class="o">((</span><span class="nt">y</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="nt">LINES</span><span class="w"> </span><span class="nt">-</span><span class="w"> </span><span class="nt">1</span><span class="o">)</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nt">is_move_okay</span><span class="o">(</span><span class="nt">y</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nt">1</span><span class="o">,</span><span class="w"> </span><span class="nt">x</span><span class="o">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="err">y</span><span class="w"> </span><span class="err">=</span><span class="w"> </span><span class="err">y</span><span class="w"> </span><span class="err">+</span><span class="w"> </span><span class="err">1</span><span class="p">;</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">            </span><span class="nt">break</span><span class="o">;</span>
+<span class="w">        </span><span class="nt">case</span><span class="w"> </span><span class="nt">KEY_LEFT</span><span class="o">:</span>
+<span class="w">            </span><span class="nt">if</span><span class="w"> </span><span class="o">((</span><span class="nt">x</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="nt">0</span><span class="o">)</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nt">is_move_okay</span><span class="o">(</span><span class="nt">y</span><span class="o">,</span><span class="w"> </span><span class="nt">x</span><span class="w"> </span><span class="nt">-</span><span class="w"> </span><span class="nt">1</span><span class="o">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="err">x</span><span class="w"> </span><span class="err">=</span><span class="w"> </span><span class="err">x</span><span class="w"> </span><span class="err">-</span><span class="w"> </span><span class="err">1</span><span class="p">;</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">            </span><span class="nt">break</span><span class="o">;</span>
+<span class="w">        </span><span class="nt">case</span><span class="w"> </span><span class="nt">KEY_RIGHT</span>
+<span class="w">            </span><span class="nt">if</span><span class="w"> </span><span class="o">((</span><span class="nt">x</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="nt">COLS</span><span class="w"> </span><span class="nt">-</span><span class="w"> </span><span class="nt">1</span><span class="o">)</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nt">is_move_okay</span><span class="o">(</span><span class="nt">y</span><span class="o">,</span><span class="w"> </span><span class="nt">x</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nt">1</span><span class="o">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="err">x</span><span class="w"> </span><span class="err">=</span><span class="w"> </span><span class="err">x</span><span class="w"> </span><span class="err">+</span><span class="w"> </span><span class="err">1</span><span class="p">;</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">            </span><span class="nt">break</span><span class="o">;</span>
+<span class="w">        </span><span class="err">}</span>
+<span class="w">    </span><span class="err">}</span>
+<span class="w">    </span><span class="nt">while</span><span class="w"> </span><span class="o">(</span><span class="nt">1</span><span class="o">);</span>
+</code></pre></div>
+
+<p>为了在游戏中使用这个循环，你需要在循环里添加一些代码来启用其它的键（例如传统的移动键 WASD），以提供让用户退出游戏和在屏幕上四处移动的方法。这里是完整的程序：</p>
+<div class="highlight"><pre><span></span><code><span class="o">/*</span><span class="w"> </span><span class="n">quest</span><span class="p">.</span><span class="n">c</span><span class="w"> </span><span class="o">*/</span>
+
+#<span class="n">include</span><span class="w"> </span>
+#<span class="n">include</span><span class="w"> </span>
+
+#<span class="n">define</span><span class="w"> </span><span class="n">GRASS</span><span class="w">     </span><span class="s">&#39; &#39;</span>
+#<span class="n">define</span><span class="w"> </span><span class="n">EMPTY</span><span class="w">     </span><span class="s">&#39;.&#39;</span>
+#<span class="n">define</span><span class="w"> </span><span class="n">WATER</span><span class="w">     </span><span class="s">&#39;~&#39;</span>
+#<span class="n">define</span><span class="w"> </span><span class="n">MOUNTAIN</span><span class="w">  </span><span class="s">&#39;^&#39;</span>
+#<span class="n">define</span><span class="w"> </span><span class="n">PLAYER</span><span class="w">    </span><span class="s">&#39;*&#39;</span>
+
+<span class="nb">int</span><span class="w"> </span><span class="n">is_move_okay</span><span class="p">(</span><span class="nb">int</span><span class="w"> </span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="nb">int</span><span class="w"> </span><span class="n">x</span><span class="p">);</span>
+<span class="n">void</span><span class="w"> </span><span class="n">draw_map</span><span class="p">(</span><span class="n">void</span><span class="p">);</span>
+
+<span class="nb">int</span><span class="w"> </span><span class="n">main</span><span class="p">(</span><span class="n">void</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="nb">int</span><span class="w"> </span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="n">x</span><span class="p">;</span>
+<span class="w">    </span><span class="nb">int</span><span class="w"> </span><span class="n">ch</span><span class="p">;</span>
+
+<span class="w">    </span><span class="o">/*</span><span class="w"> </span>初始化<span class="n">curses</span><span class="w"> </span><span class="o">*/</span>
+
+<span class="w">    </span><span class="n">initscr</span><span class="p">();</span>
+<span class="w">    </span><span class="n">keypad</span><span class="p">(</span><span class="n">stdscr</span><span class="p">,</span><span class="w"> </span><span class="n">TRUE</span><span class="p">);</span>
+<span class="w">    </span><span class="n">cbreak</span><span class="p">();</span>
+<span class="w">    </span><span class="n">noecho</span><span class="p">();</span>
+
+<span class="w">    </span><span class="nb">clear</span><span class="p">();</span>
+
+<span class="w">    </span><span class="o">/*</span><span class="w"> </span>初始化探索地图<span class="w"> </span><span class="o">*/</span>
+
+<span class="w">    </span><span class="n">draw_map</span><span class="p">();</span>
+
+<span class="w">    </span><span class="o">/*</span><span class="w"> </span>在左下角初始化玩家<span class="w"> </span><span class="o">*/</span>
+
+<span class="w">    </span><span class="n">y</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">LINES</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<span class="w">    </span><span class="n">x</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+
+<span class="w">    </span><span class="k">do</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="o">/*</span><span class="w"> </span>默认获得一个闪烁的光标<span class="o">--</span>表示玩家字符<span class="w"> </span><span class="o">*/</span>
+
+<span class="w">    </span><span class="n">mvaddch</span><span class="p">(</span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="n">PLAYER</span><span class="p">);</span>
+<span class="w">    </span><span class="nb">move</span><span class="p">(</span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="n">x</span><span class="p">);</span>
+<span class="w">    </span><span class="n">refresh</span><span class="p">();</span>
+
+<span class="w">    </span><span class="n">ch</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">getch</span><span class="p">();</span>
+
+<span class="w">    </span><span class="o">/*</span><span class="w"> </span>测试输入的键并获取方向<span class="w"> </span><span class="o">*/</span>
+
+<span class="w">    </span><span class="k">switch</span><span class="w"> </span><span class="p">(</span><span class="n">ch</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="n">KEY_UP</span><span class="p">:</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="s">&#39;w&#39;</span><span class="p">:</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="s">&#39;W&#39;</span><span class="p">:</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">((</span><span class="n">y</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">is_move_okay</span><span class="p">(</span><span class="n">y</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">x</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">mvaddch</span><span class="p">(</span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="n">EMPTY</span><span class="p">);</span>
+<span class="w">        </span><span class="n">y</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="k">break</span><span class="p">;</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="n">KEY_DOWN</span><span class="p">:</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="s">&#39;s&#39;</span><span class="p">:</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="s">&#39;S&#39;</span><span class="p">:</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">((</span><span class="n">y</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">LINES</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">is_move_okay</span><span class="p">(</span><span class="n">y</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">x</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">mvaddch</span><span class="p">(</span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="n">EMPTY</span><span class="p">);</span>
+<span class="w">        </span><span class="n">y</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="k">break</span><span class="p">;</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="n">KEY_LEFT</span><span class="p">:</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="s">&#39;a&#39;</span><span class="p">:</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="s">&#39;A&#39;</span><span class="p">:</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">((</span><span class="n">x</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">is_move_okay</span><span class="p">(</span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">mvaddch</span><span class="p">(</span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="n">EMPTY</span><span class="p">);</span>
+<span class="w">        </span><span class="n">x</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="k">break</span><span class="p">;</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="n">KEY_RIGHT</span><span class="p">:</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="s">&#39;d&#39;</span><span class="p">:</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="s">&#39;D&#39;</span><span class="p">:</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">((</span><span class="n">x</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">COLS</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">is_move_okay</span><span class="p">(</span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">mvaddch</span><span class="p">(</span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="n">EMPTY</span><span class="p">);</span>
+<span class="w">        </span><span class="n">x</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="k">break</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">while</span><span class="w"> </span><span class="p">((</span><span class="n">ch</span><span class="w"> </span>!<span class="p">=</span><span class="w"> </span><span class="s">&#39;q&#39;</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="p">(</span><span class="n">ch</span><span class="w"> </span>!<span class="p">=</span><span class="w"> </span><span class="s">&#39;Q&#39;</span><span class="p">));</span>
+
+<span class="w">    </span><span class="n">endwin</span><span class="p">();</span>
+
+<span class="w">    </span><span class="nb">exit</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="nb">int</span><span class="w"> </span><span class="n">is_move_okay</span><span class="p">(</span><span class="nb">int</span><span class="w"> </span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="nb">int</span><span class="w"> </span><span class="n">x</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="nb">int</span><span class="w"> </span><span class="n">testch</span><span class="p">;</span>
+
+<span class="w">    </span><span class="o">/*</span><span class="w"> </span>当空间可以进入时返回<span class="n">true</span><span class="w"> </span><span class="o">*/</span>
+
+<span class="w">    </span><span class="n">testch</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">mvinch</span><span class="p">(</span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="n">x</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="p">((</span><span class="n">testch</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">GRASS</span><span class="p">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="p">(</span><span class="n">testch</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">EMPTY</span><span class="p">));</span>
+<span class="p">}</span>
+
+<span class="n">void</span><span class="w"> </span><span class="n">draw_map</span><span class="p">(</span><span class="n">void</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="nb">int</span><span class="w"> </span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="n">x</span><span class="p">;</span>
+
+<span class="w">    </span><span class="o">/*</span><span class="w"> </span>绘制探索地图<span class="w"> </span><span class="o">*/</span>
+
+<span class="w">    </span><span class="o">/*</span><span class="w"> </span>背景<span class="w"> </span><span class="o">*/</span>
+
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">y</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">LINES</span><span class="p">;</span><span class="w"> </span><span class="n">y</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">mvhline</span><span class="p">(</span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">GRASS</span><span class="p">,</span><span class="w"> </span><span class="n">COLS</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="o">/*</span><span class="w"> </span>山脉和山道<span class="w"> </span><span class="o">*/</span>
+
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">x</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">COLS</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">COLS</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">4</span><span class="p">;</span><span class="w"> </span><span class="n">x</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">mvvline</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="n">MOUNTAIN</span><span class="p">,</span><span class="w"> </span><span class="n">LINES</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="n">mvhline</span><span class="p">(</span><span class="n">LINES</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">GRASS</span><span class="p">,</span><span class="w"> </span><span class="n">COLS</span><span class="p">);</span>
+
+<span class="w">    </span><span class="o">/*</span><span class="w"> </span>湖<span class="w"> </span><span class="o">*/</span>
+
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">y</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">LINES</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span><span class="w"> </span><span class="n">y</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">mvhline</span><span class="p">(</span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">WATER</span><span class="p">,</span><span class="w"> </span><span class="n">COLS</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">3</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>在完整的程序清单中，你可以看见使用 curses 函数创建游戏的完整布置：</p>
+<ol>
+<li>初始化 curses 环境。</li>
+<li>绘制地图。</li>
+<li>初始化玩家坐标（左下角）</li>
+<li>循环：<ul>
+<li>绘制玩家的角色。</li>
+<li>从键盘获取键值。</li>
+<li>对应地上下左右调整玩家坐标。</li>
+<li>重复。</li>
+</ul>
+</li>
+<li>完成时关闭curses环境并退出。</li>
+</ol>
+<h3>开始玩</h3>
+<p>当你运行游戏时，玩家的字符在左下角初始化。当玩家在游戏区域四处移动的时候，程序创建了“一串”点。这样可以展示玩家经过了的点，让玩家避免经过不必要的路径。</p>
+<p><img alt="" src="/data/attachment/album/201802/25/101020cy7yjhz2t7jptcwl.png"></p>
+<p><em>图 2. 初始化在左下角的玩家</em></p>
+<p><img alt="" src="/data/attachment/album/201802/25/101058bcgg5cydhksspdip.png"></p>
+<p><em>图 3. 玩家可以在游戏区域四处移动，例如湖周围和山的通道</em></p>
+<p>为了创建上面这样的完整冒险游戏，你可能需要在他/她的角色在游戏区域四处移动的时候随机创建不同的怪物。你也可以创建玩家可以发现在打败敌人后可以掠夺的特殊道具，这些道具应能提高玩家的能力。</p>
+<p>但是作为起点，这是一个展示如何使用 curses 函数读取键盘和操纵屏幕的好程序。</p>
+<h3>下一步</h3>
+<p>这是一个如何使用 curses 函数更新和读取屏幕和键盘的简单例子。按照你的程序需要做什么，curses 可以做得更多。在下一篇文章中，我计划展示如何更新这个简单程序以使用颜色。同时，如果你想要学习更多 curses，我鼓励你去读位于 Linux 文档计划的 Pradeep Padala 写的<a href="http://tldp.org/HOWTO/NCURSES-Programming-HOWTO">如何使用 NCURSES 编程</a>。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

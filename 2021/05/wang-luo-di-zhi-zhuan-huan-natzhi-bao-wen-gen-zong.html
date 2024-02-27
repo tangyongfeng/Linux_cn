@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>网络地址转换（NAT）之报文跟踪</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Florian Westphal 这是有关 网络地址转换 network address translation （NAT）的系列文章中的第一篇。这一部分将展示如何使用 iptables/nftables 报文跟踪功能来定位 NAT …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2021/05/wang-luo-di-zhi-zhuan-huan-natzhi-bao-wen-gen-zong.html" rel="bookmark"
+           title="Permalink to 网络地址转换（NAT）之报文跟踪">网络地址转换（NAT）之报文跟踪</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2021-05-06T11:25:00+02:00">
+                Published: Thu 06 May 2021
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Florian Westphal</p>
+<p><img alt="" src="/data/attachment/album/202105/06/112410xhdkvvdajis3jhlj.jpg"></p>
+<p>这是有关<ruby> 网络地址转换 <rt>  network address translation </rt></ruby>（NAT）的系列文章中的第一篇。这一部分将展示如何使用 iptables/nftables 报文跟踪功能来定位 NAT 相关的连接问题。</p>
+<h3>引言</h3>
+<p>网络地址转换（NAT）是一种将容器或虚拟机暴露在互联网中的一种方式。传入的连接请求将其目标地址改写为另一个地址，随后被路由到容器或虚拟机。相同的技术也可用于负载均衡，即传入的连接被分散到不同的服务器上去。</p>
+<p>当网络地址转换没有按预期工作时，连接请求将失败，会暴露错误的服务，连接最终出现在错误的容器中，或者请求超时，等等。调试此类问题的一种方法是检查传入请求是否与预期或已配置的转换相匹配。</p>
+<h3>连接跟踪</h3>
+<p>NAT 不仅仅是修改 IP 地址或端口号。例如，在将地址 X 映射到 Y 时，无需添加新规则来执行反向转换。一个被称为 “conntrack” 的 netfilter 系统可以识别已有连接的回复报文。每个连接都在 conntrack 系统中有自己的 NAT 状态。反向转换是自动完成的。</p>
+<h3>规则匹配跟踪</h3>
+<p>nftables 工具（以及在较小的程度上，iptables）允许针对某个报文检查其处理方式以及该报文匹配规则集合中的哪条规则。为了使用这项特殊的功能，可在合适的位置插入“跟踪规则”。这些规则会选择被跟踪的报文。假设一个来自 IP 地址 C 的主机正在访问一个 IP 地址是 S 以及端口是 P 的服务。我们想知道报文匹配了哪条 NAT 转换规则，系统检查了哪些规则，以及报文是否在哪里被丢弃了。</p>
+<p>由于我们要处理的是传入连接，所以我们将规则添加到 prerouting 钩子上。prerouting 意味着内核尚未决定将报文发往何处。修改目标地址通常会使报文被系统转发，而不是由主机自身处理。</p>
+<h3>初始配置</h3>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="nx">nft</span><span class="w"> </span><span class="err">&#39;</span><span class="nx">add</span><span class="w"> </span><span class="nx">table</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">trace_debug</span><span class="err">&#39;</span>
+<span class="err">#</span><span class="w"> </span><span class="nx">nft</span><span class="w"> </span><span class="err">&#39;</span><span class="nx">add</span><span class="w"> </span><span class="nx">chain</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">trace_debug</span><span class="w"> </span><span class="nx">trace_pre</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">type</span><span class="w"> </span><span class="nx">filter</span><span class="w"> </span><span class="nx">hook</span><span class="w"> </span><span class="nx">prerouting</span><span class="w"> </span><span class="nx">priority</span><span class="w"> </span><span class="o">-</span><span class="mi">200000</span><span class="p">;</span><span class="w"> </span><span class="p">}</span><span class="err">&#39;</span>
+<span class="err">#</span><span class="w"> </span><span class="nx">nft</span><span class="w"> </span><span class="s">&quot;insert rule inet trace_debug trace_pre ip saddr $C ip daddr $S tcp dport $P tcp flags syn limit rate 1/second meta nftrace set 1&quot;</span>
+</code></pre></div>
+
+<p>第一条规则添加了一张新的规则表，这使得将来删除和调试规则可以更轻松。一句 <code>nft delete table inet trace_debug</code> 命令就可以删除调试期间临时加入表中的所有规则和链。</p>
+<p>第二条规则在系统进行路由选择之前（<code>prerouting</code> 钩子）创建了一个基本钩子，并将其优先级设置为负数，以保证它在连接跟踪流程和 NAT 规则匹配之前被执行。</p>
+<p>然而，唯一最重要的部分是第三条规则的最后一段：<code>meta nftrace set 1</code>。这条规则会使系统记录所有匹配这条规则的报文所关联的事件。为了尽可能高效地查看跟踪信息（提高信噪比），考虑对跟踪的事件增加一个速率限制，以保证其数量处于可管理的范围。一个好的选择是限制每秒钟最多一个报文或一分钟最多一个报文。上述案例记录了所有来自终端 <code>$C</code> 且去往终端 <code>$S</code> 的端口 <code>$P</code> 的所有 SYN 报文和 SYN/ACK 报文。限制速率的配置语句可以防范事件过多导致的洪泛风险。事实上，大多数情况下只记录一个报文就足够了。</p>
+<p>对于 iptables 用户来讲，配置流程是类似的。等价的配置规则类似于：</p>
+<div class="highlight"><pre><span></span><code># iptables -t raw -I PREROUTING -s $C -d $S -p tcp --tcp-flags SYN SYN  --dport $P  -m limit --limit 1/s -j TRACE
+</code></pre></div>
+
+<h3>获取跟踪事件</h3>
+<p>原生 nft 工具的用户可以直接运行 <code>nft</code> 进入 nft 跟踪模式：</p>
+<div class="highlight"><pre><span></span><code># nft monitor trace
+</code></pre></div>
+
+<p>这条命令会将收到的报文以及所有匹配该报文的规则打印出来（用 <code>CTRL-C</code> 来停止输出）：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">trace</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="nx">f0f627</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">raw</span><span class="w"> </span><span class="nx">prerouting</span><span class="w">  </span><span class="nx">packet</span><span class="p">:</span><span class="w"> </span><span class="nx">iif</span><span class="w"> </span><span class="s">&quot;veth0&quot;</span><span class="w"> </span><span class="nx">ether</span><span class="w"> </span><span class="nx">saddr</span><span class="w"> </span><span class="p">..</span>
+</code></pre></div>
+
+<p>我们将在下一章详细分析该结果。如果你用的是 iptables，首先通过 <code>iptables –version</code> 命令检查一下已安装的版本。例如：</p>
+<div class="highlight"><pre><span></span><code># iptables --version
+iptables v1.8.5 (legacy)
+</code></pre></div>
+
+<p><code>(legacy)</code> 意味着被跟踪的事件会被记录到内核的环形缓冲区中。你可以用 <code>dmesg</code> 或 <code>journalctl</code> 命令来查看这些事件。这些调试输出缺少一些信息，但和新工具提供的输出从概念上来讲很类似。你将需要首先查看规则被记录下来的行号，并与活跃的 iptables 规则集合手动关联。如果输出显示 <code>(nf_tables)</code>，你可以使用 <code>xtables-monitor</code> 工具：</p>
+<div class="highlight"><pre><span></span><code># xtables-monitor --trace
+</code></pre></div>
+
+<p>如果上述命令仅显示版本号，你仍然需要查看 <code>dmesg</code>/<code>journalctl</code> 的输出。<code>xtables-monitor</code> 工具和 <code>nft</code> 监控跟踪工具使用相同的内核接口。它们之间唯一的不同点就是，<code>xtables-monitor</code> 工具会用 <code>iptables</code> 的语法打印事件，且如果你同时使用了 <code>iptables-nft</code> 和 <code>nft</code>，它将不能打印那些使用了 maps/sets 或其他只有 nftables 才支持的功能的规则。</p>
+<h3>示例</h3>
+<p>我们假设需要调试一个到虚拟机/容器的端口不通的问题。<code>ssh -p 1222 10.1.2.3</code> 命令应该可以远程连接那台服务器上的某个容器，但连接请求超时了。</p>
+<p>你拥有运行那台容器的主机的登录权限。现在登录该机器并增加一条跟踪规则。可通过前述案例查看如何增加一个临时的调试规则表。跟踪规则类似于这样：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">nft</span><span class="w"> </span><span class="s">&quot;insert rule inet trace_debug trace_pre ip daddr 10.1.2.3 tcp dport 1222 tcp flags syn limit rate 6/minute meta nftrace set 1&quot;</span>
+</code></pre></div>
+
+<p>在添加完上述规则后，运行 <code>nft monitor trace</code>，在跟踪模式下启动 nft，然后重试刚才失败的 <code>ssh</code> 命令。如果规则集较大，会出现大量的输出。不用担心这些输出，下一节我们会做逐行分析。</p>
+<div class="highlight"><pre><span></span><code><span class="nx">trace</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="mi">9</span><span class="nx">c01f8</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">trace_debug</span><span class="w"> </span><span class="nx">trace_pre</span><span class="w"> </span><span class="nx">packet</span><span class="p">:</span><span class="w"> </span><span class="nx">iif</span><span class="w"> </span><span class="s">&quot;enp0&quot;</span><span class="w"> </span><span class="nx">ether</span><span class="w"> </span><span class="nx">saddr</span><span class="w"> </span><span class="p">..</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">saddr</span><span class="w"> </span><span class="m m-Double">10.2.1.2</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">daddr</span><span class="w"> </span><span class="m m-Double">10.1.2.3</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">protocol</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">dport</span><span class="w"> </span><span class="mi">1222</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">flags</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nx">syn</span>
+<span class="nx">trace</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="mi">9</span><span class="nx">c01f8</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">trace_debug</span><span class="w"> </span><span class="nx">trace_pre</span><span class="w"> </span><span class="nx">rule</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">daddr</span><span class="w"> </span><span class="m m-Double">10.2.1.2</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">dport</span><span class="w"> </span><span class="mi">1222</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">flags</span><span class="w"> </span><span class="nx">syn</span><span class="w"> </span><span class="nx">limit</span><span class="w"> </span><span class="nx">rate</span><span class="w"> </span><span class="mi">6</span><span class="o">/</span><span class="nx">minute</span><span class="w"> </span><span class="nx">meta</span><span class="w"> </span><span class="nx">nftrace</span><span class="w"> </span><span class="nx">set</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">(</span><span class="nx">verdict</span><span class="w"> </span><span class="k">continue</span><span class="p">)</span>
+<span class="nx">trace</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="mi">9</span><span class="nx">c01f8</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">trace_debug</span><span class="w"> </span><span class="nx">trace_pre</span><span class="w"> </span><span class="nx">verdict</span><span class="w"> </span><span class="k">continue</span>
+<span class="nx">trace</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="mi">9</span><span class="nx">c01f8</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">trace_debug</span><span class="w"> </span><span class="nx">trace_pre</span><span class="w"> </span><span class="nx">policy</span><span class="w"> </span><span class="nx">accept</span>
+<span class="nx">trace</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="mi">9</span><span class="nx">c01f8</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">nat</span><span class="w"> </span><span class="nx">prerouting</span><span class="w"> </span><span class="nx">packet</span><span class="p">:</span><span class="w"> </span><span class="nx">iif</span><span class="w"> </span><span class="s">&quot;enp0&quot;</span><span class="w"> </span><span class="nx">ether</span><span class="w"> </span><span class="nx">saddr</span><span class="w"> </span><span class="p">..</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">saddr</span><span class="w"> </span><span class="m m-Double">10.2.1.2</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">daddr</span><span class="w"> </span><span class="m m-Double">10.1.2.3</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">protocol</span><span class="w"> </span><span class="nx">tcp</span><span class="w">  </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">dport</span><span class="w"> </span><span class="mi">1222</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">flags</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nx">syn</span>
+<span class="nx">trace</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="mi">9</span><span class="nx">c01f8</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">nat</span><span class="w"> </span><span class="nx">prerouting</span><span class="w"> </span><span class="nx">rule</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">daddr</span><span class="w"> </span><span class="m m-Double">10.1.2.3</span><span class="w">  </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">dport</span><span class="w"> </span><span class="mi">1222</span><span class="w"> </span><span class="nx">dnat</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="m m-Double">192.168.70.10</span><span class="p">:</span><span class="mi">22</span><span class="w"> </span><span class="p">(</span><span class="nx">verdict</span><span class="w"> </span><span class="nx">accept</span><span class="p">)</span>
+<span class="nx">trace</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="mi">9</span><span class="nx">c01f8</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">filter</span><span class="w"> </span><span class="nx">forward</span><span class="w"> </span><span class="nx">packet</span><span class="p">:</span><span class="w"> </span><span class="nx">iif</span><span class="w"> </span><span class="s">&quot;enp0&quot;</span><span class="w"> </span><span class="nx">oif</span><span class="w"> </span><span class="s">&quot;veth21&quot;</span><span class="w"> </span><span class="nx">ether</span><span class="w"> </span><span class="nx">saddr</span><span class="w"> </span><span class="p">..</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">daddr</span><span class="w"> </span><span class="m m-Double">192.168.70.10</span><span class="w"> </span><span class="p">..</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">dport</span><span class="w"> </span><span class="mi">22</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">flags</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nx">syn</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">window</span><span class="w"> </span><span class="mi">29200</span>
+<span class="nx">trace</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="mi">9</span><span class="nx">c01f8</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">filter</span><span class="w"> </span><span class="nx">forward</span><span class="w"> </span><span class="nx">rule</span><span class="w"> </span><span class="nx">ct</span><span class="w"> </span><span class="nx">status</span><span class="w"> </span><span class="nx">dnat</span><span class="w"> </span><span class="nx">jump</span><span class="w"> </span><span class="nx">allowed_dnats</span><span class="w"> </span><span class="p">(</span><span class="nx">verdict</span><span class="w"> </span><span class="nx">jump</span><span class="w"> </span><span class="nx">allowed_dnats</span><span class="p">)</span>
+<span class="nx">trace</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="mi">9</span><span class="nx">c01f8</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">filter</span><span class="w"> </span><span class="nx">allowed_dnats</span><span class="w"> </span><span class="nx">rule</span><span class="w"> </span><span class="nx">drop</span><span class="w"> </span><span class="p">(</span><span class="nx">verdict</span><span class="w"> </span><span class="nx">drop</span><span class="p">)</span>
+<span class="nx">trace</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="mi">20</span><span class="nx">a4ef</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">trace_debug</span><span class="w"> </span><span class="nx">trace_pre</span><span class="w"> </span><span class="nx">packet</span><span class="p">:</span><span class="w"> </span><span class="nx">iif</span><span class="w"> </span><span class="s">&quot;enp0&quot;</span><span class="w"> </span><span class="nx">ether</span><span class="w"> </span><span class="nx">saddr</span><span class="w"> </span><span class="p">..</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">saddr</span><span class="w"> </span><span class="m m-Double">10.2.1.2</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">daddr</span><span class="w"> </span><span class="m m-Double">10.1.2.3</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">protocol</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">dport</span><span class="w"> </span><span class="mi">1222</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">flags</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nx">syn</span>
+</code></pre></div>
+
+<h3>对跟踪结果作逐行分析</h3>
+<p>输出结果的第一行是触发后续输出的报文编号。这一行的语法与 nft 规则语法相同，同时还包括了接收报文的首部字段信息。你也可以在这一行找到接收报文的接口名称（此处为 <code>enp0</code>）、报文的源和目的 MAC 地址、报文的源 IP 地址（可能很重要 - 报告问题的人可能选择了一个错误的或非预期的主机），以及 TCP 的源和目的端口。同时你也可以在这一行的开头看到一个“跟踪编号”。该编号标识了匹配跟踪规则的特定报文。第二行包括了该报文匹配的第一条跟踪规则：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">trace</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="mi">9</span><span class="nx">c01f8</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">trace_debug</span><span class="w"> </span><span class="nx">trace_pre</span><span class="w"> </span><span class="nx">rule</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">daddr</span><span class="w"> </span><span class="m m-Double">10.2.1.2</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">dport</span><span class="w"> </span><span class="mi">1222</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">flags</span><span class="w"> </span><span class="nx">syn</span><span class="w"> </span><span class="nx">limit</span><span class="w"> </span><span class="nx">rate</span><span class="w"> </span><span class="mi">6</span><span class="o">/</span><span class="nx">minute</span><span class="w"> </span><span class="nx">meta</span><span class="w"> </span><span class="nx">nftrace</span><span class="w"> </span><span class="nx">set</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">(</span><span class="nx">verdict</span><span class="w"> </span><span class="k">continue</span><span class="p">)</span>
+</code></pre></div>
+
+<p>这就是刚添加的跟踪规则。这里显示的第一条规则总是激活报文跟踪的规则。如果在这之前还有其他规则，它们将不会在这里显示。如果没有任何跟踪输出结果，说明没有抵达这条跟踪规则，或者没有匹配成功。下面的两行表明没有后续的匹配规则，且 <code>trace_pre</code> 钩子允许报文继续传输（判定为接受）。</p>
+<p>下一条匹配规则是：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">trace</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="mi">9</span><span class="nx">c01f8</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">nat</span><span class="w"> </span><span class="nx">prerouting</span><span class="w"> </span><span class="nx">rule</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">daddr</span><span class="w"> </span><span class="m m-Double">10.1.2.3</span><span class="w">  </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">dport</span><span class="w"> </span><span class="mi">1222</span><span class="w"> </span><span class="nx">dnat</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="m m-Double">192.168.70.10</span><span class="p">:</span><span class="mi">22</span><span class="w"> </span><span class="p">(</span><span class="nx">verdict</span><span class="w"> </span><span class="nx">accept</span><span class="p">)</span>
+</code></pre></div>
+
+<p>这条 DNAT 规则设置了一个到其他地址和端口的映射。规则中的参数 <code>192.168.70.10</code> 是需要收包的虚拟机的地址，目前为止没有问题。如果它不是正确的虚拟机地址，说明地址输入错误，或者匹配了错误的 NAT 规则。</p>
+<h3>IP 转发</h3>
+<p>通过下面的输出我们可以看到，IP 路由引擎告诉 IP 协议栈，该报文需要被转发到另一个主机：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">trace</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="mi">9</span><span class="nx">c01f8</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">filter</span><span class="w"> </span><span class="nx">forward</span><span class="w"> </span><span class="nx">packet</span><span class="p">:</span><span class="w"> </span><span class="nx">iif</span><span class="w"> </span><span class="s">&quot;enp0&quot;</span><span class="w"> </span><span class="nx">oif</span><span class="w"> </span><span class="s">&quot;veth21&quot;</span><span class="w"> </span><span class="nx">ether</span><span class="w"> </span><span class="nx">saddr</span><span class="w"> </span><span class="p">..</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">daddr</span><span class="w"> </span><span class="m m-Double">192.168.70.10</span><span class="w"> </span><span class="p">..</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">dport</span><span class="w"> </span><span class="mi">22</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">flags</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nx">syn</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">window</span><span class="w"> </span><span class="mi">29200</span>
+</code></pre></div>
+
+<p>这是接收到的报文的另一种呈现形式，但和之前相比有一些有趣的不同。现在的结果有了一个输出接口集合。这在之前不存在的，因为之前的规则是在路由决策之前（<code>prerouting</code> 钩子）。跟踪编号和之前一样，因此仍然是相同的报文，但目标地址和端口已经被修改。假设现在还有匹配 <code>tcp dport 1222</code> 的规则，它们将不会对现阶段的报文产生任何影响了。</p>
+<p>如果该行不包含输出接口（<code>oif</code>），说明路由决策将报文路由到了本机。对路由过程的调试属于另外一个主题，本文不再涉及。</p>
+<div class="highlight"><pre><span></span><code>trace id 9c01f8 inet filter forward rule ct status dnat jump allowed_dnats (verdict jump allowed_dnats)
+</code></pre></div>
+
+<p>这条输出表明，报文匹配到了一个跳转到 <code>allowed_dnats</code> 链的规则。下一行则说明了连接失败的根本原因：</p>
+<div class="highlight"><pre><span></span><code>trace id 9c01f8 inet filter allowed_dnats rule drop (verdict drop)
+</code></pre></div>
+
+<p>这条规则无条件地将报文丢弃，因此后续没有关于该报文的日志输出。下一行则是另一个报文的输出结果了：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">trace</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="mi">20</span><span class="nx">a4ef</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">trace_debug</span><span class="w"> </span><span class="nx">trace_pre</span><span class="w"> </span><span class="nx">packet</span><span class="p">:</span><span class="w"> </span><span class="nx">iif</span><span class="w"> </span><span class="s">&quot;enp0&quot;</span><span class="w"> </span><span class="nx">ether</span><span class="w"> </span><span class="nx">saddr</span><span class="w"> </span><span class="p">..</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">saddr</span><span class="w"> </span><span class="m m-Double">10.2.1.2</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">daddr</span><span class="w"> </span><span class="m m-Double">10.1.2.3</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">protocol</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">dport</span><span class="w"> </span><span class="mi">1222</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">flags</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nx">syn</span>
+</code></pre></div>
+
+<p>跟踪编号已经和之前不一样，然后报文的内容却和之前是一样的。这是一个重传尝试：第一个报文被丢弃了，因此 TCP 尝试了重传。可以忽略掉剩余的输出结果了，因为它并没有提供新的信息。现在是时候检查那条链了。</p>
+<h3>规则集合分析</h3>
+<p>上一节我们发现报文在 inet filter 表中的一个名叫 <code>allowed_dnats</code> 的链中被丢弃。现在我们来查看它：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="nx">nft</span><span class="w"> </span><span class="nx">list</span><span class="w"> </span><span class="nx">chain</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">filter</span><span class="w"> </span><span class="nx">allowed_dnats</span>
+<span class="nx">table</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">filter</span><span class="w"> </span><span class="p">{</span>
+<span class="w"> </span><span class="nx">chain</span><span class="w"> </span><span class="nx">allowed_dnats</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">meta</span><span class="w"> </span><span class="nx">nfproto</span><span class="w"> </span><span class="nx">ipv4</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">daddr</span><span class="w"> </span><span class="p">.</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">dport</span><span class="w"> </span><span class="err">@</span><span class="nx">allow_in</span><span class="w"> </span><span class="nx">accept</span>
+<span class="w">  </span><span class="nx">drop</span>
+<span class="w">   </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>接受 <code>@allow_in</code> 集的数据包的规则没有显示在跟踪日志中。我们通过列出元素的方式，再次检查上述报文的目标地址是否在 <code>@allow_in</code> 集中：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> nft &quot;get element inet filter allow_in { 192.168.70.10 . 22 }&quot;
+Error: Could not process rule: No such file or directory
+</code></pre></div>
+
+<p>不出所料，地址-服务对并没有出现在集合中。我们将其添加到集合中。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> nft &quot;add element inet filter allow_in { 192.168.70.10 . 22 }&quot;
+</code></pre></div>
+
+<p>现在运行查询命令，它将返回新添加的元素。</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="nx">nft</span><span class="w"> </span><span class="s">&quot;get element inet filter allow_in { 192.168.70.10 . 22 }&quot;</span>
+<span class="nx">table</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">filter</span><span class="w"> </span><span class="p">{</span>
+<span class="w">   </span><span class="nx">set</span><span class="w"> </span><span class="nx">allow_in</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="k">type</span><span class="w"> </span><span class="nx">ipv4_addr</span><span class="w"> </span><span class="p">.</span><span class="w"> </span><span class="nx">inet_service</span>
+<span class="w">      </span><span class="nx">elements</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="m m-Double">192.168.70.10</span><span class="w"> </span><span class="p">.</span><span class="w"> </span><span class="mi">22</span><span class="w"> </span><span class="p">}</span>
+<span class="w">   </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><code>ssh</code> 命令现在应该可以工作，且跟踪结果可以反映出该变化：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">trace</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="mi">497</span><span class="nx">abf58</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">filter</span><span class="w"> </span><span class="nx">forward</span><span class="w"> </span><span class="nx">rule</span><span class="w"> </span><span class="nx">ct</span><span class="w"> </span><span class="nx">status</span><span class="w"> </span><span class="nx">dnat</span><span class="w"> </span><span class="nx">jump</span><span class="w"> </span><span class="nx">allowed_dnats</span><span class="w"> </span><span class="p">(</span><span class="nx">verdict</span><span class="w"> </span><span class="nx">jump</span><span class="w"> </span><span class="nx">allowed_dnats</span><span class="p">)</span>
+
+<span class="nx">trace</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="mi">497</span><span class="nx">abf58</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">filter</span><span class="w"> </span><span class="nx">allowed_dnats</span><span class="w"> </span><span class="nx">rule</span><span class="w"> </span><span class="nx">meta</span><span class="w"> </span><span class="nx">nfproto</span><span class="w"> </span><span class="nx">ipv4</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">daddr</span><span class="w"> </span><span class="p">.</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">dport</span><span class="w"> </span><span class="err">@</span><span class="nx">allow_in</span><span class="w"> </span><span class="nx">accept</span><span class="w"> </span><span class="p">(</span><span class="nx">verdict</span><span class="w"> </span><span class="nx">accept</span><span class="p">)</span>
+
+<span class="nx">trace</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="mi">497</span><span class="nx">abf58</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">postrouting</span><span class="w"> </span><span class="nx">packet</span><span class="p">:</span><span class="w"> </span><span class="nx">iif</span><span class="w"> </span><span class="s">&quot;enp0&quot;</span><span class="w"> </span><span class="nx">oif</span><span class="w"> </span><span class="s">&quot;veth21&quot;</span><span class="w"> </span><span class="nx">ether</span><span class="w"> </span><span class="p">..</span><span class="w"> </span><span class="nx">trace</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="mi">497</span><span class="nx">abf58</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">postrouting</span><span class="w"> </span><span class="nx">policy</span><span class="w"> </span><span class="nx">accept</span>
+</code></pre></div>
+
+<p>这表明报文通过了转发路径中的最后一个钩子 - <code>postrouting</code>。</p>
+<p>如果现在仍然无法连接，问题可能处在报文流程的后续阶段，有可能并不在 nftables 的规则集合范围之内。</p>
+<h3>总结</h3>
+<p>本文介绍了如何通过 nftables 的跟踪机制检查丢包或其他类型的连接问题。本系列的下一篇文章将展示如何检查连接跟踪系统和可能与连接跟踪流相关的 NAT 信息。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

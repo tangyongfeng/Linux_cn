@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>RPM 包是如何从源 RPM 制作的</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Ankur Sinha "franciscod" 在上一篇文章中，我们研究了什么是 RPM 软件包。它们是包含文件和元数据的档案文件。当安装或卸载 RPM 时，此元数 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/11/rpm-bao-shi-ru-he-cong-yuan-rpm-zhi-zuo-de.html" rel="bookmark"
+           title="Permalink to RPM 包是如何从源 RPM 制作的">RPM 包是如何从源 RPM 制作的</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-11-02T09:35:46+01:00">
+                Published: Sat 02 November 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Ankur Sinha &quot;franciscod&quot;</p>
+<p><img alt="" src="/data/attachment/album/201911/02/093550p3t13v3sxif3vx73.jpg"></p>
+<p>在<a href="/article-11452-1.html">上一篇文章中，我们研究了什么是 RPM 软件包</a>。它们是包含文件和元数据的档案文件。当安装或卸载 RPM 时，此元数据告诉 RPM 在哪里创建或删除文件。正如你将在上一篇文章中记住的，元数据还包含有关“依赖项”的信息，它可以是“运行时”或“构建时”的依赖信息。</p>
+<p>例如，让我们来看看 <code>fpaste</code>。你可以使用 <code>dnf</code> 下载该 RPM。这将下载 Fedora 存储库中可用的 <code>fpaste</code> 最新版本。在 Fedora 30 上，当前版本为 0.3.9.2：</p>
+<div class="highlight"><pre><span></span><code><span class="o">$</span><span class="w"> </span><span class="n">dnf</span><span class="w"> </span><span class="n">download</span><span class="w"> </span><span class="n">fpaste</span>
+
+<span class="o">...</span>
+<span class="n">fpaste</span><span class="o">-</span><span class="mf">0.3</span><span class="o">.</span><span class="mf">9.2</span><span class="o">-</span><span class="mf">2.</span><span class="n">fc30</span><span class="o">.</span><span class="n">noarch</span><span class="o">.</span><span class="n">rpm</span>
+</code></pre></div>
+
+<p>由于这是个构建 RPM，因此它仅包含使用 <code>fpaste</code> 所需的文件：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>rpm<span class="w"> </span>-qpl<span class="w"> </span>./fpaste-0.3.9.2-2.fc30.noarch.rpm
+/usr/bin/fpaste
+/usr/share/doc/fpaste
+/usr/share/doc/fpaste/README.rst
+/usr/share/doc/fpaste/TODO
+/usr/share/licenses/fpaste
+/usr/share/licenses/fpaste/COPYING
+/usr/share/man/man1/fpaste.1.gz
+</code></pre></div>
+
+<h3>源 RPM</h3>
+<p>在此链条中的下一个环节是源 RPM。Fedora 中的所有软件都必须从其源代码构建。我们不包括预构建的二进制文件。因此，要制作一个 RPM 文件，RPM（工具）需要：</p>
+<ul>
+<li>给出必须要安装的文件，</li>
+<li>例如，如果要编译出这些文件，则告诉它们如何生成这些文件，</li>
+<li>告知必须在何处安装这些文件，</li>
+<li>该特定软件需要其他哪些依赖才能正常工作。</li>
+</ul>
+<p>源 RPM 拥有所有这些信息。源 RPM 与构建 RPM 相似，但顾名思义，它们不包含已构建的二进制文件，而是包含某个软件的源文件。让我们下载 <code>fpaste</code> 的源 RPM：</p>
+<div class="highlight"><pre><span></span><code><span class="o">$</span><span class="w"> </span><span class="n">dnf</span><span class="w"> </span><span class="n">download</span><span class="w"> </span><span class="n">fpaste</span><span class="w"> </span><span class="o">--</span><span class="n">source</span>
+
+<span class="o">...</span>
+<span class="n">fpaste</span><span class="o">-</span><span class="mf">0.3</span><span class="o">.</span><span class="mf">9.2</span><span class="o">-</span><span class="mf">2.</span><span class="n">fc30</span><span class="o">.</span><span class="n">src</span><span class="o">.</span><span class="n">rpm</span>
+</code></pre></div>
+
+<p>注意文件的结尾是 <code>src.rpm</code>。所有的 RPM 都是从源 RPM 构建的。你也可以使用 <code>dnf</code> 轻松检查“二进制” RPM 的源 RPM：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>dnf<span class="w"> </span>repoquery<span class="w"> </span>--qf<span class="w"> </span><span class="s2">&quot;%{SOURCERPM}&quot;</span><span class="w"> </span>fpaste
+fpaste-0.3.9.2-2.fc30.src.rpm
+</code></pre></div>
+
+<p>另外，由于这是源 RPM，因此它不包含构建的文件。相反，它包含有关如何从中构建 RPM 的源代码和指令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>rpm<span class="w"> </span>-qpl<span class="w"> </span>./fpaste-0.3.9.2-2.fc30.src.rpm
+fpaste-0.3.9.2.tar.gz
+fpaste.spec
+</code></pre></div>
+
+<p>这里，第一个文件只是 <code>fpaste</code> 的源代码。第二个是 spec 文件。spec 文件是个配方，可告诉 RPM（工具）如何使用源 RPM 中包含的源代码创建 RPM（档案文件）— 它包含 RPM（工具）构建 RPM（档案文件）所需的所有信息。在 spec 文件中。当我们软件包维护人员添加软件到 Fedora 中时，我们大部分时间都花在编写和完善 spec 文件上。当软件包需要更新时，我们会回过头来调整 spec 文件。你可以在 <a href="https://src.fedoraproject.org/browse/projects/">https://src.fedoraproject.org/browse/projects/</a> 的源代码存储库中查看 Fedora 中所有软件包的 spec 文件。</p>
+<p>请注意，一个源 RPM 可能包含构建多个 RPM 的说明。<code>fpaste</code> 是一款非常简单的软件，一个源 RPM 生成一个“二进制” RPM。而 Python 则更复杂。虽然只有一个源 RPM，但它会生成多个二进制 RPM：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>dnf<span class="w"> </span>repoquery<span class="w"> </span>--qf<span class="w"> </span><span class="s2">&quot;%{SOURCERPM}&quot;</span><span class="w"> </span>python3
+python3-3.7.3-1.fc30.src.rpm
+python3-3.7.4-1.fc30.src.rpm
+
+$<span class="w"> </span>sudo<span class="w"> </span>dnf<span class="w"> </span>repoquery<span class="w"> </span>--qf<span class="w"> </span><span class="s2">&quot;%{SOURCERPM}&quot;</span><span class="w"> </span>python3-devel
+python3-3.7.3-1.fc30.src.rpm
+python3-3.7.4-1.fc30.src.rpm
+
+$<span class="w"> </span>sudo<span class="w"> </span>dnf<span class="w"> </span>repoquery<span class="w"> </span>--qf<span class="w"> </span><span class="s2">&quot;%{SOURCERPM}&quot;</span><span class="w"> </span>python3-libs
+python3-3.7.3-1.fc30.src.rpm
+python3-3.7.4-1.fc30.src.rpm
+
+$<span class="w"> </span>sudo<span class="w"> </span>dnf<span class="w"> </span>repoquery<span class="w"> </span>--qf<span class="w"> </span><span class="s2">&quot;%{SOURCERPM}&quot;</span><span class="w"> </span>python3-idle
+python3-3.7.3-1.fc30.src.rpm
+python3-3.7.4-1.fc30.src.rpm
+
+$<span class="w"> </span>sudo<span class="w"> </span>dnf<span class="w"> </span>repoquery<span class="w"> </span>--qf<span class="w"> </span><span class="s2">&quot;%{SOURCERPM}&quot;</span><span class="w"> </span>python3-tkinter
+python3-3.7.3-1.fc30.src.rpm
+python3-3.7.4-1.fc30.src.rpm
+</code></pre></div>
+
+<p>用 RPM 行话来讲，“python3” 是“主包”，因此该 spec 文件将称为 <code>python3.spec</code>。所有其他软件包均为“子软件包”。你可以下载 python3 的源 RPM，并查看其中的内容。（提示：补丁也是源代码的一部分）：</p>
+<div class="highlight"><pre><span></span><code><span class="o">$</span><span class="w"> </span><span class="n">dnf</span><span class="w"> </span><span class="n">download</span><span class="w"> </span><span class="o">--</span><span class="n">source</span><span class="w"> </span><span class="n">python3</span>
+<span class="n">python3</span><span class="o">-</span><span class="mf">3.7</span><span class="o">.</span><span class="mi">4</span><span class="o">-</span><span class="mf">1.</span><span class="n">fc30</span><span class="o">.</span><span class="n">src</span><span class="o">.</span><span class="n">rpm</span>
+
+<span class="o">$</span><span class="w"> </span><span class="n">rpm</span><span class="w"> </span><span class="o">-</span><span class="n">qpl</span><span class="w"> </span><span class="o">./</span><span class="n">python3</span><span class="o">-</span><span class="mf">3.7</span><span class="o">.</span><span class="mi">4</span><span class="o">-</span><span class="mf">1.</span><span class="n">fc30</span><span class="o">.</span><span class="n">src</span><span class="o">.</span><span class="n">rpm</span>
+<span class="mi">00001</span><span class="o">-</span><span class="n">rpath</span><span class="o">.</span><span class="n">patch</span>
+<span class="mi">00102</span><span class="o">-</span><span class="n">lib64</span><span class="o">.</span><span class="n">patch</span>
+<span class="mi">00111</span><span class="o">-</span><span class="n">no</span><span class="o">-</span><span class="k">static</span><span class="o">-</span><span class="n">lib</span><span class="o">.</span><span class="n">patch</span>
+<span class="mi">00155</span><span class="o">-</span><span class="n">avoid</span><span class="o">-</span><span class="n">ctypes</span><span class="o">-</span><span class="n">thunks</span><span class="o">.</span><span class="n">patch</span>
+<span class="mi">00170</span><span class="o">-</span><span class="n">gc</span><span class="o">-</span><span class="n">assertions</span><span class="o">.</span><span class="n">patch</span>
+<span class="mi">00178</span><span class="o">-</span><span class="n">dont</span><span class="o">-</span><span class="n">duplicate</span><span class="o">-</span><span class="n">flags</span><span class="o">-</span><span class="ow">in</span><span class="o">-</span><span class="n">sysconfig</span><span class="o">.</span><span class="n">patch</span>
+<span class="mi">00189</span><span class="o">-</span><span class="n">use</span><span class="o">-</span><span class="n">rpm</span><span class="o">-</span><span class="n">wheels</span><span class="o">.</span><span class="n">patch</span>
+<span class="mi">00205</span><span class="o">-</span><span class="n">make</span><span class="o">-</span><span class="n">libpl</span><span class="o">-</span><span class="n">respect</span><span class="o">-</span><span class="n">lib64</span><span class="o">.</span><span class="n">patch</span>
+<span class="mi">00251</span><span class="o">-</span><span class="n">change</span><span class="o">-</span><span class="n">user</span><span class="o">-</span><span class="n">install</span><span class="o">-</span><span class="n">location</span><span class="o">.</span><span class="n">patch</span>
+<span class="mi">00274</span><span class="o">-</span><span class="n">fix</span><span class="o">-</span><span class="n">arch</span><span class="o">-</span><span class="n">names</span><span class="o">.</span><span class="n">patch</span>
+<span class="mi">00316</span><span class="o">-</span><span class="n">mark</span><span class="o">-</span><span class="n">bdist_wininst</span><span class="o">-</span><span class="n">unsupported</span><span class="o">.</span><span class="n">patch</span>
+<span class="n">Python</span><span class="o">-</span><span class="mf">3.7</span><span class="o">.</span><span class="mf">4.</span><span class="n">tar</span><span class="o">.</span><span class="n">xz</span>
+<span class="n">check</span><span class="o">-</span><span class="n">pyc</span><span class="o">-</span><span class="n">timestamps</span><span class="o">.</span><span class="n">py</span>
+<span class="n">idle3</span><span class="o">.</span><span class="n">appdata</span><span class="o">.</span><span class="n">xml</span>
+<span class="n">idle3</span><span class="o">.</span><span class="n">desktop</span>
+<span class="n">python3</span><span class="o">.</span><span class="n">spec</span>
+</code></pre></div>
+
+<h3>从源 RPM 构建 RPM</h3>
+<p>现在我们有了源 RPM，并且其中有什么内容，我们可以从中重建 RPM。但是，在执行此操作之前，我们应该设置系统以构建 RPM。首先，我们安装必需的工具：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> </span>fedora-packager
+</code></pre></div>
+
+<p>这将安装 <code>rpmbuild</code> 工具。<code>rpmbuild</code> 需要一个默认布局，以便它知道源 RPM 中每个必需组件的位置。让我们看看它们是什么：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> spec 文件将出现在哪里？
+$ rpm -E %{_specdir}
+/home/asinha/rpmbuild/SPECS
+
+<span class="gh">#</span> 源代码将出现在哪里？
+$ rpm -E %{_sourcedir}
+/home/asinha/rpmbuild/SOURCES
+
+<span class="gh">#</span> 临时构建目录是哪里？
+$ rpm -E %{_builddir}
+/home/asinha/rpmbuild/BUILD
+
+<span class="gh">#</span> 构建根目录是哪里？
+$ rpm -E %{_buildrootdir}
+/home/asinha/rpmbuild/BUILDROOT
+
+<span class="gh">#</span> 源 RPM 将放在哪里？
+$ rpm -E %{_srcrpmdir}
+/home/asinha/rpmbuild/SRPMS
+
+<span class="gh">#</span> 构建的 RPM 将放在哪里？
+$ rpm -E %{_rpmdir}
+/home/asinha/rpmbuild/RPMS
+</code></pre></div>
+
+<p>我已经在系统上设置了所有这些目录：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">cd</span>
+$<span class="w"> </span>tree<span class="w"> </span>-L<span class="w"> </span><span class="m">1</span><span class="w"> </span>rpmbuild/
+rpmbuild/
+├──<span class="w"> </span>BUILD
+├──<span class="w"> </span>BUILDROOT
+├──<span class="w"> </span>RPMS
+├──<span class="w"> </span>SOURCES
+├──<span class="w"> </span>SPECS
+└──<span class="w"> </span>SRPMS
+
+<span class="m">6</span><span class="w"> </span>directories,<span class="w"> </span><span class="m">0</span><span class="w"> </span>files
+</code></pre></div>
+
+<p>RPM 还提供了一个为你全部设置好的工具：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>rpmdev-setuptree
+</code></pre></div>
+
+<p>然后，确保已安装 <code>fpaste</code> 的所有构建依赖项：</p>
+<div class="highlight"><pre><span></span><code>sudo dnf builddep fpaste-0.3.9.2-3.fc30.src.rpm
+</code></pre></div>
+
+<p>对于 <code>fpaste</code>，你只需要 Python，并且它肯定已经安装在你的系统上（<code>dnf</code> 也使用 Python）。还可以给 <code>builddep</code> 命令一个 spec 文件，而不是源 RPM。在手册页中了解更多信息：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>man<span class="w"> </span>dnf.plugin.builddep
+</code></pre></div>
+
+<p>现在我们有了所需的一切，从源 RPM 构建一个 RPM 就像这样简单：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>rpmbuild<span class="w"> </span>--rebuild<span class="w"> </span>fpaste-0.3.9.2-3.fc30.src.rpm
+..
+..
+
+$<span class="w"> </span>tree<span class="w"> </span>~/rpmbuild/RPMS/noarch/
+/home/asinha/rpmbuild/RPMS/noarch/
+└──<span class="w"> </span>fpaste-0.3.9.2-3.fc30.noarch.rpm
+
+<span class="m">0</span><span class="w"> </span>directories,<span class="w"> </span><span class="m">1</span><span class="w"> </span>file
+</code></pre></div>
+
+<p><code>rpmbuild</code> 将安装源 RPM 并从中构建你的 RPM。现在，你可以使用 <code>dnf</code> 安装 RPM 以使用它。当然，如前所述，如果你想在 RPM 中进行任何更改，则必须修改 spec 文件，我们将在下一篇文章中介绍 spec 文件。</p>
+<h3>总结</h3>
+<p>总结一下这篇文章有两点：</p>
+<ul>
+<li>我们通常安装使用的 RPM 是包含软件的构建版本的 “二进制” RPM</li>
+<li>构建 RPM 来自于源 RPM，源 RPM 包括用于生成二进制 RPM 所需的源代码和规范文件。</li>
+</ul>
+<p>如果你想开始构建 RPM，并帮助 Fedora 社区维护我们提供的大量软件，则可以从这里开始： <a href="https://fedoraproject.org/wiki/Join_the_package_collection_maintainers">https://fedoraproject.org/wiki/Join_the_package_collection_maintainers</a></p>
+<p>如有任何疑问，请发邮件到 <a href="https://lists.fedoraproject.org/archives/list/devel@lists.fedoraproject.org/">Fedora 开发人员邮件列表</a>，我们随时乐意为你提供帮助！</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

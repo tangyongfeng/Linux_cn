@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>利用 Tmux 和 kubectl 解决 Kubernetes 故障</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Abhishek Tamrakar 一个使用 tmux 的 kubectl 插件可以使 Kubernetes 疑难问题变得更简单。 Kubernetes 是一个活跃的开源容器管理平台，它提供了可扩展性、高可 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2020/02/li-yong-tmux-he-kubectl-jie-jue-kubernetes-gu-zhang.html" rel="bookmark"
+           title="Permalink to 利用 Tmux 和 kubectl 解决 Kubernetes 故障">利用 Tmux 和 kubectl 解决 Kubernetes 故障</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2020-02-25T12:55:18+01:00">
+                Published: Tue 25 February 2020
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Abhishek Tamrakar</p>
+<blockquote>
+<p>一个使用 tmux 的 kubectl 插件可以使 Kubernetes 疑难问题变得更简单。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/202002/25/125435a4v3vpss3s4w3sks.jpg"></p>
+<p><a href="https://opensource.com/resources/what-is-kubernetes">Kubernetes</a> 是一个活跃的开源容器管理平台，它提供了可扩展性、高可用性、健壮性和富有弹性的应用程序管理。它的众多特性之一是支持通过其主要的二进制客户端 <a href="https://kubernetes.io/docs/reference/kubectl/overview/">kubectl</a> 运行定制脚本或可执行程序，kubectl 很强大的，允许用户在 Kubernetes 集群上用它直接做很多事情。</p>
+<h3>使用别名进行 Kubernetes 的故障排查</h3>
+<p>使用 Kubernetes 进行容器编排的人都知道由于设计上原因带来了其功能的复杂性。举例说，迫切需要以更快的速度并且几乎不需要手动干预的方式来简化 Kubernetes 中的故障排除（除过特殊情况）。</p>
+<p>在故障排查功能方面，有很多场景需要考虑。在一种场景下，你知道你需要运行什么，但是这个命令的语法（即使作为一个单独的命令运行）过于复杂，或需要一、两次交互才能起作用。</p>
+<p>例如，如果你需要经常进入一个系统命名空间中运行的容器，你可能发现自己在重复地键入：</p>
+<div class="highlight"><pre><span></span><code><span class="nv">kubectl</span><span class="w"> </span><span class="o">--</span><span class="nv">namespace</span><span class="o">=</span><span class="nv">kube</span><span class="o">-</span><span class="nv">system</span><span class="w"> </span><span class="k">exec</span><span class="w"> </span><span class="o">-</span><span class="nv">i</span><span class="w"> </span><span class="o">-</span><span class="nv">t</span><span class="w"> </span><span class="o">&lt;</span><span class="nv">your</span><span class="o">-</span><span class="nv">pod</span><span class="o">-</span><span class="nv">name</span><span class="o">&gt;</span>
+</code></pre></div>
+
+<p>为了简化故障排查，你可以用这些指令的命令行别名。比如，你可以增加下面命令到你的隐藏配置文件（<code>.bashrc</code> 或 <code>.zshrc</code>）：</p>
+<div class="highlight"><pre><span></span><code><span class="nv">alias</span><span class="w"> </span><span class="nv">ksysex</span><span class="o">=</span><span class="s1">&#39;kubectl --namespace=kube-system exec -i -t&#39;</span>
+</code></pre></div>
+
+<p>这是来自于 <a href="https://github.com/ahmetb/kubectl-aliases/blob/master/.kubectl_aliases">Kubernetes 常见别名</a>存储库的一个例子，它展示了一种简化 <code>kubectl</code> 中的功能的方法。像这种场景下的简单情形，使用别名很有用。</p>
+<h3>切换到 kubectl 插件</h3>
+<p>更复杂的故障排查场景是需要一个一个的执行很多命令，调查环境，最后得出结论。仅仅用别名方法是不能解决这种情况的；你需要知道你所部署的 Kubernetes 之间逻辑和相关性，你真正需要的是自动化，以在更短的时间内输出你想要的。</p>
+<p>考虑到你的集群有 10 ~ 20 或 50 ~ 100 个命名空间来提供不同的微服务。一般在进行故障排查时，什么对你有帮助？</p>
+<ul>
+<li>你需要能够快速分辨出抛出错误的是哪个 命名空间的哪个 Pod 的东西。</li>
+<li>你需要一些可监视一个命名空间的所有 Pod 日志的东西。</li>
+<li>你可能也需要监视特定命名空间的出现错误的某个 Pod 的日志。</li>
+</ul>
+<p>涵盖这些要点的解决方案对于定位生产环境的问题有很大的帮助，以及在开发和测试环节中也很有用。</p>
+<p>你可以用 <a href="https://kubernetes.io/docs/tasks/extend-kubectl/kubectl-plugins/">kubectl 插件</a>创建比简单的别名更强大的功能。插件类似于其它用任何语言编写的独立脚本，但被设计为可以扩充 Kubernetes 管理员的主要命令。</p>
+<p>创建一个插件，你必须用 <code>kubectl-&lt;your-plugin-name&gt;</code> 的正确的语法来拷贝这个脚本到 <code>$PATH</code> 中的导出目录之一，并需要为其赋予可执行权限（<code>chmod +x</code>）。</p>
+<p>创建插件之后将其移动到路径中，你可以立即运行它。例如，我的路径下有一个 <code>kubectl-krawl</code> 和 <code>kubectl-kmux</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>kubectl<span class="w"> </span>plugin<span class="w"> </span>list
+The<span class="w"> </span>following<span class="w"> </span>compatible<span class="w"> </span>plugins<span class="w"> </span>are<span class="w"> </span>available:
+
+/usr/local/bin/kubectl-krawl
+/usr/local/bin/kubectl-kmux
+
+$<span class="w"> </span>kubectl<span class="w"> </span>kmux
+</code></pre></div>
+
+<p>现在让我们见识下带有 tmux 的 Kubernetes 的有多强大。</p>
+<h3>驾驭强大的 tmux</h3>
+<p><a href="https://opensource.com/article/19/6/tmux-terminal-joy">Tmux</a> 是一个非常强大的工具，许多管理员和运维团队都依赖它来解决与易操作性相关的问题：通过将窗口分成多个窗格以便在多台计算机上运行并行的调试来监视日志。它的主要的优点是可在命令行或自动化脚本中使用。</p>
+<p>我创建<a href="https://github.com/abhiTamrakar/kube-plugins">一个 kubectl 插件</a>，使用 tmux 使故障排查更加简单。我将通过注释来解析插件背后的逻辑（插件的完整代码留待给你实现）：</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span>NAMESPACE<span class="w"> </span>是要监控的名字空间
+#<span class="w"> </span>POD<span class="w"> </span>是<span class="w"> </span>Pod<span class="w"> </span>名称
+#<span class="w"> </span>Containers<span class="w"> </span>是容器名称
+
+#<span class="w"> </span>初始化一个计数器<span class="w"> </span>n<span class="w"> </span>以计算循环计数的数量，
+#<span class="w"> </span>之后<span class="w"> </span>tmux<span class="w"> </span>使用它来拆分窗格。
+n=0;
+
+#<span class="w"> </span>在<span class="w"> </span>Pod<span class="w"> </span>和容器列表上开始循环
+while<span class="w"> </span>IFS=&#39;<span class="w"> </span>&#39;<span class="w"> </span>read<span class="w"> </span>-r<span class="w"> </span>POD<span class="w"> </span>CONTAINERS
+do
+<span class="w">    </span>#<span class="w"> </span>tmux<span class="w"> </span>为每个<span class="w"> </span>Pod<span class="w"> </span>创建一个新窗口
+<span class="w">    </span>tmux<span class="w"> </span>neww<span class="w"> </span><span class="nv">$COMMAND</span><span class="w"> </span>-n<span class="w"> </span><span class="nv">$POD</span><span class="w"> </span>2&gt;/dev/null
+<span class="w">    </span>#<span class="w"> </span>对运行中的<span class="w"> </span>Pod<span class="w"> </span>中<span class="w"> </span>的所有容器启动循环
+<span class="w">    </span>for<span class="w"> </span>CONTAINER<span class="w"> </span>in<span class="w"> </span><span class="cp">${</span><span class="n">CONTAINERS</span><span class="o">//</span><span class="p">,</span><span class="o">/</span> <span class="cp">}</span>
+<span class="w">    </span>do
+<span class="w">        </span>if<span class="w"> </span>[<span class="w"> </span>x<span class="nv">$POD</span><span class="w"> </span>=<span class="w"> </span>x<span class="w"> </span>-o<span class="w"> </span>x<span class="nv">$CONTAINER</span><span class="w"> </span>=<span class="w"> </span>x<span class="w"> </span>];<span class="w"> </span>then
+<span class="w">            </span>#<span class="w"> </span>如果任何值为<span class="w"> </span>null，则退出。
+<span class="w">                     </span>warn<span class="w"> </span>&quot;Looks<span class="w"> </span>like<span class="w"> </span>there<span class="w"> </span>is<span class="w"> </span>a<span class="w"> </span>problem<span class="w"> </span>getting<span class="w"> </span>pods<span class="w"> </span>data.&quot;
+<span class="w">            </span>break
+<span class="w">        </span>fi
+
+<span class="w">        </span>#<span class="w"> </span>设置要执行的命令
+<span class="w">        </span>COMMAND=”kubectl<span class="w"> </span>logs<span class="w"> </span>-f<span class="w"> </span><span class="nv">$POD</span><span class="w"> </span>-c<span class="w"> </span><span class="nv">$CONTAINER</span><span class="w"> </span>-n<span class="w"> </span><span class="nv">$NAMESPACE</span>”
+<span class="w">        </span>#<span class="w"> </span>检查<span class="w"> </span>tmux<span class="w"> </span>会话
+<span class="w">        </span>if<span class="w"> </span>tmux<span class="w"> </span>has-session<span class="w"> </span>-t<span class="w"> </span><span class="nt">&lt;会话名&gt;</span><span class="w"> </span>2&gt;/dev/null;
+<span class="w">        </span>then
+<span class="w">            </span><span class="nt">&lt;设置会话退出&gt;</span>
+<span class="w">        </span>else
+<span class="w">            </span><span class="nt">&lt;创建会话&gt;</span>
+<span class="w">        </span>fi
+<span class="w">        </span>#<span class="w"> </span>在当前窗口为每个容器切分窗格
+<span class="w">        </span>tmux<span class="w"> </span>selectp<span class="w"> </span>-t<span class="w"> </span><span class="nv">$n</span><span class="w"> </span>\;<span class="w"> </span>\
+<span class="w">        </span>splitw<span class="w"> </span><span class="nv">$COMMAND</span><span class="w"> </span>\;<span class="w"> </span>\
+<span class="w">        </span>select-layout<span class="w"> </span>tiled<span class="w"> </span>\;
+<span class="w">        </span>#<span class="w"> </span>终止容器循环
+<span class="w">    </span>done
+
+<span class="w">    </span>#<span class="w"> </span>用<span class="w"> </span>Pod<span class="w"> </span>名称重命名窗口以识别
+<span class="w">    </span>tmux<span class="w"> </span>renamew<span class="w"> </span><span class="nv">$POD</span><span class="w"> </span>2&gt;/dev/null
+
+<span class="w">    </span>#<span class="w"> </span>增加计数器
+<span class="w">    </span>((n+=1))
+
+#<span class="w"> </span>终止<span class="w"> </span>Pod<span class="w"> </span>循环
+done<span class="err">&lt;&lt;</span>(<span class="nt">&lt;从</span><span class="w"> </span><span class="err">kubernetes</span><span class="w">  </span><span class="err">集群获取</span><span class="w"> </span><span class="err">Pod</span><span class="w"> </span><span class="err">和容器的列表</span><span class="nt">&gt;</span>)
+
+#<span class="w"> </span>最后选择窗口并附加会话
+tmux<span class="w"> </span>selectw<span class="w"> </span>-t<span class="w"> </span><span class="nt">&lt;会话名&gt;</span>:1<span class="w"> </span>\;<span class="w"> </span>\
+attach-session<span class="w"> </span>-t<span class="w"> </span><span class="nt">&lt;会话名&gt;</span>\;
+</code></pre></div>
+
+<p>运行插件脚本后，将产生类似于下图的输出。每个 Pod 有一个自己的窗口，每个容器（如果有多个）被分割到其窗口中 Pod 窗格中，并在日志到达时输出。Tmux 之美如下可见；通过正确的配置，你甚至会看到哪个窗口正处于激活运行状态（可看到标签是白色的）。</p>
+<p><img alt="" src="/data/attachment/album/202002/25/124502rhq9eehbaabqcarq.png"></p>
+<h3>总结</h3>
+<p>别名是在 Kubernetes 环境下常见的也有用的简易故障排查方法。当环境变得复杂，用高级脚本生成的kubectl 插件是一个更强大的方法。至于用哪个编程语言来编写 kubectl 插件是没有限制。唯一的要求是该名字在路径中是可执行的，并且不能与已知的 kubectl 命令重复。</p>
+<p>要阅读完整的插件源码，或试试我创建的插件，请查看我的 <a href="https://github.com/abhiTamrakar/kube-plugins">kube-plugins-github</a> 存储库。欢迎提交提案和补丁。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

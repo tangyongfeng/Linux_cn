@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何使用 Linux 防火墙隔离本地欺骗地址</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Michael Kwaku Aboagye 如何使用 iptables 防火墙保护你的网络免遭黑客攻击。 即便是被入侵检测和隔离系统所保护的远程网络，黑客们也在 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/05/ru-he-shi-yong-linux-fang-huo-qiang-ge-chi-ben-di-qi-pian-di-zhi.html" rel="bookmark"
+           title="Permalink to 如何使用 Linux 防火墙隔离本地欺骗地址">如何使用 Linux 防火墙隔离本地欺骗地址</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-05-04T07:33:12+02:00">
+                Published: Fri 04 May 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Michael Kwaku Aboagye</p>
+<blockquote>
+<p>如何使用 iptables 防火墙保护你的网络免遭黑客攻击。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/201805/04/073315i195044i74l3e5v1.png"></p>
+<p>即便是被入侵检测和隔离系统所保护的远程网络，黑客们也在寻找各种精巧的方法入侵。IDS/IPS 不能停止或者减少那些想要接管你的网络控制权的黑客攻击。不恰当的配置允许攻击者绕过所有部署的安全措施。</p>
+<p>在这篇文章中，我将会解释安全工程师或者系统管理员该怎样避免这些攻击。</p>
+<p>几乎所有的 Linux 发行版都带着一个内建的防火墙来保护运行在 Linux 主机上的进程和应用程序。大多数防火墙都按照 IDS/IPS 解决方案设计，这样的设计的主要目的是检测和避免恶意包获取网络的进入权。</p>
+<p>Linux 防火墙通常有两种接口：iptables 和 ipchains 程序（LCTT 译注：在支持 systemd 的系统上，采用的是更新的接口 firewalld）。大多数人将这些接口称作 iptables 防火墙或者 ipchains 防火墙。这两个接口都被设计成包过滤器。iptables 是有状态防火墙，其基于先前的包做出决定。ipchains 不会基于先前的包做出决定，它被设计为无状态防火墙。</p>
+<p>在这篇文章中，我们将会专注于内核 2.4 之后出现的 iptables 防火墙。</p>
+<p>有了 iptables 防火墙，你可以创建策略或者有序的规则集，规则集可以告诉内核该如何对待特定的数据包。在内核中的是Netfilter 框架。Netfilter 既是框架也是 iptables 防火墙的项目名称。作为一个框架，Netfilter 允许 iptables 勾连被设计来操作数据包的功能。概括地说，iptables 依靠 Netfilter 框架构筑诸如过滤数据包数据的功能。</p>
+<p>每个 iptables 规则都被应用到一个表中的链上。一个 iptables 链就是一个比较包中相似特征的规则集合。而表（例如 <code>nat</code> 或者 <code>mangle</code>）则描述不同的功能目录。例如， <code>mangle</code> 表用于修改包数据。因此，特定的修改包数据的规则被应用到这里；而过滤规则被应用到 <code>filter</code> 表，因为 <code>filter</code> 表过滤包数据。</p>
+<p>iptables 规则有一个匹配集，以及一个诸如 <code>Drop</code> 或者 <code>Deny</code> 的目标，这可以告诉 iptables 对一个包做什么以符合规则。因此，没有目标和匹配集，iptables 就不能有效地处理包。如果一个包匹配了一条规则，目标会指向一个将要采取的特定措施。另一方面，为了让 iptables 处理，每个数据包必须匹配才能被处理。</p>
+<p>现在我们已经知道 iptables 防火墙如何工作，让我们着眼于如何使用 iptables 防火墙检测并拒绝或丢弃欺骗地址吧。</p>
+<h3>打开源地址验证</h3>
+<p>作为一个安全工程师，在处理远程的欺骗地址的时候，我采取的第一步是在内核打开源地址验证。</p>
+<p>源地址验证是一种内核层级的特性，这种特性丢弃那些伪装成来自你的网络的包。这种特性使用反向路径过滤器方法来检查收到的包的源地址是否可以通过包到达的接口可以到达。（LCTT 译注：到达的包的源地址应该可以从它到达的网络接口反向到达，只需反转源地址和目的地址就可以达到这样的效果）</p>
+<p>利用下面简单的脚本可以打开源地址验证而不用手工操作：</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/bin/sh</span>
+<span class="c1">#作者: Michael K Aboagye</span>
+<span class="c1">#程序目标: 打开反向路径过滤</span>
+<span class="c1">#日期: 7/02/18</span>
+<span class="c1">#在屏幕上显示 “enabling source address verification”</span>
+<span class="nb">echo</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;Enabling source address verification…&quot;</span>
+<span class="c1">#将值0覆盖为1来打开源地址验证</span>
+<span class="nb">echo</span><span class="w"> </span><span class="m">1</span><span class="w"> </span>&gt;<span class="w"> </span>/proc/sys/net/ipv4/conf/default/rp_filter
+<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;completed&quot;</span>
+</code></pre></div>
+
+<p>上面的脚本在执行的时候只显示了 <code>Enabling source address verification</code> 这条信息而不会换行。默认的反向路径过滤的值是 <code>0</code>，<code>0</code> 表示没有源验证。因此，第二行简单地将默认值 <code>0</code> 覆盖为 <code>1</code>。<code>1</code> 表示内核将会通过确认反向路径来验证源地址。</p>
+<p>最后，你可以使用下面的命令通过选择 <code>DROP</code> 或者 <code>REJECT</code> 目标之一来丢弃或者拒绝来自远端主机的欺骗地址。但是，处于安全原因的考虑，我建议使用 <code>DROP</code> 目标。</p>
+<p>像下面这样，用你自己的 IP 地址代替 <code>IP-address</code> 占位符。另外，你必须选择使用 <code>REJECT</code> 或者 <code>DROP</code> 中的一个，这两个目标不能同时使用。</p>
+<div class="highlight"><pre><span></span><code><span class="nx">iptables</span><span class="w"> </span><span class="o">-</span><span class="nx">A</span><span class="w"> </span><span class="nx">INPUT</span><span class="w"> </span><span class="o">-</span><span class="nx">i</span><span class="w"> </span><span class="nx">internal_interface</span><span class="w"> </span><span class="o">-</span><span class="nx">s</span><span class="w"> </span><span class="nx">IP_address</span><span class="w"> </span><span class="o">-</span><span class="nx">j</span><span class="w"> </span><span class="nx">REJECT</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="nx">DROP</span><span class="w">  </span>
+<span class="nx">iptables</span><span class="w"> </span><span class="o">-</span><span class="nx">A</span><span class="w"> </span><span class="nx">INPUT</span><span class="w"> </span><span class="o">-</span><span class="nx">i</span><span class="w"> </span><span class="nx">internal_interface</span><span class="w"> </span><span class="o">-</span><span class="nx">s</span><span class="w"> </span><span class="m m-Double">192.168.0.0</span><span class="o">/</span><span class="mi">16</span><span class="w">  </span><span class="o">-</span><span class="nx">j</span><span class="w"> </span><span class="nx">REJECT</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="nx">DROP</span>
+</code></pre></div>
+
+<p>这篇文章只提供了如何使用 iptables 防火墙来避免远端欺骗攻击的基础知识。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

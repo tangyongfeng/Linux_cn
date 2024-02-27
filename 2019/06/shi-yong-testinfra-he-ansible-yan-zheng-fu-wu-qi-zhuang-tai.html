@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 Testinfra 和 Ansible 验证服务器状态</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Clement Verna Testinfra 是一个功能强大的库，可用于编写测试来验证基础设施的状态。另外它与 Ansible 和 Nagios 相结合，提供了一个用于架构即 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/06/shi-yong-testinfra-he-ansible-yan-zheng-fu-wu-qi-zhuang-tai.html" rel="bookmark"
+           title="Permalink to 使用 Testinfra 和 Ansible 验证服务器状态">使用 Testinfra 和 Ansible 验证服务器状态</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-06-06T08:29:32+02:00">
+                Published: Thu 06 June 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Clement Verna</p>
+<blockquote>
+<p>Testinfra 是一个功能强大的库，可用于编写测试来验证基础设施的状态。另外它与 Ansible 和 Nagios 相结合，提供了一个用于架构即代码 (IaC) 的简单解决方案。</p>
+</blockquote>
+<p><img alt="Terminal command prompt on orange background" src="/data/attachment/album/201906/06/082935coi444f4j7t43jo6.jpg" title="Terminal command prompt on orange background"></p>
+<p>根据设计，<a href="https://www.ansible.com/">Ansible</a> 传递机器的期望状态，以确保 Ansible 剧本或角色的内容部署到目标机器上。但是，如果你需要确保所有基础架构更改都在 Ansible 中，该怎么办？或者想随时验证服务器的状态？</p>
+<p><a href="https://testinfra.readthedocs.io/en/latest/">Testinfra</a> 是一个基础架构测试框架，它可以轻松编写单元测试来验证服务器的状态。它是一个 Python 库，使用强大的 <a href="https://pytest.org/">pytest</a> 测试引擎。</p>
+<h3>开始使用 Testinfra</h3>
+<p>可以使用 Python 包管理器（<code>pip</code>）和 Python 虚拟环境轻松安装 Testinfra。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python3<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>venv
+$<span class="w"> </span><span class="nb">source</span><span class="w"> </span>venv/bin/activate
+<span class="o">(</span>venv<span class="o">)</span><span class="w"> </span>$<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>testinfra
+</code></pre></div>
+
+<p>Testinfra 也可以通过 Fedora 和 CentOS 的 EPEL 仓库中使用。例如，在 CentOS 7 上，你可以使用以下命令安装它：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>epel-release
+$<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>python-testinfra
+</code></pre></div>
+
+<h4>一个简单的测试脚本</h4>
+<p>在 Testinfra 中编写测试很容易。使用你选择的代码编辑器，将以下内容添加到名为 <code>test_simple.py</code> 的文件中：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">testinfra</span>
+
+<span class="k">def</span> <span class="nf">test_os_release</span><span class="p">(</span><span class="n">host</span><span class="p">):</span>
+    <span class="k">assert</span> <span class="n">host</span><span class="o">.</span><span class="n">file</span><span class="p">(</span><span class="s2">&quot;/etc/os-release&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="s2">&quot;Fedora&quot;</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">test_sshd_inactive</span><span class="p">(</span><span class="n">host</span><span class="p">):</span>
+    <span class="k">assert</span> <span class="n">host</span><span class="o">.</span><span class="n">service</span><span class="p">(</span><span class="s2">&quot;sshd&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">is_running</span> <span class="ow">is</span> <span class="kc">False</span>
+</code></pre></div>
+
+<p>默认情况下，Testinfra 为测试用例提供了一个 <code>host</code> 对象，该对象能访问不同的辅助模块。例如，第一个测试使用 <code>file</code> 模块来验证主机上文件的内容，第二个测试用例使用 <code>service</code> 模块来检查 systemd 服务的状态。</p>
+<p>要在本机运行这些测试，请执行以下命令：</p>
+<div class="highlight"><pre><span></span><code><span class="p">(</span><span class="nx">venv</span><span class="p">)</span><span class="err">$</span><span class="w"> </span><span class="nx">pytest</span><span class="w"> </span><span class="nx">test_simple</span><span class="p">.</span><span class="nx">py</span>
+<span class="o">================================</span><span class="w"> </span><span class="nx">test</span><span class="w"> </span><span class="nx">session</span><span class="w"> </span><span class="nx">starts</span><span class="w"> </span><span class="o">================================</span>
+<span class="nx">platform</span><span class="w"> </span><span class="nx">linux</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="nx">Python</span><span class="w"> </span><span class="m m-Double">3.7.3</span><span class="p">,</span><span class="w"> </span><span class="nx">pytest</span><span class="o">-</span><span class="m m-Double">4.4.1</span><span class="p">,</span><span class="w"> </span><span class="nx">py</span><span class="o">-</span><span class="m m-Double">1.8.0</span><span class="p">,</span><span class="w"> </span><span class="nx">pluggy</span><span class="o">-</span><span class="m m-Double">0.9.0</span>
+<span class="nx">rootdir</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="nx">home</span><span class="o">/</span><span class="nx">cverna</span><span class="o">/</span><span class="nx">Documents</span><span class="o">/</span><span class="nx">Python</span><span class="o">/</span><span class="nx">testinfra</span>
+<span class="nx">plugins</span><span class="p">:</span><span class="w"> </span><span class="nx">testinfra</span><span class="o">-</span><span class="m m-Double">3.0.0</span>
+<span class="nx">collected</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="nx">items</span>
+<span class="nx">test_simple</span><span class="p">.</span><span class="nx">py</span><span class="w"> </span><span class="p">..</span>
+
+<span class="o">================================</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="nx">passed</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="m m-Double">0.05</span><span class="w"> </span><span class="nx">seconds</span><span class="w"> </span><span class="o">================================</span>
+</code></pre></div>
+
+<p>有关 Testinfra API 的完整列表，你可以参考<a href="https://testinfra.readthedocs.io/en/latest/modules.html#modules">文档</a>。</p>
+<h3>Testinfra 和 Ansible</h3>
+<p>Testinfra 支持的后端之一是 Ansible，这意味着 Testinfra 可以直接使用 Ansible 的清单文件和清单中定义的一组机器来对它们进行测试。</p>
+<p>我们使用以下清单文件作为示例：</p>
+<div class="highlight"><pre><span></span><code><span class="k">[web]</span>
+<span class="na">app-frontend01</span>
+<span class="na">app-frontend02</span>
+
+<span class="k">[database]</span>
+<span class="na">db-backend01</span>
+</code></pre></div>
+
+<p>我们希望确保我们的 Apache Web 服务器在 <code>app-frontend01</code> 和 <code>app-frontend02</code> 上运行。让我们在名为 <code>test_web.py</code> 的文件中编写测试：</p>
+<div class="highlight"><pre><span></span><code>def check_httpd_service(host):
+    &quot;&quot;&quot;Check that the httpd service is running on the host&quot;&quot;&quot;
+    assert host.service(&quot;httpd&quot;).is_running
+</code></pre></div>
+
+<p>要使用 Testinfra 和 Ansible 运行此测试，请使用以下命令：</p>
+<div class="highlight"><pre><span></span><code>(venv) $ pip install ansible
+(venv) $ py.test --hosts=web --ansible-inventory=inventory --connection=ansible test_web.py
+</code></pre></div>
+
+<p>在调用测试时，我们使用 Ansible 清单文件的 <code>[web]</code> 组作为目标计算机，并指定我们要使用 Ansible 作为连接后端。</p>
+<h4>使用 Ansible 模块</h4>
+<p>Testinfra 还为 Ansible 提供了一个很好的可用于测试的 API。该 Ansible 模块能够在测试中运行 Ansible 动作，并且能够轻松检查动作的状态。</p>
+<div class="highlight"><pre><span></span><code><span class="nx">def</span><span class="w"> </span><span class="nx">check_ansible_play</span><span class="p">(</span><span class="nx">host</span><span class="p">):</span>
+<span class="w">    </span><span class="s">&quot;&quot;&quot; </span>
+<span class="s">    Verify that a package is installed using Ansible</span>
+<span class="s">    package module</span>
+<span class="s">    &quot;&quot;&quot;</span>
+<span class="w">    </span><span class="nx">assert</span><span class="w"> </span><span class="k">not</span><span class="w"> </span><span class="nx">host</span><span class="p">.</span><span class="nx">ansible</span><span class="p">(</span><span class="s">&quot;package&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;name=httpd state=present&quot;</span><span class="p">)[</span><span class="s">&quot;changed&quot;</span><span class="p">]</span>
+</code></pre></div>
+
+<p>默认情况下，Ansible 的<a href="https://docs.ansible.com/ansible/playbooks_checkmode.html">检查模式</a>已启用，这意味着 Ansible 将报告在远程主机上执行动作时会发生的变化。</p>
+<h3>Testinfra 和 Nagios</h3>
+<p>现在我们可以轻松地运行测试来验证机器的状态，我们可以使用这些测试来触发监控系统上的警报。这是捕获意外的更改的好方法。</p>
+<p>Testinfra 提供了与 <a href="https://www.nagios.org/">Nagios</a> 的集成，它是一种流行的监控解决方案。默认情况下，Nagios 使用 <a href="https://en.wikipedia.org/wiki/Nagios#NRPE">NRPE</a> 插件对远程主机进行检查，但使用 Testinfra 可以直接从 Nagios 主控节点上运行测试。</p>
+<p>要使 Testinfra 输出与 Nagios 兼容，我们必须在触发测试时使用 <code>--nagios</code> 标志。我们还使用 <code>-qq</code> 这个 pytest 标志来启用 pytest 的静默模式，这样就不会显示所有测试细节。</p>
+<div class="highlight"><pre><span></span><code>(venv) $ py.test --hosts=web --ansible-inventory=inventory --connection=ansible --nagios -qq line test.py
+TESTINFRA OK - 1 passed, 0 failed, 0 skipped in 2.55 seconds
+</code></pre></div>
+
+<p>Testinfra 是一个功能强大的库，可用于编写测试以验证基础架构的状态。 另外与 Ansible 和 Nagios 相结合，提供了一个用于架构即代码 (IaC) 的简单解决方案。 它也是使用 <a href="https://github.com/ansible/molecule">Molecule</a> 开发 Ansible 角色过程中添加测试的关键组件。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

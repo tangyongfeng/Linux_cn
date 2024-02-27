@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>fdisk：Linux 下管理磁盘分区的利器</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Magesh Maruthamuthu 一块硬盘可以被划分成一个或多个逻辑磁盘，我们将其称作分区。我们对硬盘进行的划分信息被储存于建立在扇 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/02/fdisklinux-xia-guan-li-ci-pan-fen-qu-de-li-qi.html" rel="bookmark"
+           title="Permalink to fdisk：Linux 下管理磁盘分区的利器">fdisk：Linux 下管理磁盘分区的利器</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-02-04T18:06:00+01:00">
+                Published: Mon 04 February 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Magesh Maruthamuthu</p>
+<p><img alt="" src="/data/attachment/album/201902/04/180541pqhz7fmows9rphtc.jpg"></p>
+<p>一块硬盘可以被划分成一个或多个逻辑磁盘，我们将其称作分区。我们对硬盘进行的划分信息被储存于建立在扇区 0 的分区表（MBR 或 GPT）中。</p>
+<p>Linux 需要至少一个分区来当作根文件系统，所以我们不能在没有分区的情况下安装 Linux 系统。当我们创建一个分区时，我们必须将它格式化为一个适合的文件系统，否则我们就没办法往里面储存文件了。</p>
+<p>要在 Linux 中完成分区的相关工作，我们需要一些工具。Linux 下有很多可用的相关工具，我们曾介绍过 <a href="https://www.2daygeek.com/how-to-manage-disk-partitions-using-parted-command/">Parted 命令</a>。不过，今天我们的主角是 <code>fdisk</code>。</p>
+<p>人人都喜欢用 <code>fdisk</code>，它是 Linux 下管理磁盘分区的最佳利器之一。它可以操作最大 2TB 的分区。大量 Linux 管理员都喜欢使用这个工具，因为当下 LVM 和 SAN 的原因，并没有多少人会用到 2TB 以上的分区。并且这个工具被世界上许多的基础设施所使用。如果你还是想创建比 2TB 更大的分区，请使用 <code>parted</code> 命令 或 <code>cfdisk</code> 命令。</p>
+<p>对磁盘进行分区和创建文件系统是 Linux 管理员的日常。如果你在许多不同的环境中工作，你一定每天都会重复几次这项操作。</p>
+<h3>Linux 内核是如何理解硬盘的？</h3>
+<p>作为人类，我们可以很轻松地理解一些事情；但是电脑就不是这样了，它们需要合适的命名才能理解这些。</p>
+<p>在 Linux 中，外围设备都位于 <code>/dev</code> 挂载点，内核通过以下的方式理解硬盘：</p>
+<ul>
+<li><code>/dev/hdX[a-z]:</code> IDE 硬盘被命名为 hdX</li>
+<li><code>/dev/sdX[a-z]:</code> SCSI 硬盘被命名为 sdX</li>
+<li><code>/dev/xdX[a-z]:</code> XT 硬盘被命名为 xdX</li>
+<li><code>/dev/vdX[a-z]:</code> 虚拟硬盘被命名为 vdX</li>
+<li><code>/dev/fdN:</code> 软盘被命名为 fdN</li>
+<li><code>/dev/scdN or /dev/srN:</code> CD-ROM 被命名为 <code>/dev/scdN</code> 或 <code>/dev/srN</code></li>
+</ul>
+<h3>什么是 fdisk 命令？</h3>
+<p><code>fdisk</code> 的意思是 <ruby> 固定磁盘 <rt>  Fixed Disk </rt></ruby> 或 <ruby> 格式化磁盘 <rt>  Format Disk </rt></ruby>，它是命令行下允许用户对分区进行查看、创建、调整大小、删除、移动和复制的工具。它支持 MBR、Sun、SGI、BSD 分区表，但是它不支持 GUID 分区表（GPT）。它不是为操作大分区设计的。</p>
+<p><code>fdisk</code> 允许我们在每块硬盘上创建最多四个主分区。它们中的其中一个可以作为扩展分区，并下设多个逻辑分区。1-4 扇区作为主分区被保留，逻辑分区从扇区 5 开始。</p>
+<p><img alt="" src="/data/attachment/album/201902/04/180655pj1kd1y157j7jky5.png"></p>
+<h3>如何在 Linux 下安装 fdisk？</h3>
+<p><code>fdisk</code> 作为核心组件内置于 Linux 中，所以你不必手动安装它。</p>
+<h3>如何用 fdisk 列出可用磁盘？</h3>
+<p>在执行操作之前，我们必须知道的是哪些磁盘被加入了系统。要想列出所有可用的磁盘，请执行下文的命令。这个命令将会列出磁盘名称、分区数量、分区表类型、磁盘识别代号、分区 ID 和分区类型。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>fdisk<span class="w"> </span>-l
+Disk<span class="w"> </span>/dev/sda:<span class="w"> </span><span class="m">30</span><span class="w"> </span>GiB,<span class="w"> </span><span class="m">32212254720</span><span class="w"> </span>bytes,<span class="w"> </span><span class="m">62914560</span><span class="w"> </span>sectors
+Units:<span class="w"> </span>sectors<span class="w"> </span>of<span class="w"> </span><span class="m">1</span><span class="w"> </span>*<span class="w"> </span><span class="nv">512</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+Sector<span class="w"> </span>size<span class="w"> </span><span class="o">(</span>logical/physical<span class="o">)</span>:<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes<span class="w"> </span>/<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+I/O<span class="w"> </span>size<span class="w"> </span><span class="o">(</span>minimum/optimal<span class="o">)</span>:<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes<span class="w"> </span>/<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+Disklabel<span class="w"> </span>type:<span class="w"> </span>dos
+Disk<span class="w"> </span>identifier:<span class="w"> </span>0xeab59449
+
+Device<span class="w">     </span>Boot<span class="w">    </span>Start<span class="w">      </span>End<span class="w">  </span>Sectors<span class="w"> </span>Size<span class="w"> </span>Id<span class="w"> </span>Type
+/dev/sda1<span class="w">  </span>*<span class="w">    </span><span class="m">20973568</span><span class="w"> </span><span class="m">62914559</span><span class="w"> </span><span class="m">41940992</span><span class="w">  </span>20G<span class="w"> </span><span class="m">83</span><span class="w"> </span>Linux
+
+
+Disk<span class="w"> </span>/dev/sdb:<span class="w"> </span><span class="m">10</span><span class="w"> </span>GiB,<span class="w"> </span><span class="m">10737418240</span><span class="w"> </span>bytes,<span class="w"> </span><span class="m">20971520</span><span class="w"> </span>sectors
+Units:<span class="w"> </span>sectors<span class="w"> </span>of<span class="w"> </span><span class="m">1</span><span class="w"> </span>*<span class="w"> </span><span class="nv">512</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+Sector<span class="w"> </span>size<span class="w"> </span><span class="o">(</span>logical/physical<span class="o">)</span>:<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes<span class="w"> </span>/<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+I/O<span class="w"> </span>size<span class="w"> </span><span class="o">(</span>minimum/optimal<span class="o">)</span>:<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes<span class="w"> </span>/<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+
+
+Disk<span class="w"> </span>/dev/sdc:<span class="w"> </span><span class="m">10</span><span class="w"> </span>GiB,<span class="w"> </span><span class="m">10737418240</span><span class="w"> </span>bytes,<span class="w"> </span><span class="m">20971520</span><span class="w"> </span>sectors
+Units:<span class="w"> </span>sectors<span class="w"> </span>of<span class="w"> </span><span class="m">1</span><span class="w"> </span>*<span class="w"> </span><span class="nv">512</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+Sector<span class="w"> </span>size<span class="w"> </span><span class="o">(</span>logical/physical<span class="o">)</span>:<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes<span class="w"> </span>/<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+I/O<span class="w"> </span>size<span class="w"> </span><span class="o">(</span>minimum/optimal<span class="o">)</span>:<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes<span class="w"> </span>/<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+
+
+Disk<span class="w"> </span>/dev/sdd:<span class="w"> </span><span class="m">10</span><span class="w"> </span>GiB,<span class="w"> </span><span class="m">10737418240</span><span class="w"> </span>bytes,<span class="w"> </span><span class="m">20971520</span><span class="w"> </span>sectors
+Units:<span class="w"> </span>sectors<span class="w"> </span>of<span class="w"> </span><span class="m">1</span><span class="w"> </span>*<span class="w"> </span><span class="nv">512</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+Sector<span class="w"> </span>size<span class="w"> </span><span class="o">(</span>logical/physical<span class="o">)</span>:<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes<span class="w"> </span>/<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+I/O<span class="w"> </span>size<span class="w"> </span><span class="o">(</span>minimum/optimal<span class="o">)</span>:<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes<span class="w"> </span>/<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+
+
+Disk<span class="w"> </span>/dev/sde:<span class="w"> </span><span class="m">10</span><span class="w"> </span>GiB,<span class="w"> </span><span class="m">10737418240</span><span class="w"> </span>bytes,<span class="w"> </span><span class="m">20971520</span><span class="w"> </span>sectors
+Units:<span class="w"> </span>sectors<span class="w"> </span>of<span class="w"> </span><span class="m">1</span><span class="w"> </span>*<span class="w"> </span><span class="nv">512</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+Sector<span class="w"> </span>size<span class="w"> </span><span class="o">(</span>logical/physical<span class="o">)</span>:<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes<span class="w"> </span>/<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+I/O<span class="w"> </span>size<span class="w"> </span><span class="o">(</span>minimum/optimal<span class="o">)</span>:<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes<span class="w"> </span>/<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+</code></pre></div>
+
+<h3>如何使用 fdisk 列出特定分区信息？</h3>
+<p>如果你希望查看指定分区的信息，请使用以下命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>fdisk<span class="w"> </span>-l<span class="w"> </span>/dev/sda
+Disk<span class="w"> </span>/dev/sda:<span class="w"> </span><span class="m">30</span><span class="w"> </span>GiB,<span class="w"> </span><span class="m">32212254720</span><span class="w"> </span>bytes,<span class="w"> </span><span class="m">62914560</span><span class="w"> </span>sectors
+Units:<span class="w"> </span>sectors<span class="w"> </span>of<span class="w"> </span><span class="m">1</span><span class="w"> </span>*<span class="w"> </span><span class="nv">512</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+Sector<span class="w"> </span>size<span class="w"> </span><span class="o">(</span>logical/physical<span class="o">)</span>:<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes<span class="w"> </span>/<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+I/O<span class="w"> </span>size<span class="w"> </span><span class="o">(</span>minimum/optimal<span class="o">)</span>:<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes<span class="w"> </span>/<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+Disklabel<span class="w"> </span>type:<span class="w"> </span>dos
+Disk<span class="w"> </span>identifier:<span class="w"> </span>0xeab59449
+
+Device<span class="w">     </span>Boot<span class="w">    </span>Start<span class="w">      </span>End<span class="w">  </span>Sectors<span class="w"> </span>Size<span class="w"> </span>Id<span class="w"> </span>Type
+/dev/sda1<span class="w">  </span>*<span class="w">    </span><span class="m">20973568</span><span class="w"> </span><span class="m">62914559</span><span class="w"> </span><span class="m">41940992</span><span class="w">  </span>20G<span class="w"> </span><span class="m">83</span><span class="w"> </span>Linux
+</code></pre></div>
+
+<h3>如何列出 fdisk 所有的可用操作？</h3>
+<p>在 <code>fdisk</code> 中敲击 <code>m</code>，它便会列出所有可用操作：</p>
+<div class="highlight"><pre><span></span><code><span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">fdisk</span><span class="w"> </span><span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="n">sdc</span>
+
+<span class="n">Welcome</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">fdisk</span><span class="w"> </span><span class="p">(</span><span class="n">util</span><span class="o">-</span><span class="n">linux</span><span class="w"> </span><span class="mf">2.30</span><span class="o">.</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span>
+<span class="n">Changes</span><span class="w"> </span><span class="n">will</span><span class="w"> </span><span class="n">remain</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">memory</span><span class="w"> </span><span class="n">only</span><span class="p">,</span><span class="w"> </span><span class="n">until</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="n">decide</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">write</span><span class="w"> </span><span class="n">them</span><span class="o">.</span>
+<span class="n">Be</span><span class="w"> </span><span class="n">careful</span><span class="w"> </span><span class="n">before</span><span class="w"> </span><span class="n">using</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">write</span><span class="w"> </span><span class="n">command</span><span class="o">.</span>
+
+<span class="n">Device</span><span class="w"> </span><span class="n">does</span><span class="w"> </span><span class="ow">not</span><span class="w"> </span><span class="n">contain</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">recognized</span><span class="w"> </span><span class="n">partition</span><span class="w"> </span><span class="n">table</span><span class="o">.</span>
+<span class="n">Created</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">new</span><span class="w"> </span><span class="n">DOS</span><span class="w"> </span><span class="n">disklabel</span><span class="w"> </span><span class="n">with</span><span class="w"> </span><span class="n">disk</span><span class="w"> </span><span class="n">identifier</span><span class="w"> </span><span class="mh">0xe944b373</span><span class="o">.</span>
+
+<span class="n">Command</span><span class="w"> </span><span class="p">(</span><span class="n">m</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">help</span><span class="p">):</span><span class="w"> </span><span class="n">m</span>
+
+<span class="n">Help</span><span class="p">:</span>
+
+<span class="w">  </span><span class="n">DOS</span><span class="w"> </span><span class="p">(</span><span class="n">MBR</span><span class="p">)</span>
+<span class="w">   </span><span class="n">a</span><span class="w">   </span><span class="n">toggle</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">bootable</span><span class="w"> </span><span class="n">flag</span>
+<span class="w">   </span><span class="n">b</span><span class="w">   </span><span class="n">edit</span><span class="w"> </span><span class="n">nested</span><span class="w"> </span><span class="n">BSD</span><span class="w"> </span><span class="n">disklabel</span>
+<span class="w">   </span><span class="n">c</span><span class="w">   </span><span class="n">toggle</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">dos</span><span class="w"> </span><span class="n">compatibility</span><span class="w"> </span><span class="n">flag</span>
+
+<span class="w">  </span><span class="n">Generic</span>
+<span class="w">   </span><span class="n">d</span><span class="w">   </span><span class="n">delete</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">partition</span>
+<span class="w">   </span><span class="n">F</span><span class="w">   </span><span class="n">list</span><span class="w"> </span><span class="n">free</span><span class="w"> </span><span class="n">unpartitioned</span><span class="w"> </span><span class="n">space</span>
+<span class="w">   </span><span class="n">l</span><span class="w">   </span><span class="n">list</span><span class="w"> </span><span class="n">known</span><span class="w"> </span><span class="n">partition</span><span class="w"> </span><span class="n">types</span>
+<span class="w">   </span><span class="n">n</span><span class="w">   </span><span class="n">add</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">new</span><span class="w"> </span><span class="n">partition</span>
+<span class="w">   </span><span class="n">p</span><span class="w">   </span><span class="nb">print</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">partition</span><span class="w"> </span><span class="n">table</span>
+<span class="w">   </span><span class="n">t</span><span class="w">   </span><span class="n">change</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">partition</span><span class="w"> </span><span class="n">type</span>
+<span class="w">   </span><span class="n">v</span><span class="w">   </span><span class="n">verify</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">partition</span><span class="w"> </span><span class="n">table</span>
+<span class="w">   </span><span class="n">i</span><span class="w">   </span><span class="nb">print</span><span class="w"> </span><span class="n">information</span><span class="w"> </span><span class="n">about</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">partition</span>
+
+<span class="w">  </span><span class="n">Misc</span>
+<span class="w">   </span><span class="n">m</span><span class="w">   </span><span class="nb">print</span><span class="w"> </span><span class="n">this</span><span class="w"> </span><span class="n">menu</span>
+<span class="w">   </span><span class="n">u</span><span class="w">   </span><span class="n">change</span><span class="w"> </span><span class="n">display</span><span class="o">/</span><span class="n">entry</span><span class="w"> </span><span class="n">units</span>
+<span class="w">   </span><span class="n">x</span><span class="w">   </span><span class="n">extra</span><span class="w"> </span><span class="n">functionality</span><span class="w"> </span><span class="p">(</span><span class="n">experts</span><span class="w"> </span><span class="n">only</span><span class="p">)</span>
+
+<span class="w">  </span><span class="n">Script</span>
+<span class="w">   </span><span class="n">I</span><span class="w">   </span><span class="nb">load</span><span class="w"> </span><span class="n">disk</span><span class="w"> </span><span class="n">layout</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="n">sfdisk</span><span class="w"> </span><span class="n">script</span><span class="w"> </span><span class="n">file</span>
+<span class="w">   </span><span class="n">O</span><span class="w">   </span><span class="n">dump</span><span class="w"> </span><span class="n">disk</span><span class="w"> </span><span class="n">layout</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">sfdisk</span><span class="w"> </span><span class="n">script</span><span class="w"> </span><span class="n">file</span>
+
+<span class="w">  </span><span class="n">Save</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">Exit</span>
+<span class="w">   </span><span class="n">w</span><span class="w">   </span><span class="n">write</span><span class="w"> </span><span class="n">table</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">disk</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">exit</span>
+<span class="w">   </span><span class="n">q</span><span class="w">   </span><span class="n">quit</span><span class="w"> </span><span class="n">without</span><span class="w"> </span><span class="n">saving</span><span class="w"> </span><span class="n">changes</span>
+
+<span class="w">  </span><span class="n">Create</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">new</span><span class="w"> </span><span class="n">label</span>
+<span class="w">   </span><span class="n">g</span><span class="w">   </span><span class="n">create</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">new</span><span class="w"> </span><span class="n">empty</span><span class="w"> </span><span class="n">GPT</span><span class="w"> </span><span class="n">partition</span><span class="w"> </span><span class="n">table</span>
+<span class="w">   </span><span class="n">G</span><span class="w">   </span><span class="n">create</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">new</span><span class="w"> </span><span class="n">empty</span><span class="w"> </span><span class="n">SGI</span><span class="w"> </span><span class="p">(</span><span class="n">IRIX</span><span class="p">)</span><span class="w"> </span><span class="n">partition</span><span class="w"> </span><span class="n">table</span>
+<span class="w">   </span><span class="n">o</span><span class="w">   </span><span class="n">create</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">new</span><span class="w"> </span><span class="n">empty</span><span class="w"> </span><span class="n">DOS</span><span class="w"> </span><span class="n">partition</span><span class="w"> </span><span class="n">table</span>
+<span class="w">   </span><span class="n">s</span><span class="w">   </span><span class="n">create</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">new</span><span class="w"> </span><span class="n">empty</span><span class="w"> </span><span class="n">Sun</span><span class="w"> </span><span class="n">partition</span><span class="w"> </span><span class="n">table</span>
+</code></pre></div>
+
+<h3>如何使用 fdisk 列出分区类型？</h3>
+<p>在 <code>fdisk</code> 中敲击 <code>l</code>，它便会列出所有可用分区的类型：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>fdisk<span class="w"> </span>/dev/sdc
+
+Welcome<span class="w"> </span>to<span class="w"> </span>fdisk<span class="w"> </span><span class="o">(</span>util-linux<span class="w"> </span><span class="m">2</span>.30.1<span class="o">)</span>.
+Changes<span class="w"> </span>will<span class="w"> </span>remain<span class="w"> </span><span class="k">in</span><span class="w"> </span>memory<span class="w"> </span>only,<span class="w"> </span><span class="k">until</span><span class="w"> </span>you<span class="w"> </span>decide<span class="w"> </span>to<span class="w"> </span>write<span class="w"> </span>them.
+Be<span class="w"> </span>careful<span class="w"> </span>before<span class="w"> </span>using<span class="w"> </span>the<span class="w"> </span>write<span class="w"> </span>command.
+
+Device<span class="w"> </span>does<span class="w"> </span>not<span class="w"> </span>contain<span class="w"> </span>a<span class="w"> </span>recognized<span class="w"> </span>partition<span class="w"> </span>table.
+Created<span class="w"> </span>a<span class="w"> </span>new<span class="w"> </span>DOS<span class="w"> </span>disklabel<span class="w"> </span>with<span class="w"> </span>disk<span class="w"> </span>identifier<span class="w"> </span>0x9ffd00db.
+
+Command<span class="w"> </span><span class="o">(</span>m<span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nb">help</span><span class="o">)</span>:<span class="w"> </span>l
+
+<span class="w"> </span><span class="m">0</span><span class="w">  </span>Empty<span class="w">           </span><span class="m">24</span><span class="w">  </span>NEC<span class="w"> </span>DOS<span class="w">         </span><span class="m">81</span><span class="w">  </span>Minix<span class="w"> </span>/<span class="w"> </span>old<span class="w"> </span>Lin<span class="w"> </span>bf<span class="w">  </span>Solaris<span class="w">        </span>
+<span class="w"> </span><span class="m">1</span><span class="w">  </span>FAT12<span class="w">           </span><span class="m">27</span><span class="w">  </span>Hidden<span class="w"> </span>NTFS<span class="w"> </span>Win<span class="w"> </span><span class="m">82</span><span class="w">  </span>Linux<span class="w"> </span>swap<span class="w"> </span>/<span class="w"> </span>So<span class="w"> </span>c1<span class="w">  </span>DRDOS/sec<span class="w"> </span><span class="o">(</span>FAT-
+<span class="w"> </span><span class="m">2</span><span class="w">  </span>XENIX<span class="w"> </span>root<span class="w">      </span><span class="m">39</span><span class="w">  </span>Plan<span class="w"> </span><span class="m">9</span><span class="w">          </span><span class="m">83</span><span class="w">  </span>Linux<span class="w">           </span>c4<span class="w">  </span>DRDOS/sec<span class="w"> </span><span class="o">(</span>FAT-
+<span class="w"> </span><span class="m">3</span><span class="w">  </span>XENIX<span class="w"> </span>usr<span class="w">       </span>3c<span class="w">  </span>PartitionMagic<span class="w">  </span><span class="m">84</span><span class="w">  </span>OS/2<span class="w"> </span>hidden<span class="w"> </span>or<span class="w">  </span>c6<span class="w">  </span>DRDOS/sec<span class="w"> </span><span class="o">(</span>FAT-
+<span class="w"> </span><span class="m">4</span><span class="w">  </span>FAT16<span class="w"> </span>&lt;32M<span class="w">      </span><span class="m">40</span><span class="w">  </span>Venix<span class="w"> </span><span class="m">80286</span><span class="w">     </span><span class="m">85</span><span class="w">  </span>Linux<span class="w"> </span>extended<span class="w">  </span>c7<span class="w">  </span>Syrinx<span class="w">         </span>
+<span class="w"> </span><span class="m">5</span><span class="w">  </span>Extended<span class="w">        </span><span class="m">41</span><span class="w">  </span>PPC<span class="w"> </span>PReP<span class="w"> </span>Boot<span class="w">   </span><span class="m">86</span><span class="w">  </span>NTFS<span class="w"> </span>volume<span class="w"> </span><span class="nb">set</span><span class="w"> </span>da<span class="w">  </span>Non-FS<span class="w"> </span>data<span class="w">    </span>
+<span class="w"> </span><span class="m">6</span><span class="w">  </span>FAT16<span class="w">           </span><span class="m">42</span><span class="w">  </span>SFS<span class="w">             </span><span class="m">87</span><span class="w">  </span>NTFS<span class="w"> </span>volume<span class="w"> </span><span class="nb">set</span><span class="w"> </span>db<span class="w">  </span>CP/M<span class="w"> </span>/<span class="w"> </span>CTOS<span class="w"> </span>/<span class="w"> </span>.
+<span class="w"> </span><span class="m">7</span><span class="w">  </span>HPFS/NTFS/exFAT<span class="w"> </span>4d<span class="w">  </span>QNX4.x<span class="w">          </span><span class="m">88</span><span class="w">  </span>Linux<span class="w"> </span>plaintext<span class="w"> </span>de<span class="w">  </span>Dell<span class="w"> </span>Utility<span class="w">   </span>
+<span class="w"> </span><span class="m">8</span><span class="w">  </span>AIX<span class="w">             </span>4e<span class="w">  </span>QNX4.x<span class="w"> </span>2nd<span class="w"> </span>part<span class="w"> </span>8e<span class="w">  </span>Linux<span class="w"> </span>LVM<span class="w">       </span>df<span class="w">  </span>BootIt<span class="w">         </span>
+<span class="w"> </span><span class="m">9</span><span class="w">  </span>AIX<span class="w"> </span>bootable<span class="w">    </span>4f<span class="w">  </span>QNX4.x<span class="w"> </span>3rd<span class="w"> </span>part<span class="w"> </span><span class="m">93</span><span class="w">  </span>Amoeba<span class="w">          </span>e1<span class="w">  </span>DOS<span class="w"> </span>access<span class="w">     </span>
+<span class="w"> </span>a<span class="w">  </span>OS/2<span class="w"> </span>Boot<span class="w"> </span>Manag<span class="w"> </span><span class="m">50</span><span class="w">  </span>OnTrack<span class="w"> </span>DM<span class="w">      </span><span class="m">94</span><span class="w">  </span>Amoeba<span class="w"> </span>BBT<span class="w">      </span>e3<span class="w">  </span>DOS<span class="w"> </span>R/O<span class="w">        </span>
+<span class="w"> </span>b<span class="w">  </span>W95<span class="w"> </span>FAT32<span class="w">       </span><span class="m">51</span><span class="w">  </span>OnTrack<span class="w"> </span>DM6<span class="w"> </span>Aux<span class="w"> </span>9f<span class="w">  </span>BSD/OS<span class="w">          </span>e4<span class="w">  </span>SpeedStor<span class="w">      </span>
+<span class="w"> </span>c<span class="w">  </span>W95<span class="w"> </span>FAT32<span class="w"> </span><span class="o">(</span>LBA<span class="o">)</span><span class="w"> </span><span class="m">52</span><span class="w">  </span>CP/M<span class="w">            </span>a0<span class="w">  </span>IBM<span class="w"> </span>Thinkpad<span class="w"> </span>hi<span class="w"> </span>ea<span class="w">  </span>Rufus<span class="w"> </span>alignment
+<span class="w"> </span>e<span class="w">  </span>W95<span class="w"> </span>FAT16<span class="w"> </span><span class="o">(</span>LBA<span class="o">)</span><span class="w"> </span><span class="m">53</span><span class="w">  </span>OnTrack<span class="w"> </span>DM6<span class="w"> </span>Aux<span class="w"> </span>a5<span class="w">  </span>FreeBSD<span class="w">         </span>eb<span class="w">  </span>BeOS<span class="w"> </span>fs<span class="w">        </span>
+<span class="w"> </span>f<span class="w">  </span>W95<span class="w"> </span>Ext<span class="err">&#39;</span>d<span class="w"> </span><span class="o">(</span>LBA<span class="o">)</span><span class="w"> </span><span class="m">54</span><span class="w">  </span>OnTrackDM6<span class="w">      </span>a6<span class="w">  </span>OpenBSD<span class="w">         </span>ee<span class="w">  </span>GPT<span class="w">            </span>
+<span class="m">10</span><span class="w">  </span>OPUS<span class="w">            </span><span class="m">55</span><span class="w">  </span>EZ-Drive<span class="w">        </span>a7<span class="w">  </span>NeXTSTEP<span class="w">        </span>ef<span class="w">  </span>EFI<span class="w"> </span><span class="o">(</span>FAT-12/16/
+<span class="m">11</span><span class="w">  </span>Hidden<span class="w"> </span>FAT12<span class="w">    </span><span class="m">56</span><span class="w">  </span>Golden<span class="w"> </span>Bow<span class="w">      </span>a8<span class="w">  </span>Darwin<span class="w"> </span>UFS<span class="w">      </span>f0<span class="w">  </span>Linux/PA-RISC<span class="w"> </span>b
+<span class="m">12</span><span class="w">  </span>Compaq<span class="w"> </span>diagnost<span class="w"> </span>5c<span class="w">  </span>Priam<span class="w"> </span>Edisk<span class="w">     </span>a9<span class="w">  </span>NetBSD<span class="w">          </span>f1<span class="w">  </span>SpeedStor<span class="w">      </span>
+<span class="m">14</span><span class="w">  </span>Hidden<span class="w"> </span>FAT16<span class="w"> </span>&lt;<span class="m">3</span><span class="w"> </span><span class="m">61</span><span class="w">  </span>SpeedStor<span class="w">       </span>ab<span class="w">  </span>Darwin<span class="w"> </span>boot<span class="w">     </span>f4<span class="w">  </span>SpeedStor<span class="w">      </span>
+<span class="m">16</span><span class="w">  </span>Hidden<span class="w"> </span>FAT16<span class="w">    </span><span class="m">63</span><span class="w">  </span>GNU<span class="w"> </span>HURD<span class="w"> </span>or<span class="w"> </span>Sys<span class="w"> </span>af<span class="w">  </span>HFS<span class="w"> </span>/<span class="w"> </span>HFS+<span class="w">      </span>f2<span class="w">  </span>DOS<span class="w"> </span>secondary<span class="w">  </span>
+<span class="m">17</span><span class="w">  </span>Hidden<span class="w"> </span>HPFS/NTF<span class="w"> </span><span class="m">64</span><span class="w">  </span>Novell<span class="w"> </span>Netware<span class="w">  </span>b7<span class="w">  </span>BSDI<span class="w"> </span>fs<span class="w">         </span>fb<span class="w">  </span>VMware<span class="w"> </span>VMFS<span class="w">    </span>
+<span class="m">18</span><span class="w">  </span>AST<span class="w"> </span>SmartSleep<span class="w">  </span><span class="m">65</span><span class="w">  </span>Novell<span class="w"> </span>Netware<span class="w">  </span>b8<span class="w">  </span>BSDI<span class="w"> </span>swap<span class="w">       </span><span class="nb">fc</span><span class="w">  </span>VMware<span class="w"> </span>VMKCORE<span class="w"> </span>
+1b<span class="w">  </span>Hidden<span class="w"> </span>W95<span class="w"> </span>FAT3<span class="w"> </span><span class="m">70</span><span class="w">  </span>DiskSecure<span class="w"> </span>Mult<span class="w"> </span>bb<span class="w">  </span>Boot<span class="w"> </span>Wizard<span class="w"> </span>hid<span class="w"> </span>fd<span class="w">  </span>Linux<span class="w"> </span>raid<span class="w"> </span>auto
+1c<span class="w">  </span>Hidden<span class="w"> </span>W95<span class="w"> </span>FAT3<span class="w"> </span><span class="m">75</span><span class="w">  </span>PC/IX<span class="w">           </span>bc<span class="w">  </span>Acronis<span class="w"> </span>FAT32<span class="w"> </span>L<span class="w"> </span>fe<span class="w">  </span>LANstep<span class="w">        </span>
+1e<span class="w">  </span>Hidden<span class="w"> </span>W95<span class="w"> </span>FAT1<span class="w"> </span><span class="m">80</span><span class="w">  </span>Old<span class="w"> </span>Minix<span class="w">       </span>be<span class="w">  </span>Solaris<span class="w"> </span>boot<span class="w">    </span>ff<span class="w">  </span>BBT
+</code></pre></div>
+
+<h3>如何使用 fdisk 创建一个磁盘分区？</h3>
+<p>如果你希望新建磁盘分区，请参考下面的步骤。比如我希望在 <code>/dev/sdc</code> 中新建四个分区（三个主分区和一个扩展分区），只需要执行下文的命令。</p>
+<p>首先，请在操作 “First sector” 的时候先按下回车，然后在 “Last sector” 中输入你希望创建分区的大小（可以在数字后面加 KB、MB、G 和 TB）。例如，你希望为这个分区扩容 1GB，就应该在 “Last sector” 中输入 <code>+1G</code>。当你创建三个分区之后，<code>fdisk</code> 默认会将分区类型设为扩展分区，如果你希望创建第四个主分区，请输入 <code>p</code> 来替代它的默认值 <code>e</code>。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>fdisk<span class="w"> </span>/dev/sdc
+
+Welcome<span class="w"> </span>to<span class="w"> </span>fdisk<span class="w"> </span><span class="o">(</span>util-linux<span class="w"> </span><span class="m">2</span>.30.1<span class="o">)</span>.
+Changes<span class="w"> </span>will<span class="w"> </span>remain<span class="w"> </span><span class="k">in</span><span class="w"> </span>memory<span class="w"> </span>only,<span class="w"> </span><span class="k">until</span><span class="w"> </span>you<span class="w"> </span>decide<span class="w"> </span>to<span class="w"> </span>write<span class="w"> </span>them.
+Be<span class="w"> </span>careful<span class="w"> </span>before<span class="w"> </span>using<span class="w"> </span>the<span class="w"> </span>write<span class="w"> </span>command.
+
+
+Command<span class="w"> </span><span class="o">(</span>m<span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nb">help</span><span class="o">)</span>:<span class="w"> </span>n
+Partition<span class="w"> </span><span class="nb">type</span>
+<span class="w">   </span>p<span class="w">   </span>primary<span class="w"> </span><span class="o">(</span><span class="m">0</span><span class="w"> </span>primary,<span class="w"> </span><span class="m">0</span><span class="w"> </span>extended,<span class="w"> </span><span class="m">4</span><span class="w"> </span>free<span class="o">)</span>
+<span class="w">   </span>e<span class="w">   </span>extended<span class="w"> </span><span class="o">(</span>container<span class="w"> </span><span class="k">for</span><span class="w"> </span>logical<span class="w"> </span>partitions<span class="o">)</span>
+Select<span class="w"> </span><span class="o">(</span>default<span class="w"> </span>p<span class="o">)</span>:<span class="w"> </span>Enter
+
+Using<span class="w"> </span>default<span class="w"> </span>response<span class="w"> </span>p.
+Partition<span class="w"> </span>number<span class="w"> </span><span class="o">(</span><span class="m">1</span>-4,<span class="w"> </span>default<span class="w"> </span><span class="m">1</span><span class="o">)</span>:<span class="w"> </span>Enter
+First<span class="w"> </span>sector<span class="w"> </span><span class="o">(</span><span class="m">2048</span>-20971519,<span class="w"> </span>default<span class="w"> </span><span class="m">2048</span><span class="o">)</span>:<span class="w"> </span>Enter
+Last<span class="w"> </span>sector,<span class="w"> </span>+sectors<span class="w"> </span>or<span class="w"> </span>+size<span class="o">{</span>K,M,G,T,P<span class="o">}</span><span class="w"> </span><span class="o">(</span><span class="m">2048</span>-20971519,<span class="w"> </span>default<span class="w"> </span><span class="m">20971519</span><span class="o">)</span>:<span class="w"> </span>+1G
+
+Created<span class="w"> </span>a<span class="w"> </span>new<span class="w"> </span>partition<span class="w"> </span><span class="m">1</span><span class="w"> </span>of<span class="w"> </span><span class="nb">type</span><span class="w"> </span><span class="s1">&#39;Linux&#39;</span><span class="w"> </span>and<span class="w"> </span>of<span class="w"> </span>size<span class="w"> </span><span class="m">1</span><span class="w"> </span>GiB.
+
+Command<span class="w"> </span><span class="o">(</span>m<span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nb">help</span><span class="o">)</span>:<span class="w"> </span>p
+Disk<span class="w"> </span>/dev/sdc:<span class="w"> </span><span class="m">10</span><span class="w"> </span>GiB,<span class="w"> </span><span class="m">10737418240</span><span class="w"> </span>bytes,<span class="w"> </span><span class="m">20971520</span><span class="w"> </span>sectors
+Units:<span class="w"> </span>sectors<span class="w"> </span>of<span class="w"> </span><span class="m">1</span><span class="w"> </span>*<span class="w"> </span><span class="nv">512</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+Sector<span class="w"> </span>size<span class="w"> </span><span class="o">(</span>logical/physical<span class="o">)</span>:<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes<span class="w"> </span>/<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+I/O<span class="w"> </span>size<span class="w"> </span><span class="o">(</span>minimum/optimal<span class="o">)</span>:<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes<span class="w"> </span>/<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+Disklabel<span class="w"> </span>type:<span class="w"> </span>dos
+Disk<span class="w"> </span>identifier:<span class="w"> </span>0x8cc8f9e5
+
+Device<span class="w">     </span>Boot<span class="w"> </span>Start<span class="w">     </span>End<span class="w"> </span>Sectors<span class="w"> </span>Size<span class="w"> </span>Id<span class="w"> </span>Type
+/dev/sdc1<span class="w">        </span><span class="m">2048</span><span class="w"> </span><span class="m">2099199</span><span class="w"> </span><span class="m">2097152</span><span class="w">   </span>1G<span class="w"> </span><span class="m">83</span><span class="w"> </span>Linux
+
+Command<span class="w"> </span><span class="o">(</span>m<span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nb">help</span><span class="o">)</span>:<span class="w"> </span>w
+The<span class="w"> </span>partition<span class="w"> </span>table<span class="w"> </span>has<span class="w"> </span>been<span class="w"> </span>altered.
+Calling<span class="w"> </span>ioctl<span class="o">()</span><span class="w"> </span>to<span class="w"> </span>re-read<span class="w"> </span>partition<span class="w"> </span>table.
+Syncing<span class="w"> </span>disks.
+</code></pre></div>
+
+<h3>如何使用 fdisk 创建扩展分区？</h3>
+<p>请注意，创建扩展分区时，你应该使用剩下的所有空间，以便之后在扩展分区下创建逻辑分区。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>fdisk<span class="w"> </span>/dev/sdc
+
+Welcome<span class="w"> </span>to<span class="w"> </span>fdisk<span class="w"> </span><span class="o">(</span>util-linux<span class="w"> </span><span class="m">2</span>.30.1<span class="o">)</span>.
+Changes<span class="w"> </span>will<span class="w"> </span>remain<span class="w"> </span><span class="k">in</span><span class="w"> </span>memory<span class="w"> </span>only,<span class="w"> </span><span class="k">until</span><span class="w"> </span>you<span class="w"> </span>decide<span class="w"> </span>to<span class="w"> </span>write<span class="w"> </span>them.
+Be<span class="w"> </span>careful<span class="w"> </span>before<span class="w"> </span>using<span class="w"> </span>the<span class="w"> </span>write<span class="w"> </span>command.
+
+
+Command<span class="w"> </span><span class="o">(</span>m<span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nb">help</span><span class="o">)</span>:<span class="w"> </span>n
+Partition<span class="w"> </span><span class="nb">type</span>
+<span class="w">   </span>p<span class="w">   </span>primary<span class="w"> </span><span class="o">(</span><span class="m">3</span><span class="w"> </span>primary,<span class="w"> </span><span class="m">0</span><span class="w"> </span>extended,<span class="w"> </span><span class="m">1</span><span class="w"> </span>free<span class="o">)</span>
+<span class="w">   </span>e<span class="w">   </span>extended<span class="w"> </span><span class="o">(</span>container<span class="w"> </span><span class="k">for</span><span class="w"> </span>logical<span class="w"> </span>partitions<span class="o">)</span>
+Select<span class="w"> </span><span class="o">(</span>default<span class="w"> </span>e<span class="o">)</span>:<span class="w"> </span>Enter
+
+Using<span class="w"> </span>default<span class="w"> </span>response<span class="w"> </span>e.
+Selected<span class="w"> </span>partition<span class="w"> </span><span class="m">4</span>
+First<span class="w"> </span>sector<span class="w"> </span><span class="o">(</span><span class="m">6293504</span>-20971519,<span class="w"> </span>default<span class="w"> </span><span class="m">6293504</span><span class="o">)</span>:<span class="w"> </span>Enter
+Last<span class="w"> </span>sector,<span class="w"> </span>+sectors<span class="w"> </span>or<span class="w"> </span>+size<span class="o">{</span>K,M,G,T,P<span class="o">}</span><span class="w"> </span><span class="o">(</span><span class="m">6293504</span>-20971519,<span class="w"> </span>default<span class="w"> </span><span class="m">20971519</span><span class="o">)</span>:<span class="w"> </span>Enter
+
+Created<span class="w"> </span>a<span class="w"> </span>new<span class="w"> </span>partition<span class="w"> </span><span class="m">4</span><span class="w"> </span>of<span class="w"> </span><span class="nb">type</span><span class="w"> </span><span class="s1">&#39;Extended&#39;</span><span class="w"> </span>and<span class="w"> </span>of<span class="w"> </span>size<span class="w"> </span><span class="m">7</span><span class="w"> </span>GiB.
+
+Command<span class="w"> </span><span class="o">(</span>m<span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nb">help</span><span class="o">)</span>:<span class="w"> </span>p
+Disk<span class="w"> </span>/dev/sdc:<span class="w"> </span><span class="m">10</span><span class="w"> </span>GiB,<span class="w"> </span><span class="m">10737418240</span><span class="w"> </span>bytes,<span class="w"> </span><span class="m">20971520</span><span class="w"> </span>sectors
+Units:<span class="w"> </span>sectors<span class="w"> </span>of<span class="w"> </span><span class="m">1</span><span class="w"> </span>*<span class="w"> </span><span class="nv">512</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+Sector<span class="w"> </span>size<span class="w"> </span><span class="o">(</span>logical/physical<span class="o">)</span>:<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes<span class="w"> </span>/<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+I/O<span class="w"> </span>size<span class="w"> </span><span class="o">(</span>minimum/optimal<span class="o">)</span>:<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes<span class="w"> </span>/<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+Disklabel<span class="w"> </span>type:<span class="w"> </span>dos
+Disk<span class="w"> </span>identifier:<span class="w"> </span>0x8cc8f9e5
+
+Device<span class="w">     </span>Boot<span class="w">   </span>Start<span class="w">      </span>End<span class="w">  </span>Sectors<span class="w"> </span>Size<span class="w"> </span>Id<span class="w"> </span>Type
+/dev/sdc1<span class="w">          </span><span class="m">2048</span><span class="w">  </span><span class="m">2099199</span><span class="w">  </span><span class="m">2097152</span><span class="w">   </span>1G<span class="w"> </span><span class="m">83</span><span class="w"> </span>Linux
+/dev/sdc2<span class="w">       </span><span class="m">2099200</span><span class="w">  </span><span class="m">4196351</span><span class="w">  </span><span class="m">2097152</span><span class="w">   </span>1G<span class="w"> </span><span class="m">83</span><span class="w"> </span>Linux
+/dev/sdc3<span class="w">       </span><span class="m">4196352</span><span class="w">  </span><span class="m">6293503</span><span class="w">  </span><span class="m">2097152</span><span class="w">   </span>1G<span class="w"> </span><span class="m">83</span><span class="w"> </span>Linux
+/dev/sdc4<span class="w">       </span><span class="m">6293504</span><span class="w"> </span><span class="m">20971519</span><span class="w"> </span><span class="m">14678016</span><span class="w">   </span>7G<span class="w">  </span><span class="m">5</span><span class="w"> </span>Extended
+
+Command<span class="w"> </span><span class="o">(</span>m<span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nb">help</span><span class="o">)</span>:<span class="w"> </span>w
+The<span class="w"> </span>partition<span class="w"> </span>table<span class="w"> </span>has<span class="w"> </span>been<span class="w"> </span>altered.
+Calling<span class="w"> </span>ioctl<span class="o">()</span><span class="w"> </span>to<span class="w"> </span>re-read<span class="w"> </span>partition<span class="w"> </span>table.
+Syncing<span class="w"> </span>disks.
+</code></pre></div>
+
+<h3>如何用 fdisk 查看未分配空间？</h3>
+<p>上文中，我们总共创建了四个分区（三个主分区和一个扩展分区）。在创建逻辑分区之前，扩展分区的容量将会以未分配空间显示。</p>
+<p>使用以下命令来显示磁盘上的未分配空间，下面的示例中显示的是 7GB：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>fdisk<span class="w"> </span>/dev/sdc
+
+Welcome<span class="w"> </span>to<span class="w"> </span>fdisk<span class="w"> </span><span class="o">(</span>util-linux<span class="w"> </span><span class="m">2</span>.30.1<span class="o">)</span>.
+Changes<span class="w"> </span>will<span class="w"> </span>remain<span class="w"> </span><span class="k">in</span><span class="w"> </span>memory<span class="w"> </span>only,<span class="w"> </span><span class="k">until</span><span class="w"> </span>you<span class="w"> </span>decide<span class="w"> </span>to<span class="w"> </span>write<span class="w"> </span>them.
+Be<span class="w"> </span>careful<span class="w"> </span>before<span class="w"> </span>using<span class="w"> </span>the<span class="w"> </span>write<span class="w"> </span>command.
+
+
+Command<span class="w"> </span><span class="o">(</span>m<span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nb">help</span><span class="o">)</span>:<span class="w"> </span>F
+Unpartitioned<span class="w"> </span>space<span class="w"> </span>/dev/sdc:<span class="w"> </span><span class="m">7</span><span class="w"> </span>GiB,<span class="w"> </span><span class="m">7515144192</span><span class="w"> </span>bytes,<span class="w"> </span><span class="m">14678016</span><span class="w"> </span>sectors
+Units:<span class="w"> </span>sectors<span class="w"> </span>of<span class="w"> </span><span class="m">1</span><span class="w"> </span>*<span class="w"> </span><span class="nv">512</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+Sector<span class="w"> </span>size<span class="w"> </span><span class="o">(</span>logical/physical<span class="o">)</span>:<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes<span class="w"> </span>/<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+
+<span class="w">  </span>Start<span class="w">      </span>End<span class="w">  </span>Sectors<span class="w"> </span>Size
+<span class="m">6293504</span><span class="w"> </span><span class="m">20971519</span><span class="w"> </span><span class="m">14678016</span><span class="w">   </span>7G
+
+Command<span class="w"> </span><span class="o">(</span>m<span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nb">help</span><span class="o">)</span>:<span class="w"> </span>q
+</code></pre></div>
+
+<h3>如何使用 fdisk 创建逻辑分区？</h3>
+<p>创建扩展分区后，请按照之前的步骤创建逻辑分区。在这里，我创建了位于 <code>/dev/sdc5</code> 的 <code>1GB</code> 逻辑分区。你可以查看分区表值来确认这点。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>fdisk<span class="w"> </span>/dev/sdc
+
+Welcome<span class="w"> </span>to<span class="w"> </span>fdisk<span class="w"> </span><span class="o">(</span>util-linux<span class="w"> </span><span class="m">2</span>.30.1<span class="o">)</span>.
+Changes<span class="w"> </span>will<span class="w"> </span>remain<span class="w"> </span><span class="k">in</span><span class="w"> </span>memory<span class="w"> </span>only,<span class="w"> </span><span class="k">until</span><span class="w"> </span>you<span class="w"> </span>decide<span class="w"> </span>to<span class="w"> </span>write<span class="w"> </span>them.
+Be<span class="w"> </span>careful<span class="w"> </span>before<span class="w"> </span>using<span class="w"> </span>the<span class="w"> </span>write<span class="w"> </span>command.
+
+Command<span class="w"> </span><span class="o">(</span>m<span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nb">help</span><span class="o">)</span>:<span class="w"> </span>n
+All<span class="w"> </span>primary<span class="w"> </span>partitions<span class="w"> </span>are<span class="w"> </span><span class="k">in</span><span class="w"> </span>use.
+Adding<span class="w"> </span>logical<span class="w"> </span>partition<span class="w"> </span><span class="m">5</span>
+First<span class="w"> </span>sector<span class="w"> </span><span class="o">(</span><span class="m">6295552</span>-20971519,<span class="w"> </span>default<span class="w"> </span><span class="m">6295552</span><span class="o">)</span>:<span class="w"> </span>Enter
+Last<span class="w"> </span>sector,<span class="w"> </span>+sectors<span class="w"> </span>or<span class="w"> </span>+size<span class="o">{</span>K,M,G,T,P<span class="o">}</span><span class="w"> </span><span class="o">(</span><span class="m">6295552</span>-20971519,<span class="w"> </span>default<span class="w"> </span><span class="m">20971519</span><span class="o">)</span>:<span class="w"> </span>+1G
+
+Created<span class="w"> </span>a<span class="w"> </span>new<span class="w"> </span>partition<span class="w"> </span><span class="m">5</span><span class="w"> </span>of<span class="w"> </span><span class="nb">type</span><span class="w"> </span><span class="s1">&#39;Linux&#39;</span><span class="w"> </span>and<span class="w"> </span>of<span class="w"> </span>size<span class="w"> </span><span class="m">1</span><span class="w"> </span>GiB.
+
+Command<span class="w"> </span><span class="o">(</span>m<span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nb">help</span><span class="o">)</span>:<span class="w"> </span>p
+Disk<span class="w"> </span>/dev/sdc:<span class="w"> </span><span class="m">10</span><span class="w"> </span>GiB,<span class="w"> </span><span class="m">10737418240</span><span class="w"> </span>bytes,<span class="w"> </span><span class="m">20971520</span><span class="w"> </span>sectors
+Units:<span class="w"> </span>sectors<span class="w"> </span>of<span class="w"> </span><span class="m">1</span><span class="w"> </span>*<span class="w"> </span><span class="nv">512</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+Sector<span class="w"> </span>size<span class="w"> </span><span class="o">(</span>logical/physical<span class="o">)</span>:<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes<span class="w"> </span>/<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+I/O<span class="w"> </span>size<span class="w"> </span><span class="o">(</span>minimum/optimal<span class="o">)</span>:<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes<span class="w"> </span>/<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+Disklabel<span class="w"> </span>type:<span class="w"> </span>dos
+Disk<span class="w"> </span>identifier:<span class="w"> </span>0x8cc8f9e5
+
+Device<span class="w">     </span>Boot<span class="w">   </span>Start<span class="w">      </span>End<span class="w">  </span>Sectors<span class="w"> </span>Size<span class="w"> </span>Id<span class="w"> </span>Type
+/dev/sdc1<span class="w">          </span><span class="m">2048</span><span class="w">  </span><span class="m">2099199</span><span class="w">  </span><span class="m">2097152</span><span class="w">   </span>1G<span class="w"> </span><span class="m">83</span><span class="w"> </span>Linux
+/dev/sdc2<span class="w">       </span><span class="m">2099200</span><span class="w">  </span><span class="m">4196351</span><span class="w">  </span><span class="m">2097152</span><span class="w">   </span>1G<span class="w"> </span><span class="m">83</span><span class="w"> </span>Linux
+/dev/sdc3<span class="w">       </span><span class="m">4196352</span><span class="w">  </span><span class="m">6293503</span><span class="w">  </span><span class="m">2097152</span><span class="w">   </span>1G<span class="w"> </span><span class="m">83</span><span class="w"> </span>Linux
+/dev/sdc4<span class="w">       </span><span class="m">6293504</span><span class="w"> </span><span class="m">20971519</span><span class="w"> </span><span class="m">14678016</span><span class="w">   </span>7G<span class="w">  </span><span class="m">5</span><span class="w"> </span>Extended
+/dev/sdc5<span class="w">       </span><span class="m">6295552</span><span class="w">  </span><span class="m">8392703</span><span class="w">  </span><span class="m">2097152</span><span class="w">   </span>1G<span class="w"> </span><span class="m">83</span><span class="w"> </span>Linux
+
+Command<span class="w"> </span><span class="o">(</span>m<span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nb">help</span><span class="o">)</span>:<span class="w"> </span>w
+The<span class="w"> </span>partition<span class="w"> </span>table<span class="w"> </span>has<span class="w"> </span>been<span class="w"> </span>altered.
+Calling<span class="w"> </span>ioctl<span class="o">()</span><span class="w"> </span>to<span class="w"> </span>re-read<span class="w"> </span>partition<span class="w"> </span>table.
+Syncing<span class="w"> </span>disks.
+</code></pre></div>
+
+<h3>如何使用 fdisk 命令删除分区？</h3>
+<p>如果我们不再使用某个分区，请按照下面的步骤删除它。</p>
+<p>请确保你输入了正确的分区号。在这里，我准备删除 <code>/dev/sdc2</code> 分区：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>fdisk<span class="w"> </span>/dev/sdc
+
+Welcome<span class="w"> </span>to<span class="w"> </span>fdisk<span class="w"> </span><span class="o">(</span>util-linux<span class="w"> </span><span class="m">2</span>.30.1<span class="o">)</span>.
+Changes<span class="w"> </span>will<span class="w"> </span>remain<span class="w"> </span><span class="k">in</span><span class="w"> </span>memory<span class="w"> </span>only,<span class="w"> </span><span class="k">until</span><span class="w"> </span>you<span class="w"> </span>decide<span class="w"> </span>to<span class="w"> </span>write<span class="w"> </span>them.
+Be<span class="w"> </span>careful<span class="w"> </span>before<span class="w"> </span>using<span class="w"> </span>the<span class="w"> </span>write<span class="w"> </span>command.
+
+
+Command<span class="w"> </span><span class="o">(</span>m<span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nb">help</span><span class="o">)</span>:<span class="w"> </span>d
+Partition<span class="w"> </span>number<span class="w"> </span><span class="o">(</span><span class="m">1</span>-5,<span class="w"> </span>default<span class="w"> </span><span class="m">5</span><span class="o">)</span>:<span class="w"> </span><span class="m">2</span>
+
+Partition<span class="w"> </span><span class="m">2</span><span class="w"> </span>has<span class="w"> </span>been<span class="w"> </span>deleted.
+
+Command<span class="w"> </span><span class="o">(</span>m<span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nb">help</span><span class="o">)</span>:<span class="w"> </span>p
+Disk<span class="w"> </span>/dev/sdc:<span class="w"> </span><span class="m">10</span><span class="w"> </span>GiB,<span class="w"> </span><span class="m">10737418240</span><span class="w"> </span>bytes,<span class="w"> </span><span class="m">20971520</span><span class="w"> </span>sectors
+Units:<span class="w"> </span>sectors<span class="w"> </span>of<span class="w"> </span><span class="m">1</span><span class="w"> </span>*<span class="w"> </span><span class="nv">512</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+Sector<span class="w"> </span>size<span class="w"> </span><span class="o">(</span>logical/physical<span class="o">)</span>:<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes<span class="w"> </span>/<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+I/O<span class="w"> </span>size<span class="w"> </span><span class="o">(</span>minimum/optimal<span class="o">)</span>:<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes<span class="w"> </span>/<span class="w"> </span><span class="m">512</span><span class="w"> </span>bytes
+Disklabel<span class="w"> </span>type:<span class="w"> </span>dos
+Disk<span class="w"> </span>identifier:<span class="w"> </span>0x8cc8f9e5
+
+Device<span class="w">     </span>Boot<span class="w">   </span>Start<span class="w">      </span>End<span class="w">  </span>Sectors<span class="w"> </span>Size<span class="w"> </span>Id<span class="w"> </span>Type
+/dev/sdc1<span class="w">          </span><span class="m">2048</span><span class="w">  </span><span class="m">2099199</span><span class="w">  </span><span class="m">2097152</span><span class="w">   </span>1G<span class="w"> </span><span class="m">83</span><span class="w"> </span>Linux
+/dev/sdc3<span class="w">       </span><span class="m">4196352</span><span class="w">  </span><span class="m">6293503</span><span class="w">  </span><span class="m">2097152</span><span class="w">   </span>1G<span class="w"> </span><span class="m">83</span><span class="w"> </span>Linux
+/dev/sdc4<span class="w">       </span><span class="m">6293504</span><span class="w"> </span><span class="m">20971519</span><span class="w"> </span><span class="m">14678016</span><span class="w">   </span>7G<span class="w">  </span><span class="m">5</span><span class="w"> </span>Extended
+/dev/sdc5<span class="w">       </span><span class="m">6295552</span><span class="w">  </span><span class="m">8392703</span><span class="w">  </span><span class="m">2097152</span><span class="w">   </span>1G<span class="w"> </span><span class="m">83</span><span class="w"> </span>Linux
+
+Command<span class="w"> </span><span class="o">(</span>m<span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nb">help</span><span class="o">)</span>:<span class="w"> </span>w
+The<span class="w"> </span>partition<span class="w"> </span>table<span class="w"> </span>has<span class="w"> </span>been<span class="w"> </span>altered.
+Calling<span class="w"> </span>ioctl<span class="o">()</span><span class="w"> </span>to<span class="w"> </span>re-read<span class="w"> </span>partition<span class="w"> </span>table.
+Syncing<span class="w"> </span>disks.
+</code></pre></div>
+
+<h3>如何在 Linux 下格式化分区或建立文件系统？</h3>
+<p>在计算时，文件系统控制了数据的储存方式，并通过 <ruby> 索引节点 <rt>  Inode Tables </rt></ruby> 来检索数据。如果没有文件系统，操作系统是无法找到信息储存的位置的。</p>
+<p>在此，我准备在 <code>/dev/sdc1</code> 上创建分区。有三种方式创建文件系统：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>mkfs.ext4<span class="w"> </span>/dev/sdc1
+或
+$<span class="w"> </span>sudo<span class="w"> </span>mkfs<span class="w"> </span>-t<span class="w"> </span>ext4<span class="w"> </span>/dev/sdc1
+或
+$<span class="w"> </span>sudo<span class="w"> </span>mke2fs<span class="w"> </span>/dev/sdc1
+
+mke2fs<span class="w"> </span><span class="m">1</span>.43.5<span class="w"> </span><span class="o">(</span><span class="m">04</span>-Aug-2017<span class="o">)</span>
+Creating<span class="w"> </span>filesystem<span class="w"> </span>with<span class="w"> </span><span class="m">262144</span><span class="w"> </span>4k<span class="w"> </span>blocks<span class="w"> </span>and<span class="w"> </span><span class="m">65536</span><span class="w"> </span>inodes
+Filesystem<span class="w"> </span>UUID:<span class="w"> </span>c0a99b51-2b61-4f6a-b960-eb60915faab0
+Superblock<span class="w"> </span>backups<span class="w"> </span>stored<span class="w"> </span>on<span class="w"> </span>blocks:<span class="w"> </span>
+<span class="w">    </span><span class="m">32768</span>,<span class="w"> </span><span class="m">98304</span>,<span class="w"> </span><span class="m">163840</span>,<span class="w"> </span><span class="m">229376</span>
+
+Allocating<span class="w"> </span>group<span class="w"> </span>tables:<span class="w"> </span><span class="k">done</span><span class="w">                            </span>
+Writing<span class="w"> </span>inode<span class="w"> </span>tables:<span class="w"> </span><span class="k">done</span><span class="w">                            </span>
+Creating<span class="w"> </span>journal<span class="w"> </span><span class="o">(</span><span class="m">8192</span><span class="w"> </span>blocks<span class="o">)</span>:<span class="w"> </span><span class="k">done</span>
+Writing<span class="w"> </span>superblocks<span class="w"> </span>and<span class="w"> </span>filesystem<span class="w"> </span>accounting<span class="w"> </span>information:<span class="w"> </span><span class="k">done</span>
+</code></pre></div>
+
+<p>当你在分区上建立文件系统时，以下重要信息会同时被创建：</p>
+<ul>
+<li><code>Filesystem UUID:</code> UUID 代表了通用且独一无二的识别符，UUID 在 Linux 中通常用来识别设备。它 128 位长的数字代表了 32 个十六进制数。</li>
+<li><code>Superblock:</code> 超级块储存了文件系统的元数据。如果某个文件系统的超级块被破坏，我们就无法挂载它了（也就是说无法访问其中的文件了）。</li>
+<li><code>Inode:</code> Inode 是类 Unix 系统中文件系统的数据结构，它储存了所有除名称以外的文件信息和数据。</li>
+<li><code>Journal:</code> 日志式文件系统包含了用来修复电脑意外关机产生下错误信息的日志。</li>
+</ul>
+<h3>如何在 Linux 中挂载分区？</h3>
+<p>在你创建完分区和文件系统之后，我们需要挂载它们以便使用。我们需要创建一个挂载点来挂载分区，使用 <code>mkdir</code> 来创建一个挂载点。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>/mnt/2g-new
+</code></pre></div>
+
+<p>如果你希望进行临时挂载，请使用下面的命令。在计算机重启之后，你会丢失这个挂载点。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>mount<span class="w"> </span>/dev/sdc1<span class="w"> </span>/mnt/2g-new
+</code></pre></div>
+
+<p>如果你希望永久挂载某个分区，请将分区详情加入 <code>fstab</code> 文件。我们既可以输入设备名称，也可以输入 UUID。</p>
+<p>使用设备名称来进行永久挂载：</p>
+<div class="highlight"><pre><span></span><code># vi /etc/fstab
+
+/dev/sdc1 /mnt/2g-new ext4 defaults 0 0
+</code></pre></div>
+
+<p>使用 UUID 来进行永久挂载（请使用 <code>blkid</code> 来获取 UUID）：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>blkid
+/dev/sdc1:<span class="w"> </span><span class="nv">UUID</span><span class="o">=</span><span class="s2">&quot;d17e3c31-e2c9-4f11-809c-94a549bc43b7&quot;</span><span class="w"> </span><span class="nv">TYPE</span><span class="o">=</span><span class="s2">&quot;ext2&quot;</span><span class="w"> </span><span class="nv">PARTUUID</span><span class="o">=</span><span class="s2">&quot;8cc8f9e5-01&quot;</span>
+/dev/sda1:<span class="w"> </span><span class="nv">UUID</span><span class="o">=</span><span class="s2">&quot;d92fa769-e00f-4fd7-b6ed-ecf7224af7fa&quot;</span><span class="w"> </span><span class="nv">TYPE</span><span class="o">=</span><span class="s2">&quot;ext4&quot;</span><span class="w"> </span><span class="nv">PARTUUID</span><span class="o">=</span><span class="s2">&quot;eab59449-01&quot;</span>
+/dev/sdc3:<span class="w"> </span><span class="nv">UUID</span><span class="o">=</span><span class="s2">&quot;ca307aa4-0866-49b1-8184-004025789e63&quot;</span><span class="w"> </span><span class="nv">TYPE</span><span class="o">=</span><span class="s2">&quot;ext4&quot;</span><span class="w"> </span><span class="nv">PARTUUID</span><span class="o">=</span><span class="s2">&quot;8cc8f9e5-03&quot;</span>
+/dev/sdc5:<span class="w"> </span><span class="nv">PARTUUID</span><span class="o">=</span><span class="s2">&quot;8cc8f9e5-05&quot;</span>
+
+<span class="c1"># vi /etc/fstab</span>
+
+<span class="nv">UUID</span><span class="o">=</span>d17e3c31-e2c9-4f11-809c-94a549bc43b7<span class="w"> </span>/mnt/2g-new<span class="w"> </span>ext4<span class="w"> </span>defaults<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">0</span>
+</code></pre></div>
+
+<p>使用 <code>df</code> 命令亦可：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>df<span class="w"> </span>-h
+Filesystem<span class="w">      </span>Size<span class="w">  </span>Used<span class="w"> </span>Avail<span class="w"> </span>Use%<span class="w"> </span>Mounted<span class="w"> </span>on
+udev<span class="w">            </span>969M<span class="w">     </span><span class="m">0</span><span class="w">  </span>969M<span class="w">   </span><span class="m">0</span>%<span class="w"> </span>/dev
+tmpfs<span class="w">           </span>200M<span class="w">  </span><span class="m">7</span>.0M<span class="w">  </span>193M<span class="w">   </span><span class="m">4</span>%<span class="w"> </span>/run
+/dev/sda1<span class="w">        </span>20G<span class="w">   </span>16G<span class="w">  </span><span class="m">3</span>.0G<span class="w">  </span><span class="m">85</span>%<span class="w"> </span>/
+tmpfs<span class="w">           </span>997M<span class="w">     </span><span class="m">0</span><span class="w">  </span>997M<span class="w">   </span><span class="m">0</span>%<span class="w"> </span>/dev/shm
+tmpfs<span class="w">           </span><span class="m">5</span>.0M<span class="w">  </span><span class="m">4</span>.0K<span class="w">  </span><span class="m">5</span>.0M<span class="w">   </span><span class="m">1</span>%<span class="w"> </span>/run/lock
+tmpfs<span class="w">           </span>997M<span class="w">     </span><span class="m">0</span><span class="w">  </span>997M<span class="w">   </span><span class="m">0</span>%<span class="w"> </span>/sys/fs/cgroup
+tmpfs<span class="w">           </span>200M<span class="w">   </span>28K<span class="w">  </span>200M<span class="w">   </span><span class="m">1</span>%<span class="w"> </span>/run/user/121
+tmpfs<span class="w">           </span>200M<span class="w">   </span>25M<span class="w">  </span>176M<span class="w">  </span><span class="m">13</span>%<span class="w"> </span>/run/user/1000
+/dev/sdc1<span class="w">      </span>1008M<span class="w">  </span><span class="m">1</span>.3M<span class="w">  </span>956M<span class="w">   </span><span class="m">1</span>%<span class="w"> </span>/mnt/2g-new
+</code></pre></div>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

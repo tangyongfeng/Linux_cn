@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在红帽企业版 Linux 中将系统服务容器化（一）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Matt Micene 在 2017 年红帽峰会上，有几个人问我“我们通常用完整的虚拟机来隔离如 DNS 和 DHCP 等网络服务，那我们可以用容器来取 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/12/zai-hong-mao-qi-ye-ban-linux-zhong-jiang-xi-tong-fu-wu-rong-qi-hua-yi.html" rel="bookmark"
+           title="Permalink to 在红帽企业版 Linux 中将系统服务容器化（一）">在红帽企业版 Linux 中将系统服务容器化（一）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-12-12T12:01:10+01:00">
+                Published: Tue 12 December 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Matt Micene</p>
+<p>在 2017 年红帽峰会上，有几个人问我“我们通常用完整的虚拟机来隔离如 DNS 和 DHCP 等网络服务，那我们可以用容器来取而代之吗？”答案是可以的，下面是在当前红帽企业版 Linux 7 系统上创建一个系统容器的例子。</p>
+<p><img alt="" src="/data/attachment/album/201712/12/120057wnsg7irlnhr3nhxc.jpg"></p>
+<h3>我们的目的</h3>
+<p><strong>创建一个可以独立于任何其它系统服务而更新的网络服务，并且可以从主机端容易地管理和更新。</strong></p>
+<p>让我们来探究一下在容器中建立一个运行在 systemd 之下的 BIND 服务器。在这一部分，我们将了解到如何建立自己的容器以及管理 BIND 配置和数据文件。</p>
+<p>在本系列的第二部分，我们将看到如何整合主机中的 systemd 和容器中的 systemd。我们将探究如何管理容器中的服务，并且使它作为一种主机中的服务。</p>
+<h3>创建 BIND 容器</h3>
+<p>为了使 systemd 在一个容器中轻松运行，我们首先需要在主机中增加两个包：<code>oci-register-machine</code> 和 <code>oci-systemd-hook</code>。<code>oci-systemd-hook</code> 这个钩子允许我们在一个容器中运行 systemd，而不需要使用特权容器或者手工配置 tmpfs 和 cgroups。<code>oci-register-machine</code> 这个钩子允许我们使用 systemd 工具如 <code>systemctl</code> 和 <code>machinectl</code> 来跟踪容器。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">root@rhel7-host ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">yum</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="n">oci</span><span class="o">-</span><span class="n">register</span><span class="o">-</span><span class="n">machine</span><span class="w"> </span><span class="n">oci</span><span class="o">-</span><span class="n">systemd</span><span class="o">-</span><span class="n">hook</span><span class="w">  </span>
+</code></pre></div>
+
+<p>回到创建我们的 BIND 容器上。<a href="https://access.redhat.com/containers">红帽企业版 Linux 7 基础镜像</a>包含了 systemd 作为其初始化系统。我们可以如我们在典型的系统中做的那样安装并激活 BIND。你可以从 <a href="https://github.com/nzwulfin/named-container">git 仓库中下载这份 Dockerfile</a>。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">root@rhel7-host bind</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">vi</span><span class="w"> </span><span class="n">Dockerfile</span>
+
+<span class="err">#</span><span class="w"> </span><span class="n">Dockerfile</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">BIND</span>
+<span class="k">FROM</span><span class="w"> </span><span class="n">registry</span><span class="p">.</span><span class="n">access</span><span class="p">.</span><span class="n">redhat</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">rhel7</span><span class="o">/</span><span class="n">rhel</span>
+<span class="n">ENV</span><span class="w"> </span><span class="n">container</span><span class="w"> </span><span class="n">docker</span>
+<span class="n">RUN</span><span class="w"> </span><span class="n">yum</span><span class="w"> </span><span class="o">-</span><span class="n">y</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="n">bind</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="err">\</span>
+<span class="w">    </span><span class="n">yum</span><span class="w"> </span><span class="n">clean</span><span class="w"> </span><span class="ow">all</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="err">\</span>
+<span class="w">    </span><span class="n">systemctl</span><span class="w"> </span><span class="n">enable</span><span class="w"> </span><span class="n">named</span>
+<span class="n">STOPSIGNAL</span><span class="w"> </span><span class="n">SIGRTMIN</span><span class="o">+</span><span class="mi">3</span>
+<span class="n">EXPOSE</span><span class="w"> </span><span class="mi">53</span>
+<span class="n">EXPOSE</span><span class="w"> </span><span class="mi">53</span><span class="o">/</span><span class="n">udp</span>
+<span class="n">CMD</span><span class="w"> </span><span class="o">[</span><span class="n"> &quot;/sbin/init&quot; </span><span class="o">]</span><span class="w">  </span>
+</code></pre></div>
+
+<p>因为我们以 PID 1 来启动一个初始化系统，当我们告诉容器停止时，需要改变 docker CLI 发送的信号。从 <code>kill</code> 系统调用手册中 （<code>man 2 kill</code>）：</p>
+<blockquote>
+<p>唯一可以发送给 PID 1 进程（即 init 进程）的信号，是那些初始化系统明确安装了<ruby> 信号处理器 <rt>  signal handler </rt></ruby>的信号。这是为了避免系统被意外破坏。</p>
+</blockquote>
+<p>对于 systemd 信号处理器，<code>SIGRTMIN+3</code> 是对应于 <code>systemd start halt.target</code> 的信号。我们也需要为 BIND 暴露 TCP 和 UDP 端口号，因为这两种协议可能都要使用。</p>
+<h3>管理数据</h3>
+<p>有了一个可以工作的 BIND 服务，我们还需要一种管理配置文件和区域文件的方法。目前这些都放在容器里面，所以我们任何时候都可以进入容器去更新配置或者改变一个区域文件。从管理的角度来说，这并不是很理想。当要更新 BIND 时，我们将需要重建这个容器，所以镜像中的改变将会丢失。任何时候我们需要更新一个文件或者重启服务时，都需要进入这个容器，而这增加了步骤和时间。</p>
+<p>相反的，我们将从这个容器中提取出配置文件和数据文件，把它们拷贝到主机上，然后在运行的时候挂载它们。用这种方式我们可以很容易地重启或者重建容器，而不会丢失所做出的更改。我们也可以使用容器外的编辑器来更改配置和区域文件。因为这个容器的数据看起来像“该系统所提供服务的特定站点数据”，让我们遵循 Linux <ruby> 文件系统层次标准 <rt>  File System Hierarchy </rt></ruby>，并在当前主机上创建 <code>/srv/named</code> 目录来保持管理权分离。</p>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">rhel7</span><span class="o">-</span><span class="n">host</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># mkdir -p /srv/named/etc</span>
+
+<span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">rhel7</span><span class="o">-</span><span class="n">host</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># mkdir -p /srv/named/var/named     </span>
+</code></pre></div>
+
+<p><em>提示：如果你正在迁移一个已有的配置文件，你可以跳过下面的步骤并且将它直接拷贝到 <code>/srv/named</code> 目录下。你也许仍然要用一个临时容器来检查一下分配给这个容器的 GID。</em></p>
+<p>让我们建立并运行一个临时容器来检查 BIND。在将 init 进程以 PID 1 运行时，我们不能交互地运行这个容器来获取一个 shell。我们会在容器启动后执行 shell，并且使用 <code>rpm</code> 命令来检查重要文件。</p>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="n">root</span><span class="p">@</span><span class="n">rhel7</span><span class="o">-</span><span class="n">host</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="err">#</span><span class="w"> </span><span class="n">docker</span><span class="w"> </span><span class="n">build</span><span class="w"> </span><span class="o">-</span><span class="n">t</span><span class="w"> </span><span class="n">named</span><span class="w"> </span><span class="p">.</span><span class="w"> </span>
+
+<span class="p">[</span><span class="n">root</span><span class="p">@</span><span class="n">rhel7</span><span class="o">-</span><span class="n">host</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="err">#</span><span class="w"> </span><span class="n">docker</span><span class="w"> </span><span class="n">exec</span><span class="w"> </span><span class="o">-</span><span class="n">it</span><span class="w"> </span><span class="n">$</span><span class="p">(</span><span class="w"> </span><span class="n">docker</span><span class="w"> </span><span class="n">run</span><span class="w"> </span><span class="o">-</span><span class="n">d</span><span class="w"> </span><span class="n">named</span><span class="w"> </span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">bash</span>
+
+<span class="p">[</span><span class="n">root</span><span class="mf">@0e77</span><span class="n">ce00405e</span><span class="w"> </span><span class="o">/</span><span class="p">]</span><span class="err">#</span><span class="w"> </span><span class="n">rpm</span><span class="w"> </span><span class="o">-</span><span class="n">ql</span><span class="w"> </span><span class="n">bind</span>
+</code></pre></div>
+
+<p>对于这个例子来说，我们将需要 <code>/etc/named.conf</code> 和 <code>/var/named/</code> 目录下的任何文件。我们可以使用 <code>machinectl</code> 命令来提取它们。如果注册了一个以上的容器，我们可以在任一机器上使用 <code>machinectl status</code> 命令来查看运行的是什么。一旦有了这些配置，我们就可以终止这个临时容器了。</p>
+<p><em>如果你喜欢，资源库中也有一个<a href="https://github.com/nzwulfin/named-container">样例 <code>named.conf</code> 和针对 <code>example.com</code> 的区域文件</a>。</em></p>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">rhel7</span><span class="o">-</span><span class="n">host</span><span class="w"> </span><span class="n">bind</span><span class="p">]</span><span class="c1"># machinectl list</span>
+
+<span class="n">MACHINE</span><span class="w">                          </span><span class="n">CLASS</span><span class="w">     </span><span class="n">SERVICE</span>
+<span class="mi">8824</span><span class="n">c90294d5a36d396c8ab35167937f</span><span class="w"> </span><span class="n">container</span><span class="w"> </span><span class="n">docker</span><span class="w"> </span>
+
+<span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">rhel7</span><span class="o">-</span><span class="n">host</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># machinectl copy-from 8824c90294d5a36d396c8ab35167937f /etc/named.conf /srv/named/etc/named.conf</span>
+
+<span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">rhel7</span><span class="o">-</span><span class="n">host</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># machinectl copy-from 8824c90294d5a36d396c8ab35167937f /var/named /srv/named/var/named</span>
+
+<span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">rhel7</span><span class="o">-</span><span class="n">host</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># docker stop infallible_wescoff</span>
+</code></pre></div>
+
+<h3>最终的创建</h3>
+<p>为了创建和运行最终的容器，添加卷选项以挂载：</p>
+<ul>
+<li>将文件 <code>/srv/named/etc/named.conf</code> 映射为 <code>/etc/named.conf</code></li>
+<li>将目录 <code>/srv/named/var/named</code> 映射为 <code>/var/named</code></li>
+</ul>
+<p>因为这是我们最终的容器，我们将提供一个有意义的名字，以供我们以后引用。</p>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">rhel7</span><span class="o">-</span><span class="n">host</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># docker run -d -p 53:53 -p 53:53/udp -v /srv/named/etc/named.conf:/etc/named.conf:Z -v /srv/named/var/named:/var/named:Z --name named-container named</span>
+</code></pre></div>
+
+<p>在最终容器运行时，我们可以更改本机配置来改变这个容器中 BIND 的行为。这个 BIND 服务器将需要在这个容器分配的任何 IP 上监听。请确保任何新文件的 GID 与来自这个容器中的其余的 BIND 文件相匹配。</p>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">rhel7</span><span class="o">-</span><span class="n">host</span><span class="w"> </span><span class="n">bind</span><span class="p">]</span><span class="c1"># cp named.conf /srv/named/etc/named.conf </span>
+
+<span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">rhel7</span><span class="o">-</span><span class="n">host</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># cp example.com.zone /srv/named/var/named/example.com.zone</span>
+
+<span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">rhel7</span><span class="o">-</span><span class="n">host</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># cp example.com.rr.zone  /srv/named/var/named/example.com.rr.zone</span>
+</code></pre></div>
+
+<blockquote>
+<p>很好奇为什么我不需要在主机目录中改变 SELinux 上下文？<sup> 注1</sup></p>
+</blockquote>
+<p>我们将运行这个容器提供的 <code>rndc</code> 二进制文件重新加载配置。我们可以使用 <code>journald</code> 以同样的方式检查 BIND 日志。如果运行出现错误，你可以在主机中编辑该文件，并且重新加载配置。在主机中使用 <code>host</code> 或 <code>dig</code>，我们可以检查来自该容器化服务的 example.com 的响应。</p>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">rhel7</span><span class="o">-</span><span class="n">host</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># docker exec -it named-container rndc reload       </span>
+<span class="n">server</span><span class="w"> </span><span class="n">reload</span><span class="w"> </span><span class="n">successful</span>
+
+<span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">rhel7</span><span class="o">-</span><span class="n">host</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># docker exec -it named-container journalctl -u named -n</span>
+<span class="o">--</span><span class="w"> </span><span class="n">Logs</span><span class="w"> </span><span class="n">begin</span><span class="w"> </span><span class="n">at</span><span class="w"> </span><span class="n">Fri</span><span class="w"> </span><span class="mi">2017</span><span class="o">-</span><span class="mi">05</span><span class="o">-</span><span class="mi">12</span><span class="w"> </span><span class="mi">19</span><span class="p">:</span><span class="mi">15</span><span class="p">:</span><span class="mi">18</span><span class="w"> </span><span class="n">UTC</span><span class="p">,</span><span class="w"> </span><span class="n">end</span><span class="w"> </span><span class="n">at</span><span class="w"> </span><span class="n">Fri</span><span class="w"> </span><span class="mi">2017</span><span class="o">-</span><span class="mi">05</span><span class="o">-</span><span class="mi">12</span><span class="w"> </span><span class="mi">19</span><span class="p">:</span><span class="mi">29</span><span class="p">:</span><span class="mi">17</span><span class="w"> </span><span class="n">UTC</span><span class="o">.</span><span class="w"> </span><span class="o">--</span>
+<span class="n">May</span><span class="w"> </span><span class="mi">12</span><span class="w"> </span><span class="mi">19</span><span class="p">:</span><span class="mi">29</span><span class="p">:</span><span class="mi">17</span><span class="w"> </span><span class="n">ac1752c314a7</span><span class="w"> </span><span class="n">named</span><span class="p">[</span><span class="mi">27</span><span class="p">]:</span><span class="w"> </span><span class="n">automatic</span><span class="w"> </span><span class="n">empty</span><span class="w"> </span><span class="n">zone</span><span class="p">:</span><span class="w"> </span><span class="mf">9.</span><span class="n">E</span><span class="o">.</span><span class="n">F</span><span class="o">.</span><span class="n">IP6</span><span class="o">.</span><span class="n">ARPA</span>
+<span class="n">May</span><span class="w"> </span><span class="mi">12</span><span class="w"> </span><span class="mi">19</span><span class="p">:</span><span class="mi">29</span><span class="p">:</span><span class="mi">17</span><span class="w"> </span><span class="n">ac1752c314a7</span><span class="w"> </span><span class="n">named</span><span class="p">[</span><span class="mi">27</span><span class="p">]:</span><span class="w"> </span><span class="n">automatic</span><span class="w"> </span><span class="n">empty</span><span class="w"> </span><span class="n">zone</span><span class="p">:</span><span class="w"> </span><span class="n">A</span><span class="o">.</span><span class="n">E</span><span class="o">.</span><span class="n">F</span><span class="o">.</span><span class="n">IP6</span><span class="o">.</span><span class="n">ARPA</span>
+<span class="n">May</span><span class="w"> </span><span class="mi">12</span><span class="w"> </span><span class="mi">19</span><span class="p">:</span><span class="mi">29</span><span class="p">:</span><span class="mi">17</span><span class="w"> </span><span class="n">ac1752c314a7</span><span class="w"> </span><span class="n">named</span><span class="p">[</span><span class="mi">27</span><span class="p">]:</span><span class="w"> </span><span class="n">automatic</span><span class="w"> </span><span class="n">empty</span><span class="w"> </span><span class="n">zone</span><span class="p">:</span><span class="w"> </span><span class="n">B</span><span class="o">.</span><span class="n">E</span><span class="o">.</span><span class="n">F</span><span class="o">.</span><span class="n">IP6</span><span class="o">.</span><span class="n">ARPA</span>
+<span class="n">May</span><span class="w"> </span><span class="mi">12</span><span class="w"> </span><span class="mi">19</span><span class="p">:</span><span class="mi">29</span><span class="p">:</span><span class="mi">17</span><span class="w"> </span><span class="n">ac1752c314a7</span><span class="w"> </span><span class="n">named</span><span class="p">[</span><span class="mi">27</span><span class="p">]:</span><span class="w"> </span><span class="n">automatic</span><span class="w"> </span><span class="n">empty</span><span class="w"> </span><span class="n">zone</span><span class="p">:</span><span class="w"> </span><span class="mf">8.</span><span class="n">B</span><span class="o">.</span><span class="n">D</span><span class="o">.</span><span class="mf">0.1</span><span class="o">.</span><span class="mf">0.0</span><span class="o">.</span><span class="mf">2.</span><span class="n">IP6</span><span class="o">.</span><span class="n">ARPA</span>
+<span class="n">May</span><span class="w"> </span><span class="mi">12</span><span class="w"> </span><span class="mi">19</span><span class="p">:</span><span class="mi">29</span><span class="p">:</span><span class="mi">17</span><span class="w"> </span><span class="n">ac1752c314a7</span><span class="w"> </span><span class="n">named</span><span class="p">[</span><span class="mi">27</span><span class="p">]:</span><span class="w"> </span><span class="n">reloading</span><span class="w"> </span><span class="n">configuration</span><span class="w"> </span><span class="n">succeeded</span>
+<span class="n">May</span><span class="w"> </span><span class="mi">12</span><span class="w"> </span><span class="mi">19</span><span class="p">:</span><span class="mi">29</span><span class="p">:</span><span class="mi">17</span><span class="w"> </span><span class="n">ac1752c314a7</span><span class="w"> </span><span class="n">named</span><span class="p">[</span><span class="mi">27</span><span class="p">]:</span><span class="w"> </span><span class="n">reloading</span><span class="w"> </span><span class="n">zones</span><span class="w"> </span><span class="n">succeeded</span>
+<span class="n">May</span><span class="w"> </span><span class="mi">12</span><span class="w"> </span><span class="mi">19</span><span class="p">:</span><span class="mi">29</span><span class="p">:</span><span class="mi">17</span><span class="w"> </span><span class="n">ac1752c314a7</span><span class="w"> </span><span class="n">named</span><span class="p">[</span><span class="mi">27</span><span class="p">]:</span><span class="w"> </span><span class="n">zone</span><span class="w"> </span><span class="mf">1.0</span><span class="o">.</span><span class="mf">10.</span><span class="ow">in</span><span class="o">-</span><span class="n">addr</span><span class="o">.</span><span class="n">arpa</span><span class="o">/</span><span class="n">IN</span><span class="p">:</span><span class="w"> </span><span class="n">loaded</span><span class="w"> </span><span class="n">serial</span><span class="w"> </span><span class="mi">2001062601</span>
+<span class="n">May</span><span class="w"> </span><span class="mi">12</span><span class="w"> </span><span class="mi">19</span><span class="p">:</span><span class="mi">29</span><span class="p">:</span><span class="mi">17</span><span class="w"> </span><span class="n">ac1752c314a7</span><span class="w"> </span><span class="n">named</span><span class="p">[</span><span class="mi">27</span><span class="p">]:</span><span class="w"> </span><span class="n">zone</span><span class="w"> </span><span class="mf">1.0</span><span class="o">.</span><span class="mf">10.</span><span class="ow">in</span><span class="o">-</span><span class="n">addr</span><span class="o">.</span><span class="n">arpa</span><span class="o">/</span><span class="n">IN</span><span class="p">:</span><span class="w"> </span><span class="n">sending</span><span class="w"> </span><span class="n">notifies</span><span class="w"> </span><span class="p">(</span><span class="n">serial</span><span class="w"> </span><span class="mi">2001062601</span><span class="p">)</span>
+<span class="n">May</span><span class="w"> </span><span class="mi">12</span><span class="w"> </span><span class="mi">19</span><span class="p">:</span><span class="mi">29</span><span class="p">:</span><span class="mi">17</span><span class="w"> </span><span class="n">ac1752c314a7</span><span class="w"> </span><span class="n">named</span><span class="p">[</span><span class="mi">27</span><span class="p">]:</span><span class="w"> </span><span class="n">all</span><span class="w"> </span><span class="n">zones</span><span class="w"> </span><span class="n">loaded</span>
+<span class="n">May</span><span class="w"> </span><span class="mi">12</span><span class="w"> </span><span class="mi">19</span><span class="p">:</span><span class="mi">29</span><span class="p">:</span><span class="mi">17</span><span class="w"> </span><span class="n">ac1752c314a7</span><span class="w"> </span><span class="n">named</span><span class="p">[</span><span class="mi">27</span><span class="p">]:</span><span class="w"> </span><span class="n">running</span>
+
+<span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">rhel7</span><span class="o">-</span><span class="n">host</span><span class="w"> </span><span class="n">bind</span><span class="p">]</span><span class="c1"># host www.example.com localhost</span>
+<span class="n">Using</span><span class="w"> </span><span class="n">domain</span><span class="w"> </span><span class="n">server</span><span class="p">:</span>
+<span class="n">Name</span><span class="p">:</span><span class="w"> </span><span class="n">localhost</span>
+<span class="n">Address</span><span class="p">:</span><span class="w"> </span><span class="p">::</span><span class="mi">1</span><span class="c1">#53</span>
+<span class="n">Aliases</span><span class="p">:</span><span class="w"> </span>
+<span class="n">www</span><span class="o">.</span><span class="n">example</span><span class="o">.</span><span class="n">com</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">an</span><span class="w"> </span><span class="n">alias</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">server1</span><span class="o">.</span><span class="n">example</span><span class="o">.</span><span class="n">com</span><span class="o">.</span>
+<span class="n">server1</span><span class="o">.</span><span class="n">example</span><span class="o">.</span><span class="n">com</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">an</span><span class="w"> </span><span class="n">alias</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">mail</span>
+</code></pre></div>
+
+<blockquote>
+<p>你的区域文件没有更新吗？可能是因为你的编辑器，而不是序列号。<sup> 注2</sup></p>
+</blockquote>
+<h3>终点线</h3>
+<p>我们已经达成了我们打算完成的目标，从容器中为 DNS 请求和区域文件提供服务。我们已经得到一个持久化的位置来管理更新和配置，并且更新后该配置不变。</p>
+<p>在这个系列的第二部分，我们将看到怎样将一个容器看作为主机中的一个普通服务来运行。</p>
+<h3>附加资源</h3>
+<ul>
+<li><strong>所附带文件的 Github 仓库：</strong> <a href="https://github.com/nzwulfin/named-container">https://github.com/nzwulfin/named-container</a></li>
+<li><strong>注1：</strong> <strong>通过容器访问本地文件的 SELinux 上下文</strong></li>
+</ul>
+<p>你可能已经注意到当我从容器向本地主机拷贝文件时，我没有运行 <code>chcon</code> 将主机中的文件类型改变为 <code>svirt_sandbox_file_t</code>。为什么它没有出错？将一个文件拷贝到 <code>/srv</code> 会将这个文件标记为类型 <code>var_t</code>。我 <code>setenforce 0</code> （关闭 SELinux）了吗？</p>
+<p>当然没有，这将让 <a href="https://stopdisablingselinux.com/">Dan Walsh 大哭</a>（LCTT 译注：RedHat 的 SELinux 团队负责人，倡议不要禁用 SELinux）。是的，<code>machinectl</code> 确实将文件标记类型设置为期望的那样，可以看一下：</p>
+<p>启动一个容器之前：</p>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">rhel7</span><span class="o">-</span><span class="n">host</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># ls -Z /srv/named/etc/named.conf</span>
+<span class="o">-</span><span class="n">rw</span><span class="o">-</span><span class="n">r</span><span class="o">-----.</span><span class="w"> </span><span class="n">unconfined_u</span><span class="p">:</span><span class="n">object_r</span><span class="p">:</span><span class="n">var_t</span><span class="p">:</span><span class="n">s0</span><span class="w">   </span><span class="o">/</span><span class="n">srv</span><span class="o">/</span><span class="n">named</span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">named</span><span class="o">.</span><span class="n">conf</span>
+</code></pre></div>
+
+<p>不过，运行中我使用了一个卷选项可以使 Dan Walsh 先生高兴起来，<code>:Z</code>。<code>-v /srv/named/etc/named.conf:/etc/named.conf:Z</code> 命令的这部分做了两件事情：首先它表示这需要使用一个私有卷的 SELiunx 标记来重新标记；其次它表明以读写挂载。</p>
+<p>启动容器之后：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">root@rhel7-host ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">ls</span><span class="w"> </span><span class="o">-</span><span class="n">Z</span><span class="w"> </span><span class="o">/</span><span class="n">srv</span><span class="o">/</span><span class="n">named</span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">named</span><span class="p">.</span><span class="n">conf</span><span class="w"> </span>
+<span class="o">-</span><span class="n">rw</span><span class="o">-</span><span class="n">r</span><span class="c1">-----. root 25 system_u:object_r:svirt_sandbox_file_t:s0:c821,c956 /srv/named/etc/named.conf</span>
+</code></pre></div>
+
+<ul>
+<li><strong>注2：</strong> <strong>VIM 备份行为能改变 inode</strong></li>
+</ul>
+<p>如果你在本地主机中使用 <code>vim</code> 来编辑配置文件，而你没有看到容器中的改变，你可能不经意的创建了容器感知不到的新文件。在编辑时，有三种 <code>vim</code> 设定影响备份副本：<code>backup</code>、<code>writebackup</code> 和 <code>backupcopy</code>。</p>
+<p>我摘录了 RHEL 7 中的来自官方 VIM <a href="http://vimdoc.sourceforge.net/htmldoc/editing.html#backup-table">backup_table</a> 中的默认配置。</p>
+<div class="highlight"><pre><span></span><code>backup    writebackup
+off      on backup current file, deleted afterwards (default)
+</code></pre></div>
+
+<p>所以我们不创建残留下的 <code>~</code> 副本，而是创建备份。另外的设定是 <code>backupcopy</code>，<code>auto</code> 是默认的设置：</p>
+<div class="highlight"><pre><span></span><code>&quot;yes&quot; make a copy of the file and overwrite the original one
+&quot;no&quot; rename the file and write a new one
+&quot;auto&quot; one of the previous, what works best
+</code></pre></div>
+
+<p>这种组合设定意味着当你编辑一个文件时，除非 <code>vim</code> 有理由（请查看文档了解其逻辑），你将会得到一个包含你编辑内容的新文件，当你保存时它会重命名为原先的文件。这意味着这个文件获得了新的 inode。对于大多数情况，这不是问题，但是这里容器的<ruby> 绑定挂载 <rt>  bind mount </rt></ruby>对 inode 的改变很敏感。为了解决这个问题，你需要改变 <code>backupcopy</code> 的行为。</p>
+<p>不管是在 <code>vim</code> 会话中还是在你的 <code>.vimrc</code>中，请添加 <code>set backupcopy=yes</code>。这将确保原先的文件被清空并覆写，维持了 inode 不变并且将该改变传递到了容器中。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

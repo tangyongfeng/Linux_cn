@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>学习使用 GDB 调试代码</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Seth Kenlon 使用 GNU 调试器来解决你的代码问题。 GNU 调试器常以它的命令 gdb 称呼它，它是一个交互式的控制台，可以帮助你浏览 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2021/03/xue-xi-shi-yong-gdb-diao-shi-dai-ma.html" rel="bookmark"
+           title="Permalink to 学习使用 GDB 调试代码">学习使用 GDB 调试代码</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2021-03-14T21:06:00+01:00">
+                Published: Sun 14 March 2021
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Seth Kenlon</p>
+<blockquote>
+<p>使用 GNU 调试器来解决你的代码问题。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/202103/14/210547k3q5lek8j9qspkks.jpg" title="magnifying glass on computer screen, finding a bug in the code"></p>
+<p>GNU 调试器常以它的命令 <code>gdb</code> 称呼它，它是一个交互式的控制台，可以帮助你浏览源代码、分析执行的内容，其本质上是对错误的应用程序中出现的问题进行逆向工程。</p>
+<p>故障排除的麻烦在于它很复杂。<a href="https://www.gnu.org/software/gdb/">GNU 调试器</a> 并不是一个特别复杂的应用程序，但如果你不知道从哪里开始，甚至不知道何时和为何你可能需要求助于 GDB 来进行故障排除，那么它可能会让人不知所措。如果你一直使用 <code>print</code>、<code>echo</code> 或 <a href="https://opensource.com/article/20/8/printf">printf 语句</a>来调试你的代码，当你开始思考是不是还有更强大的东西时，那么本教程就是为你准备的。</p>
+<h3>有错误的代码</h3>
+<p>要开始使用 GDB，你需要一些代码。这里有一个用 C++ 写的示例应用程序（如果你一般不使用 C++ 编写程序也没关系，在所有语言中原理都是一样的），其来源于 <a href="/article-12985-1.html">猜谜游戏系列</a> 中的一个例子。</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;iostream&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;stdlib.h&gt;</span><span class="c1"> //srand</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;stdio.h&gt;</span><span class="c1">  //printf</span>
+
+<span class="n">using</span><span class="w"> </span><span class="n">namespace</span><span class="w"> </span><span class="nn">std</span><span class="p">;</span>
+
+<span class="kr">int</span><span class="w"> </span><span class="nf">main</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+
+<span class="n">srand</span><span class="w"> </span><span class="p">(</span><span class="n">time</span><span class="p">(</span><span class="nb">NULL</span><span class="p">));</span>
+<span class="kr">int</span><span class="w"> </span><span class="n">alpha</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rand</span><span class="p">()</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mi">8</span><span class="p">;</span>
+<span class="n">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;Hello world.&quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">endl</span><span class="p">;</span>
+<span class="kr">int</span><span class="w"> </span><span class="n">beta</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+
+<span class="n">printf</span><span class="p">(</span><span class="s">&quot;alpha is set to is %s</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">alpha</span><span class="p">);</span>
+<span class="n">printf</span><span class="p">(</span><span class="s">&quot;kiwi is set to is %s</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">beta</span><span class="p">);</span>
+
+<span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span><span class="w"> </span><span class="c1">// main</span>
+</code></pre></div>
+
+<p>这个代码示例中有一个 bug，但它确实可以编译（至少在 GCC 5 的时候）。如果你熟悉 C++，你可能已经看到了，但这是一个简单的问题，可以帮助新的 GDB 用户了解调试过程。编译并运行它就可以看到错误：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>g++<span class="w"> </span>-o<span class="w"> </span>buggy<span class="w"> </span>example.cpp
+$<span class="w"> </span>./buggy
+Hello<span class="w"> </span>world.
+Segmentation<span class="w"> </span>fault
+</code></pre></div>
+
+<h3>排除段故障</h3>
+<p>从这个输出中，你可以推测变量 <code>alpha</code> 的设置是正确的，因为否则的话，你就不会看到它<em>后面</em>的那行代码执行。当然，这并不总是正确的，但这是一个很好的工作理论，如果你使用 <code>printf</code> 作为日志和调试器，基本上也会得出同样的结论。从这里，你可以假设 bug 在于成功打印的那一行之后的<em>某行</em>。然而，不清楚错误是在下一行还是在几行之后。</p>
+<p>GNU 调试器是一个交互式的故障排除工具，所以你可以使用 <code>gdb</code> 命令来运行错误的代码。为了得到更好的结果，你应该从包含有<em>调试符号</em>的源代码中重新编译你的错误应用程序。首先，看看 GDB 在不重新编译的情况下能提供哪些信息：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>gdb<span class="w"> </span>./buggy
+Reading<span class="w"> </span>symbols<span class="w"> </span>from<span class="w"> </span>./buggy...done.
+<span class="o">(</span>gdb<span class="o">)</span><span class="w"> </span>start
+Temporary<span class="w"> </span>breakpoint<span class="w"> </span><span class="m">1</span><span class="w"> </span>at<span class="w"> </span>0x400a44
+Starting<span class="w"> </span>program:<span class="w"> </span>/home/seth/demo/buggy
+
+Temporary<span class="w"> </span>breakpoint<span class="w"> </span><span class="m">1</span>,<span class="w"> </span>0x0000000000400a44<span class="w"> </span><span class="k">in</span><span class="w"> </span>main<span class="w"> </span><span class="o">()</span>
+<span class="o">(</span>gdb<span class="o">)</span>
+</code></pre></div>
+
+<p>当你以一个二进制可执行文件作为参数启动 GDB 时，GDB 会加载该应用程序，然后等待你的指令。因为这是你第一次在这个可执行文件上运行 GDB，所以尝试重复这个错误是有意义的，希望 GDB 能够提供进一步的见解。很直观，GDB 用来启动它所加载的应用程序的命令就是 <code>start</code>。默认情况下，GDB 内置了一个<em>断点</em>，所以当它遇到你的应用程序的 <code>main</code> 函数时，它会暂停执行。要让 GDB 继续执行，使用命令 <code>continue</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="p">(</span><span class="n">gdb</span><span class="p">)</span><span class="w"> </span><span class="k">continue</span>
+<span class="n">Continuing</span><span class="o">.</span>
+<span class="n">Hello</span><span class="w"> </span><span class="n">world</span><span class="o">.</span>
+
+<span class="n">Program</span><span class="w"> </span><span class="n">received</span><span class="w"> </span><span class="k">signal</span><span class="w"> </span><span class="n">SIGSEGV</span><span class="p">,</span><span class="w"> </span><span class="n">Segmentation</span><span class="w"> </span><span class="n">fault</span><span class="o">.</span>
+<span class="mh">0x00007ffff71c0c0b</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">vfprintf</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="o">/</span><span class="n">lib64</span><span class="o">/</span><span class="n">libc</span><span class="o">.</span><span class="n">so</span><span class="o">.</span><span class="mi">6</span>
+<span class="p">(</span><span class="n">gdb</span><span class="p">)</span>
+</code></pre></div>
+
+<p>毫不意外：应用程序在打印 “Hello world” 后不久就崩溃了，但 GDB 可以提供崩溃发生时正在发生的函数调用。这有可能就足够你找到导致崩溃的 bug，但为了更好地了解 GDB 的功能和一般的调试过程，想象一下，如果问题还没有变得清晰，你想更深入地挖掘这段代码发生了什么。</p>
+<h3>用调试符号编译代码</h3>
+<p>要充分利用 GDB，你需要将调试符号编译到你的可执行文件中。你可以用 GCC 中的 <code>-g</code> 选项来生成这个符号：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>g++<span class="w"> </span>-g<span class="w"> </span>-o<span class="w"> </span>debuggy<span class="w"> </span>example.cpp
+$<span class="w"> </span>./debuggy
+Hello<span class="w"> </span>world.
+Segmentation<span class="w"> </span>fault
+</code></pre></div>
+
+<p>将调试符号编译到可执行文件中的结果是得到一个大得多的文件，所以通常不会分发它们，以增加便利性。然而，如果你正在调试开源代码，那么用调试符号重新编译测试是有意义的：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ls<span class="w"> </span>-l<span class="w"> </span>*buggy*<span class="w"> </span>*cpp
+-rw-r--r--<span class="w">    </span><span class="m">310</span><span class="w"> </span>Feb<span class="w"> </span><span class="m">19</span><span class="w"> </span><span class="m">08</span>:30<span class="w"> </span>debug.cpp
+-rwxr-xr-x<span class="w">  </span><span class="m">11624</span><span class="w"> </span>Feb<span class="w"> </span><span class="m">19</span><span class="w"> </span><span class="m">10</span>:27<span class="w"> </span>buggy*
+-rwxr-xr-x<span class="w">  </span><span class="m">22952</span><span class="w"> </span>Feb<span class="w"> </span><span class="m">19</span><span class="w"> </span><span class="m">10</span>:53<span class="w"> </span>debuggy*
+</code></pre></div>
+
+<h3>用 GDB 调试</h3>
+<p>加载新的可执行文件（本例中为 <code>debuggy</code>）以启动 GDB：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>gdb<span class="w"> </span>./debuggy
+Reading<span class="w"> </span>symbols<span class="w"> </span>from<span class="w"> </span>./debuggy...done.
+<span class="o">(</span>gdb<span class="o">)</span><span class="w"> </span>start
+Temporary<span class="w"> </span>breakpoint<span class="w"> </span><span class="m">1</span><span class="w"> </span>at<span class="w"> </span>0x400a44
+Starting<span class="w"> </span>program:<span class="w"> </span>/home/seth/demo/debuggy
+
+Temporary<span class="w"> </span>breakpoint<span class="w"> </span><span class="m">1</span>,<span class="w"> </span>0x0000000000400a44<span class="w"> </span><span class="k">in</span><span class="w"> </span>main<span class="w"> </span><span class="o">()</span>
+<span class="o">(</span>gdb<span class="o">)</span>
+</code></pre></div>
+
+<p>如前所述，使用 <code>start</code> 命令进行：</p>
+<div class="highlight"><pre><span></span><code><span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">start</span>
+<span class="nt">Temporary</span><span class="w"> </span><span class="nt">breakpoint</span><span class="w"> </span><span class="nt">1</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">0x400a48</span><span class="o">:</span><span class="w"> </span><span class="nt">file</span><span class="w"> </span><span class="nt">debug</span><span class="p">.</span><span class="nc">cpp</span><span class="o">,</span><span class="w"> </span><span class="nt">line</span><span class="w"> </span><span class="nt">9</span><span class="o">.</span>
+<span class="nt">Starting</span><span class="w"> </span><span class="nt">program</span><span class="o">:</span><span class="w"> </span><span class="o">/</span><span class="nt">home</span><span class="o">/</span><span class="nt">sek</span><span class="o">/</span><span class="nt">demo</span><span class="o">/</span><span class="nt">debuggy</span>
+
+<span class="nt">Temporary</span><span class="w"> </span><span class="nt">breakpoint</span><span class="w"> </span><span class="nt">1</span><span class="o">,</span><span class="w"> </span><span class="nt">main</span><span class="w"> </span><span class="o">()</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">debug</span><span class="p">.</span><span class="nc">cpp</span><span class="p">:</span><span class="nd">9</span>
+<span class="nt">9</span><span class="w">       </span><span class="nt">srand</span><span class="w"> </span><span class="o">(</span><span class="nt">time</span><span class="o">(</span><span class="nt">NULL</span><span class="o">));</span>
+<span class="o">(</span><span class="nt">gdb</span><span class="o">)</span>
+</code></pre></div>
+
+<p>这一次，自动的 <code>main</code> 断点可以指明 GDB 暂停的行号和该行包含的代码。你可以用 <code>continue</code> 恢复正常操作，但你已经知道应用程序在完成之前就会崩溃，因此，你可以使用 <code>next</code> 关键字逐行步进检查你的代码：</p>
+<div class="highlight"><pre><span></span><code><span class="p">(</span><span class="n">gdb</span><span class="p">)</span><span class="w"> </span><span class="n">next</span>
+<span class="mi">10</span><span class="w">  </span><span class="nb nb-Type">int</span><span class="w"> </span><span class="n">alpha</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rand</span><span class="p">()</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mi">8</span><span class="p">;</span>
+<span class="p">(</span><span class="n">gdb</span><span class="p">)</span><span class="w"> </span><span class="n">next</span>
+<span class="mi">11</span><span class="w">  </span><span class="n">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s2">&quot;Hello world.&quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">endl</span><span class="p">;</span>
+<span class="p">(</span><span class="n">gdb</span><span class="p">)</span><span class="w"> </span><span class="n">next</span>
+<span class="n">Hello</span><span class="w"> </span><span class="n">world</span><span class="o">.</span>
+<span class="mi">12</span><span class="w">  </span><span class="nb nb-Type">int</span><span class="w"> </span><span class="n">beta</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+<span class="p">(</span><span class="n">gdb</span><span class="p">)</span><span class="w"> </span><span class="n">next</span>
+<span class="mi">14</span><span class="w">      </span><span class="n">printf</span><span class="p">(</span><span class="s2">&quot;alpha is set to is </span><span class="si">%s</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">alpha</span><span class="p">);</span>
+<span class="p">(</span><span class="n">gdb</span><span class="p">)</span><span class="w"> </span><span class="n">next</span>
+
+<span class="n">Program</span><span class="w"> </span><span class="n">received</span><span class="w"> </span><span class="k">signal</span><span class="w"> </span><span class="n">SIGSEGV</span><span class="p">,</span><span class="w"> </span><span class="n">Segmentation</span><span class="w"> </span><span class="n">fault</span><span class="o">.</span>
+<span class="mh">0x00007ffff71c0c0b</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">vfprintf</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="o">/</span><span class="n">lib64</span><span class="o">/</span><span class="n">libc</span><span class="o">.</span><span class="n">so</span><span class="o">.</span><span class="mi">6</span>
+<span class="p">(</span><span class="n">gdb</span><span class="p">)</span>
+</code></pre></div>
+
+<p>从这个过程可以确认，崩溃不是发生在设置 <code>beta</code> 变量的时候，而是执行 <code>printf</code> 行的时候。这个 bug 在本文中已经暴露了好几次（破坏者：向 <code>printf</code> 提供了错误的数据类型），但暂时假设解决方案仍然不明确，需要进一步调查。</p>
+<h3>设置断点</h3>
+<p>一旦你的代码被加载到 GDB 中，你就可以向 GDB 询问到目前为止代码所产生的数据。要尝试数据自省，通过再次发出 <code>start</code> 命令来重新启动你的应用程序，然后进行到第 11 行。一个快速到达 11 行的简单方法是设置一个寻找特定行号的断点：</p>
+<div class="highlight"><pre><span></span><code><span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">start</span>
+<span class="nt">The</span><span class="w"> </span><span class="nt">program</span><span class="w"> </span><span class="nt">being</span><span class="w"> </span><span class="nt">debugged</span><span class="w"> </span><span class="nt">has</span><span class="w"> </span><span class="nt">been</span><span class="w"> </span><span class="nt">started</span><span class="w"> </span><span class="nt">already</span><span class="o">.</span>
+<span class="nt">Start</span><span class="w"> </span><span class="nt">it</span><span class="w"> </span><span class="nt">from</span><span class="w"> </span><span class="nt">the</span><span class="w"> </span><span class="nt">beginning</span><span class="o">?</span><span class="w"> </span><span class="o">(</span><span class="nt">y</span><span class="w"> </span><span class="nt">or</span><span class="w"> </span><span class="nt">n</span><span class="o">)</span><span class="w"> </span><span class="nt">y</span>
+<span class="nt">Temporary</span><span class="w"> </span><span class="nt">breakpoint</span><span class="w"> </span><span class="nt">2</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">0x400a48</span><span class="o">:</span><span class="w"> </span><span class="nt">file</span><span class="w"> </span><span class="nt">debug</span><span class="p">.</span><span class="nc">cpp</span><span class="o">,</span><span class="w"> </span><span class="nt">line</span><span class="w"> </span><span class="nt">9</span><span class="o">.</span>
+<span class="nt">Starting</span><span class="w"> </span><span class="nt">program</span><span class="o">:</span><span class="w"> </span><span class="o">/</span><span class="nt">home</span><span class="o">/</span><span class="nt">sek</span><span class="o">/</span><span class="nt">demo</span><span class="o">/</span><span class="nt">debuggy</span>
+
+<span class="nt">Temporary</span><span class="w"> </span><span class="nt">breakpoint</span><span class="w"> </span><span class="nt">2</span><span class="o">,</span><span class="w"> </span><span class="nt">main</span><span class="w"> </span><span class="o">()</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">debug</span><span class="p">.</span><span class="nc">cpp</span><span class="p">:</span><span class="nd">9</span>
+<span class="nt">9</span><span class="w">       </span><span class="nt">srand</span><span class="w"> </span><span class="o">(</span><span class="nt">time</span><span class="o">(</span><span class="nt">NULL</span><span class="o">));</span>
+<span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">break</span><span class="w"> </span><span class="nt">11</span>
+<span class="nt">Breakpoint</span><span class="w"> </span><span class="nt">3</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">0x400a74</span><span class="o">:</span><span class="w"> </span><span class="nt">file</span><span class="w"> </span><span class="nt">debug</span><span class="p">.</span><span class="nc">cpp</span><span class="o">,</span><span class="w"> </span><span class="nt">line</span><span class="w"> </span><span class="nt">11</span><span class="o">.</span>
+</code></pre></div>
+
+<p>建立断点后，用 <code>continue</code> 继续执行：</p>
+<div class="highlight"><pre><span></span><code><span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">continue</span>
+<span class="nt">Continuing</span><span class="o">.</span>
+
+<span class="nt">Breakpoint</span><span class="w"> </span><span class="nt">3</span><span class="o">,</span><span class="w"> </span><span class="nt">main</span><span class="w"> </span><span class="o">()</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">debug</span><span class="p">.</span><span class="nc">cpp</span><span class="p">:</span><span class="nd">11</span>
+<span class="nt">11</span><span class="w">      </span><span class="nt">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s2">&quot;Hello world.&quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="nt">endl</span><span class="o">;</span>
+<span class="o">(</span><span class="nt">gdb</span><span class="o">)</span>
+</code></pre></div>
+
+<p>现在暂停在第 11 行，就在 <code>alpha</code> 变量被设置之后，以及 <code>beta</code> 被设置之前。</p>
+<h3>用 GDB 进行变量自省</h3>
+<p>要查看一个变量的值，使用 <code>print</code> 命令。在这个示例代码中，<code>alpha</code> 的值是随机的，所以你的实际结果可能与我的不同：</p>
+<div class="highlight"><pre><span></span><code>(gdb) print alpha
+$1 = 3
+(gdb)
+</code></pre></div>
+
+<p>当然，你无法看到一个尚未建立的变量的值：</p>
+<div class="highlight"><pre><span></span><code>(gdb) print beta
+$2 = 0
+</code></pre></div>
+
+<h3>使用流程控制</h3>
+<p>要继续进行，你可以步进代码行来到达将 <code>beta</code> 设置为一个值的位置：</p>
+<div class="highlight"><pre><span></span><code><span class="ss">(</span><span class="nv">gdb</span><span class="ss">)</span><span class="w"> </span><span class="k">next</span>
+<span class="nv">Hello</span><span class="w"> </span><span class="nv">world</span>.
+<span class="mi">12</span><span class="w">  </span><span class="nv">int</span><span class="w"> </span><span class="nv">beta</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="c1">;</span>
+<span class="ss">(</span><span class="nv">gdb</span><span class="ss">)</span><span class="w"> </span><span class="k">next</span>
+<span class="mi">14</span><span class="w">  </span><span class="nv">printf</span><span class="ss">(</span><span class="s2">&quot;alpha is set to is %s\n&quot;</span>,<span class="w"> </span><span class="nv">alpha</span><span class="ss">)</span><span class="c1">;</span>
+<span class="ss">(</span><span class="nv">gdb</span><span class="ss">)</span><span class="w"> </span><span class="nv">print</span><span class="w"> </span><span class="nv">beta</span>
+<span class="mh">$3</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span>
+</code></pre></div>
+
+<p>另外，你也可以设置一个观察点，它就像断点一样，是一种控制 GDB 执行代码流程的方法。在这种情况下，你知道 <code>beta</code> 变量应该设置为 <code>2</code>，所以你可以设置一个观察点，当 <code>beta</code> 的值发生变化时提醒你：</p>
+<div class="highlight"><pre><span></span><code><span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">watch</span><span class="w"> </span><span class="nt">beta</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="nt">0</span>
+<span class="nt">Hardware</span><span class="w"> </span><span class="nt">watchpoint</span><span class="w"> </span><span class="nt">5</span><span class="o">:</span><span class="w"> </span><span class="nt">beta</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="nt">0</span>
+<span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">continue</span>
+<span class="nt">Continuing</span><span class="o">.</span>
+
+<span class="nt">Breakpoint</span><span class="w"> </span><span class="nt">3</span><span class="o">,</span><span class="w"> </span><span class="nt">main</span><span class="w"> </span><span class="o">()</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">debug</span><span class="p">.</span><span class="nc">cpp</span><span class="p">:</span><span class="nd">11</span>
+<span class="nt">11</span><span class="w">      </span><span class="nt">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s2">&quot;Hello world.&quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="nt">endl</span><span class="o">;</span>
+<span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">continue</span>
+<span class="nt">Continuing</span><span class="o">.</span>
+<span class="nt">Hello</span><span class="w"> </span><span class="nt">world</span><span class="o">.</span>
+
+<span class="nt">Hardware</span><span class="w"> </span><span class="nt">watchpoint</span><span class="w"> </span><span class="nt">5</span><span class="o">:</span><span class="w"> </span><span class="nt">beta</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="nt">0</span>
+
+<span class="nt">Old</span><span class="w"> </span><span class="nt">value</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nt">false</span>
+<span class="nt">New</span><span class="w"> </span><span class="nt">value</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nt">true</span>
+<span class="nt">main</span><span class="w"> </span><span class="o">()</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">debug</span><span class="p">.</span><span class="nc">cpp</span><span class="p">:</span><span class="nd">14</span>
+<span class="nt">14</span><span class="w">      </span><span class="nt">printf</span><span class="o">(</span><span class="s2">&quot;alpha is set to is %s\n&quot;</span><span class="o">,</span><span class="w"> </span><span class="nt">alpha</span><span class="o">);</span>
+<span class="o">(</span><span class="nt">gdb</span><span class="o">)</span>
+</code></pre></div>
+
+<p>你可以用 <code>next</code> 手动步进完成代码的执行，或者你可以用断点、观察点和捕捉点来控制代码的执行。</p>
+<h3>用 GDB 分析数据</h3>
+<p>你可以以不同格式查看数据。例如，以八进制值查看 <code>beta</code> 的值：</p>
+<div class="highlight"><pre><span></span><code>(gdb) print /o beta
+$4 = 02
+</code></pre></div>
+
+<p>要查看其在内存中的地址：</p>
+<div class="highlight"><pre><span></span><code>(gdb) print /o &amp;beta
+$5 = 0x2
+</code></pre></div>
+
+<p>你也可以看到一个变量的数据类型：</p>
+<div class="highlight"><pre><span></span><code><span class="p">(</span><span class="nx">gdb</span><span class="p">)</span><span class="w"> </span><span class="nx">whatis</span><span class="w"> </span><span class="nx">beta</span>
+<span class="k">type</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">int</span>
+</code></pre></div>
+
+<h3>用 GDB 解决错误</h3>
+<p>这种自省不仅能让你更好地了解什么代码正在执行，还能让你了解它是如何执行的。在这个例子中，对变量运行的 <code>whatis</code> 命令给了你一个线索，即你的 <code>alpha</code> 和 <code>beta</code> 变量是整数，这可能会唤起你对 <code>printf</code> 语法的记忆，使你意识到在你的 <code>printf</code> 语句中，你必须使用 <code>%d</code> 来代替 <code>%s</code>。做了这个改变，就可以让应用程序按预期运行，没有更明显的错误存在。</p>
+<p>当代码编译后发现有 bug 存在时，特别令人沮丧，但最棘手的 bug 就是这样，如果它们很容易被发现，那它们就不是 bug 了。使用 GDB 是猎取并消除它们的一种方法。</p>
+<h3>下载我们的速查表</h3>
+<p>生活的真相就是这样，即使是最基本的编程，代码也会有 bug。并不是所有的错误都会导致应用程序无法运行（甚至无法编译），也不是所有的错误都是由错误的代码引起的。有时，bug 是基于一个特别有创意的用户所做的意外的选择组合而间歇性发生的。有时，程序员从他们自己的代码中使用的库中继承了 bug。无论原因是什么，bug 基本上无处不在，程序员的工作就是发现并消除它们。</p>
+<p>GNU 调试器是一个寻找 bug 的有用工具。你可以用它做的事情比我在本文中演示的要多得多。你可以通过 GNU Info 阅读器来了解它的许多功能：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>info<span class="w"> </span>gdb
+</code></pre></div>
+
+<p>无论你是刚开始学习 GDB 还是专业人员的，提醒一下你有哪些命令是可用的，以及这些命令的语法是什么，都是很有帮助的。</p>
+<ul>
+<li><a href="https://opensource.com/downloads/gnu-debugger-cheat-sheet">下载 GDB 速查表</a></li>
+</ul>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

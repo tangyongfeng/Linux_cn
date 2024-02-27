@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何在 Linux 下大量屏蔽恶意 IP 地址</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Dan Nanni 很多情况下，你可能需要在Linux下屏蔽IP地址。比如，作为一个终端用户，你可能想要免受间谍软件或者IP追踪的困扰。或者当你在运行P2P软件时。你可能 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/02/ru-he-zai-linux-xia-da-liang-ping-bi-e-yi-ip-di-zhi.html" rel="bookmark"
+           title="Permalink to 如何在 Linux 下大量屏蔽恶意 IP 地址">如何在 Linux 下大量屏蔽恶意 IP 地址</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-02-17T21:04:00+01:00">
+                Published: Tue 17 February 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Dan Nanni</p>
+<p>很多情况下，你可能需要在Linux下屏蔽IP地址。比如，作为一个终端用户，你可能想要免受间谍软件或者IP追踪的困扰。或者当你在运行P2P软件时。你可能想要过滤反P2P活动的网络链接。如果你是一名系统管理员，你可能想要禁止垃圾IP地址访问你们的公司邮件服务器。或者你因一些原因想要禁止某些国家访问你的web服务。在许多情况下，然而，你的IP地址屏蔽列表可能会很快地增长到几万的IP。该如何处理这个？</p>
+<p><img alt="" src="/data/attachment/album/201502/17/210418loxnx9gygnmlx69b.png"></p>
+<h3>Netfilter/IPtables 的问题</h3>
+<p>在Linux中，可以很简单地用netfilter/iptables框架禁止IP地址：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>iptables<span class="w"> </span>-A<span class="w"> </span>INPUT<span class="w"> </span>-s<span class="w"> </span><span class="m">1</span>.1.1.1<span class="w"> </span>-p<span class="w"> </span>TCP<span class="w"> </span>-j<span class="w"> </span>DROP<span class="w"> </span>
+</code></pre></div>
+
+<p>如果你想要完全屏蔽一个IP地址段，你可以用下面的命令很简单地做到：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>iptables<span class="w"> </span>-A<span class="w"> </span>INPUT<span class="w"> </span>-s<span class="w"> </span><span class="m">1</span>.1.2.0/24<span class="w"> </span>-p<span class="w"> </span>TCP<span class="w"> </span>-j<span class="w"> </span>DROP<span class="w"> </span>
+</code></pre></div>
+
+<p>然而，当你有1000个独立IP地址，且不带CIDR（无类别域间路由）前缀，你该怎么做？你要有1000条iptable规则！这显然这并不适于大规模屏蔽。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>iptables<span class="w"> </span>-A<span class="w"> </span>INPUT<span class="w"> </span>-s<span class="w"> </span><span class="m">1</span>.1.1.1<span class="w"> </span>-p<span class="w"> </span>TCP<span class="w"> </span>-j<span class="w"> </span>DROP
+$<span class="w"> </span>sudo<span class="w"> </span>iptables<span class="w"> </span>-A<span class="w"> </span>INPUT<span class="w"> </span>-s<span class="w"> </span><span class="m">2</span>.2.2.2<span class="w"> </span>-p<span class="w"> </span>TCP<span class="w"> </span>-j<span class="w"> </span>DROP
+$<span class="w"> </span>sudo<span class="w"> </span>iptables<span class="w"> </span>-A<span class="w"> </span>INPUT<span class="w"> </span>-s<span class="w"> </span><span class="m">3</span>.3.3.3<span class="w"> </span>-p<span class="w"> </span>TCP<span class="w"> </span>-j<span class="w"> </span>DROP
+.<span class="w"> </span>.<span class="w"> </span>.<span class="w"> </span>.<span class="w"> </span>
+</code></pre></div>
+
+<h3>什么是IP集?</h3>
+<p>这时候就是<a href="http://ipset.netfilter.org/">IP集</a>登场了。IP集是一个内核特性，它允许多个（独立）IP地址、MAC地址或者甚至是端口号被编码和有效地存储在位图/哈希内核数据结构中。一旦IP集创建之后，你可以创建一条iptables规则来匹配这个集合。</p>
+<p>你马上就会看见IP集合的好处了，它可以让你用一条iptable规则匹配多个ip地址！你可以用多个IP地址和端口号的方式来构造IP集，并且可以动态地更新规则而没有性能影响。</p>
+<h3>在Linux中安装IPset工具</h3>
+<p>为了创建和管理IP集，你需要使用称为ipset的用户空间工具。</p>
+<p>要在Debian、Ubuntu或者Linux Mint上安装：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>ipset
+</code></pre></div>
+
+<p>Fedora或者CentOS/RHEL 7上安装：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>ipset<span class="w"> </span>
+</code></pre></div>
+
+<h3>使用IPset命令禁止IP</h3>
+<p>让我通过简单的示例告诉你该如何使用ipset命令。</p>
+<p>首先，让我们创建一条新的IP集，名为banthis（名字任意）：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>ipset<span class="w"> </span>create<span class="w"> </span>banthis<span class="w"> </span>hash:net
+</code></pre></div>
+
+<p>第二个参数(hash:net)是必须的，代表的是集合的类型。IP集有<a href="http://ipset.netfilter.org/features.html">多个类型</a>。hash:net类型的IP集使用哈希来存储多个CIDR块。如果你想要在一个集合中存储单独的IP地址，你可以使用hash:ip类型。</p>
+<p>一旦创建了一个IP集之后，你可以用下面的命令来检查：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>ipset<span class="w"> </span>list<span class="w"> </span>
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/201502/17/210447z0901b0upyb303iy.jpg"></p>
+<p>这显示了一个可用的IP集合列表，并有包含了集合成员的详细信息。默认上，每个IP集合可以包含65536个元素（这里是CIDR块）。你可以通过追加"maxelem N"选项来增加限制。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>ipset<span class="w"> </span>create<span class="w"> </span>banthis<span class="w"> </span>hash:net<span class="w"> </span>maxelem<span class="w"> </span><span class="m">1000000</span><span class="w"> </span>
+</code></pre></div>
+
+<p>现在让我们来增加IP块到这个集合中：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>ipset<span class="w"> </span>add<span class="w"> </span>banthis<span class="w"> </span><span class="m">1</span>.1.1.1/32
+$<span class="w"> </span>sudo<span class="w"> </span>ipset<span class="w"> </span>add<span class="w"> </span>banthis<span class="w"> </span><span class="m">1</span>.1.2.0/24
+$<span class="w"> </span>sudo<span class="w"> </span>ipset<span class="w"> </span>add<span class="w"> </span>banthis<span class="w"> </span><span class="m">1</span>.1.3.0/24
+$<span class="w"> </span>sudo<span class="w"> </span>ipset<span class="w"> </span>add<span class="w"> </span>banthis<span class="w"> </span><span class="m">1</span>.1.4.10/24<span class="w"> </span>
+</code></pre></div>
+
+<p>你会看到集合成员已经改变了。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>ipset<span class="w"> </span>list<span class="w"> </span>
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/201502/17/210449jebii80tcelwh2jc.jpg"></p>
+<p>现在是时候去创建一个使用IP集的iptables规则了。这里的关键是使用"-m set --match-set "选项。</p>
+<p>现在让我们创建一条让之前那些IP块不能通过80端口访问web服务的iptable规则。可以通过下面的命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>iptables<span class="w"> </span>-I<span class="w"> </span>INPUT<span class="w"> </span>-m<span class="w"> </span><span class="nb">set</span><span class="w"> </span>--match-set<span class="w"> </span>banthis<span class="w"> </span>src<span class="w"> </span>-p<span class="w"> </span>tcp<span class="w"> </span>--destination-port<span class="w"> </span><span class="m">80</span><span class="w"> </span>-j<span class="w"> </span>DROP<span class="w"> </span>
+</code></pre></div>
+
+<p>如果你愿意，你可以保存特定的IP集到一个文件中，以后可以从文件中还原：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>ipset<span class="w"> </span>save<span class="w"> </span>banthis<span class="w"> </span>-f<span class="w"> </span>banthis.txt
+$<span class="w"> </span>sudo<span class="w"> </span>ipset<span class="w"> </span>destroy<span class="w"> </span>banthis
+$<span class="w"> </span>sudo<span class="w"> </span>ipset<span class="w"> </span>restore<span class="w"> </span>-f<span class="w"> </span>banthis.txt<span class="w"> </span>
+</code></pre></div>
+
+<p>上面的命令中，我使用了destory选项来删除一个已有的IP集来看看我是否可以还原它。</p>
+<h3>自动IP地址禁用</h3>
+<p>现在你应该看到了IP集合的强大了。维护IP黑名单是一件繁琐和费时的工作。实际上，有很多免费或者收费的服务可以来帮你完成这个。一个额外的好处是，让我们看看如何自动将IP黑名单加到IP集中。</p>
+<p>首先让我们从<a href="https://www.iblocklist.com/lists.php">iblocklist.com</a>得到免费的黑名单，这个网站有不同的免费和收费的名单。免费的版本是P2P格式。</p>
+<p>接下来我要使用一个名为iblocklist2ipset的开源Python工具来将P2P格式的黑名单转化成IP集。</p>
+<p>首先，你需要安装了pip（参考<a href="http://ask.xmodulo.com/install-pip-linux.html">这个指导</a>来安装pip）。</p>
+<p>使用的下面命令安装iblocklist2ipset。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>iblocklist2ipset
+</code></pre></div>
+
+<p>在一些发行版如Fedora，你可能需要运行：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>python-pip<span class="w"> </span>install<span class="w"> </span>iblocklist2ipset<span class="w"> </span>
+</code></pre></div>
+
+<p>现在到<a href="https://www.iblocklist.com/lists.php">iblocklist.com</a>，抓取任何一个P2P列表的URL（比如"level1"列表）。</p>
+<p><img alt="" src="/data/attachment/album/201502/17/210451cbisbxb16btqe5li.jpg"></p>
+<p>粘帖URL到下面的命令中。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>iblocklist2ipset<span class="w"> </span>generate<span class="w"> </span><span class="se">\</span>
+--ipset<span class="w"> </span>banthis<span class="w"> </span><span class="s2">&quot;http://list.iblocklist.com/?list=ydxerpxkpcfqjaybcssw&amp;fileformat=p2p&amp;archiveformat=gz&quot;</span><span class="w"> </span><span class="se">\</span>
+&gt;<span class="w"> </span>banthis.txt<span class="w"> </span>
+</code></pre></div>
+
+<p>上面的命令运行之后，你会得到一个名为banthis.txt的文件。如果查看它的内容，你会看到像这些：</p>
+<div class="highlight"><pre><span></span><code>create banthis hash:net family inet hashsize 131072 maxelem 237302
+add banthis 1.2.4.0/24
+add banthis 1.2.8.0/24
+add banthis 1.9.75.8/32
+add banthis 1.9.96.105/32
+add banthis 1.9.102.251/32
+add banthis 1.9.189.65/32
+add banthis 1.16.0.0/14
+</code></pre></div>
+
+<p>你可以用下面的ipset命令来加载这个文件：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>ipset<span class="w"> </span>restore<span class="w"> </span>-f<span class="w"> </span>banthis.txt
+</code></pre></div>
+
+<p>现在可以查看自动创建的IP集：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>ipset<span class="w"> </span>list<span class="w"> </span>banthis<span class="w"> </span>
+</code></pre></div>
+
+<p>在写这篇文章时候，“level1”类表包含了237,000个屏蔽的IP列表。你可以看到很多IP地址已经加入到IP集中了。</p>
+<p>最后，创建一条iptables命令来屏蔽这些坏蛋！</p>
+<h3>总结</h3>
+<p>这篇文章中，我描述了你该如何用强大的ipset来屏蔽不想要的IP地址。同时结合了第三方工具iblocklist2ipset，这样你就可以流畅地维护你的IP屏蔽列表了。那些对ipset的性能提升好奇的人，下图显示了iptables在使用和不使用ipset的基准测试结果（注意时间坐标轴）。</p>
+<p><img alt="" src="/data/attachment/album/201502/17/210453t9kk9jyyiy5e7c1u.jpg"></p>
+<p>告诉我你多么喜欢这个。:-)</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>无密码验证：客户端</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Nicolás Parada 我们继续 无密码验证 的文章。上一篇文章中，我们用 Go 写了一个 HTTP 服务，用这个服务来做无密码验证 API。今天，我们为 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/07/wu-mi-ma-yan-zheng-ke-hu-duan.html" rel="bookmark"
+           title="Permalink to 无密码验证：客户端">无密码验证：客户端</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-07-12T11:41:37+02:00">
+                Published: Thu 12 July 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Nicolás Parada</p>
+<p><img alt="" src="/data/attachment/album/201807/12/114131efzt9yrb5ggd93yr.jpg"></p>
+<p>我们继续 <a href="/article-9748-1.html">无密码验证</a> 的文章。上一篇文章中，我们用 Go 写了一个 HTTP 服务，用这个服务来做无密码验证 API。今天，我们为它再写一个 JavaScript 客户端。</p>
+<p>我们将使用 <a href="/article-9815-1.html">这里的</a> 这个单页面应用程序（SPA）来展示使用的技术。如果你还没有读过它，请先读它。</p>
+<p>记住流程：</p>
+<ul>
+<li>用户输入其 email。</li>
+<li>用户收到一个带有魔法链接的邮件。</li>
+<li>用户点击该链接、</li>
+<li>用户验证成功。</li>
+</ul>
+<p>对于根 URL（<code>/</code>），我们将根据验证的状态分别使用两个不同的页面：一个是带有访问表单的页面，或者是已验证通过的用户的欢迎页面。另一个页面是验证回调的重定向页面。</p>
+<h3>伺服</h3>
+<p>我们将使用相同的 Go 服务器来为客户端提供服务，因此，在我们前面的 <code>main.go</code> 中添加一些路由：</p>
+<div class="highlight"><pre><span></span><code>router.Handle(&quot;GET&quot;, &quot;/...&quot;, http.FileServer(SPAFileSystem{http.Dir(&quot;static&quot;)}))
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="n">type</span><span class="w"> </span><span class="n">SPAFileSystem</span><span class="w"> </span><span class="n">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">fs</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">FileSystem</span>
+<span class="p">}</span>
+
+<span class="k">func</span><span class="w"> </span><span class="p">(</span><span class="n">spa</span><span class="w"> </span><span class="n">SPAFileSystem</span><span class="p">)</span><span class="w"> </span><span class="n">Open</span><span class="p">(</span><span class="n">name</span><span class="w"> </span><span class="n">string</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="n">http</span><span class="o">.</span><span class="n">File</span><span class="p">,</span><span class="w"> </span><span class="n">error</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">f</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">spa</span><span class="o">.</span><span class="n">fs</span><span class="o">.</span><span class="n">Open</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">spa</span><span class="o">.</span><span class="n">fs</span><span class="o">.</span><span class="n">Open</span><span class="p">(</span><span class="s2">&quot;index.html&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">f</span><span class="p">,</span><span class="w"> </span><span class="n">nil</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这个伺服文件放在 <code>static</code> 下，配合 <code>static/index.html</code> 作为回调。</p>
+<p>你可以使用你自己的服务器，但是你得在服务器上启用 <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS">CORS</a>。</p>
+<h3>HTML</h3>
+<p>我们来看一下那个 <code>static/index.html</code> 文件。</p>
+<div class="highlight"><pre><span></span><code><span class="cp">&lt;!DOCTYPE html&gt;</span>
+<span class="p">&lt;</span><span class="nt">html</span> <span class="na">lang</span><span class="o">=</span><span class="s">&quot;en&quot;</span><span class="p">&gt;</span>
+<span class="p">&lt;</span><span class="nt">head</span><span class="p">&gt;</span>
+ <span class="p">&lt;</span><span class="nt">meta</span> <span class="na">charset</span><span class="o">=</span><span class="s">&quot;utf-8&quot;</span><span class="p">&gt;</span>
+ <span class="p">&lt;</span><span class="nt">meta</span> <span class="na">name</span><span class="o">=</span><span class="s">&quot;viewport&quot;</span> <span class="na">content</span><span class="o">=</span><span class="s">&quot;width=device-width, initial-scale=1.0&quot;</span><span class="p">&gt;</span>
+ <span class="p">&lt;</span><span class="nt">title</span><span class="p">&gt;</span>Passwordless Demo<span class="p">&lt;/</span><span class="nt">title</span><span class="p">&gt;</span>
+ <span class="p">&lt;</span><span class="nt">link</span> <span class="na">rel</span><span class="o">=</span><span class="s">&quot;shortcut icon&quot;</span> <span class="na">href</span><span class="o">=</span><span class="s">&quot;data:,&quot;</span><span class="p">&gt;</span>
+ <span class="p">&lt;</span><span class="nt">script</span> <span class="na">src</span><span class="o">=</span><span class="s">&quot;/js/main.js&quot;</span> <span class="na">type</span><span class="o">=</span><span class="s">&quot;module&quot;</span><span class="p">&gt;&lt;/</span><span class="nt">script</span><span class="p">&gt;</span>
+<span class="p">&lt;/</span><span class="nt">head</span><span class="p">&gt;</span>
+<span class="p">&lt;</span><span class="nt">body</span><span class="p">&gt;&lt;/</span><span class="nt">body</span><span class="p">&gt;</span>
+<span class="p">&lt;/</span><span class="nt">html</span><span class="p">&gt;</span>
+</code></pre></div>
+
+<p>单页面应用程序的所有渲染由 JavaScript 来完成，因此，我们使用了一个空的 body 部分和一个 <code>main.js</code> 文件。</p>
+<p>我们将使用 <a href="/article-9815-1.html">上篇文章</a> 中的 Router。</p>
+<h3>渲染</h3>
+<p>现在，我们使用下面的内容来创建一个 <code>static/js/main.js</code> 文件：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">Router</span> <span class="kn">from</span> <span class="s1">&#39;https://unpkg.com/@nicolasparada/router&#39;</span>
+<span class="kn">import</span> <span class="p">{</span> <span class="n">isAuthenticated</span> <span class="p">}</span> <span class="kn">from</span> <span class="s1">&#39;./auth.js&#39;</span>
+
+<span class="n">const</span> <span class="n">router</span> <span class="o">=</span> <span class="n">new</span> <span class="n">Router</span><span class="p">()</span>
+
+<span class="n">router</span><span class="o">.</span><span class="n">handle</span><span class="p">(</span><span class="s1">&#39;/&#39;</span><span class="p">,</span> <span class="n">guard</span><span class="p">(</span><span class="n">view</span><span class="p">(</span><span class="s1">&#39;home&#39;</span><span class="p">)))</span>
+<span class="n">router</span><span class="o">.</span><span class="n">handle</span><span class="p">(</span><span class="s1">&#39;/callback&#39;</span><span class="p">,</span> <span class="n">view</span><span class="p">(</span><span class="s1">&#39;callback&#39;</span><span class="p">))</span>
+<span class="n">router</span><span class="o">.</span><span class="n">handle</span><span class="p">(</span><span class="o">/^</span>\<span class="o">//</span><span class="p">,</span> <span class="n">view</span><span class="p">(</span><span class="s1">&#39;not-found&#39;</span><span class="p">))</span>
+
+<span class="n">router</span><span class="o">.</span><span class="n">install</span><span class="p">(</span><span class="k">async</span> <span class="n">resultPromise</span> <span class="o">=&gt;</span> <span class="p">{</span>
+    <span class="n">document</span><span class="o">.</span><span class="n">body</span><span class="o">.</span><span class="n">innerHTML</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
+    <span class="n">document</span><span class="o">.</span><span class="n">body</span><span class="o">.</span><span class="n">appendChild</span><span class="p">(</span><span class="k">await</span> <span class="n">resultPromise</span><span class="p">)</span>
+<span class="p">})</span>
+
+<span class="n">function</span> <span class="n">view</span><span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="p">(</span><span class="o">...</span><span class="n">args</span><span class="p">)</span> <span class="o">=&gt;</span> <span class="n">import</span><span class="p">(</span><span class="err">`</span><span class="o">/</span><span class="n">js</span><span class="o">/</span><span class="n">pages</span><span class="o">/</span><span class="err">$</span><span class="p">{</span><span class="n">name</span><span class="p">}</span><span class="o">-</span><span class="n">page</span><span class="o">.</span><span class="n">js</span><span class="err">`</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">then</span><span class="p">(</span><span class="n">m</span> <span class="o">=&gt;</span> <span class="n">m</span><span class="o">.</span><span class="n">default</span><span class="p">(</span><span class="o">...</span><span class="n">args</span><span class="p">))</span>
+<span class="p">}</span>
+
+<span class="n">function</span> <span class="n">guard</span><span class="p">(</span><span class="n">fn1</span><span class="p">,</span> <span class="n">fn2</span> <span class="o">=</span> <span class="n">view</span><span class="p">(</span><span class="s1">&#39;welcome&#39;</span><span class="p">))</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="p">(</span><span class="o">...</span><span class="n">args</span><span class="p">)</span> <span class="o">=&gt;</span> <span class="n">isAuthenticated</span><span class="p">()</span>
+        <span class="err">?</span> <span class="n">fn1</span><span class="p">(</span><span class="o">...</span><span class="n">args</span><span class="p">)</span>
+        <span class="p">:</span> <span class="n">fn2</span><span class="p">(</span><span class="o">...</span><span class="n">args</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>与上篇文章不同的是，我们实现了一个 <code>isAuthenticated()</code> 函数和一个 <code>guard()</code> 函数，使用它去渲染两种验证状态的页面。因此，当用户访问 <code>/</code> 时，它将根据用户是否通过了验证来展示主页或者是欢迎页面。</p>
+<h3>验证</h3>
+<p>现在，我们来编写 <code>isAuthenticated()</code> 函数。使用下面的内容来创建一个 <code>static/js/auth.js</code> 文件：</p>
+<div class="highlight"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="n">function</span><span class="w"> </span><span class="n">getAuthUser</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">authUserItem</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">localStorage</span><span class="o">.</span><span class="n">getItem</span><span class="p">(</span><span class="s1">&#39;auth_user&#39;</span><span class="p">)</span>
+<span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">expiresAtItem</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">localStorage</span><span class="o">.</span><span class="n">getItem</span><span class="p">(</span><span class="s1">&#39;expires_at&#39;</span><span class="p">)</span>
+
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">authUserItem</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="nb nb-Type">null</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">expiresAtItem</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="nb nb-Type">null</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">const</span><span class="w"> </span><span class="n">expiresAt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">new</span><span class="w"> </span><span class="n">Date</span><span class="p">(</span><span class="n">expiresAtItem</span><span class="p">)</span>
+
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">isNaN</span><span class="p">(</span><span class="n">expiresAt</span><span class="o">.</span><span class="n">valueOf</span><span class="p">())</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">expiresAt</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">new</span><span class="w"> </span><span class="n">Date</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="k">return</span><span class="w"> </span><span class="n">JSON</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">authUserItem</span><span class="p">)</span>
+<span class="w">            </span><span class="p">}</span><span class="w"> </span><span class="n">catch</span><span class="w"> </span><span class="p">(</span><span class="n">_</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nb nb-Type">null</span>
+<span class="p">}</span>
+
+<span class="k">export</span><span class="w"> </span><span class="n">function</span><span class="w"> </span><span class="n">isAuthenticated</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">localStorage</span><span class="o">.</span><span class="n">getItem</span><span class="p">(</span><span class="s1">&#39;jwt&#39;</span><span class="p">)</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="nb nb-Type">null</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">getAuthUser</span><span class="p">()</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="nb nb-Type">null</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>当有人登入时，我们将保存 JSON 格式的 web 令牌、它的过期日期，以及在 <code>localStorage</code> 上的当前已验证用户。这个模块就是这个用处。</p>
+<ul>
+<li><code>getAuthUser()</code> 用于从 <code>localStorage</code> 获取已认证的用户，以确认 JSON 格式的 Web 令牌没有过期。</li>
+<li><code>isAuthenticated()</code> 在前面的函数中用于去检查它是否没有返回 <code>null</code>。</li>
+</ul>
+<h3>获取</h3>
+<p>在继续这个页面之前，我将写一些与服务器 API 一起使用的 HTTP 工具。</p>
+<p>我们使用以下的内容去创建一个 <code>static/js/http.js</code> 文件：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="p">{</span> <span class="n">isAuthenticated</span> <span class="p">}</span> <span class="kn">from</span> <span class="s1">&#39;./auth.js&#39;</span>
+
+<span class="n">function</span> <span class="n">get</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">headers</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="n">fetch</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="p">{</span>
+        <span class="n">headers</span><span class="p">:</span> <span class="n">Object</span><span class="o">.</span><span class="n">assign</span><span class="p">(</span><span class="n">getAuthHeader</span><span class="p">(),</span> <span class="n">headers</span><span class="p">),</span>
+    <span class="p">})</span><span class="o">.</span><span class="n">then</span><span class="p">(</span><span class="n">handleResponse</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="n">function</span> <span class="n">post</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">body</span><span class="p">,</span> <span class="n">headers</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="n">fetch</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="p">{</span>
+        <span class="n">method</span><span class="p">:</span> <span class="s1">&#39;POST&#39;</span><span class="p">,</span>
+        <span class="n">headers</span><span class="p">:</span> <span class="n">Object</span><span class="o">.</span><span class="n">assign</span><span class="p">(</span><span class="n">getAuthHeader</span><span class="p">(),</span> <span class="p">{</span> <span class="s1">&#39;content-type&#39;</span><span class="p">:</span> <span class="s1">&#39;application/json&#39;</span> <span class="p">},</span> <span class="n">headers</span><span class="p">),</span>
+        <span class="n">body</span><span class="p">:</span> <span class="n">JSON</span><span class="o">.</span><span class="n">stringify</span><span class="p">(</span><span class="n">body</span><span class="p">),</span>
+    <span class="p">})</span><span class="o">.</span><span class="n">then</span><span class="p">(</span><span class="n">handleResponse</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="n">function</span> <span class="n">getAuthHeader</span><span class="p">()</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="n">isAuthenticated</span><span class="p">()</span>
+        <span class="err">?</span> <span class="p">{</span> <span class="n">authorization</span><span class="p">:</span> <span class="err">`</span><span class="n">Bearer</span> <span class="err">$</span><span class="p">{</span><span class="n">localStorage</span><span class="o">.</span><span class="n">getItem</span><span class="p">(</span><span class="s1">&#39;jwt&#39;</span><span class="p">)}</span><span class="err">`</span> <span class="p">}</span>
+        <span class="p">:</span> <span class="p">{}</span>
+<span class="p">}</span>
+
+<span class="n">export</span> <span class="k">async</span> <span class="n">function</span> <span class="n">handleResponse</span><span class="p">(</span><span class="n">res</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">const</span> <span class="n">body</span> <span class="o">=</span> <span class="k">await</span> <span class="n">res</span><span class="o">.</span><span class="n">clone</span><span class="p">()</span><span class="o">.</span><span class="n">json</span><span class="p">()</span><span class="o">.</span><span class="n">catch</span><span class="p">(()</span> <span class="o">=&gt;</span> <span class="n">res</span><span class="o">.</span><span class="n">text</span><span class="p">())</span>
+    <span class="n">const</span> <span class="n">response</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">statusCode</span><span class="p">:</span> <span class="n">res</span><span class="o">.</span><span class="n">status</span><span class="p">,</span>
+        <span class="n">statusText</span><span class="p">:</span> <span class="n">res</span><span class="o">.</span><span class="n">statusText</span><span class="p">,</span>
+        <span class="n">headers</span><span class="p">:</span> <span class="n">res</span><span class="o">.</span><span class="n">headers</span><span class="p">,</span>
+        <span class="n">body</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="p">(</span><span class="err">!</span><span class="n">res</span><span class="o">.</span><span class="n">ok</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">const</span> <span class="n">message</span> <span class="o">=</span> <span class="n">typeof</span> <span class="n">body</span> <span class="o">===</span> <span class="s1">&#39;object&#39;</span> <span class="o">&amp;&amp;</span> <span class="n">body</span> <span class="o">!==</span> <span class="n">null</span> <span class="o">&amp;&amp;</span> <span class="s1">&#39;message&#39;</span> <span class="ow">in</span> <span class="n">body</span>
+            <span class="err">?</span> <span class="n">body</span><span class="o">.</span><span class="n">message</span>
+            <span class="p">:</span> <span class="n">typeof</span> <span class="n">body</span> <span class="o">===</span> <span class="s1">&#39;string&#39;</span> <span class="o">&amp;&amp;</span> <span class="n">body</span> <span class="o">!==</span> <span class="s1">&#39;&#39;</span>
+                <span class="err">?</span> <span class="n">body</span>
+                <span class="p">:</span> <span class="n">res</span><span class="o">.</span><span class="n">statusText</span>
+        <span class="n">const</span> <span class="n">err</span> <span class="o">=</span> <span class="n">new</span> <span class="n">Error</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+        <span class="n">throw</span> <span class="n">Object</span><span class="o">.</span><span class="n">assign</span><span class="p">(</span><span class="n">err</span><span class="p">,</span> <span class="n">response</span><span class="p">)</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="n">response</span>
+<span class="p">}</span>
+
+<span class="n">export</span> <span class="n">default</span> <span class="p">{</span>
+    <span class="n">get</span><span class="p">,</span>
+    <span class="n">post</span><span class="p">,</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这个模块导出了 <code>get()</code> 和 <code>post()</code> 函数。它们是 <code>fetch</code> API 的封装。当用户是已验证的，这二个函数注入一个 <code>Authorization: Bearer &lt;token_here&gt;</code> 头到请求中；这样服务器就能对我们进行身份验证。</p>
+<h3>欢迎页</h3>
+<p>我们现在来到欢迎页面。用如下的内容创建一个 <code>static/js/pages/welcome-page.js</code> 文件：</p>
+<div class="highlight"><pre><span></span><code>const<span class="w"> </span>template<span class="w"> </span>=<span class="w"> </span>document.createElement(&#39;template&#39;)
+template.innerHTML<span class="w"> </span>=<span class="w"> </span>`
+<span class="w">    </span><span class="nt">&lt;h1&gt;</span>Passwordless<span class="w"> </span>Demo<span class="nt">&lt;/h1&gt;</span>
+<span class="w">    </span><span class="nt">&lt;h2&gt;</span>Access<span class="nt">&lt;/h2&gt;</span>
+<span class="w">    </span><span class="nt">&lt;form</span><span class="w"> </span><span class="na">id=</span><span class="s">&quot;access-form&quot;</span><span class="nt">&gt;</span>
+<span class="w">        </span><span class="nt">&lt;input</span><span class="w"> </span><span class="na">type=</span><span class="s">&quot;email&quot;</span><span class="w"> </span><span class="na">placeholder=</span><span class="s">&quot;Email&quot;</span><span class="w"> </span><span class="err">autofocus</span><span class="w"> </span><span class="err">required</span><span class="nt">&gt;</span>
+<span class="w">        </span><span class="nt">&lt;button</span><span class="w"> </span><span class="na">type=</span><span class="s">&quot;submit&quot;</span><span class="nt">&gt;</span>Send<span class="w"> </span>Magic<span class="w"> </span>Link<span class="nt">&lt;/button&gt;</span>
+<span class="w">    </span><span class="nt">&lt;/form&gt;</span>
+`
+
+export<span class="w"> </span>default<span class="w"> </span>function<span class="w"> </span>welcomePage()<span class="w"> </span>{
+<span class="w">    </span>const<span class="w"> </span>page<span class="w"> </span>=<span class="w"> </span>template.content.cloneNode(true)
+
+<span class="w">    </span>page.getElementById(&#39;access-form&#39;)
+<span class="w">        </span>.addEventListener(&#39;submit&#39;,<span class="w"> </span>onAccessFormSubmit)
+
+<span class="w">    </span>return<span class="w"> </span>page
+}
+</code></pre></div>
+
+<p>这个页面使用一个 <code>HTMLTemplateElement</code> 作为视图。这只是一个输入用户 email 的简单表单。</p>
+<p>为了避免干扰，我将跳过错误处理部分，只是将它们输出到控制台上。</p>
+<p>现在，我们来写 <code>onAccessFormSubmit()</code> 函数。</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">http</span> <span class="kn">from</span> <span class="s1">&#39;../http.js&#39;</span>
+
+<span class="n">function</span> <span class="n">onAccessFormSubmit</span><span class="p">(</span><span class="n">ev</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">ev</span><span class="o">.</span><span class="n">preventDefault</span><span class="p">()</span>
+
+    <span class="n">const</span> <span class="n">form</span> <span class="o">=</span> <span class="n">ev</span><span class="o">.</span><span class="n">currentTarget</span>
+    <span class="n">const</span> <span class="nb">input</span> <span class="o">=</span> <span class="n">form</span><span class="o">.</span><span class="n">querySelector</span><span class="p">(</span><span class="s1">&#39;input&#39;</span><span class="p">)</span>
+    <span class="n">const</span> <span class="n">email</span> <span class="o">=</span> <span class="nb">input</span><span class="o">.</span><span class="n">value</span>
+
+    <span class="n">sendMagicLink</span><span class="p">(</span><span class="n">email</span><span class="p">)</span><span class="o">.</span><span class="n">catch</span><span class="p">(</span><span class="n">err</span> <span class="o">=&gt;</span> <span class="p">{</span>
+        <span class="n">console</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">err</span><span class="o">.</span><span class="n">statusCode</span> <span class="o">===</span> <span class="mi">404</span> <span class="o">&amp;&amp;</span> <span class="n">wantToCreateAccount</span><span class="p">())</span> <span class="p">{</span>
+            <span class="n">runCreateUserProgram</span><span class="p">(</span><span class="n">email</span><span class="p">)</span>
+        <span class="p">}</span>
+    <span class="p">})</span>
+<span class="p">}</span>
+
+<span class="n">function</span> <span class="n">sendMagicLink</span><span class="p">(</span><span class="n">email</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="n">http</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s1">&#39;/api/passwordless/start&#39;</span><span class="p">,</span> <span class="p">{</span>
+        <span class="n">email</span><span class="p">,</span>
+        <span class="n">redirectUri</span><span class="p">:</span> <span class="n">location</span><span class="o">.</span><span class="n">origin</span> <span class="o">+</span> <span class="s1">&#39;/callback&#39;</span><span class="p">,</span>
+    <span class="p">})</span><span class="o">.</span><span class="n">then</span><span class="p">(()</span> <span class="o">=&gt;</span> <span class="p">{</span>
+        <span class="n">alert</span><span class="p">(</span><span class="s1">&#39;Magic link sent. Go check your email inbox.&#39;</span><span class="p">)</span>
+    <span class="p">})</span>
+<span class="p">}</span>
+
+<span class="n">function</span> <span class="n">wantToCreateAccount</span><span class="p">()</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="n">prompt</span><span class="p">(</span><span class="s1">&#39;No user found. Do you want to create an account?&#39;</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>它对 <code>/api/passwordless/start</code> 发起了 POST 请求，请求体中包含 <code>email</code> 和 <code>redirectUri</code>。在本例中它返回 <code>404 Not Found</code> 状态码时，我们将创建一个用户。</p>
+<div class="highlight"><pre><span></span><code><span class="n">function</span><span class="w"> </span><span class="n">runCreateUserProgram</span><span class="p">(</span><span class="n">email</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">prompt</span><span class="p">(</span><span class="s2">&quot;Enter username&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">username</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="nb nb-Type">null</span><span class="p">)</span><span class="w"> </span><span class="k">return</span>
+
+<span class="w">    </span><span class="n">http</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s1">&#39;/api/users&#39;</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">email</span><span class="p">,</span><span class="w"> </span><span class="n">username</span><span class="w"> </span><span class="p">})</span>
+<span class="w">        </span><span class="o">.</span><span class="n">then</span><span class="p">(</span><span class="n">res</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">res</span><span class="o">.</span><span class="n">body</span><span class="p">)</span>
+<span class="w">        </span><span class="o">.</span><span class="n">then</span><span class="p">(</span><span class="n">user</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">sendMagicLink</span><span class="p">(</span><span class="n">user</span><span class="o">.</span><span class="n">email</span><span class="p">))</span>
+<span class="w">        </span><span class="o">.</span><span class="n">catch</span><span class="p">(</span><span class="n">console</span><span class="o">.</span><span class="n">error</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这个用户创建程序，首先询问用户名，然后使用 email 和用户名做一个 <code>POST</code> 请求到 <code>/api/users</code>。成功之后，给创建的用户发送一个魔法链接。</p>
+<h3>回调页</h3>
+<p>这是访问表单的全部功能，现在我们来做回调页面。使用如下的内容来创建一个 <code>static/js/pages/callback-page.js</code> 文件：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">http</span> <span class="kn">from</span> <span class="s1">&#39;../http.js&#39;</span>
+
+<span class="n">const</span> <span class="n">template</span> <span class="o">=</span> <span class="n">document</span><span class="o">.</span><span class="n">createElement</span><span class="p">(</span><span class="s1">&#39;template&#39;</span><span class="p">)</span>
+<span class="n">template</span><span class="o">.</span><span class="n">innerHTML</span> <span class="o">=</span> <span class="err">`</span>
+    <span class="o">&lt;</span><span class="n">h1</span><span class="o">&gt;</span><span class="n">Authenticating</span> <span class="n">you</span><span class="o">&lt;/</span><span class="n">h1</span><span class="o">&gt;</span>
+<span class="err">`</span>
+
+<span class="n">export</span> <span class="n">default</span> <span class="n">function</span> <span class="n">callbackPage</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">const</span> <span class="n">page</span> <span class="o">=</span> <span class="n">template</span><span class="o">.</span><span class="n">content</span><span class="o">.</span><span class="n">cloneNode</span><span class="p">(</span><span class="n">true</span><span class="p">)</span>
+
+    <span class="n">const</span> <span class="nb">hash</span> <span class="o">=</span> <span class="n">location</span><span class="o">.</span><span class="n">hash</span><span class="o">.</span><span class="n">substr</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">const</span> <span class="n">fragment</span> <span class="o">=</span> <span class="n">new</span> <span class="n">URLSearchParams</span><span class="p">(</span><span class="nb">hash</span><span class="p">)</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">const</span> <span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">]</span> <span class="n">of</span> <span class="n">fragment</span><span class="o">.</span><span class="n">entries</span><span class="p">())</span> <span class="p">{</span>
+        <span class="n">fragment</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">decodeURIComponent</span><span class="p">(</span><span class="n">k</span><span class="p">),</span> <span class="n">decodeURIComponent</span><span class="p">(</span><span class="n">v</span><span class="p">))</span>
+    <span class="p">}</span>
+    <span class="n">const</span> <span class="n">jwt</span> <span class="o">=</span> <span class="n">fragment</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;jwt&#39;</span><span class="p">)</span>
+    <span class="n">const</span> <span class="n">expiresAt</span> <span class="o">=</span> <span class="n">fragment</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;expires_at&#39;</span><span class="p">)</span>
+
+    <span class="n">http</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;/api/auth_user&#39;</span><span class="p">,</span> <span class="p">{</span> <span class="n">authorization</span><span class="p">:</span> <span class="err">`</span><span class="n">Bearer</span> <span class="err">$</span><span class="p">{</span><span class="n">jwt</span><span class="p">}</span><span class="err">`</span> <span class="p">})</span>
+        <span class="o">.</span><span class="n">then</span><span class="p">(</span><span class="n">res</span> <span class="o">=&gt;</span> <span class="n">res</span><span class="o">.</span><span class="n">body</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">then</span><span class="p">(</span><span class="n">authUser</span> <span class="o">=&gt;</span> <span class="p">{</span>
+            <span class="n">localStorage</span><span class="o">.</span><span class="n">setItem</span><span class="p">(</span><span class="s1">&#39;jwt&#39;</span><span class="p">,</span> <span class="n">jwt</span><span class="p">)</span>
+            <span class="n">localStorage</span><span class="o">.</span><span class="n">setItem</span><span class="p">(</span><span class="s1">&#39;auth_user&#39;</span><span class="p">,</span> <span class="n">JSON</span><span class="o">.</span><span class="n">stringify</span><span class="p">(</span><span class="n">authUser</span><span class="p">))</span>
+            <span class="n">localStorage</span><span class="o">.</span><span class="n">setItem</span><span class="p">(</span><span class="s1">&#39;expires_at&#39;</span><span class="p">,</span> <span class="n">expiresAt</span><span class="p">)</span>
+
+            <span class="n">location</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;/&#39;</span><span class="p">)</span>
+        <span class="p">})</span>
+        <span class="o">.</span><span class="n">catch</span><span class="p">(</span><span class="n">console</span><span class="o">.</span><span class="n">error</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">page</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>请记住……当点击魔法链接时，我们会来到 <code>/api/passwordless/verify_redirect</code>，它将把我们重定向到重定向 URI，我们将放在哈希中的 JWT 和过期日期传递给 <code>/callback</code>。</p>
+<p>回调页面解码 URL 中的哈希，提取这些参数去做一个 <code>GET</code> 请求到 <code>/api/auth_user</code>，用 JWT 保存所有数据到 <code>localStorage</code> 中。最后，重定向到主页面。</p>
+<h3>主页</h3>
+<p>创建如下内容的 <code>static/pages/home-page.js</code> 文件：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="p">{</span> <span class="n">getAuthUser</span> <span class="p">}</span> <span class="kn">from</span> <span class="s1">&#39;../auth.js&#39;</span>
+
+<span class="n">export</span> <span class="n">default</span> <span class="n">function</span> <span class="n">homePage</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">const</span> <span class="n">authUser</span> <span class="o">=</span> <span class="n">getAuthUser</span><span class="p">()</span>
+
+    <span class="n">const</span> <span class="n">template</span> <span class="o">=</span> <span class="n">document</span><span class="o">.</span><span class="n">createElement</span><span class="p">(</span><span class="s1">&#39;template&#39;</span><span class="p">)</span>
+    <span class="n">template</span><span class="o">.</span><span class="n">innerHTML</span> <span class="o">=</span> <span class="err">`</span>
+        <span class="o">&lt;</span><span class="n">h1</span><span class="o">&gt;</span><span class="n">Passwordless</span> <span class="n">Demo</span><span class="o">&lt;/</span><span class="n">h1</span><span class="o">&gt;</span>
+        <span class="o">&lt;</span><span class="n">p</span><span class="o">&gt;</span><span class="n">Welcome</span> <span class="n">back</span><span class="p">,</span> <span class="err">$</span><span class="p">{</span><span class="n">authUser</span><span class="o">.</span><span class="n">username</span><span class="p">}</span> 
+</code></pre></div>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Ansible 起步指南</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: JOSE HIDALGO 这是一篇关于 Ansible 的速成课程，你可以用作小项目的模板，或者帮你深入了解这个神奇的工具。阅读了本指南之后，你 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/01/ansible-qi-bu-zhi-nan.html" rel="bookmark"
+           title="Permalink to Ansible 起步指南">Ansible 起步指南</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-01-12T08:48:00+01:00">
+                Published: Thu 12 January 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: JOSE HIDALGO</p>
+<p>这是一篇关于 Ansible 的速成课程，你可以用作小项目的模板，或者帮你深入了解这个神奇的工具。阅读了本指南之后，你将对自动化服务器配置、部署等有足够的了解。</p>
+<p><img alt="" src="/data/attachment/album/201701/12/010309ihntexy6ei5pezy9.jpg"></p>
+<h3>Ansible 是什么，为什么你该了解？</h3>
+<p>Ansible 简单的说是一个<ruby> 配置管理系统 <rp>  （ </rp> <rt>  configuration management system </rt> <rp>  ） </rp></ruby>。你只需要可以使用 ssh 访问你的服务器或设备就行。它也不同于其他工具，因为它使用推送的方式，而不是像 puppet 或 chef 那样使用拉取的方式。你可以将代码部署到任意数量的服务器上，配置网络设备或在基础架构中自动执行任何操作。</p>
+<h3>前置要求</h3>
+<p>假设你使用 Mac 或 Linux 作为你的工作站，Ubuntu Trusty 作为你的服务器，并有一些安装软件包的经验。此外，你的计算机上将需要以下软件。所以，如果你还没有它们，请先安装：</p>
+<ul>
+<li><a href="https://www.virtualbox.org/">Virtualbox</a></li>
+<li><a href="https://www.vagrantup.com/downloads.html">Vagrant</a></li>
+<li>Mac 用户：<a href="http://brew.sh/">Homebrew</a></li>
+</ul>
+<h3>情景</h3>
+<p>我们将模拟 2 个连接到 MySQL 数据库的 Web 应用程序服务器。Web 应用程序使用 Rails 5 和 Puma。</p>
+<h3>准备</h3>
+<h4>Vagrantfile</h4>
+<p>为这个项目创建一个文件夹，并将下面的内容保存到名为 <code>Vagrantfile</code> 的文件。</p>
+<div class="highlight"><pre><span></span><code>VMs = [
+    [ &quot;web1&quot;, &quot;10.1.1.11&quot;],
+    [ &quot;web2&quot;, &quot;10.1.1.12&quot;],
+    [ &quot;dbserver&quot;, &quot;10.1.1.21&quot;],
+  ]
+
+Vagrant.configure(2) do |config|
+  VMs.each { |vm|
+    config.vm.define vm[0] do |box|
+      box.vm.box = &quot;ubuntu/trusty64&quot;
+      box.vm.network &quot;private_network&quot;, ip: vm[1]
+      box.vm.hostname = vm[0]
+      box.vm.provider &quot;virtualbox&quot; do |vb|
+         vb.memory = &quot;512&quot;
+      end
+    end
+  }
+end
+</code></pre></div>
+
+<h4>配置你的虚拟网络</h4>
+<p>我们希望我们的虚拟机能互相交互，但不要让流量流出到真实的网络，所以我们将在 Virtualbox 中创建一个仅主机（HOST-Only）的网络适配器。</p>
+<ol>
+<li>打开 Virtualbox</li>
+<li>转到 Preferences</li>
+<li>转到 Network</li>
+<li>单击 Host-Only</li>
+<li>单击添加网络</li>
+<li>单击 Adapter</li>
+<li>将 IPv4 设置为 <code>10.1.1.1</code>，IPv4 网络掩码：<code>255.255.255.0</code></li>
+<li>单击 “OK”</li>
+</ol>
+<h4>测试虚拟机及虚拟网络</h4>
+<p>在终端中，在存放 <code>Vagrantfile</code> 的项目目录中，输入下面的命令：</p>
+<div class="highlight"><pre><span></span><code>vagrant up
+</code></pre></div>
+
+<p>它会创建你的虚拟机，因此会花费一会时间。输入下面的命令并验证输出内容以检查是否已经工作：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>vagrant<span class="w"> </span>status
+Current<span class="w"> </span>machine<span class="w"> </span>states:
+
+web1<span class="w">                      </span>running<span class="w"> </span><span class="o">(</span>virtualbox<span class="o">)</span>
+web2<span class="w">                      </span>running<span class="w"> </span><span class="o">(</span>virtualbox<span class="o">)</span>
+master<span class="w">                    </span>running<span class="w"> </span><span class="o">(</span>virtualbox<span class="o">)</span>
+
+This<span class="w"> </span>environment<span class="w"> </span>represents<span class="w"> </span>multiple<span class="w"> </span>VMs.<span class="w"> </span>The<span class="w"> </span>VMs<span class="w"> </span>are<span class="w"> </span>all<span class="w"> </span>listed
+above<span class="w"> </span>with<span class="w"> </span>their<span class="w"> </span>current<span class="w"> </span>state.<span class="w"> </span>For<span class="w"> </span>more<span class="w"> </span>information<span class="w"> </span>about<span class="w"> </span>a<span class="w"> </span>specific
+VM,<span class="w"> </span>run<span class="w"> </span><span class="sb">`</span>vagrant<span class="w"> </span>status<span class="w"> </span>NAME<span class="sb">`</span>.
+</code></pre></div>
+
+<p>现在使用 <code>vagrant</code> 的用户名和密码 ，按 <code>Vagrantfile</code> 中的 IP 登录其中一台虚拟机，这将验证虚拟机并将它们的密钥添加到你的已知主机（<code>known_hosts</code>）文件中。</p>
+<div class="highlight"><pre><span></span><code><span class="n">ssh</span><span class="w"> </span><span class="n">vagrant</span><span class="mf">@10.1.1.11</span><span class="w"> </span><span class="err">#</span><span class="w"> </span><span class="n">password</span><span class="w"> </span><span class="n">is</span><span class="w"> </span><span class="err">`</span><span class="n">vagrant</span><span class="err">`</span>
+<span class="n">ssh</span><span class="w"> </span><span class="n">vagrant</span><span class="mf">@10.1.1.12</span>
+<span class="n">ssh</span><span class="w"> </span><span class="n">vagrant</span><span class="mf">@10.1.1.21</span>
+</code></pre></div>
+
+<p>恭喜你！现在你已经有可以实验的服务器了。下面的剩下的部分！</p>
+<h3>安装 Ansible</h3>
+<p>对于 Mac 用户:</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>brew<span class="w"> </span>install<span class="w"> </span>ansible
+</code></pre></div>
+
+<p>对于 Ubuntu 用户:</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>ansible
+</code></pre></div>
+
+<p>确保你使用了ansible 最近的版本 2.1 或者更高的版本：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ansible<span class="w"> </span>--version
+ansible<span class="w"> </span><span class="m">2</span>.1.1.0
+</code></pre></div>
+
+<h3>清单</h3>
+<p>Ansible 使用清单文件来了解要使用的服务器，以及如何将它们分组以并行执行任务。让我们为这个项目创建我们的清单文件 <code>inventory</code>，并将它放在与 <code>Vagrantfile</code> 相同的文件夹中：</p>
+<div class="highlight"><pre><span></span><code><span class="k">[all:children]</span>
+<span class="na">webs</span>
+<span class="na">db</span>
+
+<span class="k">[all:vars]</span>
+<span class="na">ansible_user</span><span class="o">=</span><span class="s">vagrant</span>
+<span class="na">ansible_ssh_pass</span><span class="o">=</span><span class="s">vagrant</span>
+
+<span class="k">[webs]</span>
+<span class="na">web1 ansible_host</span><span class="o">=</span><span class="s">10.1.1.11</span>
+<span class="na">web2 ansible_host</span><span class="o">=</span><span class="s">10.1.1.12</span>
+
+<span class="k">[db]</span>
+<span class="na">dbserver ansible_host</span><span class="o">=</span><span class="s">10.1.1.21</span>
+</code></pre></div>
+
+<ul>
+<li><code>[all：children]</code> 定义一个组的组（<code>all</code>）</li>
+<li><code>[all：vars]</code> 定义属于组 <code>all</code> 的变量</li>
+<li><code>[webs]</code> 定义一个组，就像 <code>[db]</code> 一样</li>
+<li>文件的其余部分只是主机的声明，带有它们的名称和 IP</li>
+<li>空行表示声明结束</li>
+</ul>
+<p>现在我们有了一个清单，我们可以从命令行开始使用 ansible，指定一个主机或一个组来执行命令。以下是检查与服务器的连接的命令示例：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ansible<span class="w"> </span>-i<span class="w"> </span>inventory<span class="w"> </span>all<span class="w"> </span>-m<span class="w"> </span>ping
+</code></pre></div>
+
+<ul>
+<li><code>-i</code> 指定清单文件</li>
+<li><code>all</code> 指定要操作的服务器或服务器组</li>
+<li><code>-m' 指定一个 ansible 模块，在这种情况下为</code>ping`</li>
+</ul>
+<p>下面是命令输出：</p>
+<div class="highlight"><pre><span></span><code>dbserver | SUCCESS =&gt; {
+    &quot;changed&quot;: false,
+    &quot;ping&quot;: &quot;pong&quot;
+}
+web1 | SUCCESS =&gt; {
+    &quot;changed&quot;: false,
+    &quot;ping&quot;: &quot;pong&quot;
+}
+web2 | SUCCESS =&gt; {
+    &quot;changed&quot;: false,
+    &quot;ping&quot;: &quot;pong&quot;
+}
+</code></pre></div>
+
+<p>服务器以不同的顺序响应，这只取决于谁先响应，但是这个没有关系，因为 ansible 独立保持每台服务器的状态。</p>
+<p>你也可以使用另外一个选项来运行任何命令：</p>
+<ul>
+<li><code>-a &lt;command&gt;</code></li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="o">$</span><span class="w"> </span><span class="n">ansible</span><span class="w"> </span><span class="o">-</span><span class="n">i</span><span class="w"> </span><span class="n">inventory</span><span class="w"> </span><span class="n">all</span><span class="w"> </span><span class="o">-</span><span class="n">a</span><span class="w"> </span><span class="n">uptime</span>
+<span class="n">web1</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">SUCCESS</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">rc</span><span class="o">=</span><span class="mi">0</span><span class="w"> </span><span class="o">&gt;&gt;</span>
+<span class="w"> </span><span class="mi">21</span><span class="p">:</span><span class="mi">43</span><span class="p">:</span><span class="mi">27</span><span class="w"> </span><span class="n">up</span><span class="w"> </span><span class="mi">25</span><span class="w"> </span><span class="nb">min</span><span class="p">,</span><span class="w">  </span><span class="mi">1</span><span class="w"> </span><span class="n">user</span><span class="p">,</span><span class="w">  </span><span class="nb">load</span><span class="w"> </span><span class="n">average</span><span class="p">:</span><span class="w"> </span><span class="mf">0.00</span><span class="p">,</span><span class="w"> </span><span class="mf">0.01</span><span class="p">,</span><span class="w"> </span><span class="mf">0.05</span>
+
+<span class="n">dbserver</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">SUCCESS</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">rc</span><span class="o">=</span><span class="mi">0</span><span class="w"> </span><span class="o">&gt;&gt;</span>
+<span class="w"> </span><span class="mi">21</span><span class="p">:</span><span class="mi">43</span><span class="p">:</span><span class="mi">27</span><span class="w"> </span><span class="n">up</span><span class="w"> </span><span class="mi">24</span><span class="w"> </span><span class="nb">min</span><span class="p">,</span><span class="w">  </span><span class="mi">1</span><span class="w"> </span><span class="n">user</span><span class="p">,</span><span class="w">  </span><span class="nb">load</span><span class="w"> </span><span class="n">average</span><span class="p">:</span><span class="w"> </span><span class="mf">0.00</span><span class="p">,</span><span class="w"> </span><span class="mf">0.01</span><span class="p">,</span><span class="w"> </span><span class="mf">0.05</span>
+
+<span class="n">web2</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">SUCCESS</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">rc</span><span class="o">=</span><span class="mi">0</span><span class="w"> </span><span class="o">&gt;&gt;</span>
+<span class="w"> </span><span class="mi">21</span><span class="p">:</span><span class="mi">43</span><span class="p">:</span><span class="mi">27</span><span class="w"> </span><span class="n">up</span><span class="w"> </span><span class="mi">25</span><span class="w"> </span><span class="nb">min</span><span class="p">,</span><span class="w">  </span><span class="mi">1</span><span class="w"> </span><span class="n">user</span><span class="p">,</span><span class="w">  </span><span class="nb">load</span><span class="w"> </span><span class="n">average</span><span class="p">:</span><span class="w"> </span><span class="mf">0.00</span><span class="p">,</span><span class="w"> </span><span class="mf">0.01</span><span class="p">,</span><span class="w"> </span><span class="mf">0.05</span>
+</code></pre></div>
+
+<p>这是只有一台服务器的另外一个例子：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ansible<span class="w"> </span>-i<span class="w"> </span>inventory<span class="w"> </span>dbserver<span class="w"> </span>-a<span class="w"> </span><span class="s2">&quot;df -h /&quot;</span>
+dbserver<span class="w"> </span><span class="p">|</span><span class="w"> </span>SUCCESS<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="nv">rc</span><span class="o">=</span><span class="m">0</span><span class="w"> </span>&gt;&gt;
+Filesystem<span class="w">      </span>Size<span class="w">  </span>Used<span class="w"> </span>Avail<span class="w"> </span>Use%<span class="w"> </span>Mounted<span class="w"> </span>on
+/dev/sda1<span class="w">        </span>40G<span class="w">  </span><span class="m">1</span>.4G<span class="w">   </span>37G<span class="w">   </span><span class="m">4</span>%<span class="w"> </span>/
+</code></pre></div>
+
+<h3>剧本</h3>
+<p>剧本（playbook）只是个 YAML 文件，它将清单文件中的服务器组与命令关联。在 ansible 中的对于关键字是 <code>tasks</code>，它可以是一个预期的状态、shell 命令或许多其它的选项。有关 ansible 可做的所有事情列表，可以查看<a href="http://docs.ansible.com/ansible/list_of_all_modules.html">所有模块的列表</a>。</p>
+<p>下面是一个运行 shell 命令的剧本示例，将其保存为 <code>playbook1.yml</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="k">-</span> hosts: webs
+  become_user: root
+  become: true
+  tasks:
+    <span class="k">-</span> apt: name=git state=present
+</code></pre></div>
+
+<p>有一些语句可以应用于 ansible 中所有模块；一个是 <code>name</code> 语句，可以让我们输出关于正在执行的任务的更具描述性的文本。要使用它，保持任务内容一样，但是添加 <code>name ：描述性文本</code> 作为第一行，所以我们以前的文本将改成：</p>
+<div class="highlight"><pre><span></span><code><span class="x">- hosts: all</span>
+<span class="x">  become_user: root</span>
+<span class="x">  become: true</span>
+<span class="x">  tasks:</span>
+<span class="x">    - name: Installing dependencies</span>
+<span class="x">      apt: name=</span><span class="cp">{{</span><span class="nv">item</span><span class="cp">}}</span><span class="x"> state=present</span>
+<span class="x">      with_items:</span>
+<span class="x">        - git</span>
+<span class="x">        - mysql-client</span>
+<span class="x">        - libmysqlclient-dev</span>
+<span class="x">        - build-essential</span>
+<span class="x">        - python-software-properties</span>
+</code></pre></div>
+
+<h4>使用 <code>template</code> 和 <code>vars</code></h4>
+<p><code>vars</code> 是一个定义变量语句，可以在 <code>task</code> 语句或 <code>template</code> 文件中使用。 <a href="http://jinja.pocoo.org/docs/dev/">Jinja2</a> 是 Ansible 中使用的模板引擎，但是关于它你不需要学习很多。在你的剧本中定义变量，如下所示：</p>
+<p>```</p>
+<p>via: <a href="https://gorillalogic.com/blog/getting-started-with-ansible/?utm_source=webopsweekly&amp;utm_medium=email">https://gorillalogic.com/blog/getting-started-with-ansible/?utm_source=webopsweekly&amp;utm_medium=email</a></p>
+<p>作者：<a href="https://gorillalogic.com/author/josehidalgo/">JOSE HIDALGO</a> 译者：<a href="https://github.com/geekpi">geekpi</a> 校对：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 组织编译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

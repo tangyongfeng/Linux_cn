@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何在无响应的 Linux 系统中杀掉内存消耗最大的进程</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Aditya Goturu 作为一名博客作者，我收藏了很多博客、网站和论坛用来寻找 Linux 和 Unix 相关的内容。有时候，我在浏览器中开启了非常 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/05/ru-he-zai-wu-xiang-ying-de-linux-xi-tong-zhong-sha-diao-nei-cun-xiao-hao-zui-da-de-jin-cheng.html" rel="bookmark"
+           title="Permalink to 如何在无响应的 Linux 系统中杀掉内存消耗最大的进程">如何在无响应的 Linux 系统中杀掉内存消耗最大的进程</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-05-31T09:21:00+02:00">
+                Published: Thu 31 May 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Aditya Goturu</p>
+<p><img alt="" src="/data/attachment/album/201805/31/092105lkgrxeb8ytxxat8r.png"></p>
+<p>作为一名博客作者，我收藏了很多博客、网站和论坛用来寻找 Linux 和 Unix 相关的内容。有时候，我在浏览器中开启了非常多的标签页，导致操作系统会无响应好几分钟。我不能移动我的鼠标，也不能杀掉一个进程或关闭任何开启的标签页。在这种情况下，我别无选择，只能强制重启系统。当然我也用了 <strong>OneTab</strong> （LCTT 译注：OneTab 是一个 Chrome 的 Extension，可以将标签页转化成一个列表保存。）和 <strong>Greate Suspender</strong> （LCTT 译注：Great Suspender 是一个 Chrome 的 Extension， 可以自动冻结标签页）这样浏览器拓展，但它们在这里也起不到太大的作用。 我经常耗尽我的内存。而这就是 <strong>Early OOM</strong> 起作用的时候了。在情况严重时，它会杀掉一个未响应系统中的内存消耗最大的进程。Early OOM 每秒会检测可用内存和空余交换区 10 次，一旦两者都低于 10%，它就会把最大的进程杀死。</p>
+<h3>为什么用 Early OOM？为什么不用系统内置的 OOM killer？</h3>
+<p>在继续讨论下去之前，我想先简短的介绍下 OOM killer，也就是 <strong>O</strong>ut <strong>O</strong>f <strong>M</strong>emory killer。OOM killer 是一个由内核在可用内存非常低的时候使用的进程。它的主要任务是不断的杀死进程，直到释放出足够的内存，使内核正在运行的其它进程能顺利运行。OOM killer 会找到系统中最不重要并且能释放出最多内存的进程，然后杀掉他们。在 <code>/proc</code> 目录下的 <code>pid</code> 目录中，我们可以看到每个进程的 <code>oom_score</code>。</p>
+<p>示例：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cat<span class="w"> </span>/proc/10299/oom_score
+<span class="m">1</span>
+</code></pre></div>
+
+<p>一个进程的 <code>oom_score</code> 的值越高，这个进程越有可能在系统内存耗尽的时候被 OOM killer 杀死。</p>
+<p>Early OOM 的开发者表示，相对于内置的 OOM killer，Early OOM 有一个很大的优点。就像我之前说的那样，OOM killer 会杀掉 <code>oom_score</code> 最高的进程，而这也导致 Chrome 浏览器总是会成为第一个被杀死的进程。为了避免这种情况发生，Early OOM 使用 <code>/proc/*/status</code> 而不是 <code>echo f &gt; /proc/sysrq-trigger</code>（LCTT 译注：这条命令会调用 OOM killer 杀死进程）。开发者还表示，手动触发 OOM killer 在最新版本的 Linux 内核中很可能不会起作用。</p>
+<h3>安装 Early OOM</h3>
+<p>Early OOM 在 AUR（Arch User Repository）中可以找到，所以你可以在 Arch 和它的衍生版本中使用任何 AUR 工具安装它。</p>
+<p>使用 <a href="https://www.ostechnix.com/install-pacaur-arch-linux/">Pacaur</a>：</p>
+<div class="highlight"><pre><span></span><code>pacaur -S earlyoom
+</code></pre></div>
+
+<p>使用 <a href="https://www.ostechnix.com/install-packer-arch-linux-2/">Packer</a>：</p>
+<div class="highlight"><pre><span></span><code>packer -S earlyoom
+</code></pre></div>
+
+<p>使用 <a href="https://www.ostechnix.com/install-yaourt-arch-linux/">Yaourt</a>：</p>
+<div class="highlight"><pre><span></span><code>yaourt -S earlyoom
+</code></pre></div>
+
+<p>启用并启动 Early OOM 守护进程：</p>
+<div class="highlight"><pre><span></span><code>sudo systemctl enable earlyoom
+sudo systemctl start earlyoom
+</code></pre></div>
+
+<p>在其它的 Linux 发行版中，可以按如下方法编译安装它：</p>
+<div class="highlight"><pre><span></span><code>git clone https://github.com/rfjakob/earlyoom.git
+cd earlyoom
+make
+sudo make install
+</code></pre></div>
+
+<h3>Early OOM - 杀掉无响应 Linux 系统中的最大的进程</h3>
+<p>运行如下命令启动 Early OOM：</p>
+<div class="highlight"><pre><span></span><code>earlyoom
+</code></pre></div>
+
+<p>如果是通过编译源代码安装的， 运行如下命令启动 Early OOM：</p>
+<div class="highlight"><pre><span></span><code>./earlyoom
+</code></pre></div>
+
+<p>示例输出：</p>
+<div class="highlight"><pre><span></span><code>earlyoom 0.12
+mem total: 3863 MiB, min: 386 MiB (10 %)
+swap total: 2047 MiB, min: 204 MiB (10 %)
+mem avail: 1770 MiB (45 %), swap free: 2047 MiB (99 %)
+mem avail: 1773 MiB (45 %), swap free: 2047 MiB (99 %)
+mem avail: 1772 MiB (45 %), swap free: 2047 MiB (99 %)
+mem avail: 1773 MiB (45 %), swap free: 2047 MiB (99 %)
+mem avail: 1772 MiB (45 %), swap free: 2047 MiB (99 %)
+mem avail: 1773 MiB (45 %), swap free: 2047 MiB (99 %)
+mem avail: 1771 MiB (45 %), swap free: 2047 MiB (99 %)
+mem avail: 1773 MiB (45 %), swap free: 2047 MiB (99 %)
+mem avail: 1784 MiB (46 %), swap free: 2047 MiB (99 %)
+[...]
+</code></pre></div>
+
+<p>就像你在上面的输出中可以看到的，Early OOM 将会显示你有多少内存和交换区，以及有多少可用的内存和交换区。记住它会一直保持运行，直到你按下 <code>CTRL+C</code>。</p>
+<p>如果可用的内存和交换区大小都低于 10%，Early OOM 将会自动杀死最大的进程，直到系统有足够的内存可以流畅的运行。你也可以根据你的需求配置最小百分比值。</p>
+<p>设置最小的可用内存百分比，运行：</p>
+<div class="highlight"><pre><span></span><code>earlyoom -m &lt;PERCENT_HERE&gt;
+</code></pre></div>
+
+<p>设置最小可用交换区百分比, 运行：</p>
+<div class="highlight"><pre><span></span><code>earlyoom -s &lt;PERCENT_HERE&gt;
+</code></pre></div>
+
+<p>在帮助部分，可以看到更多详细信息：</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">earlyoom</span><span class="w"> </span><span class="o">-</span><span class="n">h</span>
+<span class="n">earlyoom</span><span class="w"> </span><span class="mf">0.12</span>
+<span class="k">Usage</span><span class="err">:</span><span class="w"> </span><span class="n">earlyoom</span><span class="w"> </span><span class="o">[</span><span class="n">OPTION</span><span class="o">]</span><span class="p">...</span>
+
+<span class="w"> </span><span class="o">-</span><span class="n">m</span><span class="w"> </span><span class="k">PERCENT</span><span class="w"> </span><span class="k">set</span><span class="w"> </span><span class="n">available</span><span class="w"> </span><span class="n">memory</span><span class="w"> </span><span class="n">minimum</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="k">PERCENT</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="n">total</span><span class="w"> </span><span class="p">(</span><span class="k">default</span><span class="w"> </span><span class="mi">10</span><span class="w"> </span><span class="o">%</span><span class="p">)</span>
+<span class="w"> </span><span class="o">-</span><span class="n">s</span><span class="w"> </span><span class="k">PERCENT</span><span class="w"> </span><span class="k">set</span><span class="w"> </span><span class="k">free</span><span class="w"> </span><span class="n">swap</span><span class="w"> </span><span class="n">minimum</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="k">PERCENT</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="n">total</span><span class="w"> </span><span class="p">(</span><span class="k">default</span><span class="w"> </span><span class="mi">10</span><span class="w"> </span><span class="o">%</span><span class="p">)</span>
+<span class="w"> </span><span class="o">-</span><span class="n">M</span><span class="w"> </span><span class="k">SIZE</span><span class="w"> </span><span class="k">set</span><span class="w"> </span><span class="n">available</span><span class="w"> </span><span class="n">memory</span><span class="w"> </span><span class="n">minimum</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="k">SIZE</span><span class="w"> </span><span class="n">KiB</span>
+<span class="w"> </span><span class="o">-</span><span class="n">S</span><span class="w"> </span><span class="k">SIZE</span><span class="w"> </span><span class="k">set</span><span class="w"> </span><span class="k">free</span><span class="w"> </span><span class="n">swap</span><span class="w"> </span><span class="n">minimum</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="k">SIZE</span><span class="w"> </span><span class="n">KiB</span>
+<span class="w"> </span><span class="o">-</span><span class="n">k</span><span class="w"> </span><span class="k">use</span><span class="w"> </span><span class="n">kernel</span><span class="w"> </span><span class="n">oom</span><span class="w"> </span><span class="n">killer</span><span class="w"> </span><span class="n">instead</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="n">own</span><span class="w"> </span><span class="k">user</span><span class="o">-</span><span class="nf">space</span><span class="w"> </span><span class="n">implementation</span>
+<span class="w"> </span><span class="o">-</span><span class="n">i</span><span class="w"> </span><span class="k">user</span><span class="o">-</span><span class="nf">space</span><span class="w"> </span><span class="n">oom</span><span class="w"> </span><span class="n">killer</span><span class="w"> </span><span class="n">should</span><span class="w"> </span><span class="k">ignore</span><span class="w"> </span><span class="n">positive</span><span class="w"> </span><span class="n">oom_score_adj</span><span class="w"> </span><span class="k">values</span>
+<span class="w"> </span><span class="o">-</span><span class="n">d</span><span class="w"> </span><span class="n">enable</span><span class="w"> </span><span class="n">debugging</span><span class="w"> </span><span class="n">messages</span>
+<span class="w"> </span><span class="o">-</span><span class="n">v</span><span class="w"> </span><span class="k">print</span><span class="w"> </span><span class="n">version</span><span class="w"> </span><span class="n">information</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="k">exit</span>
+<span class="w"> </span><span class="o">-</span><span class="n">r</span><span class="w"> </span><span class="k">INTERVAL</span><span class="w"> </span><span class="n">memory</span><span class="w"> </span><span class="n">report</span><span class="w"> </span><span class="k">interval</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">seconds</span><span class="w"> </span><span class="p">(</span><span class="k">default</span><span class="w"> </span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="k">set</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="k">to</span>
+<span class="w"> </span><span class="n">disable</span><span class="w"> </span><span class="n">completely</span>
+<span class="w"> </span><span class="o">-</span><span class="n">p</span><span class="w"> </span><span class="k">set</span><span class="w"> </span><span class="n">niceness</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="n">earlyoom</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="o">-</span><span class="mi">20</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">oom_score_adj</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="o">-</span><span class="mi">1000</span>
+<span class="w"> </span><span class="o">-</span><span class="n">h</span><span class="w"> </span><span class="n">this</span><span class="w"> </span><span class="n">help</span><span class="w"> </span><span class="nc">text</span>
+</code></pre></div>
+
+<p>现在，你再也不用担心内存消耗最高的进程了。希望这能给你帮助。更多的好内容将会到来，敬请期待。</p>
+<p>谢谢！</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

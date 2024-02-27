@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>CentOS 7下搭建高可用集群</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: ertou 本文以两台机器实现双集热备高可用集群，主机名node1的IP为192.168.122.168 ，主机名node2的IP为192.168.122.169 。 一、安装集群软件 必须软件pcs，pacemaker，corosync，fence-agents-all，如 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2014/10/centos-7xia-da-jian-gao-ke-yong-ji-qun.html" rel="bookmark"
+           title="Permalink to CentOS 7下搭建高可用集群">CentOS 7下搭建高可用集群</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2014-10-07T19:10:04+02:00">
+                Published: Tue 07 October 2014
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: ertou</p>
+<p><img alt="" src="/data/attachment/album/201410/07/191008vyq3zy00zmzyasyp.jpg"></p>
+<p>本文以两台机器实现双集热备高可用集群，主机名node1的IP为192.168.122.168 ，主机名node2的IP为192.168.122.169 。</p>
+<h3>一、安装集群软件</h3>
+<p>必须软件pcs，pacemaker，corosync，fence-agents-all，如果需要配置相关服务，也要安装对应的软件</p>
+<h3>二、配置防火墙</h3>
+<h4>1、禁止防火墙和selinux</h4>
+<div class="highlight"><pre><span></span><code># systemctl disable firewalld
+# systemctl stop firewalld
+</code></pre></div>
+
+<p>修改/etc/sysconfig/selinux确保SELINUX=disabled，然后执行setenforce 0或者reboot服务器以生效</p>
+<h4>2、设置防火墙规则</h4>
+<div class="highlight"><pre><span></span><code># firewall-cmd --permanent --add-service=high-availability
+# firewall-cmd --add-service=high-availability
+</code></pre></div>
+
+<h3>三、各节点之间主机名互相解析</h3>
+<p>分别修改2台主机名分别为node1和node2，在centos 7中直接修改/etc/hostname加入本机主机名和主机表，然后重启网络服务即可。</p>
+<div class="highlight"><pre><span></span><code>#vi /etc/hostname
+node1
+
+#systemctl restart network.service
+#hostname
+node1
+</code></pre></div>
+
+<p>配置2台主机的主机表，在/etc/hosts中加入</p>
+<div class="highlight"><pre><span></span><code><span class="mf">192.168.122.168</span><span class="w"> </span><span class="n">node1</span>
+<span class="mf">192.168.122.169</span><span class="w"> </span><span class="n">node2</span>
+</code></pre></div>
+
+<h3>四、各节点之间时间同步</h3>
+<p>在node1和node2分别进行时间同步，可以使用ntp实现。 </p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">root@node1 ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">ntpdate</span><span class="w"> </span><span class="mf">172.16.0.1</span><span class="w"> </span><span class="o">//</span><span class="mf">172.16.0.1</span><span class="w"> </span><span class="n">为时间服务器</span><span class="w"> </span>
+</code></pre></div>
+
+<h3>五、各节点之间配置ssh的无密码密钥访问。</h3>
+<p>下面的操作需要在各个节点上操作。</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="n">ssh</span><span class="o">-</span><span class="n">keygen</span><span class="w"> </span><span class="o">-</span><span class="n">t</span><span class="w"> </span><span class="n">rsa</span><span class="w"> </span><span class="o">-</span><span class="n">P</span><span class="w"> </span><span class="err">‘’</span><span class="w">   </span><span class="n">#这个生成一个密码为空的公钥和一个密钥</span><span class="err">，</span><span class="n">把公钥复制到对方节点上即可</span>
+<span class="err">#</span><span class="w"> </span><span class="n">ssh</span><span class="o">-</span><span class="n">copy</span><span class="o">-</span><span class="n">id</span><span class="w"> </span><span class="o">-</span><span class="n">i</span><span class="w"> </span><span class="o">/</span><span class="n">root</span><span class="o">/</span><span class="p">.</span><span class="n">ssh</span><span class="o">/</span><span class="n">id_rsa</span><span class="p">.</span><span class="n">pub</span><span class="w"> </span><span class="n">root</span><span class="nv">@node2</span><span class="w"> </span><span class="n">#对方主机名用登录用户名</span>
+</code></pre></div>
+
+<p>两台主机都要互相可以通信，所以两台主机都得互相生成密钥和复制公钥，相互的节点上的hosts文件是都要解析对方的主机名， 192.168.122.168 node1 192.168.122.169 node2 </p>
+<div class="highlight"><pre><span></span><code># ssh node2 ‘date’;date #测试一下是否已经互信 
+</code></pre></div>
+
+<h3>六、通过pacemaker来管理高可用集群</h3>
+<h4>1、创建集群用户</h4>
+<p>为了有利于各节点之间通信和配置集群，在每个节点上创建一个hacluster的用户，各个节点上的密码必须是同一个。</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="nx">passwd</span><span class="w"> </span><span class="nx">hacluster</span>
+
+<span class="nx">Changing</span><span class="w"> </span><span class="nx">password</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nx">user</span><span class="w"> </span><span class="nx">hacluster</span><span class="p">.</span>
+<span class="nx">New</span><span class="w"> </span><span class="nx">password</span><span class="p">:</span>
+<span class="nx">Retype</span><span class="w"> </span><span class="nx">new</span><span class="w"> </span><span class="nx">password</span><span class="p">:</span>
+<span class="nx">passwd</span><span class="p">:</span><span class="w"> </span><span class="nx">all</span><span class="w"> </span><span class="nx">authentication</span><span class="w"> </span><span class="nx">tokens</span><span class="w"> </span><span class="nx">updated</span><span class="w"> </span><span class="nx">successfully</span><span class="p">.</span>
+</code></pre></div>
+
+<h4>2、设置pcsd开机自启动</h4>
+<div class="highlight"><pre><span></span><code># systemctl start pcsd.service
+# systemctl enable pcsd.service
+</code></pre></div>
+
+<h4>3、集群各节点之间进行认证</h4>
+<div class="highlight"><pre><span></span><code># pcs cluster auth node1 node2Username: hacluster Password: node1: Authorized node2: Authorized
+</code></pre></div>
+
+<p>4、创建并启动集群</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">root@z1 ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">pcs</span><span class="w"> </span><span class="n">cluster</span><span class="w"> </span><span class="n">setup</span><span class="w"> </span><span class="o">--</span><span class="k">start</span><span class="w"> </span><span class="o">--</span><span class="n">name</span><span class="w"> </span><span class="n">my_cluster</span><span class="w"> </span><span class="n">node1</span><span class="w"> </span><span class="n">node2</span>
+
+<span class="nl">node1</span><span class="p">:</span><span class="w"> </span><span class="n">Succeeded</span>
+<span class="nl">node1</span><span class="p">:</span><span class="w"> </span><span class="n">Starting</span><span class="w"> </span><span class="n">Cluster</span><span class="p">...</span>
+<span class="nl">node2</span><span class="p">:</span><span class="w"> </span><span class="n">Succeeded</span>
+<span class="nl">node2</span><span class="p">:</span><span class="w"> </span><span class="n">Starting</span><span class="w"> </span><span class="n">Cluster</span><span class="p">...</span>
+</code></pre></div>
+
+<h4>5、设置集群自启动</h4>
+<div class="highlight"><pre><span></span><code># pcs cluster enable –all
+</code></pre></div>
+
+<p>6、查看集群状态信息</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">root@z1 ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">pcs</span><span class="w"> </span><span class="n">cluster</span><span class="w"> </span><span class="n">status</span>
+</code></pre></div>
+
+<h4>7、设置fence设备</h4>
+<p>这个可以参考<Red Hat Enterprise Linux 7 High Availability Add-On Reference></p>
+<p>corosync默认启用了stonith，而当前集群并没有相应的stonith设备，因此此默 认配置目前尚不可用，这可以通过如下命令验证：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span>crm_verify -L -V
+</code></pre></div>
+
+<p>可以通过如下面命令禁用stonith：</p>
+<div class="highlight"><pre><span></span><code>#pcs property set stonith-enabled=false（默认是true）
+</code></pre></div>
+
+<h4>8、配置存储</h4>
+<p>高可用集群既可以使用本地磁盘来构建纯软件的镜像型集群系统，也可以使用专门的共享磁盘装置来构建大规模的共享磁盘型集群系统，充分满足客户的不同需求。</p>
+<p>共享磁盘主要有iscsi或DBRD。本文并没有使用共享磁盘。</p>
+<h4>9、配置浮点IP</h4>
+<p>不管集群服务在哪运行,我们要一个固定的地址来提供服务。在这里我选择192.168.122.101作为浮动IP,给它取一个好记的名字 ClusterIP 并且告诉集群 每30秒检查它一次。</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="nx">pcs</span><span class="w"> </span><span class="nx">resource</span><span class="w"> </span><span class="nx">create</span><span class="w"> </span><span class="nx">VIP</span><span class="w"> </span><span class="nx">ocf</span><span class="p">:</span><span class="nx">heartbeat</span><span class="p">:</span><span class="nx">IPaddr2</span><span class="w"> </span><span class="nx">ip</span><span class="p">=</span><span class="m m-Double">192.168.122.170</span><span class="w"> </span><span class="nx">cidr_netmask</span><span class="p">=</span><span class="mi">24</span><span class="w"> </span><span class="nx">op</span><span class="w"> </span><span class="nx">monitor</span><span class="w"> </span><span class="nx">interval</span><span class="p">=</span><span class="mi">30</span><span class="nx">s</span>
+<span class="err">#</span><span class="w"> </span><span class="nx">pcs</span><span class="w"> </span><span class="nx">update</span><span class="w"> </span><span class="nx">VIP</span><span class="w"> </span><span class="nx">op</span><span class="w"> </span><span class="nx">monitor</span><span class="w"> </span><span class="nx">interval</span><span class="p">=</span><span class="mi">15</span><span class="nx">s</span>
+</code></pre></div>
+
+<h4>10、配置apache服务</h4>
+<p>在node1和node2上安装httpd ，确认httpd开机被禁用 </p>
+<div class="highlight"><pre><span></span><code># systemctl status httpd.service；
+</code></pre></div>
+
+<p>配置httpd监控页面（貌似不配置也可以通过systemd监控），分别在node1和node2上执行</p>
+<div class="highlight"><pre><span></span><code># cat &gt; /etc/httpd/conf.d/status.conf &lt;&lt; EOF
+SetHandler server-status
+Order deny,allow
+Deny from all
+Allow from localhost
+EOF
+</code></pre></div>
+
+<p>首先我们为Apache创建一个主页。在centos上面默认的Apache docroot是/var/www/html,所以我们在这个目录下面建立一个主页。</p>
+<p>node1节点修改如下：</p>
+<div class="highlight"><pre><span></span><code>[root@node1<span class="w"> </span>~]#<span class="w"> </span>cat<span class="w"> </span><span class="err">&lt;</span><span class="nt">&lt;-END</span><span class="w"> </span><span class="nt">&gt;</span>/var/www/html/index.html
+<span class="nt">&lt;html&gt;</span>
+<span class="nt">&lt;body&gt;</span>Hello<span class="w"> </span>node1<span class="nt">&lt;/body&gt;</span>
+<span class="nt">&lt;/html&gt;</span>
+
+END
+</code></pre></div>
+
+<p>node2节点修改如下：</p>
+<div class="highlight"><pre><span></span><code>[root@node2<span class="w"> </span>~]#<span class="w"> </span>cat<span class="w"> </span><span class="err">&lt;</span><span class="nt">&lt;-END</span><span class="w"> </span><span class="nt">&gt;</span>/var/www/html/index.html<span class="w"> </span>
+<span class="nt">&lt;html&gt;</span>
+<span class="nt">&lt;body&gt;</span>Hello<span class="w"> </span>node2<span class="nt">&lt;/body&gt;</span>
+<span class="nt">&lt;/html&gt;</span>
+
+END
+</code></pre></div>
+
+<p>下面语句是将httpd作为资源添加到集群中：</p>
+<div class="highlight"><pre><span></span><code>#pcs resource create WEB apache configfile=&quot;/etc/httpd/conf/httpd.conf&quot; statusurl=&quot;http://127.0.0.1/server-status&quot;
+</code></pre></div>
+
+<h4>11、创建group</h4>
+<p>将VIP和WEB resource捆绑到这个group中，使之作为一个整体在集群中切换。（此配置为可选)</p>
+<div class="highlight"><pre><span></span><code># pcs resource group add MyGroup VIP
+# pcs resource group add MyGroup WEB
+</code></pre></div>
+
+<h4>12、配置服务启动顺序</h4>
+<p>以避免出现资源冲突，语法：(pcs resource group add的时候也可以根据加的顺序依次启动，此配置为可选)</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="n">pcs</span><span class="w"> </span><span class="k">constraint</span><span class="w"> </span><span class="k">order</span><span class="w"> </span><span class="o">[</span><span class="n">action</span><span class="o">]</span><span class="w"> </span><span class="k">then</span><span class="w"> </span><span class="o">[</span><span class="n">action</span><span class="o">]</span>
+<span class="err">#</span><span class="w"> </span><span class="n">pcs</span><span class="w"> </span><span class="k">constraint</span><span class="w"> </span><span class="k">order</span><span class="w"> </span><span class="k">start</span><span class="w"> </span><span class="n">VIP</span><span class="w"> </span><span class="k">then</span><span class="w"> </span><span class="k">start</span><span class="w"> </span><span class="n">WEB</span>
+</code></pre></div>
+
+<h4>13、指定优先的 Location （此配置为可选)</h4>
+<p>Pacemaker 并不要求你机器的硬件配置是相同的,可能某些机器比另外的机器配置要好。这种状况下我们会希望设置:当某个节点可用时,资源就要跑在上面之类的规则。为了达到这个效果我们创建location约束。同样的,我们给他取一个描述性的名字(prefer-node1),指明我们想在上面跑WEB 这个服务,多想在上面跑(我们现在指定分值为50,但是在双节点的集群状态下,任何大于0的值都可以达到想要的效果),以及目标节点的名字:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># pcs constraint location WEB prefers node1=50</span>
+<span class="c1"># pcs constraint location WEB prefers node2=45</span>
+</code></pre></div>
+
+<p>这里指定分值越大，代表越想在对应的节点上运行。</p>
+<h4>14、资源粘性（此配置为可选)</h4>
+<p>一些环境中会要求尽量避免资源在节点之间迁移。迁移资源通常意味着一段时间内无法提供服务，某些复杂的服务，比如Oracle数据库，这个时间可能会很长。</p>
+<p>为了达到这个效果，Pacemaker 有一个叫做“资源粘性值”的概念，它能够控制一个服务(资源)有多想呆在它正在运行的节点上。 </p>
+<p>Pacemaker为了达到最优分布各个资源的目的，默认设置这个值为0。我们可以为每个资源定义不同的粘性值，但一般来说，更改默认粘性值就够了。资源粘性表示资源是否倾向于留在当前节点，如果为正整数，表示倾向，负数则会离开，-inf表示负无穷，inf表示正无穷。</p>
+<div class="highlight"><pre><span></span><code># pcs resource defaults resource-stickiness=100
+</code></pre></div>
+
+<h3>常用命令汇总：</h3>
+<p>查看集群状态：#pcs status</p>
+<p>查看集群当前配置：#pcs config</p>
+<p>开机后集群自启动：#pcs cluster enable –all</p>
+<p>启动集群：#pcs cluster start –all</p>
+<p>查看集群资源状态：#pcs resource show</p>
+<p>验证集群配置情况：#crm_verify -L -V</p>
+<p>测试资源配置：#pcs resource debug-start resource</p>
+<p>设置节点为备用状态：#pcs cluster standby node1</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

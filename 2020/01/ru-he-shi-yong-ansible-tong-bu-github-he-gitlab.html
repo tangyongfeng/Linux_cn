@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何使用 Ansible 同步 GitHub 和 GitLab</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Seth Kenlon 通过使用 Ansible 镜像 Git 存储库，保护对重要项目的访问。 开源无处不在。它在家里的计算机上、在工作场所的计算机上、在 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2020/01/ru-he-shi-yong-ansible-tong-bu-github-he-gitlab.html" rel="bookmark"
+           title="Permalink to 如何使用 Ansible 同步 GitHub 和 GitLab">如何使用 Ansible 同步 GitHub 和 GitLab</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2020-01-01T10:40:59+01:00">
+                Published: Wed 01 January 2020
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Seth Kenlon</p>
+<blockquote>
+<p>通过使用 Ansible 镜像 Git 存储库，保护对重要项目的访问。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/202001/01/104040fbdu68wosg8o99wg.jpg"></p>
+<p>开源无处不在。它在家里的计算机上、在工作场所的计算机上、在互联网上，并且很多都由 <a href="https://opensource.com/resources/what-is-git">Git</a> 管理。由于 Git 是分布式的，因此许多人也将其视为一种众包的备份解决方案。从理论上讲，每当有人将 Git 存储库克隆到其本地计算机时，他们就创建了该项目源代码的备份。如果有 100 个人这样做，则存储库就有 100 个备份副本。</p>
+<p>从理论上讲，这可以缓解“灾难”的影响，例如当项目维护者<a href="https://github.com/AntiMicro/antimicro/issues/3">突然决定删除存储库</a>或<a href="https://opensource.com/article/19/10/how-community-saved-artwork-creative-commons">莫名其妙地阻止所有流量</a>，导致开发人员们无头苍蝇般地寻找谁拥有主分支的最新版本。类似的，整个代码托管站点也会消失。没有人会想到 Google Code、Microsoft CodePlex 或 Gitorious 会在鼎盛时期将被关闭。</p>
+<p>简而言之，如果在过去的几十年中互联网教给了我们一些东西，那就是依靠互联网神奇地创建备份并不是冗余的最可靠途径。</p>
+<p>此外，对于许多人来说，很多开源项目都托管在 GitHub 上是个问题 —— GitHub 并不是开放平台。许多开发人员和用户都希望支持诸如 GitLab 之类的堆栈并与之交互，它具有开源社区版本。</p>
+<h3>使用 Ansible 管理 Git</h3>
+<p>Git 的去中心方式对于解决这个问题很有用。使用纯 Git，你可以使用一个 <code>push</code> 命令轻松地将其推到两个或多个存储库。但是，为了使其在发生意外故障时有用，你必须经常与 Git 存储库进行交互（特别是推送）。此外，即使你可能永远不会自己推送或拉出代码，也可能有一些要备份的存储库。</p>
+<p>但是，使用 Ansible，你可以自动执行项目主分支（或其他任何分支）的 Git 拉取，然后自动进行存储库到“异地”镜像的 Git 推送。换句话说，你可以让你的计算机定期从 GitHub 拉取并推送到 GitLab 或 <a href="https://opensource.com/article/19/4/server-administration-git">Gitolite</a> 或 Gitea（或你喜欢的任何 Git 托管主机）。</p>
+<h3>Ansible 模块</h3>
+<p>如果不是因其出色的模块集合，那么 Ansible 就没那么出色。像 Python 的第三方库或 Linux 的应用程序一样，这个技术引擎的一个有用而令人惊讶的简单技巧是，Ansible 以其他人贡献的组件而闻名。因为本文正在研究如何有效和可靠地备份 Git 存储库，所以这里使用的模块是 <a href="https://docs.ansible.com/ansible/latest/modules/git_module.html">Git 模块</a>和 <a href="https://docs.ansible.com/ansible/latest/modules/ini_file_module.html">ini_file</a> 模块。</p>
+<p>首先，创建一个名为 <code>mirror.yaml</code> 的文件作为<ruby> 剧本 <rt>  playbook </rt></ruby>。你可以像通常使用 Ansible 一样，从 <code>name</code> 和 <code>task</code> 条目开始。本示例将 <code>localhost</code> 添加到 <code>hosts</code> 列表中，以便在控制器计算机（你现在坐在前面的计算机）上运行<ruby> 动作 <rt>  play </rt></ruby>，但是在现实生活中，你可能会在特定的主机或一组网络上的主机上运行它。</p>
+<div class="highlight"><pre><span></span><code><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Mirror a Git repo with Ansible&quot;</span>
+<span class="w">  </span><span class="n">hosts</span><span class="p">:</span><span class="w"> </span><span class="n">localhost</span>
+<span class="w">  </span><span class="n">vars</span><span class="p">:</span>
+<span class="w">    </span><span class="n">git_dir</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="n">tmp</span><span class="o">/</span><span class="n">soso</span><span class="o">.</span><span class="n">git</span>
+<span class="w">  </span><span class="n">tasks</span><span class="p">:</span>
+
+<span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Clone the git repo&quot;</span>
+<span class="w">    </span><span class="n">git</span><span class="p">:</span>
+<span class="w">       </span><span class="n">repo</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;https://github.com/ozkl/soso.git&#39;</span>
+<span class="w">       </span><span class="n">dest</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;{{ git_dir }}&#39;</span>
+<span class="w">       </span><span class="n">clone</span><span class="p">:</span><span class="w"> </span><span class="n">yes</span>
+<span class="w">       </span><span class="n">update</span><span class="p">:</span><span class="w"> </span><span class="n">yes</span>
+</code></pre></div>
+
+<p>这个例子使用了开源的、类似于 Unix 的操作系统 soso 作为我要镜像的存储库。这是一个完全任意的选择，绝不意味着我对该存储库的未来缺乏信心。它还使用变量来引用目标文件夹 <code>/tmp/soso.git</code>，这很方便，并且如果以后你希望将它扩展为一个通用的镜像脚本也会受益。在现实生活中，你的工作机上可能会比 <code>/tmp</code> 具有更永久的位置，例如 <code>/home/gitmirrors/soso.git</code> 或 <code>/opt/gitmirrors/soso.git</code>。</p>
+<p>运行你的剧本：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ansible-playbook<span class="w"> </span>mirror.yaml
+</code></pre></div>
+
+<p>首次运行该剧本时，Ansible 会正确检测到 Git 存储库在本地尚不存在，因此将其克隆。</p>
+<div class="highlight"><pre><span></span><code><span class="n">PLAY</span><span class="w"> </span><span class="p">[</span><span class="n">Ansible</span><span class="w"> </span><span class="n">Git</span><span class="w"> </span><span class="n">mirror</span><span class="p">]</span><span class="w"> </span><span class="o">********</span>
+
+<span class="n">TASK</span><span class="w"> </span><span class="p">[</span><span class="n">Gathering</span><span class="w"> </span><span class="n">Facts</span><span class="p">]</span><span class="w"> </span><span class="o">***********</span>
+<span class="nl">ok</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="n">localhost</span><span class="p">]</span>
+
+<span class="n">TASK</span><span class="w"> </span><span class="p">[</span><span class="n">Clone</span><span class="w"> </span><span class="n">git</span><span class="w"> </span><span class="n">repo</span><span class="p">]</span><span class="w"> </span><span class="o">************</span>
+<span class="nl">changed</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="n">localhost</span><span class="p">]</span>
+
+<span class="n">PLAY</span><span class="w"> </span><span class="n">RECAP</span><span class="w"> </span><span class="o">***********************</span>
+<span class="nl">localhost</span><span class="p">:</span><span class="w"> </span><span class="n">ok</span><span class="o">=</span><span class="mi">2</span><span class="w"> </span><span class="n">changed</span><span class="o">=</span><span class="mi">1</span><span class="w"> </span><span class="n">failed</span><span class="o">=</span><span class="mi">0</span><span class="w"> </span><span class="p">[...]</span>
+</code></pre></div>
+
+<p>如果你再次运行该剧本，Ansible 会正确检测到自上次运行以来没有任何更改，并且会报告未执行任何操作：</p>
+<div class="highlight"><pre><span></span><code><span class="n">localhost</span><span class="o">:</span><span class="w"> </span><span class="n">ok</span><span class="o">=</span><span class="mi">2</span><span class="w"> </span><span class="n">changed</span><span class="o">=</span><span class="mi">0</span><span class="w"> </span><span class="n">failed</span><span class="o">=</span><span class="mi">0</span><span class="w"> </span><span class="o">[...]</span>
+</code></pre></div>
+
+<p>接下来，必须指示 Ansible 将存储库推送到另一个 Git 服务器。</p>
+<h3>Git 推送</h3>
+<p>Ansible 中的 Git 模块不提供 <code>push</code> 功能，因此该过程的一部分是手动的。但是，在将存储库推送到备用镜像之前，你必须具有一个镜像，并且必须将镜像配置为备用<ruby> 远程服务器 <rt>  remote </rt></ruby>。</p>
+<p>首先，必须将备用的远程服务器添加到 Git 配置。因为 Git 配置文件是 INI 样式的配置，所以你可以使用 <code>ini_file</code> Ansible 模块轻松地添加所需的信息。将此添加到你的剧本：</p>
+<div class="highlight"><pre><span></span><code><span class="x"> - name: &quot;Add alternate remote&quot;</span>
+<span class="x">    ini_file: dest=</span><span class="cp">{{</span> <span class="nv">git_dir</span> <span class="cp">}}</span><span class="x">/.git/config section=&#39;remote \&quot;mirrored\&quot;&#39; option=url value=&#39;git@gitlab.com:example/soso-mirror.git&#39;</span>
+<span class="x">    tags: configuration</span>
+</code></pre></div>
+
+<p>为此，你必须在目标服务器上有一个空的存储库（在本例中为 <a href="http://GitLab.com">GitLab.com</a>）。如果需要在剧本中创建目标存储库，可以按照 Steve Ovens 的出色文章《<a href="https://opensource.com/article/17/8/ansible-environment-management">如何使用 Ansible 通过 SSH 设置 Git 服务器</a>》来完成。</p>
+<p>最后，直接使用 Git 将 HEAD 推送到备用远程服务器：</p>
+<div class="highlight"><pre><span></span><code><span class="x"> - name: &quot;Push the repo to alternate remote&quot;</span>
+<span class="x">    shell: &#39;git --verbose --git-dir=</span><span class="cp">{{</span> <span class="nv">git_dir</span> <span class="cp">}}</span><span class="x">/.git push mirrored HEAD&#39;</span>
+</code></pre></div>
+
+<p>像往常一样运行该剧本，然后使该过程自动化，这样你就不必再次直接运行它了。你可以使用变量和特定的 Git 命令来调整脚本以适应你的需求，但是通过常规的拉取和推送操作，可以确保驻留在一台服务器上的重要项目可以安全地镜像到另一台服务器上。</p>
+<p>这是完整的剧本，供参考：</p>
+<p>```</p>
+<p>via: <a href="https://opensource.com/article/19/11/how-host-github-gitlab-ansible">https://opensource.com/article/19/11/how-host-github-gitlab-ansible</a></p>
+<p>作者：<a href="https://opensource.com/users/seth">Seth Kenlon</a> 选题：<a href="https://github.com/lujun9972">lujun9972</a> 译者：<a href="https://github.com/wxy">wxy</a> 校对：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创编译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

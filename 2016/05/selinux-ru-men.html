@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>SELinux 入门</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Jack Wallen 回到 Kernel 2.6 时代，那时候引入了一个新的安全系统，用以提供访问控制安全策略的机制。这个系统就是 Security Enhanced Linux (SELinux)，它 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2016/05/selinux-ru-men.html" rel="bookmark"
+           title="Permalink to SELinux 入门">SELinux 入门</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2016-05-09T11:47:00+02:00">
+                Published: Mon 09 May 2016
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Jack Wallen</p>
+<p><img alt="" src="/data/attachment/album/201605/09/114709nmpn3rn000ky1m0m.jpg"></p>
+<p>回到 Kernel 2.6 时代，那时候引入了一个新的安全系统，用以提供访问控制安全策略的机制。这个系统就是 <a href="http://selinuxproject.org/page/Main_Page">Security Enhanced Linux (SELinux)</a>，它是由<a href="https://www.nsa.gov/research/selinux/">美国国家安全局（NSA）</a>贡献的，它为 Linux 内核子系统引入了一个健壮的<ruby> 强制控制访问 <rp>  （ </rp> <rt>  Mandatory Access Control </rt> <rp>  ） </rp></ruby>架构。</p>
+<p>如果你在之前的 Linux 生涯中都禁用或忽略了 SELinux，这篇文章就是专门为你写的：这是一篇对存在于你的 Linux 桌面或服务器之下的 SELinux 系统的介绍，它能够限制权限，甚至消除程序或守护进程的脆弱性而造成破坏的可能性。</p>
+<p>在我开始之前，你应该已经了解的是 SELinux 主要是红帽 Red Hat Linux 以及它的衍生发行版上的一个工具。类似地， Ubuntu 和 SUSE（以及它们的衍生发行版）使用的是 AppArmor。SELinux 和 AppArmor 有显著的不同。你可以在 SUSE，openSUSE，Ubuntu 等等发行版上安装 SELinux，但这是项难以置信的挑战，除非你十分精通 Linux。</p>
+<p>说了这么多，让我来向你介绍 SELinux。</p>
+<h3>DAC vs. MAC</h3>
+<p>Linux 上传统的访问控制标准是<ruby> 自主访问控制 <rp>  （ </rp> <rt>  Discretionary Access Control </rt> <rp>  ） </rp></ruby>（DAC）。在这种形式下，一个软件或守护进程以 User ID（UID）或 Set owner User ID（SUID）的身份运行，并且拥有该用户的目标（文件、套接字、以及其它进程）权限。这使得恶意代码很容易运行在特定权限之下，从而取得访问关键的子系统的权限。</p>
+<p>另一方面，<ruby> 强制访问控制 <rp>  （ </rp> <rt>  Mandatory Access Control </rt> <rp>  ） </rp></ruby>（MAC）基于保密性和完整性强制信息的隔离以限制破坏。该限制单元独立于传统的 Linux 安全机制运作，并且没有超级用户的概念。</p>
+<h3>SELinux 如何工作</h3>
+<p>考虑一下 SELinux 的相关概念:</p>
+<ul>
+<li><ruby> 主体 <rp>  （ </rp> <rt>  Subjects </rt> <rp>  ） </rp></ruby></li>
+<li><ruby> 目标 <rp>  （ </rp> <rt>  Objects </rt> <rp>  ） </rp></ruby></li>
+<li><ruby> 策略 <rp>  （ </rp> <rt>  Policy </rt> <rp>  ） </rp></ruby></li>
+<li><ruby> 模式 <rp>  （ </rp> <rt>  Mode </rt> <rp>  ） </rp></ruby></li>
+</ul>
+<p>当一个<ruby> 主体 <rp>  （ </rp> <rt>  Subject </rt> <rp>  ） </rp></ruby>（如一个程序）尝试访问一个<ruby> 目标 <rp>  （ </rp> <rt>  Object </rt> <rp>  ） </rp></ruby>（如一个文件），<ruby> SELinux 安全服务器 <rp>  （ </rp> <rt>  SELinux Security Server </rt> <rp>  ） </rp></ruby>（在内核中）从<ruby> 策略数据库 <rp>  （ </rp> <rt>  Policy Database </rt> <rp>  ） </rp></ruby>中运行一个检查。基于当前的<ruby> 模式 <rp>  （ </rp> <rt>  mode </rt> <rp>  ） </rp></ruby>，如果 SELinux 安全服务器授予权限，该主体就能够访问该目标。如果 SELinux 安全服务器拒绝了权限，就会在 /var/log/messages 中记录一条拒绝信息。</p>
+<p>听起来相对比较简单是不是？实际上过程要更加复杂，但为了简化介绍，只列出了重要的步骤。</p>
+<h3>模式</h3>
+<p>SELinux 有三个模式（可以由用户设置）。这些模式将规定 SELinux 在主体请求时如何应对。这些模式是：</p>
+<ul>
+<li><ruby> Enforcing <rp>  （ </rp> <rt>  强制 </rt> <rp>  ） </rp></ruby>— SELinux 策略强制执行，基于 SELinux 策略规则授予或拒绝主体对目标的访问</li>
+<li><ruby> Permissive <rp>  （ </rp> <rt>  宽容 </rt> <rp>  ） </rp></ruby>— SELinux 策略不强制执行，不实际拒绝访问，但会有拒绝信息写入日志</li>
+<li><ruby> Disabled <rp>  （ </rp> <rt>  禁用 </rt> <rp>  ） </rp></ruby>— 完全禁用 SELinux</li>
+</ul>
+<p><img alt="" src="/data/attachment/album/201605/09/114726f6rphbs6krt4o4hr.png"></p>
+<p><em>图 1：getenforce 命令显示 SELinux 的状态是 Enforcing 启用状态。</em></p>
+<p>默认情况下，大部分系统的 SELinux 设置为 Enforcing。你要如何知道你的系统当前是什么模式？你可以使用一条简单的命令来查看，这条命令就是 <code>getenforce</code>。这个命令用起来难以置信的简单（因为它仅仅用来报告 SELinux 的模式）。要使用这个工具，打开一个终端窗口并执行 <code>getenforce</code> 命令。命令会返回 Enforcing、Permissive，或者 Disabled（见上方图 1）。</p>
+<p>设置 SELinux 的模式实际上很简单——取决于你想设置什么模式。记住：<strong>永远不推荐关闭 SELinux</strong>。为什么？当你这么做了，就会出现这种可能性：你磁盘上的文件可能会被打上错误的权限标签，需要你重新标记权限才能修复。而且你无法修改一个以 Disabled 模式启动的系统的模式。你的最佳模式是 Enforcing 或者 Permissive。</p>
+<p>你可以从命令行或 <code>/etc/selinux/config</code> 文件更改 SELinux 的模式。要从命令行设置模式，你可以使用 <code>setenforce</code> 工具。要设置 Enforcing 模式，按下面这么做：</p>
+<ol>
+<li>打开一个终端窗口</li>
+<li>执行 <code>su</code> 然后输入你的管理员密码</li>
+<li>执行 <code>setenforce 1</code></li>
+<li>执行 <code>getenforce</code> 确定模式已经正确设置（图 2）</li>
+</ol>
+<p><img alt="" src="/data/attachment/album/201605/09/114726efnh5hztvph5hhhl.png"></p>
+<p><em>图 2：设置 SELinux 模式为 Enforcing。</em></p>
+<p>要设置模式为 Permissive，这么做：</p>
+<ol>
+<li>打开一个终端窗口</li>
+<li>执行 <code>su</code> 然后输入你的管理员密码</li>
+<li>执行 <code>setenforce 0</code></li>
+<li>执行 <code>getenforce</code> 确定模式已经正确设置（图 3）</li>
+</ol>
+<p><img alt="" src="/data/attachment/album/201605/09/114727e22fgab546grung6.png"></p>
+<p><em>图 3：设置 SELinux 模式为 Permissive。</em></p>
+<p>注：通过命令行设置模式会覆盖 SELinux 配置文件中的设置。</p>
+<p>如果你更愿意在 SELinux 命令文件中设置模式，用你喜欢的编辑器打开那个文件找到这一行：</p>
+<div class="highlight"><pre><span></span><code>SELINUX=permissive
+</code></pre></div>
+
+<p>你可以按你的偏好设置模式，然后保存文件。</p>
+<p>还有第三种方法修改 SELinux 的模式（通过 bootloader），但我不推荐新用户这么做。</p>
+<h3>策略类型</h3>
+<p>SELinux 策略有两种：</p>
+<ul>
+<li><ruby> Targeted <rp>  （ </rp> <rt>  目标 </rt> <rp>  ） </rp></ruby> — 只有目标网络进程（dhcpd，httpd，named，nscd，ntpd，portmap，snmpd，squid，以及 syslogd）受保护</li>
+<li><ruby> Strict <rp>  （ </rp> <rt>  严格 </rt> <rp>  ） </rp></ruby> — 对所有进程完全的 SELinux 保护</li>
+</ul>
+<p>你可以在 <code>/etc/selinux/config</code> 文件中修改策略类型。用你喜欢的编辑器打开这个文件找到这一行：</p>
+<div class="highlight"><pre><span></span><code>SELINUXTYPE=targeted
+</code></pre></div>
+
+<p>修改这个选项为 targeted 或 strict 以满足你的需求。</p>
+<h3>检查完整的 SELinux 状态</h3>
+<p>有个方便的 SELinux 工具，你可能想要用它来获取你启用了 SELinux 的系统的详细状态报告。这个命令在终端像这样运行：</p>
+<div class="highlight"><pre><span></span><code>sestatus -v
+</code></pre></div>
+
+<p>你可以看到像图 4 那样的输出。</p>
+<p><img alt="" src="/data/attachment/album/201605/09/114728a379999n525vall9.png"></p>
+<p><em>图 4：sestatus -v 命令的输出。</em></p>
+<h3>仅是皮毛</h3>
+<p>和你预想的一样，我只介绍了 SELinux 的一点皮毛。SELinux 的确是个复杂的系统，想要更扎实地理解它是如何工作的，以及了解如何让它更好地为你的桌面或服务器工作需要更加地深入学习。我的内容还没有覆盖到疑难解答和创建自定义 SELinux 策略。</p>
+<p>SELinux 是所有 Linux 管理员都应该知道的强大工具。现在已经向你介绍了 SELinux，我强烈推荐你回到 Linux.com（当有更多关于此话题的文章发表的时候）或看看 <a href="https://www.nsa.gov/research/selinux/docs.shtml">NSA SELinux 文档</a> 获得更加深入的指南。</p>
+<p>LCTT - 相关阅读：<a href="http://vbird.dic.ksu.edu.tw/linux_basic/0440processcontrol_5.php">鸟哥的 Linux 私房菜——程序管理与 SELinux 初探</a></p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

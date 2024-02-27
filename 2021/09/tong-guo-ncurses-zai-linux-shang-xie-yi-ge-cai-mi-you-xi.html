@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>通过 ncurses 在 Linux 上写一个猜谜游戏</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Jim Hall 使用 ncurses 的灵活性和强大功能在 Linux 上创建一个猜数字游戏。 在我的 上一篇文章，我简要介绍了使用 ncurses 库通过 C 语言 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2021/09/tong-guo-ncurses-zai-linux-shang-xie-yi-ge-cai-mi-you-xi.html" rel="bookmark"
+           title="Permalink to 通过 ncurses 在 Linux 上写一个猜谜游戏">通过 ncurses 在 Linux 上写一个猜谜游戏</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2021-09-07T22:43:22+02:00">
+                Published: Tue 07 September 2021
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Jim Hall</p>
+<blockquote>
+<p>使用 ncurses 的灵活性和强大功能在 Linux 上创建一个猜数字游戏。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/202109/07/224224ecchm0t5jbjc1dzy.jpg" title="question mark in chalk"></p>
+<p>在我的 <a href="/article-13756-1.html">上一篇文章</a>，我简要介绍了使用 ncurses 库通过 C 语言编写文本模式交互式应用程序。使用 ncurses，我们可以控制文本在终端上的显示位置和方式。如果你通过阅读手册页探索 ncurses 库函数，你会发现显示文本有很多不同的方式，包括粗体文本、颜色、闪烁文本、窗口、边框、图形字符和其它功能，这些都可以使你的应用脱颖而出。</p>
+<p>如果你想探索一个更高级的程序来演示其中一些有趣的功能，有一个简单的“猜数字”游戏，我已更新为使用 ncurses 编写的了。该程序在一个范围内选择一个随机数，然后要求用户进行重复猜测，直到他们猜到这个秘密数字。当用户进行猜测时，程序会告知他们猜测的数字是太低还是太高。</p>
+<p>请注意，程序限定可能的数字范围是 0 到 7。将值保持在有限的个位数数字范围内，可以更轻松的使用 <code>getch()</code> 函数从用户读取单个数字。我还使用了 <code>getrandom</code> 内核系统调用来生成随机数，设定数字最大值为 7，以从 0 （二进制 <code>0000</code>）到 7 （二进制 <code>0111</code>）中选择一个随机数。</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;curses.h&gt;</span><span class="c1">;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;string.h&gt;</span><span class="c1">;          /* for strlen */</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;sys/random.h&gt;</span><span class="c1">;      /* for getrandom */</span>
+
+<span class="kt">int</span>
+<span class="nf">random0_7</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">   </span><span class="kt">int</span><span class="w"> </span><span class="n">num</span><span class="p">;</span>
+<span class="w">   </span><span class="n">getrandom</span><span class="p">(</span><span class="o">&amp;</span><span class="n">num</span><span class="p">,</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="kt">int</span><span class="p">),</span><span class="w"> </span><span class="n">GRND_NONBLOCK</span><span class="p">);</span>
+<span class="w">   </span><span class="k">return</span><span class="w"> </span><span class="p">(</span><span class="n">num</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="mi">7</span><span class="p">);</span><span class="w"> </span><span class="cm">/* from 0000 to 0111 */</span>
+<span class="p">}</span>
+
+<span class="kt">int</span>
+<span class="nf">read_guess</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">ch</span><span class="p">;</span>
+
+<span class="w">  </span><span class="k">do</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">ch</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">getch</span><span class="p">();</span>
+<span class="w">  </span><span class="p">}</span><span class="w"> </span><span class="k">while</span><span class="w"> </span><span class="p">((</span><span class="n">ch</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="sc">&#39;0&#39;</span><span class="p">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="p">(</span><span class="n">ch</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="sc">&#39;7&#39;</span><span class="p">));</span>
+
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">(</span><span class="n">ch</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="sc">&#39;0&#39;</span><span class="p">);</span><span class="w"> </span><span class="cm">/* turn into a number */</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>通过使用 ncurses，我们可以增加一些有趣的视觉体验。通过添加函数，我们可以在屏幕顶部显示重要的文本信息，在屏幕底部显示状态消息行：</p>
+<div class="highlight"><pre><span></span><code><span class="nb nb-Type">void</span>
+<span class="n">print_header</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="nb">char</span><span class="w"> </span><span class="o">*</span><span class="n">text</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="n">move</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span>
+<span class="w">  </span><span class="n">clrtoeol</span><span class="p">();</span>
+
+<span class="w">  </span><span class="n">attron</span><span class="p">(</span><span class="n">A_BOLD</span><span class="p">);</span>
+<span class="w">  </span><span class="n">mvaddstr</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="n">COLS</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">2</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="p">(</span><span class="n">strlen</span><span class="p">(</span><span class="n">text</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">2</span><span class="p">),</span><span class="w"> </span><span class="n">text</span><span class="p">);</span>
+<span class="w">  </span><span class="n">attroff</span><span class="p">(</span><span class="n">A_BOLD</span><span class="p">);</span>
+<span class="w">  </span><span class="n">refresh</span><span class="p">();</span>
+<span class="p">}</span>
+
+<span class="nb nb-Type">void</span>
+<span class="n">print_status</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="nb">char</span><span class="w"> </span><span class="o">*</span><span class="n">text</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="n">move</span><span class="p">(</span><span class="n">LINES</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span>
+<span class="w">  </span><span class="n">clrtoeol</span><span class="p">();</span>
+
+<span class="w">  </span><span class="n">attron</span><span class="p">(</span><span class="n">A_REVERSE</span><span class="p">);</span>
+<span class="w">  </span><span class="n">mvaddstr</span><span class="p">(</span><span class="n">LINES</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">text</span><span class="p">);</span>
+<span class="w">  </span><span class="n">attroff</span><span class="p">(</span><span class="n">A_REVERSE</span><span class="p">);</span>
+<span class="w">  </span><span class="n">refresh</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>通过这些函数，我们就可以构建猜数字游戏的主要部分。首先，程序为 ncurses 设置终端，然后从 0 到 7 中选择一个随机数。显示数字刻度后，程序启动一个循环，询问用户的猜测。</p>
+<p>当用户进行猜测时，程序会在屏幕上提供反馈。如果猜测太低，程序会在屏幕上的数字下方打印一个左方括号。如果猜测太高，程序会在屏幕上的数字下方打印一个右方括号。这有助于用户缩小他们的选择范围，直到他们猜出正确的数字。</p>
+<div class="highlight"><pre><span></span><code>int
+main()
+{
+  int number, guess;
+
+  initscr();
+  cbreak();
+  noecho();
+
+  number = random0_7();
+  mvprintw(1, COLS - 1, &quot;%d&quot;, number); /* debugging <span class="gs">*/</span>
+
+<span class="gs">  print_header(&quot;Guess the number 0-7&quot;);</span>
+
+<span class="gs">  mvaddstr(9, (COLS / 2) - 7, &quot;0 1 2 3 4 5 6 7&quot;);</span>
+
+<span class="gs">  print_status(&quot;Make a guess...&quot;);</span>
+
+<span class="gs">  do {</span>
+<span class="gs">    guess = read_guess();</span>
+
+<span class="gs">    move(10, (COLS / 2) - 7 + (guess *</span> 2));
+
+    if (guess &lt; number) {
+      addch(&#39;[&#39;);
+      print_status(&quot;Too low&quot;);
+    }
+
+    else if (guess &gt; number) {
+      addch(&#39;]&#39;);
+      print_status(&quot;Too high&quot;);
+    }
+
+    else {
+      addch(&#39;^&#39;);
+    }
+  } while (guess != number);
+
+  print_header(&quot;That&#39;s right!&quot;);
+  print_status(&quot;Press any key to quit&quot;);
+  getch();
+
+  endwin();
+
+  return 0;
+}
+</code></pre></div>
+
+<p>复制这个程序，自己尝试编译它。不要忘记你需要告诉 GCC 编译器链接到 ncurses 库：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>gcc<span class="w"> </span>-o<span class="w"> </span>guess<span class="w"> </span>guess.c<span class="w"> </span>-lncurses
+</code></pre></div>
+
+<p>我留下了一个调试行，所以你可以看到屏幕右上角附近的秘密数字：</p>
+<p><img alt="guess number game interface" src="/data/attachment/album/202109/07/224324xocg7hbo0gc7jccg.png"></p>
+<p><em>图1：猜数字游戏。注意右上角的秘密数字。</em></p>
+<h3>开始使用 ncurses</h3>
+<p>该程序使用了 ncurses 的许多其它函数，你可以从这些函数开始。例如，<code>print_header</code> 函数在屏幕顶部居中以粗体文本打印消息，<code>print_status</code> 函数在屏幕左下角以反向文本打印消息。使用它来帮助你开始使用 ncurses 编程。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何在 Linux 中添加新磁盘</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Kerneltalks 在 Linux 机器中添加磁盘的逐步过程。 本文将向你介绍在 Linux 机器中添加新磁盘的步骤。将原始磁盘添加到 Linux 机器可能非 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/03/ru-he-zai-linux-zhong-tian-jia-xin-ci-pan.html" rel="bookmark"
+           title="Permalink to 如何在 Linux 中添加新磁盘">如何在 Linux 中添加新磁盘</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-03-27T13:24:53+01:00">
+                Published: Wed 27 March 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Kerneltalks</p>
+<blockquote>
+<p>在 Linux 机器中添加磁盘的逐步过程。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/201903/27/132443nlyyrr9fyydqqrf2.jpg"></p>
+<p>本文将向你介绍在 Linux 机器中添加新磁盘的步骤。将原始磁盘添加到 Linux 机器可能非常依赖于你所拥有的服务器类型，但是一旦将磁盘提供给机器，将其添加到挂载点的过程几乎相同。</p>
+<p><strong>目标</strong>：向服务器添加新的 10GB 磁盘，并使用 lvm 和新创建的卷组创建 5GB 装载点。</p>
+<h3>向 Linux 机器添加原始磁盘</h3>
+<p>如果你使用的是 AWS EC2 Linux 服务器，可以 <a href="https://kerneltalks.com/cloud-services/how-to-add-ebs-disk-on-aws-linux-server/">按照以下步骤</a> 添加原始磁盘。如果使用的是 VMware Linux VM，那么需要按照不同的步骤来添加磁盘。如果你正在运行物理机架设备/刀片服务器，那么添加磁盘将是一项物理任务。</p>
+<p>一旦磁盘物理/虚拟地连接到 Linux 机器上，它将被内核识别，就可以开始了。</p>
+<h3>识别 Linux 最新添加的磁盘</h3>
+<p>原始磁盘连接后，需要让内核去 <a href="https://kerneltalks.com/disk-management/howto-scan-new-lun-disk-linux-hpux/">扫描新磁盘</a>。在新版中，它主要是由内核自动完成。</p>
+<p>第一件事是在内核中识别新添加的磁盘及其名称。实现这一点的方法有很多，以下作少量列举：</p>
+<ul>
+<li>可以在添加/扫描磁盘前后观察 <code>lsblk</code> 输出，以获取新的磁盘名。</li>
+<li>检查 <code>/dev</code> 文件系统中新创建的磁盘文件。匹配文件和磁盘添加时间的时间戳。</li>
+<li>观察 <code>fdisk-l</code> 添加/扫描磁盘前后的输出，以获取新的磁盘名。</li>
+</ul>
+<p>在本示例中，我使用的是 AWS EC2 服务器，向服务器添加了 5GB 磁盘。我的 lsblk 输出如下：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">root@kerneltalks ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">lsblk</span>
+<span class="n">NAME</span><span class="w">    </span><span class="nl">MAJ</span><span class="p">:</span><span class="nf">MIN</span><span class="w"> </span><span class="n">RM</span><span class="w"> </span><span class="k">SIZE</span><span class="w"> </span><span class="n">RO</span><span class="w"> </span><span class="n">TYPE</span><span class="w"> </span><span class="n">MOUNTPOINT</span>
+<span class="n">xvda</span><span class="w">    </span><span class="mi">202</span><span class="err">:</span><span class="mi">0</span><span class="w">    </span><span class="mi">0</span><span class="w">  </span><span class="mi">10</span><span class="n">G</span><span class="w">  </span><span class="mi">0</span><span class="w"> </span><span class="k">disk</span>
+<span class="err">├─</span><span class="n">xvda1</span><span class="w"> </span><span class="mi">202</span><span class="err">:</span><span class="mi">1</span><span class="w">    </span><span class="mi">0</span><span class="w">   </span><span class="mi">1</span><span class="n">M</span><span class="w">  </span><span class="mi">0</span><span class="w"> </span><span class="n">part</span>
+<span class="err">└─</span><span class="n">xvda2</span><span class="w"> </span><span class="mi">202</span><span class="err">:</span><span class="mi">2</span><span class="w">    </span><span class="mi">0</span><span class="w">  </span><span class="mi">10</span><span class="n">G</span><span class="w">  </span><span class="mi">0</span><span class="w"> </span><span class="n">part</span><span class="w"> </span><span class="o">/</span>
+<span class="n">xvdf</span><span class="w">    </span><span class="mi">202</span><span class="err">:</span><span class="mi">80</span><span class="w">   </span><span class="mi">0</span><span class="w">  </span><span class="mi">10</span><span class="n">G</span><span class="w">  </span><span class="mi">0</span><span class="w"> </span><span class="k">disk</span>
+</code></pre></div>
+
+<p>可以看到 <code>xvdf</code> 是新添加的磁盘。完整路径是 <code>/dev/xvdf</code>。</p>
+<h3>在 LVM 中添加新磁盘</h3>
+<p>我们这里使用 LVM，因为它是 Linux 平台上广泛使用的非常灵活的卷管理器。确认 lvm 或 lvm2 软件包<a href="https://kerneltalks.com/tools/check-package-installed-linux/">已经安装在系统上</a>。如未安装，请 <a href="https://kerneltalks.com/tools/package-installation-linux-yum-apt/">安装 lvm/lvm2 程序包</a>。</p>
+<p>现在，我们将在逻辑卷管理器中添加这个原始磁盘，并从中创建 10GB 的挂接点。所用到的命令如下：</p>
+<ul>
+<li><a href="https://kerneltalks.com/disk-management/lvm-command-tutorials-pvcreate-pvdisplay/">pvcreate</a></li>
+<li><a href="https://kerneltalks.com/disk-management/lvm-commands-tutorial-vgcreate-vgdisplay-vgscan/">vgcreate</a></li>
+<li><a href="https://kerneltalks.com/disk-management/lvm-commands-tutorial-lvcreate-lvdisplay-lvremove/">lvcreate</a></li>
+</ul>
+<p>如果要将磁盘添加到现有挂接点，并使用其空间来<a href="https://kerneltalks.com/disk-management/extend-file-system-online-lvm/">扩展挂接点</a> ，则 <code>vgcreate</code> 应替换为 <code>vgextend</code>。</p>
+<p>会话示例输出如下：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">root@kerneltalks ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">pvcreate</span><span class="w"> </span><span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="n">xvdf</span>
+<span class="w">  </span><span class="n">Physical</span><span class="w"> </span><span class="n">volume</span><span class="w"> </span><span class="ss">&quot;/dev/xvdf&quot;</span><span class="w"> </span><span class="n">successfully</span><span class="w"> </span><span class="n">created</span><span class="p">.</span>
+<span class="o">[</span><span class="n">root@kerneltalks ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">vgcreate</span><span class="w"> </span><span class="n">vgdata</span><span class="w"> </span><span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="n">xvdf</span>
+<span class="w">  </span><span class="n">Volume</span><span class="w"> </span><span class="k">group</span><span class="w"> </span><span class="ss">&quot;vgdata&quot;</span><span class="w"> </span><span class="n">successfully</span><span class="w"> </span><span class="n">created</span>
+<span class="o">[</span><span class="n">root@kerneltalks ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">lvcreate</span><span class="w"> </span><span class="o">-</span><span class="n">L</span><span class="w"> </span><span class="mi">5</span><span class="n">G</span><span class="w"> </span><span class="o">-</span><span class="n">n</span><span class="w"> </span><span class="n">lvdata</span><span class="w"> </span><span class="n">vgdata</span>
+<span class="w">  </span><span class="n">Logical</span><span class="w"> </span><span class="n">volume</span><span class="w"> </span><span class="ss">&quot;lvdata&quot;</span><span class="w"> </span><span class="n">created</span><span class="p">.</span>
+</code></pre></div>
+
+<p>现在，已完成逻辑卷创建。你需要使用所选的文件系统格式化它，并将其挂载。在这里选择 ext4 文件系统，并使用 <code>mkfs.ext4</code> 进行格式化。</p>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="nx">root</span><span class="err">@</span><span class="nx">kerneltalks</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="err">#</span><span class="w"> </span><span class="nx">mkfs</span><span class="p">.</span><span class="nx">ext4</span><span class="w"> </span><span class="o">/</span><span class="nx">dev</span><span class="o">/</span><span class="nx">vgdata</span><span class="o">/</span><span class="nx">lvdata</span>
+<span class="nx">mke2fs</span><span class="w"> </span><span class="m m-Double">1.42.9</span><span class="w"> </span><span class="p">(</span><span class="mi">28</span><span class="o">-</span><span class="nx">Dec</span><span class="o">-</span><span class="mi">2013</span><span class="p">)</span>
+<span class="nx">Filesystem</span><span class="w"> </span><span class="nx">label</span><span class="p">=</span>
+<span class="nx">OS</span><span class="w"> </span><span class="k">type</span><span class="p">:</span><span class="w"> </span><span class="nx">Linux</span>
+<span class="nx">Block</span><span class="w"> </span><span class="nx">size</span><span class="p">=</span><span class="mi">4096</span><span class="w"> </span><span class="p">(</span><span class="nx">log</span><span class="p">=</span><span class="mi">2</span><span class="p">)</span>
+<span class="nx">Fragment</span><span class="w"> </span><span class="nx">size</span><span class="p">=</span><span class="mi">4096</span><span class="w"> </span><span class="p">(</span><span class="nx">log</span><span class="p">=</span><span class="mi">2</span><span class="p">)</span>
+<span class="nx">Stride</span><span class="p">=</span><span class="mi">0</span><span class="w"> </span><span class="nx">blocks</span><span class="p">,</span><span class="w"> </span><span class="nx">Stripe</span><span class="w"> </span><span class="nx">width</span><span class="p">=</span><span class="mi">0</span><span class="w"> </span><span class="nx">blocks</span>
+<span class="mi">327680</span><span class="w"> </span><span class="nx">inodes</span><span class="p">,</span><span class="w"> </span><span class="mi">1310720</span><span class="w"> </span><span class="nx">blocks</span>
+<span class="mi">65536</span><span class="w"> </span><span class="nx">blocks</span><span class="w"> </span><span class="p">(</span><span class="m m-Double">5.00</span><span class="o">%</span><span class="p">)</span><span class="w"> </span><span class="nx">reserved</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">super</span><span class="w"> </span><span class="nx">user</span>
+<span class="nx">First</span><span class="w"> </span><span class="nx">data</span><span class="w"> </span><span class="nx">block</span><span class="p">=</span><span class="mi">0</span>
+<span class="nx">Maximum</span><span class="w"> </span><span class="nx">filesystem</span><span class="w"> </span><span class="nx">blocks</span><span class="p">=</span><span class="mi">1342177280</span>
+<span class="mi">40</span><span class="w"> </span><span class="nx">block</span><span class="w"> </span><span class="nx">groups</span>
+<span class="mi">32768</span><span class="w"> </span><span class="nx">blocks</span><span class="w"> </span><span class="nx">per</span><span class="w"> </span><span class="nx">group</span><span class="p">,</span><span class="w"> </span><span class="mi">32768</span><span class="w"> </span><span class="nx">fragments</span><span class="w"> </span><span class="nx">per</span><span class="w"> </span><span class="nx">group</span>
+<span class="mi">8192</span><span class="w"> </span><span class="nx">inodes</span><span class="w"> </span><span class="nx">per</span><span class="w"> </span><span class="nx">group</span>
+<span class="nx">Superblock</span><span class="w"> </span><span class="nx">backups</span><span class="w"> </span><span class="nx">stored</span><span class="w"> </span><span class="nx">on</span><span class="w"> </span><span class="nx">blocks</span><span class="p">:</span>
+<span class="w">        </span><span class="mi">32768</span><span class="p">,</span><span class="w"> </span><span class="mi">98304</span><span class="p">,</span><span class="w"> </span><span class="mi">163840</span><span class="p">,</span><span class="w"> </span><span class="mi">229376</span><span class="p">,</span><span class="w"> </span><span class="mi">294912</span><span class="p">,</span><span class="w"> </span><span class="mi">819200</span><span class="p">,</span><span class="w"> </span><span class="mi">884736</span>
+
+<span class="nx">Allocating</span><span class="w"> </span><span class="nx">group</span><span class="w"> </span><span class="nx">tables</span><span class="p">:</span><span class="w"> </span><span class="nx">done</span>
+<span class="nx">Writing</span><span class="w"> </span><span class="nx">inode</span><span class="w"> </span><span class="nx">tables</span><span class="p">:</span><span class="w"> </span><span class="nx">done</span>
+<span class="nx">Creating</span><span class="w"> </span><span class="nx">journal</span><span class="w"> </span><span class="p">(</span><span class="mi">32768</span><span class="w"> </span><span class="nx">blocks</span><span class="p">):</span><span class="w"> </span><span class="nx">done</span>
+<span class="nx">Writing</span><span class="w"> </span><span class="nx">superblocks</span><span class="w"> </span><span class="k">and</span><span class="w"> </span><span class="nx">filesystem</span><span class="w"> </span><span class="nx">accounting</span><span class="w"> </span><span class="nx">information</span><span class="p">:</span><span class="w"> </span><span class="nx">done</span>
+</code></pre></div>
+
+<h3>在挂载点上从新磁盘挂载卷</h3>
+<p>使用 <code>mount</code> 命令，在 <code>/data</code> 安装点上安装已创建并格式化的 5GB 逻辑卷。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">root@kerneltalks ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">mount</span><span class="w"> </span><span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="n">vgdata</span><span class="o">/</span><span class="n">lvdata</span><span class="w"> </span><span class="o">/</span><span class="k">data</span>
+<span class="o">[</span><span class="n">root@kerneltalks ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">df</span><span class="w"> </span><span class="o">-</span><span class="n">Ph</span><span class="w"> </span><span class="o">/</span><span class="k">data</span>
+<span class="n">Filesystem</span><span class="w">                 </span><span class="k">Size</span><span class="w">  </span><span class="n">Used</span><span class="w"> </span><span class="n">Avail</span><span class="w"> </span><span class="k">Use</span><span class="o">%</span><span class="w"> </span><span class="n">Mounted</span><span class="w"> </span><span class="k">on</span>
+<span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="n">mapper</span><span class="o">/</span><span class="n">vgdata</span><span class="o">-</span><span class="n">lvdata</span><span class="w">  </span><span class="mf">4.8</span><span class="n">G</span><span class="w">   </span><span class="mi">20</span><span class="n">M</span><span class="w">  </span><span class="mf">4.6</span><span class="n">G</span><span class="w">   </span><span class="mi">1</span><span class="o">%</span><span class="w"> </span><span class="o">/</span><span class="k">data</span>
+</code></pre></div>
+
+<p>使用 <code>df</code> 命令验证挂载点。如上所述，你都完成了！你可以在 <a href="https://kerneltalks.com/config/understanding-etcfstab-file/">/etc/fstab</a> 中添加一个条目，以便在重新启动时保持此装载。</p>
+<p>你已将 10GB 磁盘连接到 Linux 计算机，并创建了 5GB 挂载点！</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

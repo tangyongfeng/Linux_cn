@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 Vagrant 测试 Ansible 剧本</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Carl Chenet 我使用 Ansible 来自动部署站点 (LinuxJobs.fr、Journal du hacker) 与应用 (Feed2toot、Feed2tweet)。在本文中将会讲述我是如何配置以实现在本地测试 Ansbile 剧本 playbook …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/04/shi-yong-vagrant-ce-shi-ansible-ju-ben.html" rel="bookmark"
+           title="Permalink to 使用 Vagrant 测试 Ansible 剧本">使用 Vagrant 测试 Ansible 剧本</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-04-01T09:24:00+02:00">
+                Published: Sun 01 April 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Carl Chenet</p>
+<p><img alt="" src="/data/attachment/album/201804/01/092418voo2vvvnzsns3rxp.jpg"></p>
+<p>我使用 Ansible 来自动部署站点 (<a href="https://www.linuxjobs.fr">LinuxJobs.fr</a>、<a href="https://www.journalduhacker.net">Journal du hacker</a>) 与应用 (<a href="https://gitlab.com/chaica/feed2toot">Feed2toot</a>、<a href="https://gitlab.com/chaica/feed2tweet">Feed2tweet</a>)。在本文中将会讲述我是如何配置以实现在本地测试 Ansbile <ruby> 剧本 <rt>  playbook </rt></ruby>的。</p>
+<p><img alt="ansible" src="/data/attachment/album/201804/01/092426hvzfqq7om3frd3pf.png"></p>
+<h3>为何要测试 Ansible 剧本</h3>
+<p>我需要一种简单而迅速的方法来在我的本地笔记本上测试 Ansible 剧本的部署情况，尤其在刚开始写一个新剧本的时候，因为直接部署到生产服务器上不仅特别慢而且风险还很大。</p>
+<p>我使用 <a href="https://www.vagrantup.com/">Vagrant</a> 来将剧本部署到 <a href="https://www.virtualbox.org/">VirtualBox</a> 虚拟机上而不是部署到远程服务器。这使得修改的结果很快就能看到，以实现快速迭代和修正。</p>
+<p>责任声明：我并不是专业程序员。我只是描述一种我觉得适合我的，即简单又有效的用来测试 Ansible 剧本的解决方案，但可能还有其他更好的方法。</p>
+<h3>我的流程</h3>
+<ol>
+<li>开始写新的 Ansible 剧本</li>
+<li>启动一台新的虚拟机（VM）并使用 Vagrantt 将剧本部署到这台虚拟机中</li>
+<li>修复剧本或应用中的错误</li>
+<li>重新在虚拟机上部署</li>
+<li>如果还有问题，回到第三步。否则销毁这台虚拟机，重新创建新虚拟机然后测试一次全新部署</li>
+<li>若没有问题出现，则标记你的 Ansible 剧本版本，可以在生产环境上发布产品了</li>
+</ol>
+<h3>你需要哪些东西</h3>
+<p>首先，你需要 Virtualbox。若你使用的是 <a href="https://www.debian.org">Debian</a> 发行版，<a href="https://wiki.debian.org/VirtualBox">这个链接</a> 描述了安装的方法，可以从 Debian 仓库中安装，也可以通过官网来安装。</p>
+<p><a href="https://www.virtualbox.org/"><img alt="" src="/data/attachment/album/201804/01/092427uk1obl1letujazex.png"></a></p>
+<p>其次，你需要 Vagrant。为什么要 Vagrant？因为它是介于开发环境和虚拟机之间的中间件，它允许通过编程的方式重复操作，而且可以很方便地将你的部署环境与虚拟机连接起来。通过下面命令可以安装 Vagrant：</p>
+<div class="highlight"><pre><span></span><code># apt install vagrant
+</code></pre></div>
+
+<p><a href="https://www.vagrantup.com/"><img alt="" src="/data/attachment/album/201804/01/092427dxu0samsh3md3sho.png"></a></p>
+<h3>设置 Vagrant</h3>
+<p>Vagrant 的一切信息都存放在 <code>Vagrantfile</code> 文件中。这是我的内容：</p>
+<div class="highlight"><pre><span></span><code>Vagrant.require_version &quot;&gt;= 2.0.0&quot;
+
+Vagrant.configure(1) do |config|
+
+ config.vm.box = &quot;debian/stretch64&quot;
+ config.vm.provision &quot;shell&quot;, inline: &quot;apt install --yes git python3-pip&quot;
+ config.vm.provision &quot;ansible&quot; do |ansible|
+   ansible.verbose = &quot;v&quot;
+   ansible.playbook = &quot;site.yml&quot;
+   ansible.vault_password_file = &quot;vault_password_file&quot;
+ end
+end
+</code></pre></div>
+
+<ol>
+<li>第一行指明了需要用哪个版本的 Vagrant 来执行 <code>Vagrantfile</code>。</li>
+<li>文件中的第一个循环，你要定义为多少台虚拟机执行下面的操作（这里为 <code>1</code>）。</li>
+<li>第三行指定了用来创建虚拟机的官方 Vagrant 镜像。</li>
+<li>第四行非常重要：有一些需要的应用没有安装到虚拟机中。这里我们用 <code>apt</code> 安装 <code>git</code> 和 <code>python3-pip</code>。</li>
+<li>下一行指明了 Ansible 配置开始的地方</li>
+<li>第六行说明我们想要 Ansible 输出详细信息。</li>
+<li>第七行，我们定义了 Ansible 剧本的入口。</li>
+<li>第八行，若你使用 Ansible Vault 加密了一些文件，在这里指定这些文件。</li>
+</ol>
+<p>当 Vagrant 启动 Ansible 时，类似于执行这样的操作：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w">  </span>ansible-playbook<span class="w"> </span>--inventory-file<span class="o">=</span>/home/me/ansible/test-ansible-playbook/.vagrant/provisioners/ansible/inventory<span class="w"> </span>-v<span class="w"> </span>--vault-password-file<span class="o">=</span>vault_password_file<span class="w"> </span>site.yml
+</code></pre></div>
+
+<h3>执行 Vagrant</h3>
+<p>写好 <code>Vagrantfile</code> 后，就可以启动虚拟机了。只需要简单地运行下面命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>vagrant<span class="w"> </span>up
+</code></pre></div>
+
+<p>这个操作会很慢，因为它会启动虚拟机，安装 <code>Vagrantfile</code> 中定义的附加软件，最终应用你的剧本。你不要太频繁地使用这条命令。</p>
+<p>Ok，现在你可以快速迭代了。在做出修改后，可以通过下面命令来快速测试你的部署：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>vagrant<span class="w"> </span>provision
+</code></pre></div>
+
+<p>Ansible 剧本搞定后，通常要经过多次迭代（至少我是这样的），你应该一个全新安装的虚拟机上再测试一次，因为你在迭代的过程中可能会对虚拟机造成修改从而引发意料之外的结果。</p>
+<p>使用下面命令进行全新测试：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>vagrant<span class="w"> </span>destroy<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>vagrant<span class="w"> </span>up
+</code></pre></div>
+
+<p>这又是一个很慢的操作。你应该在 Ansible 剧本差不多完成了的情况下才这样做。在全新虚拟机上测试部署之后，就可以发布到生产上去了。至少准备要充分不少了吧 :p</p>
+<h3>有什么改进意见？请告诉我</h3>
+<p>本文中描述的配置对我自己来说很有用。我可以做到快速迭代（尤其在编写新的剧本的时候），除了剧本外，对我的最新应用，尚未准备好部署到生产环境上的应用也很有帮助。直接部署到远程服务器上对我的生产服务来说不仅缓慢而且很危险。</p>
+<p>我本也可以使用持续集成（CI）服务器，但这不是本文的主题。如前所述，本文的目的是在编写新的 Ansible 剧本之初尽可能的快速迭代。</p>
+<p>在编写 Ansible 剧本之初就提交，推送到你的 Git 仓库然后等待 CI 测试的执行结果，这有点太过了，因为这个时期的错误总是很多，你需要一一个地去调试。我觉得 CI 在编写 Ansible 剧本的后期会有用的多，尤其当多个人同时对它进行修改而且你有一整套代码质量规范要遵守的时候。不过，这只是我自己的观念，还有待讨论，再重申一遍，我不是个专业的程序员。</p>
+<p>如果你有更好的测试 Ansible 剧本的方案或者能对这里描述的方法做出一些改进，请告诉我。你可以把它写到留言框中或者通过社交网络联系我，我会很高兴的。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

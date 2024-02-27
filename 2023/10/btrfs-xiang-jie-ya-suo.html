@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Btrfs 详解：压缩</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Andreas Hartmann 这篇文章将探索 Btrfs 中的透明文件系统压缩，以及它如何帮助节省存储空间。这篇文章是《Btrfs 详解》系列文章中的一篇 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2023/10/btrfs-xiang-jie-ya-suo.html" rel="bookmark"
+           title="Permalink to Btrfs 详解：压缩">Btrfs 详解：压缩</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2023-10-19T15:34:00+02:00">
+                Published: Thu 19 October 2023
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Andreas Hartmann</p>
+<p><img alt="" src="/data/attachment/album/202310/19/153401dyst48ybibpy3oyd.jpg"></p>
+<p>这篇文章将探索 Btrfs 中的透明文件系统压缩，以及它如何帮助节省存储空间。这篇文章是《Btrfs 详解》系列文章中的一篇。从 Fedora Linux 33 开始，Btrfs 就是 Fedora Workstation 和 Fedora Silverblue 的默认文件系统。</p>
+<p>如果你错过了，这里是本系列的上一篇文章：<a href="/article-16287-1.html">Btrfs 详解：快照</a>。</p>
+<h3>简介</h3>
+<p>很多人都经历过存储空间用完的情况。也许你想从互联网下载一个大文件，或者你需要快速从你的手机中复制些照片，然后操作突然失败。虽然存储空间成本正在稳步降低，但越来越多的设备要么制造时就是固定数量的存储容量，要么最终用户难以扩展其存储容量。</p>
+<p>但当你的存储空间不足时你可以做什么呢？也许你会求助于云存储，或者你可以随身携带一些外部存储设备。</p>
+<p>在这篇文章里我会研究该问题的另一种解决方案：透明的文件系统压缩，这是 Btrfs 的一个特性。理想情况下，这将解决你的存储问题，同时几乎不需要对你的系统进行修改！让我们来看看是如何做到的。</p>
+<h3>透明压缩的解释</h3>
+<p>首先，让我们来探寻 <em>透明</em> 压缩是什么意思。你可以通过像 gzip、xz 或者 bzip2 这些压缩算法去压缩文件。这通常是显式操作：你利用一个压缩工具并且让它操作你的文件。虽然根据文件的内容，节约了空间，这有一个主要的缺点：当你想读取文件或者修改的时候，你得先解压缩。</p>
+<p>这不仅是一个乏味的过程，而且也暂时打破了你之前节省的空间。再者，你最终解压了你不想访问的那部分文件内容。明显有比这更好的方法！</p>
+<p>相反，透明压缩发生在文件系统级别。在这里，压缩的文件对用户看起来像常规的未压缩文件一样。但是，它们是被压缩后存储在硬盘上的。这之所以可行，是因为操作系统仅仅选择性地访问那部分文件，并且确保在向磁盘写入更新时再次压缩它们。</p>
+<p>这里的压缩是透明的在于它不被用户感知，除了在文件访问时可能的 CPU 负载小量增加。因此，你可以应用在已有的系统而不是进行硬件修改或者求助于云存储。</p>
+<h3>压缩算法对比</h3>
+<p>Btrfs 提供了多个压缩算法的选择。出于技术原因它不能选用任意的压缩算法。它现在支持：</p>
+<ul>
+<li>zstd</li>
+<li>lzo</li>
+<li>zlib</li>
+</ul>
+<p>好消息是，由于透明压缩的工作原理，你不需要安装这些程序供 Btrfs 使用。在下面的文章里，你会看到如何去运行一个简单的性能测试来对比压缩算法。但是，为了运行性能测试，你必须安装必要的可执行文件。事后不需要留着它们，所以你将使用 Podman 容器来确保不会在系统中留下任何痕迹。</p>
+<p><strong>注意</strong> ：因为 Btrfs 使用的压缩依赖于内核对这些压缩算法的（重新）实现，用户空间版本的算法得出的结果应该认为是粗略估计。</p>
+<p>因为一次次敲重复的命令是枯燥的工作，我已经在 Gitlab 上准备了一个可以运行的 Bash 脚本 （<a href="https://gitlab.com/hartang/btrfs-compression-test">https://gitlab.com/hartang/btrfs-compression-test</a>）。这会用上面提到的每个算法在不同的压缩级别运行一次简单的压缩和解压缩。</p>
+<p>首先，下载脚本：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>curl<span class="w"> </span>-LO<span class="w"> </span>https://gitlab.com/hartang/btrfs-compression-test/-/raw/main/btrfs_compression_test.sh
+</code></pre></div>
+
+<p>下一步，启动一个 Fedora Linux 容器去挂载你当前的工作目录，以便你可以和主机交换文件同时在那里运行脚本：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>podman<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--security-opt<span class="w"> </span><span class="nv">label</span><span class="o">=</span>disable<span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">:</span><span class="nv">$PWD</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-w<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">&quot;</span><span class="w"> </span>registry.fedoraproject.org/fedora:37
+</code></pre></div>
+
+<p>最后运行脚本：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>chmod<span class="w"> </span>+x<span class="w"> </span>./btrfs_compression_test.sh
+$<span class="w"> </span>./btrfs_compression_test.sh
+</code></pre></div>
+
+<p>在我机器上的输出是这样：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">INFO</span><span class="o">]</span><span class="w"> </span><span class="k">Using</span><span class="w"> </span><span class="k">file</span><span class="w"> </span><span class="s1">&#39;glibc-2.36.tar&#39;</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">compression</span><span class="w"> </span><span class="n">target</span>
+<span class="o">[</span><span class="n">INFO</span><span class="o">]</span><span class="w"> </span><span class="n">Target</span><span class="w"> </span><span class="k">file</span><span class="w"> </span><span class="s1">&#39;glibc-2.36.tar&#39;</span><span class="w"> </span><span class="ow">not</span><span class="w"> </span><span class="k">found</span><span class="p">,</span><span class="w"> </span><span class="n">downloading</span><span class="w"> </span><span class="n">now</span><span class="p">...</span>
+<span class="err">###################################################################</span><span class="w"> </span><span class="mf">100.0</span><span class="o">%</span>
+<span class="o">[</span><span class="n"> OK </span><span class="o">]</span><span class="w"> </span><span class="n">Download</span><span class="w"> </span><span class="n">successful</span><span class="err">!</span>
+<span class="o">[</span><span class="n">INFO</span><span class="o">]</span><span class="w"> </span><span class="n">Copying</span><span class="w"> </span><span class="s1">&#39;glibc-2.36.tar&#39;</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="s1">&#39;/tmp/tmp.vNBWYg1Vol/&#39;</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">benchmark</span><span class="p">...</span>
+<span class="o">[</span><span class="n">INFO</span><span class="o">]</span><span class="w"> </span><span class="n">Installing</span><span class="w"> </span><span class="n">required</span><span class="w"> </span><span class="n">utilities</span>
+<span class="o">[</span><span class="n">INFO</span><span class="o">]</span><span class="w"> </span><span class="n">Testing</span><span class="w"> </span><span class="n">compression</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="s1">&#39;zlib&#39;</span>
+
+<span class="w">    </span><span class="k">Level</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nc">Time</span><span class="w"> </span><span class="p">(</span><span class="nf">compress</span><span class="p">)</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">Compression</span><span class="w"> </span><span class="n">Ratio</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nc">Time</span><span class="w"> </span><span class="p">(</span><span class="nf">decompress</span><span class="p">)</span>
+<span class="o">-------+-----------------+-------------------+-------------------</span>
+<span class="w">        </span><span class="mi">1</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">0.322</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">18.324</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.659</span><span class="w"> </span><span class="n">s</span>
+<span class="w">        </span><span class="mi">2</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">0.342</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">17.738</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.635</span><span class="w"> </span><span class="n">s</span>
+<span class="w">        </span><span class="mi">3</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">0.473</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">17.181</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.647</span><span class="w"> </span><span class="n">s</span>
+<span class="w">        </span><span class="mi">4</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">0.505</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">16.101</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.607</span><span class="w"> </span><span class="n">s</span>
+<span class="w">        </span><span class="mi">5</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">0.640</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">15.270</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.590</span><span class="w"> </span><span class="n">s</span>
+<span class="w">        </span><span class="mi">6</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">0.958</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">14.858</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.577</span><span class="w"> </span><span class="n">s</span>
+<span class="w">        </span><span class="mi">7</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">1.198</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">14.716</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.561</span><span class="w"> </span><span class="n">s</span>
+<span class="w">        </span><span class="mi">8</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">2.577</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">14.619</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.571</span><span class="w"> </span><span class="n">s</span>
+<span class="w">        </span><span class="mi">9</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">3.114</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">14.605</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.570</span><span class="w"> </span><span class="n">s</span>
+
+<span class="o">[</span><span class="n">INFO</span><span class="o">]</span><span class="w"> </span><span class="n">Testing</span><span class="w"> </span><span class="n">compression</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="s1">&#39;zstd&#39;</span>
+
+<span class="w">    </span><span class="k">Level</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nc">Time</span><span class="w"> </span><span class="p">(</span><span class="nf">compress</span><span class="p">)</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">Compression</span><span class="w"> </span><span class="n">Ratio</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nc">Time</span><span class="w"> </span><span class="p">(</span><span class="nf">decompress</span><span class="p">)</span>
+<span class="o">-------+-----------------+-------------------+-------------------</span>
+<span class="w">        </span><span class="mi">1</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">0.492</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">14.831</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.313</span><span class="w"> </span><span class="n">s</span>
+<span class="w">        </span><span class="mi">2</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">0.607</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">14.008</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.341</span><span class="w"> </span><span class="n">s</span>
+<span class="w">        </span><span class="mi">3</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">0.709</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">13.195</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.318</span><span class="w"> </span><span class="n">s</span>
+<span class="w">        </span><span class="mi">4</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">0.683</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">13.108</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.306</span><span class="w"> </span><span class="n">s</span>
+<span class="w">        </span><span class="mi">5</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">1.300</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">11.825</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.292</span><span class="w"> </span><span class="n">s</span>
+<span class="w">        </span><span class="mi">6</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">1.824</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">11.298</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.286</span><span class="w"> </span><span class="n">s</span>
+<span class="w">        </span><span class="mi">7</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">2.215</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">11.052</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.284</span><span class="w"> </span><span class="n">s</span>
+<span class="w">        </span><span class="mi">8</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">2.834</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">10.619</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.294</span><span class="w"> </span><span class="n">s</span>
+<span class="w">        </span><span class="mi">9</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">3.079</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">10.408</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.272</span><span class="w"> </span><span class="n">s</span>
+<span class="w">       </span><span class="mi">10</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">4.355</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">10.254</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.282</span><span class="w"> </span><span class="n">s</span>
+<span class="w">       </span><span class="mi">11</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">6.161</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">10.167</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.283</span><span class="w"> </span><span class="n">s</span>
+<span class="w">       </span><span class="mi">12</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">6.670</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">10.165</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.304</span><span class="w"> </span><span class="n">s</span>
+<span class="w">       </span><span class="mi">13</span><span class="w"> </span><span class="o">|</span><span class="w">        </span><span class="mf">12.471</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">10.183</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.279</span><span class="w"> </span><span class="n">s</span>
+<span class="w">       </span><span class="mi">14</span><span class="w"> </span><span class="o">|</span><span class="w">        </span><span class="mf">15.619</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">10.075</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.267</span><span class="w"> </span><span class="n">s</span>
+<span class="w">       </span><span class="mi">15</span><span class="w"> </span><span class="o">|</span><span class="w">        </span><span class="mf">21.387</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">9.989</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.270</span><span class="w"> </span><span class="n">s</span>
+
+<span class="o">[</span><span class="n">INFO</span><span class="o">]</span><span class="w"> </span><span class="n">Testing</span><span class="w"> </span><span class="n">compression</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="s1">&#39;lzo&#39;</span>
+
+<span class="w">    </span><span class="k">Level</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nc">Time</span><span class="w"> </span><span class="p">(</span><span class="nf">compress</span><span class="p">)</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">Compression</span><span class="w"> </span><span class="n">Ratio</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nc">Time</span><span class="w"> </span><span class="p">(</span><span class="nf">decompress</span><span class="p">)</span>
+<span class="o">-------+-----------------+-------------------+-------------------</span>
+<span class="w">        </span><span class="mi">1</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">0.447</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">25.677</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.438</span><span class="w"> </span><span class="n">s</span>
+<span class="w">        </span><span class="mi">2</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">0.448</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">25.582</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.438</span><span class="w"> </span><span class="n">s</span>
+<span class="w">        </span><span class="mi">3</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">0.444</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">25.582</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.441</span><span class="w"> </span><span class="n">s</span>
+<span class="w">        </span><span class="mi">4</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">0.444</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">25.582</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.444</span><span class="w"> </span><span class="n">s</span>
+<span class="w">        </span><span class="mi">5</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">0.445</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">25.582</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.453</span><span class="w"> </span><span class="n">s</span>
+<span class="w">        </span><span class="mi">6</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">0.438</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">25.582</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.444</span><span class="w"> </span><span class="n">s</span>
+<span class="w">        </span><span class="mi">7</span><span class="w"> </span><span class="o">|</span><span class="w">         </span><span class="mf">8.990</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">18.666</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.410</span><span class="w"> </span><span class="n">s</span>
+<span class="w">        </span><span class="mi">8</span><span class="w"> </span><span class="o">|</span><span class="w">        </span><span class="mf">34.233</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">18.463</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.405</span><span class="w"> </span><span class="n">s</span>
+<span class="w">        </span><span class="mi">9</span><span class="w"> </span><span class="o">|</span><span class="w">        </span><span class="mf">41.328</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">|</span><span class="w">          </span><span class="mf">18.450</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="o">|</span><span class="w">           </span><span class="mf">0.426</span><span class="w"> </span><span class="n">s</span>
+
+<span class="o">[</span><span class="n">INFO</span><span class="o">]</span><span class="w"> </span><span class="n">Cleaning</span><span class="w"> </span><span class="n">up</span><span class="p">...</span>
+<span class="o">[</span><span class="n"> OK </span><span class="o">]</span><span class="w"> </span><span class="n">Benchmark</span><span class="w"> </span><span class="n">complete</span><span class="err">!</span>
+</code></pre></div>
+
+<p>重要的是在根据脚本得出的数据做决定之前注意这些事情：</p>
+<ul>
+<li>不是所有的文件压缩效果都一样好。像图片或电影这种已经压缩过的现代多媒体格式不会压缩得更小。</li>
+<li>脚本中压缩和解压缩各进行一次。重复运行会产生稍微不同的输出。因此，时间应该被理解为是估计，而不是准确的测量。</li>
+</ul>
+<p>鉴于输出的数据，我决定在我的系统上使用压缩级别 3 的 zstd 压缩算法。依据你的需求，你可能想使用更高的压缩级别（比如，如果你存储设备相当的慢）。要估算可达到的读/写速度，可以将源存档大小（约 260MB）除以（解）压缩时间。</p>
+<p>压缩测试默认是对 GNU libc 2.36 源码进行的。如果你想看看对指定文件的效果，你可以通过第一个参数传递文件路径给脚本。记住文件一定要可以在容器内访问才行。</p>
+<p>如果你想要测试其他东西或者执行更加详细的测试，可以阅读脚本的源码，根据需要修改它。</p>
+<h3>配置 Btrfs 压缩</h3>
+<p>Btrfs 里的透明文件系统压缩可以通过几种方式配置：</p>
+<ul>
+<li>作为挂载文件系统的挂载选项（可用于相同 Btrfs 文件系统的所有子卷）</li>
+<li>通过 Btrfs 文件属性</li>
+<li>在 <code>btrfs filesystem defrag</code> 时（不是永久的，不在这里介绍）</li>
+<li>通过 <code>chattr</code> 文件属性接口（不在这里介绍）</li>
+</ul>
+<p>我只会介绍其中前两个。</p>
+<h4>在挂载时开启压缩</h4>
+<p>有一个 Btrfs 挂载选项可以开启文件压缩：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>mount<span class="w"> </span>-o<span class="w"> </span><span class="nv">compress</span><span class="o">=</span>&lt;ALGORITHM&gt;:&lt;LEVEL&gt;<span class="w"> </span>...
+</code></pre></div>
+
+<p>例如，去挂载一个文件系统，并使用等级 3 的 <code>ztsd</code> 算法去压缩，你可以写成：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>mount<span class="w"> </span>-o<span class="w"> </span><span class="nv">compress</span><span class="o">=</span>zstd:3<span class="w"> </span>...
+</code></pre></div>
+
+<p>设置压缩等级是可选的。重要的是注意到 <code>compress</code> 挂载选项应用到整个 Btrfs 文件系统和它所有的子卷。此外，这是目前唯一支持的指定压缩等级的方式。</p>
+<p>为了对文件系统的根应用压缩，必须在 <code>/etc/fstab</code> 上指定。例如，Fedora Linux 安装器，默认启用级别 1 的 <code>zstd</code> 压缩，在 <code>/etc/fstab</code> 里是这样：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cat<span class="w"> </span>/etc/fstab
+<span class="o">[</span><span class="w"> </span>...<span class="w"> </span><span class="o">]</span>
+<span class="nv">UUID</span><span class="o">=</span>47b03671-39f1-43a7-b0a7-db733bfb47ff<span class="w">  </span>/<span class="w">  </span>btrfs<span class="w">   </span><span class="nv">subvol</span><span class="o">=</span>root,compress<span class="o">=</span>zstd:1,<span class="o">[</span><span class="w"> </span>...<span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">0</span>
+</code></pre></div>
+
+<h4>启用单个文件压缩</h4>
+<p>另外一种方式指定压缩的方法是通过 Btrfs 文件系统属性。使用下面的命令去查看文件、目录或子卷的压缩设置：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>btrfs<span class="w"> </span>property<span class="w"> </span>get<span class="w"> </span>&lt;PATH&gt;<span class="w"> </span>compression
+</code></pre></div>
+
+<p>类似的，你可以像这样配置压缩：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>btrfs<span class="w"> </span>property<span class="w"> </span><span class="nb">set</span><span class="w"> </span>&lt;PATH&gt;<span class="w"> </span>compression<span class="w"> </span>&lt;VALUE&gt;
+</code></pre></div>
+
+<p>例如，对在 <code>/etc</code> 下所有文件启用 <code>zlib</code> 压缩：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>btrfs<span class="w"> </span>property<span class="w"> </span><span class="nb">set</span><span class="w"> </span>/etc<span class="w"> </span>compression<span class="w"> </span>zlib
+</code></pre></div>
+
+<p>你可以通过 <code>man btrfs-property</code> 得到支持值的列表。记住这个接口不允许指定压缩级别。除此之外，如果设置了一个压缩属性，它会覆盖挂载时的其他压缩配置。</p>
+<h3>压缩已有文件</h3>
+<p>在这时，如果你对现有文件系统采用压缩，然后通过 <code>df</code> 或类似命令检查空间利用率，你会发现什么都没变。这是因为 Btrfs 自身不会 “重新压缩” 所有已有的文件。压缩只会发生在往磁盘写新数据的时候。有一些方式去执行显式的重压缩：</p>
+<ol>
+<li>等待，什么都不做：只要文件被修改并被写回磁盘，Btrfs 根据配置压缩新写入的文件内容。如果我们等待足够长，越来越多的文件被重写，在某个时间点就会被压缩。</li>
+<li>移动文件到另一个文件系统然后移动回来：取决于你想压缩哪些文件，这可能是相当乏味的选项。</li>
+<li>执行一次 Btrfs 碎片整理。</li>
+</ol>
+<p>最后一个选项可能是最方便的，但是它会对已经包含快照的 Btrfs 文件系统提出警告：它会破坏快照间的共享范围。换句话来说，两个快照间所有的共享内容，或者一个快照和它的父子卷，在碎片整理操作后将保存多份。</p>
+<p>因此，如果你在你的文件系统里已经有很多快照，你不应该对整个文件系统运行碎片整理。这也没有必要，因为如果你想的话，Btrfs 可以对特定的目录或者单个文件进行碎片整理。</p>
+<p>你可以使用以下命令去执行一次碎片整理：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>btrfs<span class="w"> </span>filesystem<span class="w"> </span>defragment<span class="w"> </span>-r<span class="w"> </span>/path/to/defragment
+</code></pre></div>
+
+<p>例如，你想像这样去整理你主目录的碎片：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>btrfs<span class="w"> </span>filesystem<span class="w"> </span>defragment<span class="w"> </span>-r<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HOME</span><span class="s2">&quot;</span>
+</code></pre></div>
+
+<p>如果有疑问，最好从碎片整理单个大文件开始，并在监视文件系统上的可用空间的同时继续处理越来越大的目录。</p>
+<h3>测量文件系统压缩</h3>
+<p>有时，你可能会想，文件系统压缩为你节省了多少空间。但如何判断呢？首先，要知道一个 Btrfs 文件系统是否在挂载时启用了压缩，你可以使用以下命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>findmnt<span class="w"> </span>-vno<span class="w"> </span>OPTIONS<span class="w"> </span>/path/to/mountpoint<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>compress
+</code></pre></div>
+
+<p>如果你得到了结果，那么给定挂载点的文件系统就使用了压缩！下一步，<code>compsize</code> 命令会告诉你你的文件需要多少空间：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>compsize<span class="w"> </span>-x<span class="w"> </span>/path/to/examine
+</code></pre></div>
+
+<p>在我的主目录，结果是这样：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>compsize<span class="w"> </span>-x<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HOME</span><span class="s2">&quot;</span>
+Processed<span class="w"> </span><span class="m">942853</span><span class="w"> </span>files,<span class="w"> </span><span class="m">550658</span><span class="w"> </span>regular<span class="w"> </span>extents<span class="w"> </span><span class="o">(</span><span class="m">799985</span><span class="w"> </span>refs<span class="o">)</span>,<span class="w"> </span><span class="m">462779</span><span class="w"> </span>inline.
+Type<span class="w">       </span>Perc<span class="w">     </span>Disk<span class="w"> </span>Usage<span class="w">   </span>Uncompressed<span class="w"> </span>Referenced
+TOTAL<span class="w">       </span><span class="m">81</span>%<span class="w">       </span>74G<span class="w">          </span>91G<span class="w">         </span>111G
+none<span class="w">       </span><span class="m">100</span>%<span class="w">       </span>67G<span class="w">          </span>67G<span class="w">          </span>77G
+zstd<span class="w">        </span><span class="m">28</span>%<span class="w">      </span><span class="m">6</span>.6G<span class="w">          </span>23G<span class="w">          </span>33G
+</code></pre></div>
+
+<p>每一行告诉你应用到文件的压缩 “类型” 。* <code>TOTAL</code> 是下面所有行的总计。</p>
+<p>另一方面，这些列告诉你我们的文件需要多少空间：</p>
+<ul>
+<li><code>Disk Usage</code> 是实际分配在硬盘上的空间，</li>
+<li><code>Uncompressed</code> 是如果没有压缩，文件所需要的空间，</li>
+<li><code>Referenced</code> 是所有未压缩文件加起来的总大小。</li>
+</ul>
+<p><code>Referenced</code> 可以与数据 <code>Uncompressed</code> 不同，比如一个文件之前被重复了，或者有快照共享内容。在上面的例子，你可以看到在我的硬盘上总计 91 GB 的未压缩文件仅占据了 74 GB 的存储。取决于在目录里存储的文件类型和应用的压缩等级，这些数字可以有很大差异。</p>
+<h3>文件压缩的其它注意事项</h3>
+<p>Btrfs 使用启发式算法去探测压缩文件。这是因为压缩文件通常效果不好，所以没有必要浪费 CPU 周期去尝试进一步的压缩。为了这个目的，Btrfs 在写入压缩数据到磁盘之前测量压缩率。如果文件的第一部分压缩效果不好，文件被标记为不可压缩并且不会有后续的压缩。</p>
+<p>如果出于某些原因，你想 Btrfs 压缩所有写入的数据，你可以通过 <code>compress-force</code> 选项挂载一个 Btrfs 文件系统，像这样：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>mount<span class="w"> </span>-o<span class="w"> </span>compress-force<span class="o">=</span>zstd:3<span class="w"> </span>...
+</code></pre></div>
+
+<p>当像这样配置，Btrfs 会用等级 3 的 <code>zstd</code> 算法压缩所有写入磁盘的数据。</p>
+<p>一个重要的注意事项是挂载一个有很多数据并开启压缩的 Btrfs 文件系统会比没开启压缩耗时更长。这是有技术上的原因的，而且这是一个不会影响文件系统操作的正常行为。</p>
+<h3>总结</h3>
+<p>本文详细介绍了 Btrfs 中的透明文件系统压缩。这是一种内置的、相对廉价的方法，可以在不需要修改的情况下从现有硬件中获得一些额外的存储空间。</p>
+<p>本系列文章的下一篇将讨论：</p>
+<ul>
+<li>Qgroups - 限制文件系统大小</li>
+<li>RAID - 替换 mdadm 配置</li>
+</ul>
+<p>（LCTT 译注：后继文章尚未发布，一旦发布我们会尽快翻译。）</p>
+<p>如果你想了解与 Btrfs 相关的其他主题，请查看 Btrfs 维基 <sup class="footnote-ref"> <a href="#fn1" id="fnref1">  [1] </a></sup> 和文档 <sup class="footnote-ref"> <a href="#fn2" id="fnref2">  [2] </a></sup>。如果你还没有阅读本系列的前三篇文章，请不要忘记去看看！如果你觉得本文缺少某些内容，请在下面的评论中让我知道。我们下篇文章见！</p>
+<h3>参考资料</h3>
+<ol>
+<li><a href="https://btrfs.wiki.kernel.org/index.php/Main_Page">https://btrfs.wiki.kernel.org/index.php/Main_Page</a> <a href="#fnref1">↩︎</a></li>
+<li><a href="https://btrfs.readthedocs.io/en/latest/Introduction.html">https://btrfs.readthedocs.io/en/latest/Introduction.html</a> <a href="#fnref2">↩︎</a></li>
+</ol>
+<p><em>（题图：MJ/1a45064c-8da5-4b60-87f2-9886d6a3299e）</em></p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

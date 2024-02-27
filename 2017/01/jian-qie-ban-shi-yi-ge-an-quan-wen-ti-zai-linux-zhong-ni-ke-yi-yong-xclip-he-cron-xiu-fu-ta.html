@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>剪切板是一个安全问题 - 在 Linux 中你可以用 xclip 和 cron 修复它</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: dmt 更新：我原文推荐的是 xsel，但几个用户报告说它禁用了他们的声音。这对我来说不是问题，但我发现了另一种方式（使用 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li class="active"><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/01/jian-qie-ban-shi-yi-ge-an-quan-wen-ti-zai-linux-zhong-ni-ke-yi-yong-xclip-he-cron-xiu-fu-ta.html" rel="bookmark"
+           title="Permalink to 剪切板是一个安全问题 - 在 Linux 中你可以用 xclip 和 cron 修复它">剪切板是一个安全问题 - 在 Linux 中你可以用 xclip 和 cron 修复它</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-01-26T13:02:56+01:00">
+                Published: Thu 26 January 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/zhuo-mian-ying-yong">桌面应用</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: dmt</p>
+<p><img alt="" src="/data/attachment/album/201701/26/130300crouoxbhxoob99xw.png"></p>
+<p><strong>更新：我原文推荐的是 xsel，但几个用户报告说它禁用了他们的声音。这对我来说不是问题，但我发现了另一种方式（使用 <a href="https://github.com/astrand/xclip">xclip</a> ）来实现同样的目标，这样应该就能回避这个问题。文章已更新，切换到了 xclip。</strong></p>
+<p>在你的操作系统上复制/粘贴的能力是必不可少的。无论你写的是代码还是剧本，这两个功能是在计算机上处理文本的核心。当你复制文本时，它会进入内存驻留的剪贴板。除非安装了可以容纳多个条目的剪贴板管理器，否则剪贴板默认情况下只会处理一个<em>复制</em>事件，当你<em>复制</em>其他东西的时候，它之前的条目才会消失。在标准 Linux 设置中，剪贴板内容存储在控制它的程序的内存中（通常是 Xorg）。</p>
+<p>剪贴板应该有所限制，因为任何程序都可以读取其内容，如果放任它，它保存的东西就会一直呆在那里。此外，现代浏览器允许恶意网站以多种方式从剪贴板读取（和写入）。</p>
+<p>虽然不是默认设置，但浏览器可以设置为禁止访问剪贴板。虽然也有用于浏览器和操作系统管理剪贴板的附加组件，但是，在此链条的源头解决问题更容易、更可靠，并使系统范围内的剪贴板安全。有很多理由使用一个剪贴板，但没有足够的理由让内容在那里保留一两分钟以上。</p>
+<p>密码管理器最近变得很受欢迎，如果你使用过的话，你已经了解了它们如何将密码复制到剪贴板，以便你可以将其粘贴到浏览器中，并登录到你的帐户。接下来会发生什么？你的密码会保留在剪贴板上，直到另一个复制事件或重新启动。</p>
+<p>即使你使用单独的浏览器来处理银行等事务，复制密码时，通过剪贴板会将其带回其他浏览器，并将其暴露在基于 web 的剪贴板收集技术中。</p>
+<p>我的解决方案是在后台进行处理，每分钟自动清除剪贴板的内容。它使用 xclip 这个命令行工具、一个小脚本和 <a href="https://en.wikipedia.org/wiki/Cron">cron</a>。cron 的一分钟间隔给你足够的时间来复制密码，然后它会清空剪贴板。此动作会每分钟执行一次，保证复制无忧。</p>
+<p>我们需要使用 <a href="https://github.com/astrand/xclip">xclip</a> 工具清除终端中的剪贴板。在基于 apt 的发行版中，输入：</p>
+<div class="highlight"><pre><span></span><code>sudo apt-get install xclip
+</code></pre></div>
+
+<p>我们在终端中测试一下程序。首先从某处复制一些文字，复制到其他地方，并输入这两条命令：</p>
+<div class="highlight"><pre><span></span><code>touch blank
+xclip -selection clipboard blank
+</code></pre></div>
+
+<p>接着再次尝试复制文本 - 它应该就会消失了。现在把这个命令放在脚本中。创建一个脚本（用你的文本编辑器代替 leafpad）：</p>
+<div class="highlight"><pre><span></span><code>leafpad nukeclipboard.sh
+</code></pre></div>
+
+<p>并在新文件中输入下面的内容：</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/bin/sh</span>
+touch<span class="w"> </span>blank<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>xclip<span class="w"> </span>-selection<span class="w"> </span>clipboard<span class="w"> </span>blank
+</code></pre></div>
+
+<p>保存并关闭文件，接着加上可执行权限：</p>
+<div class="highlight"><pre><span></span><code>chmod +x nukeclipboard.sh
+</code></pre></div>
+
+<p>现在让 cron 任务每分钟运行一次。首先要小心，不同的发行版有不同的 cron 选项。以下设置适用于 Ubuntu（基于）的发行版，并且在你的发行版中过程可能不同，因此<a href="https://en.wikipedia.org/wiki/Cron">请阅读手册</a>。</p>
+<p>要设置 cron 任务，请在终端输入：</p>
+<div class="highlight"><pre><span></span><code>crontab -e
+</code></pre></div>
+
+<p>在最后被注释掉的行后，输入下面的行（将 <code>/home/user/</code> 替换为你的脚本位置）：</p>
+<div class="highlight"><pre><span></span><code><span class="o">*</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">export</span><span class="w"> </span><span class="n">DISPLAY</span><span class="o">=</span><span class="p">:</span><span class="mi">0</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">user</span><span class="o">/</span><span class="n">nukeclipboard</span><span class="o">.</span><span class="n">sh</span>
+</code></pre></div>
+
+<p>现在按下 <code>ctrl-o</code> 保存（使用你的 cron 任务编辑器的保存快捷键），然后点击回车保存你的 crontab。最后，按下 <code>ctrl-x</code> 退出程序。从现在起，你的剪贴板的使用寿命为一分钟。</p>
+<p>关于上面的 cron 条目的解释： cron 有环境变量的限制，当它失败时，你可能要花一整天试着一百种方法来解决它。在我找到了一个建议设置 DISPLAY 的<a href="https://stackoverflow.com/questions/14296911/when-linux-system-calls-scripts-some-commands-dont-work-cron-if-up-d/24070707#24070707">快速修复</a> 后，就解决了。感谢 <a href="https://stackoverflow.com/users/1618630/mike-q">Mike Q</a> 的贡献。</p>
+<p>现在，可能会发生当你要粘贴复制的东西时，正好剪贴板被清空，从而无法粘贴，但它只是安全的一个小的代价。 如果这是一个问题，您可以配置 cron 以任何适合您的间隔运行任务（比如 2 分钟）。 Ubuntu 的说明在<a href="https://help.ubuntu.com/community/CronHowto">此页</a>。</p>
+<p>我希望这个教程能帮助你把剪贴板锁定下来 - 如果你有可以工作的脚本或者更好的方法，欢迎来做评论。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

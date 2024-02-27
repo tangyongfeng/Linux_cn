@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何用Nagios远程执行插件（NRPE）来检测服务器内存使用率</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Sarmed Rahman 在先前的教程中，我们已经见到了如何在Nagios设置中设置Nagios远程执行插件（NRPE）。然而，监控内存使用率的脚本和插件并没有在原生的Nagios中。本篇中，我们 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2014/11/ru-he-yong-nagiosyuan-cheng-zhi-xing-cha-jian-nrpelai-jian-ce-fu-wu-qi-nei-cun-shi-yong-lu.html" rel="bookmark"
+           title="Permalink to 如何用Nagios远程执行插件（NRPE）来检测服务器内存使用率">如何用Nagios远程执行插件（NRPE）来检测服务器内存使用率</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2014-11-02T10:15:00+01:00">
+                Published: Sun 02 November 2014
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Sarmed Rahman</p>
+<p>在<a href="http://linux.cn/article-4101-1.html">先前的教程中</a>，我们已经见到了如何在Nagios设置中设置Nagios远程执行插件（NRPE）。然而，监控内存使用率的脚本和插件并没有在原生的Nagios中。本篇中，我们会看到如何配置NRPE来监控远程服务器上的内存使用率。</p>
+<p><img alt="" src="/data/attachment/album/201410/27/225219vev9r9l70rdqtg0o.jpg"></p>
+<p>我们要用的监控内存的脚本在<a href="http://exchange.nagios.org/directory/Plugins/Operating-Systems/Solaris/check_mem-2Epl/details">Nagios 市场</a>上，在创建者的<a href="https://github.com/justintime/nagios-plugins/blob/master/check_mem/check_mem.pl">Github仓库</a>中也可以找到。</p>
+<p>假设我们已经安装了NRPE，我们首先在我们想要监控的服务器上下载脚本。</p>
+<h3>准备远程服务器</h3>
+<h4>在 Debain/Ubuntu 中:</h4>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> cd /usr/lib/nagios/plugins/
+<span class="gh">#</span> wget https://raw.githubusercontent.com/justintime/nagios-plugins/master/check_mem/check_mem.pl
+<span class="gh">#</span> mv check_mem.pl check_mem
+<span class="gh">#</span> chmod +x check_mem 
+</code></pre></div>
+
+<h4>在 RHEL/CentOS 中:</h4>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> cd /usr/lib64/nagios/plugins/ (or /usr/lib/nagios/plugins/ for 32-bit)
+<span class="gh">#</span> wget https://raw.githubusercontent.com/justintime/nagios-plugins/master/check_mem/check_mem.pl
+<span class="gh">#</span> mv check_mem.pl check_mem
+<span class="gh">#</span> chmod +x check_mem
+</code></pre></div>
+
+<p>你可以通过手工在本地运行下面的命令来检查脚本的输出是否正常。当使用NRPE时，这条命令应该会检测空闲的内存，当可用内存小于20%时会发出警告，并且在可用内存小于10%时会生成一个严重警告。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> ./check_mem -f -w 20 -c 10 
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code>define command{
+        command_name check_nrpe
+        command_line /usr/lib/nagios/plugins/check_nrpe -H &#39;$HOSTADDRESS$&#39;  -c &#39;$ARG1$&#39;
+}
+</code></pre></div>
+
+<h4>对于 RHEL/CentOS 32 bit:</h4>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> vim /etc/nagios/objects/nrpe_command.cfg 
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="nv">define</span><span class="w"> </span><span class="nv">command</span><span class="p">{</span>
+<span class="w">        </span><span class="nv">command_name</span><span class="w"> </span><span class="nv">check_nrpe</span>
+<span class="w">        </span><span class="nv">command_line</span><span class="w"> </span><span class="o">/</span><span class="nv">usr</span><span class="o">/</span><span class="nv">lib64</span><span class="o">/</span><span class="nv">nagios</span><span class="o">/</span><span class="nv">plugins</span><span class="o">/</span><span class="nv">check_nrpe</span><span class="w"> </span><span class="o">-</span><span class="nv">H</span><span class="w"> </span><span class="p">$</span><span class="nv">HOSTADDRESS</span><span class="p">$</span><span class="w"> </span><span class="o">-</span><span class="nv">c</span><span class="w"> </span><span class="p">$</span><span class="nv">ARG1</span><span class="p">$</span>
+<span class="w">        </span><span class="p">}</span>
+</code></pre></div>
+
+<p>现在我们定义Nagios的服务检查</p>
+<h4>在 Debian/Ubuntu 上:</h4>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> vim /etc/nagios3/conf.d/nrpe_service_check.cfg 
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code>define service{
+        use                            local-service
+        host_name                      remote-server
+        service_description            Check RAM
+        check_command                  check_nrpe!check_mem
+}
+</code></pre></div>
+
+<p>最后我们重启Nagios服务</p>
+<h4>在 Debian/Ubuntu 上:</h4>
+<div class="highlight"><pre><span></span><code># service nagios3 restart 
+</code></pre></div>
+
+<h4>在 RHEL/CentOS 6 上:</h4>
+<div class="highlight"><pre><span></span><code># service nagios restart 
+</code></pre></div>
+
+<h4>在 RHEL/CentOS 7 上:</h4>
+<div class="highlight"><pre><span></span><code># systemctl restart nagios.service 
+</code></pre></div>
+
+<h3>故障排除</h3>
+<p>Nagios应该开始在使用NRPE的远程服务器上检查内存使用率了。如果你有任何问题，你可以检查下面这些情况。</p>
+<ul>
+<li>确保NRPE的端口在远程主机上是总是允许的。默认NRPE的端口是TCP 5666。</li>
+<li>你可以尝试通过执行check_nrpe 命令： /usr/lib/nagios/plugins/check_nrpe -H remote-server 手工检查NRPE操作。</li>
+<li>你同样可以尝试运行check_mem 命令：/usr/lib/nagios/plugins/check_nrpe -H remote-server –c check_mem</li>
+<li>在远程服务器上，在/etc/nagios/nrpe.cfg中设置debug=1。重启NRPE服务并检查这些日志文件，/var/log/messages (RHEL/CentOS)或者/var/log/syslog (Debain/Ubuntu)。如果有任何的配置或者权限错误，日志中应该包含了相关的信息。如果日志中没有反映出什么，很有可能是由于请求在某些端口上有过滤而没有到达远程服务器上。</li>
+</ul>
+<p>总结一下，这边教程描述了我们该如何调试NRPE来监控远程服务器的内存使用率。过程只需要下载脚本、定义命令和重启服务就行了。希望这对你们有帮助。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

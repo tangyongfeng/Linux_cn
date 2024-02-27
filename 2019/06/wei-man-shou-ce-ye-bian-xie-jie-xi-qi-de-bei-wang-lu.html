@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>为 man 手册页编写解析器的备忘录</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Roberto Dip 我一般都很喜欢无所事事，但有时候太无聊了也不行 —— 2015 年的一个星期天下午就是这样，我决定开始写一个开源项 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/06/wei-man-shou-ce-ye-bian-xie-jie-xi-qi-de-bei-wang-lu.html" rel="bookmark"
+           title="Permalink to 为 man 手册页编写解析器的备忘录">为 man 手册页编写解析器的备忘录</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-06-11T23:57:00+02:00">
+                Published: Tue 11 June 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Roberto Dip</p>
+<p><img alt="" src="/data/attachment/album/201906/11/235607fiqfqapvpzqhh8n1.jpg"></p>
+<p>我一般都很喜欢无所事事，但有时候太无聊了也不行 —— 2015 年的一个星期天下午就是这样，我决定开始写一个开源项目来让我不那么无聊。</p>
+<p>在我寻求创意时，我偶然发现了一个请求，要求构建一个由 <a href="https://mathiasbynens.be/">Mathias Bynens</a> 提出的“<a href="https://github.com/h5bp/lazyweb-requests/issues/114">按 Web 标准构建的 Man 手册页查看器</a>”。没有考虑太多，我开始使用 JavaScript 编写一个手册页解析器，经过大量的反复思考，最终做出了一个 <a href="jroff">Jroff</a>。</p>
+<p>那时候，我非常熟悉手册页这个概念，而且使用过很多次，但我知道的仅止于此，我不知道它们是如何生成的，或者是否有一个标准。在经过两年后，我有了一些关于此事的想法。</p>
+<h3>man 手册页是如何写的</h3>
+<p>当时令我感到惊讶的第一件事是，手册页的核心只是存储在系统某处的纯文本文件（你可以使用 <code>manpath</code> 命令检查这些目录）。</p>
+<p>此文件中不仅包含文档，还包含使用了 20 世纪 70 年代名为 <code>troff</code> 的排版系统的格式化信息。</p>
+<blockquote>
+<p>troff 及其 GNU 实现 groff 是处理文档的文本描述以生成适合打印的排版版本的程序。<strong>它更像是“你所描述的即你得到的”，而不是你所见即所得的。</strong></p>
+<ul>
+<li>摘自 <a href="https://www.troff.org/">troff.org</a></li>
+</ul>
+</blockquote>
+<p>如果你对排版格式毫不熟悉，可以将它们视为 steroids 期刊用的 Markdown，但其灵活性带来的就是更复杂的语法：</p>
+<p><img alt="groff-compressor" src="/data/attachment/album/201906/11/235838yi66mppqyw166gb6.gif"></p>
+<p><code>groff</code> 文件可以手工编写，也可以使用许多不同的工具从其他格式生成，如 Markdown、Latex、HTML 等。</p>
+<p>为什么 <code>groff</code> 和 man 手册页绑在一起是有历史原因的，其格式<a href="https://manpages.bsd.lv/history.html">随时间有变化</a>，它的血统由一系列类似命名的程序组成：RUNOFF &gt; roff &gt; nroff &gt; troff &gt; groff。</p>
+<p>但这并不一定意味着 <code>groff</code> 与手册页有多紧密的关系，它是一种通用格式，已被用于<a href="https://rkrishnan.org/posts/2016-03-07-how-is-gopl-typeset.html">书籍</a>，甚至用于<a href="https://en.wikipedia.org/wiki/Phototypesetting">照相排版</a>。</p>
+<p>此外，值得注意的是 <code>groff</code> 也可以调用后处理器将其中间输出结果转换为最终格式，这对于终端显示来说不一定是 ascii ！一些支持的格式是：TeX DVI、HTML、Canon、HP LaserJet4 兼容格式、PostScript、utf8 等等。</p>
+<h3>宏</h3>
+<p>该格式的其他很酷的功能是它的可扩展性，你可以编写宏来增强其基本功能。</p>
+<p>鉴于 *nix 系统的悠久历史，有几个可以根据你想要生成的输出而将特定功能组合在一起的宏包，例如 <code>man</code>、<code>mdoc</code>、<code>mom</code>、<code>ms</code>、<code>mm</code> 等等。</p>
+<p>手册页通常使用 <code>man</code> 和 <code>mdoc</code> 宏包编写。</p>
+<p>区分原生的 <code>groff</code> 命令和宏的方式是通过标准 <code>groff</code> 包大写其宏名称。对于 <code>man</code> 宏包，每个宏的名称都是大写的，如 <code>.PP</code>、<code>.TH</code>、<code>.SH</code> 等。对于 <code>mdoc</code> 宏包，只有第一个字母是大写的： <code>.Pp</code>、<code>.Dt</code>、<code>.Sh</code>。</p>
+<p><img alt="groff-example" src="/data/attachment/album/201906/11/235758n8qvnoemzjonormq.jpg"></p>
+<h3>挑战</h3>
+<p>无论你是考虑编写自己的 <code>groff</code> 解析器，还是只是好奇，这些都是我发现的一些更具挑战性的问题。</p>
+<h4>上下文敏感的语法</h4>
+<p>表面上，<code>groff</code> 的语法是上下文无关的，遗憾的是，因为宏描述的是主体不透明的令牌，所以包中的宏集合本身可能不会实现上下文无关的语法。</p>
+<p>这导致我在那时做不出来一个解析器生成器（不管好坏）。</p>
+<h4>嵌套的宏</h4>
+<p><code>mdoc</code> 宏包中的大多数宏都是可调用的，这差不多意味着宏可以用作其他宏的参数，例如，你看看这个：</p>
+<ul>
+<li>宏 <code>Fl</code>（Flag）会在其参数中添加破折号，因此 <code>Fl s</code> 会生成 <code>-s</code></li>
+<li>宏 <code>Ar</code>（Argument）提供了定义参数的工具</li>
+<li>宏 <code>Op</code>（Optional）会将其参数括在括号中，因为这是将某些东西定义为可选的标准习惯用法</li>
+<li>以下组合 <code>.Op Fl s Ar file</code> 将生成 <code>[-s file]</code>，因为 <code>Op</code> 宏可以嵌套。</li>
+</ul>
+<h4>缺乏适合初学者的资源</h4>
+<p>让我感到困惑的是缺乏一个规范的、定义明确的、清晰的来源，网上有很多信息，这些信息对读者来说很重要，需要时间来掌握。</p>
+<h3>有趣的宏</h3>
+<p>总结一下，我会向你提供一个非常简短的宏列表，我在开发 jroff 时发现它很有趣：</p>
+<p><code>man</code> 宏包：</p>
+<ul>
+<li><code>.TH</code>：用 <code>man</code> 宏包编写手册页时，你的第一个不是注释的行必须是这个宏，它接受五个参数：<code>title</code>、<code>section</code>、<code>date</code>、<code>source</code>、<code>manual</code>。</li>
+<li><code>.BI</code>：粗体加斜体（特别适用于函数格式）</li>
+<li><code>.BR</code>：粗体加正体（特别适用于参考其他手册页）</li>
+</ul>
+<p><code>mdoc</code> 宏包：</p>
+<ul>
+<li><code>.Dd</code>、<code>.Dt</code>、<code>.Os</code>：类似于 <code>man</code> 宏包需要 <code>.TH</code>，<code>mdoc</code> 宏也需要这三个宏，需要按特定顺序使用。它们的缩写分别代表：文档日期、文档标题和操作系统。</li>
+<li><code>.Bl</code>、<code>.It</code>、<code>.El</code>：这三个宏用于创建列表，它们的名称不言自明：开始列表、项目和结束列表。</li>
+</ul>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

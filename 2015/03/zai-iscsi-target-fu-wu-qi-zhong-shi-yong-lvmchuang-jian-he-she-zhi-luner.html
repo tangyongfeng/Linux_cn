@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在 iSCSI Target 服务器中使用LVM创建和设置LUN（二）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Babin Lonston LUN是逻辑单元号，它与iSCSI存储服务器共享。iSCSI 目标器通过TCP/IP网络共享它的物理驱动器给发起程序（initiator）。这些来自一个大型存储（SAN：Storage Area..." />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/03/zai-iscsi-target-fu-wu-qi-zhong-shi-yong-lvmchuang-jian-he-she-zhi-luner.html" rel="bookmark"
+           title="Permalink to 在 iSCSI Target 服务器中使用LVM创建和设置LUN（二）">在 iSCSI Target 服务器中使用LVM创建和设置LUN（二）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-03-03T11:04:00+01:00">
+                Published: Tue 03 March 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Babin Lonston</p>
+<p>LUN是逻辑单元号，它与iSCSI存储服务器共享。iSCSI 目标器通过TCP/IP网络共享它的物理驱动器给发起程序（initiator）。这些来自一个大型存储（SAN：Storage Area Network）的驱动器集合称作LUN。在真实环境中LUN是在LVM中定义的，因为它可以按需扩展。</p>
+<p><img alt="Create LUNS using LVM in Target Server" src="/data/attachment/album/201503/02/150705ykpxc1w66gawck8w.png"></p>
+<p><em>在目标器中使用 LVM 创建 LUN</em></p>
+<h3>为什么使用LUN？</h3>
+<p>LUN用于存储，SAN存储大多数由LUN的集群来组成存储池，LUN由目标器的几块物理驱动器组成。我们可以使用LUN作为系统物理驱动器来安装操作系统，LUN可以用在集群、虚拟服务器、SAN中。在虚拟服务器中使用LUN的主要用途是作为操作系统的存储。LUN的性能和可靠性根据在创建目标存储服务器时所使用的驱动器决定。</p>
+<h3>前置阅读</h3>
+<p>要了解创建iSCSI 目标器，点击下面的链接。</p>
+<ul>
+<li><a href="http://linux.cn/article-4971-1.html">使用iSCSI Target创建集中式安全存储（一）</a></li>
+</ul>
+<h4>主服务器设置</h4>
+<p>系统信息和网络设置部分与前文的iSCSI 目标器相同 - 我们在相同的服务器上定义LUN。</p>
+<ul>
+<li>操作系统 – CentOS 6.5 (Final)</li>
+<li>iSCSI 目标器 IP – 192.168.0.200</li>
+<li>使用的端口 : TCP 860, 3260</li>
+<li>配置文件 : /etc/tgt/targets.conf</li>
+</ul>
+<h3>在iSCSI 目标器使用LVM创建LUN</h3>
+<p>首先，用<strong>fdisk -l</strong>命令找出驱动器的列表，这会列出系统中所有分区的列表。</p>
+<div class="highlight"><pre><span></span><code># fdisk -l
+</code></pre></div>
+
+<p>上面的命令只会给出基本系统的驱动器信息。为了得到存储设备的信息，使用下面的命令来得到存储设备的列表。</p>
+<div class="highlight"><pre><span></span><code># fdisk -l /dev/vda &amp;&amp; fdisk -l /dev/sda
+</code></pre></div>
+
+<p><img alt="List Storage Drives" src="/data/attachment/album/201503/02/150707zzgy6hz8dy4pq99g.jpg"></p>
+<p><em>列出存储设备</em></p>
+<p><strong>注意</strong>：这里<strong>vda</strong>是虚拟机硬盘，因为我使用的是虚拟机来用于演示，<strong>/dev/sda</strong> 是额外加入的存储。</p>
+<h3>第一步： 创建用于LUN的LVM驱动器</h3>
+<p>我们使用<strong>/dev/sda</strong>驱动器来创建LVM。</p>
+<div class="highlight"><pre><span></span><code># fdisk -l /dev/sda
+</code></pre></div>
+
+<p><img alt="List LVM Drive" src="/data/attachment/album/201503/02/150707zxt686bu6gg6zm78.jpg"></p>
+<p><em>列出LVM驱动器</em></p>
+<p>现在让我们使用如下fdisk命令列出驱动器分区。</p>
+<div class="highlight"><pre><span></span><code># fdisk -cu /dev/sda
+</code></pre></div>
+
+<ul>
+<li>选项 ‘<strong>-c</strong>’ 关闭DOS兼容模式。</li>
+<li>选项 ‘<strong>-u</strong>’ 用于列出分区表时给出扇区而不是柱面的大小。</li>
+</ul>
+<p>使用<strong>n</strong>创建新的分区。</p>
+<div class="highlight"><pre><span></span><code><span class="nv">Command</span><span class="w"> </span><span class="ss">(</span><span class="nv">m</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nv">help</span><span class="ss">)</span>:<span class="w"> </span><span class="nv">n</span>
+</code></pre></div>
+
+<p>使用<strong>p</strong>创建主分区。</p>
+<div class="highlight"><pre><span></span><code>Command action
+   e   extended
+   p   primary partition (1-4)
+</code></pre></div>
+
+<p>给我们创建的分区一个分区号。</p>
+<div class="highlight"><pre><span></span><code>Partition number (1-4): 1
+</code></pre></div>
+
+<p>到这里，我们就要设置LVM驱动器了。因此，我们需要使用默认的设置来使用整个驱动器。</p>
+<div class="highlight"><pre><span></span><code>First sector (2048-37748735, default 2048): 
+Using default value 2048
+Last sector, +sectors or +size{K,M,G} (2048-37748735, default 37748735): 
+Using default value 37748735
+</code></pre></div>
+
+<p>选择分区的类型，这里我们要设置LVM，因此使用<strong>8e</strong>。使用<strong>l</strong>列出所有的类型。</p>
+<div class="highlight"><pre><span></span><code><span class="nv">Command</span><span class="w"> </span><span class="ss">(</span><span class="nv">m</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nv">help</span><span class="ss">)</span>:<span class="w"> </span><span class="nv">t</span>
+</code></pre></div>
+
+<p>选择想要改变类型的分区。</p>
+<div class="highlight"><pre><span></span><code><span class="nx">Selected</span><span class="w"> </span><span class="nx">partition</span><span class="w"> </span><span class="mi">1</span>
+<span class="nx">Hex</span><span class="w"> </span><span class="nx">code</span><span class="w"> </span><span class="p">(</span><span class="k">type</span><span class="w"> </span><span class="nx">L</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">list</span><span class="w"> </span><span class="nx">codes</span><span class="p">):</span><span class="w"> </span><span class="mi">8</span><span class="nx">e</span>
+<span class="nx">Changed</span><span class="w"> </span><span class="nx">system</span><span class="w"> </span><span class="k">type</span><span class="w"> </span><span class="nx">of</span><span class="w"> </span><span class="nx">partition</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="mi">8</span><span class="nx">e</span><span class="w"> </span><span class="p">(</span><span class="nx">Linux</span><span class="w"> </span><span class="nx">LVM</span><span class="p">)</span>
+</code></pre></div>
+
+<p>在改变完类型之后，通过打印（<strong>p</strong>）选项来列出分区表。</p>
+<div class="highlight"><pre><span></span><code>Command (m for help): p
+
+Disk /dev/sda: 19.3 GB, 19327352832 bytes
+255 heads, 63 sectors/track, 2349 cylinders, total 37748736 sectors
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disk identifier: 0x9fae99c8
+
+   Device Boot      Start         End      Blocks   Id  System
+/dev/sda1            2048    37748735    18873344   8e  Linux LVM
+</code></pre></div>
+
+<p>使用<strong>w</strong>写入设置并退出fdisk工具，重启系统使设置生效。</p>
+<p>作为参考，我下面附上了截图来给你在创建LVM驱动器时一个明确的指导。</p>
+<p><img alt="Create LVM Partition" src="/data/attachment/album/201503/02/150709odaevea9oavofppf.jpg"></p>
+<p><em>创建LVM分区</em></p>
+<p>系统重启后，使用fdisk命令列出分区表。</p>
+<div class="highlight"><pre><span></span><code># fdisk -l /dev/sda
+</code></pre></div>
+
+<p><img alt="Verify LVM Partition" src="/data/attachment/album/201503/02/150709zc1x0e238kxc3fsz.jpg"></p>
+<p><em>验证LVM分区</em></p>
+<h3>第二步： 为LUN创建逻辑卷</h3>
+<p>现在我们使用‘pvcreate’命令创建物理卷。</p>
+<div class="highlight"><pre><span></span><code># pvcreate /dev/sda1
+</code></pre></div>
+
+<p>用iSCSI的名字创建卷组来区分这个卷组。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> vgcreate vg_iscsi /dev/sda1
+</code></pre></div>
+
+<p>这里我定义了4个逻辑卷，因此在我的iSCSI target上就会有4个LUN。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> lvcreate -L 4G -n lv_iscsi vg_iscsi
+<span class="gh">#</span> lvcreate -L 4G -n lv_iscsi-1 vg_iscsi
+<span class="gh">#</span> lvcreate -L 4G -n lv_iscsi-2 vg_iscsi
+<span class="gh">#</span> lvcreate -L 4G -n lv_iscsi-3 vg_iscsi
+</code></pre></div>
+
+<p>列出物理卷、卷组和逻辑卷确定。</p>
+<div class="highlight"><pre><span></span><code># pvs &amp;&amp; vgs &amp;&amp; lvs
+# lvs
+</code></pre></div>
+
+<p>为了更好地理解上面的命令，我在下面包含了截图作为参考。</p>
+<p><img alt="Creating LVM Logical Volumes" src="/data/attachment/album/201503/02/150711o7jh7p3qxi7cn3d3.jpg"></p>
+<p><em>创建LVM逻辑卷</em></p>
+<p><img alt="Verify LVM Logical Volumes" src="/data/attachment/album/201503/02/150711iaoi6iprc4cuahuc.jpg"></p>
+<p><em>验证LVM逻辑卷</em></p>
+<h3>第三步: 在目标器中定义LUN</h3>
+<p>我们已经创建了逻辑卷并准备使用LUN，现在我们在目标器配置中定义LUN，只有这样做它才能用在客户机中（发起程序）。</p>
+<p>用你选择的编辑器打开位于‘/etc/tgt/targets.conf’的目标器配置文件。</p>
+<div class="highlight"><pre><span></span><code># vim /etc/tgt/targets.conf
+</code></pre></div>
+
+<p>追加下面的target配置文件中的定义。保存并关闭文件。</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;target</span><span class="w"> </span><span class="err">iqn.2014-07.com.tecmint:tgt1</span><span class="nt">&gt;</span>
+<span class="w">       </span>backing-store<span class="w"> </span>/dev/vg_iscsi/lv_iscsi
+<span class="nt">&lt;/target&gt;</span>
+<span class="nt">&lt;target</span><span class="w"> </span><span class="err">iqn.2014-07.com.tecmint:tgt1</span><span class="nt">&gt;</span>
+<span class="w">       </span>backing-store<span class="w"> </span>/dev/vg_iscsi/lv_iscsi-1
+<span class="nt">&lt;/target&gt;</span>
+<span class="nt">&lt;target</span><span class="w"> </span><span class="err">iqn.2014-07.com.tecmint:tgt1</span><span class="nt">&gt;</span>
+<span class="w">       </span>backing-store<span class="w"> </span>/dev/vg_iscsi/lv_iscsi-2
+<span class="nt">&lt;/target&gt;</span>
+<span class="nt">&lt;target</span><span class="w"> </span><span class="err">iqn.2014-07.com.tecmint:tgt1</span><span class="nt">&gt;</span>
+<span class="w">       </span>backing-store<span class="w"> </span>/dev/vg_iscsi/lv_iscsi-3
+<span class="err">&lt;</span>/target
+</code></pre></div>
+
+<p><img alt="Configure LUNs in Target Server" src="/data/attachment/album/201503/02/150712oszgor8gnwf2ys22.jpg"></p>
+<p><em>在target中配置LUN</em></p>
+<p>上图的解释：</p>
+<ol>
+<li>iSCSI 采取限定名 (iqn.2014-07.com.tecmint:tgt1).</li>
+<li>名称随便你</li>
+<li>用于确定目标名， 这是这台服务器中的第一个目标</li>
+<li>LVM共享特定的LUN。</li>
+</ol>
+<p>接下来使用下面的命令重载<strong>tgd</strong>服务配置。</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># /etc/init.d/tgtd reload</span>
+</code></pre></div>
+
+<p><img alt="Reload Configuration" src="/data/attachment/album/201503/02/150713pswssdkzj67j9yk6.jpg"></p>
+<p><em>重载配置</em></p>
+<p>接下来使用下面的命令验证可用的LUN。</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span><span class="nv">tgtadm</span><span class="w"> </span><span class="o">--</span><span class="nv">mode</span><span class="w"> </span><span class="nv">target</span><span class="w"> </span><span class="o">--</span><span class="nv">op</span><span class="w"> </span><span class="k">show</span>
+</code></pre></div>
+
+<p><img alt="List Available LUNs" src="/data/attachment/album/201503/02/150715pezn3zl2kkhrjkpr.jpg"></p>
+<p><em>列出可用LUN</em></p>
+<p><img alt="LUNs Information" src="/data/attachment/album/201503/02/150716mzwcnnbs4jxj6b4s.jpg"></p>
+<p><em>LUN信息</em></p>
+<p>上面的命令会列出可用LUN的下面这些信息</p>
+<ol>
+<li>iSCSI 限定名</li>
+<li>iSCSI 已经准备好</li>
+<li>默认LUN 0被控制器所保留</li>
+<li>LUN 1是我们定义的目标器</li>
+<li>这里我为每个LUN都定义了4GB</li>
+<li>在线： 是的，这就是可以使用的LUN</li>
+</ol>
+<p>现在我们已经使用LVM为目标器定义了LUN，这可扩展并且支持很多特性，如快照。我们将会在第三部分了解如何用目标器授权，并且本地挂载远程存储。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

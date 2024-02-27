@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何为 Linux 系统中的 SSH 添加双重认证</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Dan Nanni 近来很多知名企业都出现了密码泄露，业内对多重认证的呼声也越来越高。在这种多重认证的系统中，用户需要通 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2014/08/ru-he-wei-linux-xi-tong-zhong-de-ssh-tian-jia-shuang-zhong-ren-zheng.html" rel="bookmark"
+           title="Permalink to 如何为 Linux 系统中的 SSH 添加双重认证">如何为 Linux 系统中的 SSH 添加双重认证</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2014-08-30T22:46:00+02:00">
+                Published: Sat 30 August 2014
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Dan Nanni</p>
+<p>近来很多知名企业都出现了密码泄露，业内对多重认证的呼声也越来越高。在这种多重认证的系统中，用户需要通过两种不同的认证程序：提供他们知道的信息（如 用户名/密码），再借助其他工具提供用户所不知道的信息（如用手机生成的一次性密码）。这种组合方式常叫做双因子认证或者两阶段验证。</p>
+<p><img alt="" src="/data/attachment/album/201408/31/175954hcqkectacmgew6r2.jpg"></p>
+<p>为了鼓励广泛采用双因子认证的方式，Google 公司发布了<ruby> <a href="https://github.com/google/google-authenticator/">  Google 身份验证器 </a> <rp>  （ </rp> <rt>  Google Authenticator </rt> <rp>  ） </rp></ruby>，一款开源的，可基于开放规则（如 HMAP/ 基于时间）生成一次性密码的软件。这是一款跨平台软件，可运行在 Linux、 <a href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2">Android</a>、 <a href="https://itunes.apple.com/us/app/google-authenticator/id388497605">iOS</a>。Google 公司同时也支持插件式鉴别模块PAM （pluggable authentication module），使其能和其他也适用 PAM 进行验证的工具（如 OpenSSH）协同工作。</p>
+<p><img alt="" src="/data/attachment/album/201408/30/224639k1or06p39q5r3rs9.jpg"></p>
+<p>在本教程中，我们将叙述集成 OpenSSH 和 Google 提供的身份验证器实现<strong>如何为 SSH 服务设置双因子认证</strong>。我将使用一款 Android 设备来生成一次性密码，本教程中需要两样武器：</p>
+<p>(1) 一台运行着 OpenSSH 服务的 Linux 终端，</p>
+<p>(2) 一台安卓设备。</p>
+<h3>在 Linux 系统中安装 Google 身份验证器</h3>
+<p>第一步需要在运行着 OpenSSH 服务的 Linux 主机上安装 Google 身份验证器。按照如下步骤安装 Google 身份验证器及其PAM模块。</p>
+<h4>用安装包安装 Google 身份验证器</h4>
+<p>如果你不想自己构建 Google 身份验证器，在几个 Linux 发行版上有已经编译好的安装包。安装包里面包含 Google 身份验证器 二进制程序和 PAM 模块。</p>
+<p>在 Ubuntu 上安装 Google 身份验证器：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>libpam-google-authenticator
+</code></pre></div>
+
+<p>在 Fedora 上安装 Google 身份验证器：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>google-authenticator
+</code></pre></div>
+
+<p>在 CentOS 上安装 Google 身份验证器 ，需要首先<a href="http://linux.cn/article-2324-1.html">启用 EPEL 软件库</a>，然后运行如下命令（LCTT 译注：EPEL 库中可能已经删除了该软件包，请使用源代码编译方式安装）：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>google-authenticator
+</code></pre></div>
+
+<p>如果不想使用已经编译好的安装包，或者你的 Linux 发行版不在此列，可以自行编译：</p>
+<h4>在 Linux 上编译 Google 身份验证器</h4>
+<p>首先，安装构建 Google 身份验证器所需的软件包。</p>
+<p>在 Debian、 Ubuntu 或 Linux Mint 上：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>wget<span class="w"> </span>make<span class="w"> </span>gcc<span class="w"> </span>libpam0g-dev
+</code></pre></div>
+
+<p>在 CentOS、 Fedora 或 RHEL上：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>wget<span class="w"> </span>make<span class="w"> </span>gcc<span class="w"> </span>pam-devel
+</code></pre></div>
+
+<p>然后下载 Google 身份验证器的源代码，并按如下命令编译（已经从 Google Code 迁移到了 Github）。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>wget<span class="w"> </span>https://github.com/google/google-authenticator/archive/master.zip
+$<span class="w"> </span>unzip<span class="w"> </span>master.zip
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>google-authenticator-master/libpam
+$<span class="w"> </span>./bootstrap.sh
+$<span class="w"> </span>./configure
+$<span class="w"> </span>make
+</code></pre></div>
+
+<p>如果构建成功，你会在目录中看到 <code>pam_google_authenticator.so</code> 和 <code>google-authenticator</code> 两个文件。</p>
+<p>最后，将 Google 身份验证器安装到合适位置。默认会安装到 <code>/usr/local/lib/security</code> 下，根据你的系统不同，你可能需要将其符号链接到 pam 库的位置（比如 CentOS 7 会在 <code>/usr/lib64/security</code>）。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>make<span class="w"> </span>install
+</code></pre></div>
+
+<h4>排错</h4>
+<p>当编译 Google 身份验证器时出现如下错误：</p>
+<div class="highlight"><pre><span></span><code>fatal error: security/pam_appl.h: No such file or directory
+</code></pre></div>
+
+<p>要修复这个问题，请安装如下依赖包。</p>
+<p>在 Debian、 Ubuntu 或 Linux Mint 上：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>libpam0g-dev
+</code></pre></div>
+
+<p>在 CentOS、 Fedora 或 RHEL 上：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>pam-devel
+</code></pre></div>
+
+<p>当 Google 身份验证器安装好后，你需要在 Linux 主机上创建验证密钥，并且在安卓设备上注册，注意这项配置操作是一次性的。我们将详细叙述如何完成这些操作：</p>
+<h3>生成验证密钥</h3>
+<p>在 Linux 主机上运行 Google 身份验证器：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>google-authenticator<span class="w"> </span>
+</code></pre></div>
+
+<p>你将看到一个二维码，它使用如下图形表示我们数字形态的密钥。一会我们要用到它在安卓设备上完成配置。</p>
+<p><img alt="" src="/data/attachment/album/201702/09/100732xnkg8g8ttdjk8p9n.jpg"></p>
+<p>Google 身份验证器会问一些问题，如果你不确定，就回答 <code>Y</code>。这个应急备用验证码（图中 <code>emergency scratch codes</code>）可以在你由于丢失了绑定的安卓设备的情况下（所以不能得到生成的一次性密码）恢复访问。最好将应急备用验证码妥善保存。</p>
+<h3>在安卓设备上运行 Google 身份验证器</h3>
+<p>我们需要在安卓设备上安装 <a href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2">Google 身份验证器应用</a>才能完成双因子认证，到 Google Play 下载并安装一个。在安卓设备上运行 Google 身份验证器，找到下图所示中的配置菜单。</p>
+<p><img alt="" src="/data/attachment/album/201408/30/223958uw1zuzfpypm11bwf.jpg"></p>
+<p>你可以选择“Scan a barcode” 或者“Enter provided key”选项。“Scan a barcode”允许你扫描二维码来完成密钥的输入，在此可能需要先安装扫描软件 <a href="https://play.google.com/store/apps/details?id=com.google.zxing.client.android">Barcode Scanner</a> 应用。如果选择“Enter provided key”选项，你可以使用键盘输入验证密钥，如下图所示：</p>
+<p><img alt="" src="/data/attachment/album/201408/30/224001sibz2xpwhpwgxyli.jpg"></p>
+<p>无论采用上述两种选项的任何方式，一旦成功，你将看到注册成功提示和一次性密码，如下图所示：</p>
+<p><img alt="" src="/data/attachment/album/201408/30/224004f1lfpcn0sffqz2p1.jpg"></p>
+<h3>为 SSH 服务器用 Google 身份验证器</h3>
+<p>最终我们需要修改两个文件来完成集成 Google 身份验证器和 OpenSSH 服务这临门一脚。</p>
+<p>首先，修改 PAM 配置文件，命令和需添加的内容如下：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>vi<span class="w"> </span>/etc/pam.d/sshd<span class="w"> </span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code>ChallengeResponseAuthentication yes
+</code></pre></div>
+
+<p>最后，重启 SSH 服务。</p>
+<p>在 Ubuntu、 Debian 和 Linux Mint 上：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>service<span class="w"> </span>ssh<span class="w"> </span>restart<span class="w"> </span>
+</code></pre></div>
+
+<p>在 Fedora （或 CentOS/RHEL 7）上：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>restart<span class="w"> </span>sshd<span class="w"> </span>
+</code></pre></div>
+
+<p>在 CentOS 6.x或 RHEL 6.x 上：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>service<span class="w"> </span>sshd<span class="w"> </span>restart<span class="w"> </span>
+</code></pre></div>
+
+<p>不要退出当前的 ssh 链接，大多数 Linux 发行版重启 ssh 服务并不会中断当前已经建立的 ssh 连接。另外开个窗口去重新连接 ssh 服务，如果遇到问题，还可以在原来的 ssh 连接下修改和恢复。</p>
+<h3>验证双因子认证</h3>
+<p>在绑定的安卓设备上运行 Google 身份验证器，获得一个一次性验证码，该验证码 30 秒内有效，一旦过期，将重新生成一个新的验证码。</p>
+<p><img alt="" src="/data/attachment/album/201408/30/224006ldziduffbdab3bf4.jpg"></p>
+<p>现在和往常一样，使用 SSH 登录终端</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ssh<span class="w"> </span>user@ssh_server<span class="w"> </span>
+</code></pre></div>
+
+<p>当提示你输入验证码的时候，输入我们刚获得的验证码。验证成功后，再输入 SSH 的登录密码。</p>
+<p><img alt="" src="/data/attachment/album/201408/30/224009f11pi7p1pvnonpky.jpg"></p>
+<p>双因子认证通过在用户密码前新增一层来有效的保护我们脆弱的用户密码。你可以使用 Google 身份验证器来保护我们其他的密码，如 Google 账户、GitHub、WordPress.com、Dropbox.com、Outlook.com等等。是否使用这项技术，取决于我们自己，但采用双因子认证已经是行业的大趋势了。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

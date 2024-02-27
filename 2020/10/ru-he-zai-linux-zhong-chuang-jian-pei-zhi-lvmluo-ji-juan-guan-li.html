@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何在 Linux 中创建/配置 LVM（逻辑卷管理）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Magesh Maruthamuthu 逻辑卷管理 Logical Volume Management （LVM）在 Linux 系统中扮演着重要的角色，它可以提高可用性、磁盘 I/O、性能和磁盘管理的能力。 LVM 是一 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2020/10/ru-he-zai-linux-zhong-chuang-jian-pei-zhi-lvmluo-ji-juan-guan-li.html" rel="bookmark"
+           title="Permalink to 如何在 Linux 中创建/配置 LVM（逻辑卷管理）">如何在 Linux 中创建/配置 LVM（逻辑卷管理）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2020-10-01T11:12:00+02:00">
+                Published: Thu 01 October 2020
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Magesh Maruthamuthu</p>
+<p><img alt="" src="/data/attachment/album/202010/01/111414m2y0mdhgvd9j1bgv.jpg"></p>
+<p><ruby> 逻辑卷管理 <rt>  Logical Volume Management </rt></ruby>（LVM）在 Linux 系统中扮演着重要的角色，它可以提高可用性、磁盘 I/O、性能和磁盘管理的能力。</p>
+<p>LVM 是一种被广泛使用的技术，对于磁盘管理来说，它是非常灵活的。</p>
+<p>它在物理磁盘和文件系统之间增加了一个额外的层，允许你创建一个逻辑卷而不是物理磁盘。</p>
+<p>LVM 允许你在需要的时候轻松地调整、扩展和减少逻辑卷的大小。</p>
+<p><img alt="" src="/data/attachment/album/202010/01/111230el14fubc4ku55o3k.jpeg"></p>
+<h3>如何创建 LVM 物理卷？</h3>
+<p>你可以使用任何磁盘、RAID 阵列、SAN 磁盘或分区作为 LVM <ruby> 物理卷 <rt>  Physical Volume </rt></ruby>（PV）。</p>
+<p>让我们想象一下，你已经添加了三个磁盘，它们是 <code>/dev/sdb</code>、<code>/dev/sdc</code> 和 <code>/dev/sdd</code>。</p>
+<p>运行以下命令来<a href="https://www.2daygeek.com/scan-detect-luns-scsi-disks-on-redhat-centos-oracle-linux/">发现 Linux 中新添加的 LUN 或磁盘</a>：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> ls /sys/class/scsi_host
+host0
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> echo &quot;- - -&quot; &gt; /sys/class/scsi_host/host0/scan
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code># fdisk -l
+</code></pre></div>
+
+<p><strong>创建物理卷 （<code>pvcreate</code>） 的一般语法：</strong></p>
+<div class="highlight"><pre><span></span><code>pvcreate [物理卷名]
+</code></pre></div>
+
+<p>当在系统中检测到磁盘，使用 <code>pvcreate</code> 命令初始化 LVM PV：</p>
+<div class="highlight"><pre><span></span><code># pvcreate /dev/sdb /dev/sdc /dev/sdd
+Physical volume &quot;/dev/sdb&quot; successfully created
+Physical volume &quot;/dev/sdc&quot; successfully created
+Physical volume &quot;/dev/sdd&quot; successfully created
+</code></pre></div>
+
+<p><strong>请注意：</strong></p>
+<ul>
+<li>上面的命令将删除给定磁盘 <code>/dev/sdb</code>、<code>/dev/sdc</code> 和 <code>/dev/sdd</code> 上的所有数据。</li>
+<li>物理磁盘可以直接添加到 LVM PV 中，而不必是磁盘分区。</li>
+</ul>
+<p>使用 <code>pvdisplay</code> 和 <code>pvs</code> 命令来显示你创建的 PV。<code>pvs</code> 命令显示的是摘要输出，<code>pvdisplay</code> 显示的是 PV 的详细输出：</p>
+<div class="highlight"><pre><span></span><code># pvs
+PV VG Fmt Attr PSize PFree
+/dev/sdb lvm2 a-- 15.00g 15.00g
+/dev/sdc lvm2 a-- 15.00g 15.00g
+/dev/sdd lvm2 a-- 15.00g 15.00g
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code># pvdisplay
+
+&quot;/dev/sdb&quot; is a new physical volume of &quot;15.00 GiB&quot;
+--- NEW Physical volume ---
+PV Name               /dev/sdb
+VG Name
+PV Size               15.00 GiB
+Allocatable           NO
+PE Size               0
+Total PE              0
+Free PE               0
+Allocated PE          0
+PV UUID               69d9dd18-36be-4631-9ebb-78f05fe3217f
+
+&quot;/dev/sdc&quot; is a new physical volume of &quot;15.00 GiB&quot;
+--- NEW Physical volume ---
+PV Name               /dev/sdc
+VG Name
+PV Size               15.00 GiB
+Allocatable           NO
+PE Size               0
+Total PE              0
+Free PE               0
+Allocated PE          0
+PV UUID               a2092b92-af29-4760-8e68-7a201922573b
+
+&quot;/dev/sdd&quot; is a new physical volume of &quot;15.00 GiB&quot;
+--- NEW Physical volume ---
+PV Name               /dev/sdd
+VG Name
+PV Size               15.00 GiB
+Allocatable           NO
+PE Size               0
+Total PE              0
+Free PE               0
+Allocated PE          0
+PV UUID               d92fa769-e00f-4fd7-b6ed-ecf7224af7faS
+</code></pre></div>
+
+<h3>如何创建一个卷组</h3>
+<p><ruby> 卷组 <rt>  Volume Group </rt></ruby>（VG）是 LVM 结构中的另一层。基本上，卷组由你创建的 LVM 物理卷组成，你可以将物理卷添加到现有的卷组中，或者根据需要为物理卷创建新的卷组。</p>
+<p><strong>创建卷组 （<code>vgcreate</code>） 的一般语法：</strong></p>
+<div class="highlight"><pre><span></span><code>vgcreate [卷组名] [物理卷名]
+</code></pre></div>
+
+<p>使用以下命令将一个新的物理卷添加到新的卷组中：</p>
+<div class="highlight"><pre><span></span><code># vgcreate vg01 /dev/sdb /dev/sdc /dev/sdd
+Volume group &quot;vg01&quot; successfully created
+</code></pre></div>
+
+<p><strong>请注意：</strong>默认情况下，它使用 4MB 的<ruby> 物理范围 <rt>  Physical Extent </rt></ruby>（PE），但你可以根据你的需要改变它。</p>
+<p>使用 <code>vgs</code> 和 <code>vgdisplay</code> 命令来显示你创建的 VG 的信息：</p>
+<div class="highlight"><pre><span></span><code># vgs vg01
+VG #PV #LV #SN Attr VSize VFree
+vg01 3 0 0 wz--n- 44.99g 44.99g
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code># vgdisplay vg01
+--- Volume group ---
+VG Name              vg01
+System ID
+Format               lvm2
+Metadata Areas       3
+Metadata Sequence No 1
+VG Access            read/write
+VG Status            resizable
+MAX LV               0
+Cur LV               0
+Open LV              0
+Max PV               0
+Cur PV               3
+Act PV               3
+VG Size              44.99 GiB
+PE Size              4.00 MiB
+Total PE             11511
+Alloc PE / Size      0 / 0
+Free PE / Size       11511 / 44.99 GiB
+VG UUID              d17e3c31-e2c9-4f11-809c-94a549bc43b7
+</code></pre></div>
+
+<h3>如何扩展卷组</h3>
+<p>如果 VG 没有空间，请使用以下命令将新的物理卷添加到现有卷组中。</p>
+<p><strong>卷组扩展 （<code>vgextend</code>）的一般语法：</strong></p>
+<div class="highlight"><pre><span></span><code>vgextend [已有卷组名] [物理卷名]
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code># vgextend vg01 /dev/sde
+    Volume group &quot;vg01&quot; successfully extended
+</code></pre></div>
+
+<h3>如何以 GB 为单位创建逻辑卷？</h3>
+<p><ruby> 逻辑卷 <rt>  Logical Volume </rt></ruby>（LV）是 LVM 结构中的顶层。逻辑卷是由卷组创建的块设备。它作为一个虚拟磁盘分区，可以使用 LVM 命令轻松管理。</p>
+<p>你可以使用 <code>lvcreate</code> 命令创建一个新的逻辑卷。</p>
+<p><strong>创建逻辑卷（<code>lvcreate</code>） 的一般语法：</strong></p>
+<div class="highlight"><pre><span></span><code>lvcreate –n [逻辑卷名] –L [逻辑卷大小] [要创建的 LV 所在的卷组名称]
+</code></pre></div>
+
+<p>运行下面的命令，创建一个大小为 10GB 的逻辑卷 <code>lv001</code>：</p>
+<div class="highlight"><pre><span></span><code># lvcreate -n lv001 -L 10G vg01
+Logical volume &quot;lv001&quot; created
+</code></pre></div>
+
+<p>使用 <code>lvs</code> 和 <code>lvdisplay</code> 命令来显示你所创建的 LV 的信息：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> lvs /dev/vg01/lvol01
+LV VG Attr LSize Pool Origin Data% Move Log Cpy%Sync Convert
+lv001 vg01 mwi-a-m-- 10.00g lv001_mlog 100.00
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code># lvdisplay /dev/vg01/lv001
+--- Logical volume ---
+LV Path                /dev/vg01/lv001
+LV Name                lv001
+VG Name                vg01
+LV UUID                ca307aa4-0866-49b1-8184-004025789e63
+LV Write Access        read/write
+LV Creation host, time localhost.localdomain, 2020-09-10 11:43:05 -0700
+LV Status              available
+# open                 0
+LV Size                10.00 GiB
+Current LE             2560
+Segments               1
+Allocation             inherit
+Read ahead sectors     auto
+- currently set to     256
+Block device           253:4
+</code></pre></div>
+
+<h3>如何以 PE 大小创建逻辑卷？</h3>
+<p>或者，你可以使用物理范围（PE）大小创建逻辑卷。</p>
+<h3>如何计算 PE 值？</h3>
+<p>很简单，例如，如果你有一个 10GB 的卷组，那么 PE 大小是多少？</p>
+<p>默认情况下，它使用 4MB 的物理范围，但可以通过运行 <code>vgdisplay</code> 命令来检查正确的 PE 大小，因为这可以根据需求进行更改。</p>
+<div class="highlight"><pre><span></span><code><span class="mf">10</span><span class="n">GB</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">10240</span><span class="n">MB</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">4</span><span class="n">MB</span><span class="w"> </span><span class="err">（</span><span class="n">PE</span><span class="w"> </span><span class="n">大小</span><span class="err">）</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">2560</span><span class="w"> </span><span class="n">PE</span>
+</code></pre></div>
+
+<p><strong>用 PE 大小创建逻辑卷 （<code>lvcreate</code>） 的一般语法：</strong></p>
+<div class="highlight"><pre><span></span><code>lvcreate –n [逻辑卷名] –l [物理扩展 （PE） 大小] [要创建的 LV 所在的卷组名称]
+</code></pre></div>
+
+<p>要使用 PE 大小创建 10GB 的逻辑卷，命令如下：</p>
+<div class="highlight"><pre><span></span><code># lvcreate -n lv001 -l 2560 vg01
+</code></pre></div>
+
+<h3>如何创建文件系统</h3>
+<p>在创建有效的文件系统之前，你不能使用逻辑卷。</p>
+<p><strong>创建文件系统的一般语法：</strong></p>
+<div class="highlight"><pre><span></span><code>mkfs –t [文件系统类型] /dev/[LV 所在的卷组名称]/[LV 名称]
+</code></pre></div>
+
+<p>使用以下命令将逻辑卷 <code>lv001</code> 格式化为 ext4 文件系统：</p>
+<div class="highlight"><pre><span></span><code># mkfs -t ext4 /dev/vg01/lv001
+</code></pre></div>
+
+<p>对于 xfs 文件系统：</p>
+<div class="highlight"><pre><span></span><code># mkfs -t xfs /dev/vg01/lv001
+</code></pre></div>
+
+<h3>挂载逻辑卷</h3>
+<p>最后，你需要挂载逻辑卷来使用它。确保在 <code>/etc/fstab</code> 中添加一个条目，以便系统启动时自动加载。</p>
+<p>创建一个目录来挂载逻辑卷：</p>
+<div class="highlight"><pre><span></span><code># mkdir /lvmtest
+</code></pre></div>
+
+<p>使用挂载命令<a href="https://www.2daygeek.com/mount-unmount-file-system-partition-in-linux/">挂载逻辑卷</a>：</p>
+<div class="highlight"><pre><span></span><code># mount /dev/vg01/lv001 /lvmtest
+</code></pre></div>
+
+<p>在 <a href="https://www.2daygeek.com/understanding-linux-etc-fstab-file/">/etc/fstab 文件</a>中添加新的逻辑卷详细信息，以便系统启动时自动挂载：</p>
+<div class="highlight"><pre><span></span><code># vi /etc/fstab
+/dev/vg01/lv001 /lvmtest xfs defaults 0 0
+</code></pre></div>
+
+<p>使用 <a href="https://www.2daygeek.com/linux-check-disk-space-usage-df-command/">df 命令</a>检查新挂载的卷：</p>
+<div class="highlight"><pre><span></span><code># df -h /lvmtest
+Filesystem Size Used Avail Use% Mounted on
+/dev/mapper/vg01-lv001 15360M 34M 15326M 4% /lvmtest
+</code></pre></div>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

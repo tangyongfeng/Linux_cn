@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何在 GitLab 执行器中使用 Podman</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Lokesh Mandvekar 使用 Podman 启动 GitLab 执行器有多种方法，我在本文中概述了其中两种。 GitLab 执行器 Runner 是一个与 GitLab CI/CD 配合使用的应用，可在 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2023/08/ru-he-zai-gitlab-zhi-xing-qi-zhong-shi-yong-podman.html" rel="bookmark"
+           title="Permalink to 如何在 GitLab 执行器中使用 Podman">如何在 GitLab 执行器中使用 Podman</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2023-08-24T09:32:15+02:00">
+                Published: Thu 24 August 2023
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Lokesh Mandvekar</p>
+<p><img alt="" src="/data/attachment/album/202308/24/093145pkr5rd2qqkmch6xv.jpg"></p>
+<blockquote>
+<p>使用 Podman 启动 GitLab 执行器有多种方法，我在本文中概述了其中两种。</p>
+</blockquote>
+<p>GitLab <ruby> 执行器 <rt>  Runner </rt></ruby> 是一个与 GitLab CI/CD 配合使用的应用，可在 GitLab 基础设施上的流水线中运行作业。它们通常用于在提交代码后自动编译应用或在代码库上运行测试。你可以将它们视为基于云的 <a href="https://www.redhat.com/sysadmin/git-hooks?intcmp=7013a000002qLH8AAM">Git 钩子</a>。</p>
+<p>主要的公共 <a href="https://gitlab.com">GitLab 实例</a> 提供了许多易于访问的共享执行器，可供你在 CI 流水线中使用。你可以在 GitLab 上仓库的 <ruby> 设置 <rt>  Settings </rt></ruby> -&gt; CI/CD -&gt; <ruby> 执行器 <rt>  Runners </rt></ruby> 中找到共享执行器的列表。</p>
+<p><img alt="Display available GitLab runners in your repository's settings" src="/data/attachment/album/202308/24/093215hkkwcwx0ws4hcc6n.png"></p>
+<p>你可能不想依赖共享执行器，而是选择自己的执行器，原因有很多。例如，控制执行器运行的基础设施以实现额外的安全性和/或隐私、灵活的执行器配置或分配给你的 GitLab 用户帐户的有限 CI 分钟数。</p>
+<p>GitLab 执行器依赖于 <ruby> <a href="https://docs.gitlab.com/runner/executors/">  执行环境 </a> <rt>  executor </rt></ruby> 工具来运行 CI 作业。执行环境有许多选项可用：Docker、Kubernetes、VirtualBox 等。</p>
+<p>那么，Podman 作为执行环境呢？</p>
+<p>自 <a href="https://github.com/containers/podman/releases/tag/v4.2.0">v4.2.0</a> 起，Podman 对 GitLab 执行器提供了原生支持。以下是使用 Podman 作为 GitLab 执行器的 <a href="https://docs.gitlab.com/runner/executors/docker.html">执行环境</a> 的两种方法的快速浏览。</p>
+<h3>Docker 执行环境</h3>
+<p>你可以在 GitLab 执行器中使用 Podman 作为 Docker 的直接替代品。就是这样：</p>
+<p>本示例使用 2023 年 2 月的 CentOS Stream 9 环境，使用 Podman v4.4.0。它应该可以在任何具有足够新的 Podman 的 RHEL/CentOS Stream/Fedora 环境中正常工作。查看 <a href="https://docs.gitlab.com/runner/executors/docker.html#use-podman-to-run-docker-commands">GitLab 文档</a> 了解先决条件。</p>
+<p>首先，安装 Podman：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>dnf<span class="w"> </span>-y<span class="w"> </span>install<span class="w"> </span>podman
+</code></pre></div>
+
+<p>接下来安装 <strong>gitlab-runner</strong> 包：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="nx">添加</span><span class="w"> </span><span class="nx">GitLab</span><span class="w"> </span><span class="nx">执行器仓库</span>
+<span class="err">$</span><span class="w"> </span><span class="nx">curl</span><span class="w"> </span><span class="o">-</span><span class="nx">L</span><span class="w"> </span><span class="s">&quot;https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.rpm.sh&quot;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nx">sudo</span><span class="w"> </span><span class="nx">bash</span>
+
+<span class="err">#</span><span class="w"> </span><span class="nx">安装</span><span class="w"> </span><span class="nx">gitlab</span><span class="o">-</span><span class="nx">runner</span><span class="w"> </span><span class="nx">包</span>
+<span class="err">$</span><span class="w"> </span><span class="nx">sudo</span><span class="w"> </span><span class="nx">dnf</span><span class="w"> </span><span class="o">-</span><span class="nx">y</span><span class="w"> </span><span class="nx">install</span><span class="w"> </span><span class="nx">gitlab</span><span class="o">-</span><span class="nx">runner</span>
+</code></pre></div>
+
+<p>最后，允许用户在注销后执行任务：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>loginctl<span class="w"> </span>enable-linger<span class="w"> </span>gitlab-runner
+</code></pre></div>
+
+<h4>配置并注册执行器</h4>
+<p>使用以下步骤配置 Docker 运行环境。</p>
+<p>安装 <strong>gitlab-runner</strong> 包会创建一个 <strong>gitlab-runner</strong> 用户帐户，但你需要 root 访问权限才能操作该用户帐户。<strong>gitlab-runner</strong> 可以在用户模式下运行，但需要一些手动干预来进行构建处理。在此示例中，我使用 <code>sudo</code> 在系统模式下运行它。它看起来是这样的：</p>
+<div class="highlight"><pre><span></span><code><span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">gitlab</span><span class="o">-</span><span class="n">runner</span><span class="w"> </span><span class="n">register</span>
+<span class="n">Runtime</span><span class="w"> </span><span class="n">platform</span><span class="w">                                    </span><span class="n">arch</span><span class="o">=</span><span class="n">amd64</span><span class="w"> </span><span class="n">os</span><span class="o">=</span><span class="n">linux</span><span class="w"> </span><span class="n">pid</span><span class="o">=</span><span class="mi">7978</span><span class="w"> </span><span class="n">revision</span><span class="o">=</span><span class="n">d540b510</span><span class="w"> </span><span class="n">version</span><span class="o">=</span><span class="mf">15.9</span><span class="o">.</span><span class="mi">1</span>
+<span class="n">Running</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">system</span><span class="o">-</span><span class="n">mode</span><span class="o">.</span>
+
+<span class="n">Enter</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">GitLab</span><span class="w"> </span><span class="n">instance</span><span class="w"> </span><span class="n">URL</span><span class="w"> </span><span class="p">(</span><span class="k">for</span><span class="w"> </span><span class="n">example</span><span class="p">,</span><span class="w"> </span><span class="n">https</span><span class="p">:</span><span class="o">//</span><span class="n">gitlab</span><span class="o">.</span><span class="n">com</span><span class="o">/</span><span class="p">):</span>
+<span class="n">https</span><span class="p">:</span><span class="o">//</span><span class="n">gitlab</span><span class="o">.</span><span class="n">com</span>
+<span class="n">Enter</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">registration</span><span class="w"> </span><span class="n">token</span><span class="p">:</span>
+<span class="n">xxxxxxxxxxxxxxxxx</span>
+<span class="n">Enter</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">description</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">runner</span><span class="p">:</span>
+<span class="p">[</span><span class="n">lmandvek</span><span class="o">-</span><span class="n">c9s</span><span class="o">-</span><span class="n">gitlab</span><span class="o">-</span><span class="n">runner</span><span class="p">]:</span>
+<span class="n">Enter</span><span class="w"> </span><span class="n">tags</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">runner</span><span class="w"> </span><span class="p">(</span><span class="n">comma</span><span class="o">-</span><span class="n">separated</span><span class="p">):</span>
+
+<span class="n">Enter</span><span class="w"> </span><span class="n">optional</span><span class="w"> </span><span class="n">maintenance</span><span class="w"> </span><span class="n">note</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">runner</span><span class="p">:</span>
+
+<span class="n">WARNING</span><span class="p">:</span><span class="w"> </span><span class="n">Support</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">registration</span><span class="w"> </span><span class="n">tokens</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">runner</span><span class="w"> </span><span class="n">parameters</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="s1">&#39;register&#39;</span><span class="w"> </span><span class="n">command</span><span class="w"> </span><span class="n">has</span><span class="w"> </span><span class="n">been</span><span class="w"> </span><span class="n">deprecated</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">GitLab</span><span class="w"> </span><span class="n">Runner</span><span class="w"> </span><span class="mf">15.6</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">will</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">replaced</span><span class="w"> </span><span class="n">with</span><span class="w"> </span><span class="n">support</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">authentication</span><span class="w"> </span><span class="n">tokens</span><span class="o">.</span><span class="w"> </span><span class="n">For</span><span class="w"> </span><span class="n">more</span><span class="w"> </span><span class="n">information</span><span class="p">,</span><span class="w"> </span><span class="n">see</span><span class="w"> </span><span class="n">https</span><span class="p">:</span><span class="o">//</span><span class="n">gitlab</span><span class="o">.</span><span class="n">com</span><span class="o">/</span><span class="n">gitlab</span><span class="o">-</span><span class="n">org</span><span class="o">/</span><span class="n">gitlab</span><span class="o">/-/</span><span class="n">issues</span><span class="o">/</span><span class="mi">380872</span>
+<span class="n">Registering</span><span class="w"> </span><span class="n">runner</span><span class="o">...</span><span class="w"> </span><span class="n">succeeded</span><span class="w">                     </span><span class="n">runner</span><span class="o">=</span><span class="n">GR13489419oEPYcJ8</span>
+<span class="n">Enter</span><span class="w"> </span><span class="n">an</span><span class="w"> </span><span class="n">executor</span><span class="p">:</span><span class="w"> </span><span class="n">custom</span><span class="p">,</span><span class="w"> </span><span class="n">docker</span><span class="p">,</span><span class="w"> </span><span class="n">ssh</span><span class="p">,</span><span class="w"> </span><span class="n">docker</span><span class="o">-</span><span class="n">ssh</span><span class="o">+</span><span class="n">machine</span><span class="p">,</span><span class="w"> </span><span class="n">docker</span><span class="o">-</span><span class="n">ssh</span><span class="p">,</span><span class="w"> </span><span class="n">parallels</span><span class="p">,</span><span class="w"> </span><span class="n">shell</span><span class="p">,</span><span class="w"> </span><span class="n">virtualbox</span><span class="p">,</span><span class="w"> </span><span class="n">docker</span><span class="o">+</span><span class="n">machine</span><span class="p">,</span><span class="w"> </span><span class="n">instance</span><span class="p">,</span><span class="w"> </span><span class="n">kubernetes</span><span class="p">:</span>
+<span class="n">docker</span>
+<span class="n">Enter</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">default</span><span class="w"> </span><span class="n">Docker</span><span class="w"> </span><span class="n">image</span><span class="w"> </span><span class="p">(</span><span class="k">for</span><span class="w"> </span><span class="n">example</span><span class="p">,</span><span class="w"> </span><span class="n">ruby</span><span class="p">:</span><span class="mf">2.7</span><span class="p">):</span>
+<span class="n">registry</span><span class="o">.</span><span class="n">gitlab</span><span class="o">.</span><span class="n">com</span><span class="o">/</span><span class="n">rhcontainerbot</span><span class="o">/</span><span class="n">pkg</span><span class="o">-</span><span class="n">builder</span>
+<span class="n">Runner</span><span class="w"> </span><span class="n">registered</span><span class="w"> </span><span class="n">successfully</span><span class="o">.</span><span class="w"> </span><span class="n">Feel</span><span class="w"> </span><span class="n">free</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">start</span><span class="w"> </span><span class="n">it</span><span class="p">,</span><span class="w"> </span><span class="n">but</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">it</span><span class="s1">&#39;s running already the config should be automatically reloaded!</span>
+
+<span class="n">Configuration</span><span class="w"> </span><span class="p">(</span><span class="n">with</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">authentication</span><span class="w"> </span><span class="n">token</span><span class="p">)</span><span class="w"> </span><span class="n">was</span><span class="w"> </span><span class="n">saved</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="s2">&quot;/etc/gitlab-runner/config.toml&quot;</span>
+</code></pre></div>
+
+<p>你将需要一些额外的配置才能使用 Podman。配置执行器为每个作业创建一个网络。有关更多信息，请参阅 <a href="https://docs.gitlab.com/runner/executors/docker.html#create-a-network-for-each-job">GitLab 文档</a>。</p>
+<p>首先，启用 Podman 系统服务并修改 <code>/etc/gitlab-runner/config.toml</code> 中的环境：</p>
+<div class="highlight"><pre><span></span><code><span class="k">[[runners]]</span>
+<span class="w">    </span><span class="na">environment</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">[&quot;FF_NETWORK_PER_BUILD=1&quot;]</span>
+<span class="w">    </span><span class="k">[runners.docker]</span>
+<span class="w">        </span><span class="na">host</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;unix:///run/user/1001/podman/podman.sock&quot;</span>
+</code></pre></div>
+
+<p>重启执行器以实施更改：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>gitlab-runner<span class="w"> </span>restart
+</code></pre></div>
+
+<p>验证新的执行器在 GitLab 项目的 <ruby> 设置 <rt>  Settings </rt></ruby> -&gt; CI/CD -&gt; <ruby> 执行器 <rt>  Runners </rt></ruby> 中可见：</p>
+<p><img alt="Restart the GitLab runner" src="/data/attachment/album/202308/24/093216z65zpupklzejukeu.png"></p>
+<p>接下来，验证你的 CI 流水线正在使用执行器。你的 CI 任务日志将提及正在使用的执行器的名称以及任何其他配置信息，例如 执行器的执行环境的功能标志和容器镜像。</p>
+<p><img alt="View CI tasklogs to display the runner" src="/data/attachment/album/202308/24/093216cmjd453j75aj4c7a.png"></p>
+<h3>Podman-in-Podman（pipglr）</h3>
+<p><a href="https://gitlab.com/cevich">Chris Evich</a> 创建了 <a href="https://gitlab.com/qontainers/pipglr">pipglr</a>，这是一个 Podman-in-Podman 设置，用于使用免 root 的 Podman 来支持你自己的免 root 的 GitLab 执行器。此方法不需要对 <code>.gitlab-ci.yaml</code> 配置进行任何更改，因此你可以继续按原样使用现有设置。</p>
+<p>以下是帮助你运行此程序的快速设置指南。</p>
+<h4>配置步骤</h4>
+<p>容器镜像是从 <a href="https://gitlab.com/qontainers/pipglr">pipglr Containerfile</a> 自动构建的，因此将镜像设置为该仓库：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nv">IMAGE</span><span class="o">=</span><span class="s2">&quot;registry.gitlab.com/qontainers/pipglr:latest&quot;</span>
+</code></pre></div>
+
+<p>接下来，使用你的 GitLab 注册令牌创建 Podman 密钥：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;&lt;actual registration token&gt;&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>podman<span class="w"> </span>secret<span class="w"> </span>create<span class="w"> </span>REGISTRATION_TOKEN<span class="w"> </span>-
+</code></pre></div>
+
+<p>创建一个空白的 <code>config.toml</code>，稍后将包含你的所有执行器设置。你必须执行此步骤才能使以下 <code>podman container register runlabel $IMAGE</code> 步骤成功：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>touch<span class="w"> </span>./config.toml<span class="w">  </span><span class="c1"># 重要:文件必须存在，即使是空的。</span>
+</code></pre></div>
+
+<p>注册你的执行器。你可以重复此步骤来注册多个执行器。如果你想使用可能不同的标签或配置选项集并行运行多个 CI 任务，这非常有用。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>podman<span class="w"> </span>container<span class="w"> </span>runlabel<span class="w"> </span>register<span class="w"> </span><span class="nv">$IMAGE</span>
+</code></pre></div>
+
+<p>使用你选择的编辑器编辑 <code>config.toml</code>。这是可选的，但通常需要更改用于实际 CI 任务的容器镜像。默认情况下，镜像设置为：<code>registry.fedoraproject.org/fedora:latest</code>。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nv">$EDITOR</span><span class="w"> </span>./config.toml<span class="w">  </span><span class="c1"># if desired</span>
+</code></pre></div>
+
+<p>最后，配置对卷的访问。容器卷内使用多个用户，因此你必须专门配置它们以允许访问。再次使用 <code>runlabel</code> 来完成：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>podman<span class="w"> </span>container<span class="w"> </span>runlabel<span class="w"> </span>setupstorage<span class="w"> </span><span class="nv">$IMAGE</span>
+
+$<span class="w"> </span>podman<span class="w"> </span>container<span class="w"> </span>runlabel<span class="w"> </span>setupcache<span class="w"> </span><span class="nv">$IMAGE</span>
+</code></pre></div>
+
+<h4>测试执行器</h4>
+<p>是时候检查配置了。首先启动 GitLab 执行器容器：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>podman<span class="w"> </span>container<span class="w"> </span>runlabel<span class="w"> </span>run<span class="w"> </span><span class="nv">$IMAGE</span>
+</code></pre></div>
+
+<p>允许执行器用户在注销后运行服务：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>loginctl<span class="w"> </span>enable-linger<span class="w"> </span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span>
+</code></pre></div>
+
+<p>验证你的新执行器在 GitLab 项目的 <ruby> 设置 <rt>  Settings </rt></ruby> -&gt; CI/CD -&gt; <ruby> 执行器 <rt>  Runners </rt></ruby> 中可见：</p>
+<p><img alt="Verify the new runner is visible" src="/data/attachment/album/202308/24/093216nhrhr3538h4o2omm.png"></p>
+<p>最后，验证你的 CI 流水线正在使用你的执行器：</p>
+<p><img alt="Verify the CI pipeline" src="/data/attachment/album/202308/24/093216gqhuse4qsilepl64.png"></p>
+<h3>总结</h3>
+<p>使用 Podman 启动 GitLab 执行器有多种方法，我在此处概述了其中两种。尝试一下，然后让我知道哪一个最适合你。如果 Docker 执行环境方法有任何问题，请登录并通过 <a href="https://github.com/containers/podman/issues/new/choose">Podman 上游</a> 或 <a href="https://about.gitlab.com/support/#contact-support">GitLab 支持</a> 提交问题。如果 pipglr 方法出现问题，请在 pipglr 上游 <a href="https://gitlab.com/qontainers/pipglr/-/issues/new">提交问题</a>。</p>
+<p>GitLab 与 Podman 一起运行愉快 ?</p>
+<p><em>（题图：MJ/97e0ff4d-b769-4e20-990f-8c1e89e48434）</em></p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

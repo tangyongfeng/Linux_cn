@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 Terraform 来管理 OpenStack 集群</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Aj Canlas Terraform 是一种声明性语言，可以作为你正在建设的基础设施的蓝图。 在拥有一个 OpenStack 生产环境和家庭实验室一段时间后 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2023/03/shi-yong-terraform-lai-guan-li-openstack-ji-qun.html" rel="bookmark"
+           title="Permalink to 使用 Terraform 来管理 OpenStack 集群">使用 Terraform 来管理 OpenStack 集群</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2023-03-01T11:49:10+01:00">
+                Published: Wed 01 March 2023
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Aj Canlas</p>
+<p><img alt="" src="/data/attachment/album/202303/01/114855zdkhdhsdoojmrqx2.jpg"></p>
+<blockquote>
+<p>Terraform 是一种声明性语言，可以作为你正在建设的基础设施的蓝图。</p>
+</blockquote>
+<p>在拥有一个 OpenStack 生产环境和家庭实验室一段时间后，我可以肯定地说，从管理员和租户的角度置备工作负载和管理它是很重要的。</p>
+<p>Terraform 是一个开源的基础设施即代码（IaC）软件工具，用于 <ruby> 置备 <rt>  provisioning </rt></ruby>网络、服务器、云平台等。Terraform 是一种声明性语言，可以作为你正在建设的基础设施的蓝图。你可以用 Git 来管理它，它有一个强大的 <a href="https://opensource.com/article/21/3/gitops">GitOps</a> 使用场景。</p>
+<p>本文介绍了使用 Terraform 管理 OpenStack 集群的基础知识。我使用 Terraform 重新创建了 OpenStack 演示项目。</p>
+<h3>安装 Terraform</h3>
+<p>我使用 CentOS 作为跳板机运行 Terraform。根据官方文档，第一步是添加 Hashicorp 仓库：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>dnf<span class="w"> </span>config-manager<span class="w"> </span>--add-repo<span class="w"> </span>https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
+</code></pre></div>
+
+<p>接下来，安装 Terraform：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> </span>terraform<span class="w"> </span>-y
+</code></pre></div>
+
+<p>验证安装：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>terraform<span class="w"> </span>–version
+</code></pre></div>
+
+<p>如果你看到返回的版本号，那么你已经安装了 Terraform。</p>
+<h3>为 OpenStack 提供者创建一个 Terraform 脚本</h3>
+<p>在 Terraform 中，你需要一个 <ruby> 提供者 <rt>  provider </rt></ruby>，它是一个转换器，Terraform 调用它将你的 <code>.tf</code> 转换为对你正在协调的平台的 API 调用。</p>
+<p>有三种类型的提供者：官方、合作伙伴和社区：</p>
+<ul>
+<li>官方提供者由 Hashicorp 维护。</li>
+<li>合作伙伴提供者由与 Hashicorp 合作的技术公司维护。</li>
+<li>社区提供者是由开源社区成员维护的。</li>
+</ul>
+<p>在这个 <a href="https://registry.terraform.io/providers/terraform-provider-openstack/openstack/1.49.0">链接</a> 中有一个很好的 OpenStack 的社区提供者。要使用这个提供者，请创建一个 <code>.tf</code> 文件，并命名为 <code>main.tf</code>。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>vi<span class="w"> </span>main.tf
+</code></pre></div>
+
+<p>在 <code>main.tf</code> 中添加以下内容：</p>
+<div class="highlight"><pre><span></span><code><span class="n">terraform</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">required_version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;&gt;= 0.14.0&quot;</span>
+<span class="w">  </span><span class="n">required_providers</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">openstack</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="n">source</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;terraform-provider-openstack/openstack&quot;</span>
+<span class="w">      </span><span class="n">version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;1.49.0&quot;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="n">provider</span><span class="w"> </span><span class="s">&quot;openstack&quot;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">user_name</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="err">“</span><span class="n">OS_USERNAME</span><span class="err">”</span>
+<span class="w">  </span><span class="n">tenant_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">“</span><span class="n">OS_TENANT</span><span class="err">”</span>
+<span class="w">  </span><span class="n">password</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="err">“</span><span class="n">OS_PASSWORD</span><span class="err">”</span>
+<span class="w">  </span><span class="n">auth_url</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="err">“</span><span class="n">OS_AUTH_URL</span><span class="err">”</span>
+<span class="w">  </span><span class="n">region</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="err">“</span><span class="n">OS_REGION</span><span class="err">”</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>你需要修改 <code>OS_USERNAME</code>、<code>OS_TENANT</code>、<code>OS_PASSWORD</code>、<code>OS_AUTH_URL</code> 和 <code>OS_REGION</code> 变量才能工作。</p>
+<h3>创建一个 Terraform 管理文件</h3>
+<p>OpenStack 管理文件的重点是置备外部网络、路由、用户、镜像、租户配置文件和配额。</p>
+<p>此示例提供风格，连接到外部网络的路由、测试镜像、租户配置文件和用户。</p>
+<p>首先，为置备资源创建一个 <code>AdminTF</code> 目录：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>mkdir<span class="w"> </span>AdminTF
+
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>AdminTF
+</code></pre></div>
+
+<p>在 <code>main.tf</code> 中，添加以下内容：</p>
+<div class="highlight"><pre><span></span><code><span class="n">terraform</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">required_version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;&gt;= 0.14.0&quot;</span>
+<span class="w">  </span><span class="n">required_providers</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">openstack</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="n">source</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;terraform-provider-openstack/openstack&quot;</span>
+<span class="w">      </span><span class="n">version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;1.49.0&quot;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="n">provider</span><span class="w"> </span><span class="s2">&quot;openstack&quot;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">user_name</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="err">“</span><span class="n">OS_USERNAME</span><span class="err">”</span>
+<span class="w">  </span><span class="n">tenant_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">“</span><span class="n">admin</span><span class="err">”</span>
+<span class="w">  </span><span class="n">password</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="err">“</span><span class="n">OS_PASSWORD</span><span class="err">”</span>
+<span class="w">  </span><span class="n">auth_url</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="err">“</span><span class="n">OS_AUTH_URL</span><span class="err">”</span>
+<span class="w">  </span><span class="n">region</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="err">“</span><span class="n">OS_REGION</span><span class="err">”</span>
+<span class="p">}</span>
+
+<span class="n">resource</span><span class="w"> </span><span class="s2">&quot;openstack_compute_flavor_v2&quot;</span><span class="w"> </span><span class="s2">&quot;small-flavor&quot;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">name</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;small&quot;</span>
+<span class="w">  </span><span class="n">ram</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;4096&quot;</span>
+<span class="w">  </span><span class="n">vcpus</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;1&quot;</span>
+<span class="w">  </span><span class="n">disk</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;0&quot;</span>
+<span class="w">  </span><span class="n">flavor_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;1&quot;</span>
+<span class="w">  </span><span class="n">is_public</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;true&quot;</span>
+<span class="p">}</span>
+
+<span class="n">resource</span><span class="w"> </span><span class="s2">&quot;openstack_compute_flavor_v2&quot;</span><span class="w"> </span><span class="s2">&quot;medium-flavor&quot;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">name</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;medium&quot;</span>
+<span class="w">  </span><span class="n">ram</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;8192&quot;</span>
+<span class="w">  </span><span class="n">vcpus</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;2&quot;</span>
+<span class="w">  </span><span class="n">disk</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;0&quot;</span>
+<span class="w">  </span><span class="n">flavor_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;2&quot;</span>
+<span class="w">  </span><span class="n">is_public</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;true&quot;</span>
+<span class="p">}</span>
+
+<span class="n">resource</span><span class="w"> </span><span class="s2">&quot;openstack_compute_flavor_v2&quot;</span><span class="w"> </span><span class="s2">&quot;large-flavor&quot;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">name</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;large&quot;</span>
+<span class="w">  </span><span class="n">ram</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;16384&quot;</span>
+<span class="w">  </span><span class="n">vcpus</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;4&quot;</span>
+<span class="w">  </span><span class="n">disk</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;0&quot;</span>
+<span class="w">  </span><span class="n">flavor_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;3&quot;</span>
+<span class="w">  </span><span class="n">is_public</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;true&quot;</span>
+<span class="p">}</span>
+
+<span class="n">resource</span><span class="w"> </span><span class="s2">&quot;openstack_compute_flavor_v2&quot;</span><span class="w"> </span><span class="s2">&quot;xlarge-flavor&quot;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">name</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;xlarge&quot;</span>
+<span class="w">  </span><span class="n">ram</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;32768&quot;</span>
+<span class="w">  </span><span class="n">vcpus</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;8&quot;</span>
+<span class="w">  </span><span class="n">disk</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;0&quot;</span>
+<span class="w">  </span><span class="n">flavor_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;4&quot;</span>
+<span class="w">  </span><span class="n">is_public</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;true&quot;</span>
+<span class="p">}</span>
+
+<span class="n">resource</span><span class="w"> </span><span class="s2">&quot;openstack_networking_network_v2&quot;</span><span class="w"> </span><span class="s2">&quot;external-network&quot;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">name</span><span class="w">           </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;external-network&quot;</span>
+<span class="w">  </span><span class="n">admin_state_up</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;true&quot;</span>
+<span class="w">  </span><span class="n">external</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;true&quot;</span>
+<span class="w">  </span><span class="n">segments</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">network_type</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;flat&quot;</span>
+<span class="w">    </span><span class="n">physical_network</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;physnet1&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="n">resource</span><span class="w"> </span><span class="s2">&quot;openstack_networking_subnet_v2&quot;</span><span class="w"> </span><span class="s2">&quot;external-subnet&quot;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">name</span><span class="w">            </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;external-subnet&quot;</span>
+<span class="w">  </span><span class="n">network_id</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="n">openstack_networking_network_v2</span><span class="o">.</span><span class="n">external</span><span class="o">-</span><span class="n">network</span><span class="o">.</span><span class="n">id</span>
+<span class="w">  </span><span class="n">cidr</span><span class="w">            </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;10.0.0.0/8&quot;</span>
+<span class="w">  </span><span class="n">gateway_ip</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;10.0.0.1&quot;</span>
+<span class="w">  </span><span class="n">dns_nameservers</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;10.0.0.254&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;10.0.0.253&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="n">allocation_pool</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">start</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;10.0.0.1&quot;</span>
+<span class="w">    </span><span class="n">end</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;10.0.254.254&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="n">resource</span><span class="w"> </span><span class="s2">&quot;openstack_networking_router_v2&quot;</span><span class="w"> </span><span class="s2">&quot;external-router&quot;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">name</span><span class="w">                </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;external-router&quot;</span>
+<span class="w">  </span><span class="n">admin_state_up</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="bp">true</span>
+<span class="w">  </span><span class="n">external_network_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">openstack_networking_network_v2</span><span class="o">.</span><span class="n">external</span><span class="o">-</span><span class="n">network</span><span class="o">.</span><span class="n">id</span>
+<span class="p">}</span>
+
+<span class="n">resource</span><span class="w"> </span><span class="s2">&quot;openstack_images_image_v2&quot;</span><span class="w"> </span><span class="s2">&quot;cirros&quot;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">name</span><span class="w">             </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;cirros&quot;</span>
+<span class="w">  </span><span class="n">image_source_url</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;https://download.cirros-cloud.net/0.6.1/cirros-0.6.1-x86_64-disk.img&quot;</span>
+<span class="w">  </span><span class="n">container_format</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;bare&quot;</span>
+<span class="w">  </span><span class="n">disk_format</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;qcow2&quot;</span>
+
+<span class="w">  </span><span class="n">properties</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;value&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="n">resource</span><span class="w"> </span><span class="s2">&quot;openstack_identity_project_v3&quot;</span><span class="w"> </span><span class="s2">&quot;demo-project&quot;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;Demo&quot;</span>
+<span class="p">}</span>
+
+<span class="n">resource</span><span class="w"> </span><span class="s2">&quot;openstack_identity_user_v3&quot;</span><span class="w"> </span><span class="s2">&quot;demo-user&quot;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">name</span><span class="w">               </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;demo-user&quot;</span>
+<span class="w">  </span><span class="n">default_project_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">openstack_identity_project_v3</span><span class="o">.</span><span class="n">demo</span><span class="o">-</span><span class="n">project</span><span class="o">.</span><span class="n">id</span>
+<span class="w">  </span><span class="n">password</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;demo&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3>创建一个租户 Terraform 文件</h3>
+<p>作为一个 <ruby> 租户 <rt>  Tenant </rt></ruby>，你通常会创建虚拟机。你还为这些虚拟机创建网络和安全组。</p>
+<p>这个例子使用上面由 Admin 文件创建的用户。</p>
+<p>首先，创建一个 <code>TenantTF</code> 目录，用于与租户相关的置备：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>mkdir<span class="w"> </span>TenantTF
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>TenantTF
+</code></pre></div>
+
+<p>在 <code>main.tf</code> 中，添加以下内容：</p>
+<div class="highlight"><pre><span></span><code><span class="n">terraform</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">required_version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;&gt;= 0.14.0&quot;</span>
+<span class="w">  </span><span class="n">required_providers</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">openstack</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="n">source</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;terraform-provider-openstack/openstack&quot;</span>
+<span class="w">      </span><span class="n">version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;1.49.0&quot;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="n">provider</span><span class="w"> </span><span class="s">&quot;openstack&quot;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">user_name</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="err">“</span><span class="n">demo</span><span class="o">-</span><span class="n">user</span><span class="err">”</span>
+<span class="w">  </span><span class="n">tenant_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">“</span><span class="n">demo</span><span class="err">”</span>
+<span class="w">  </span><span class="n">password</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="err">“</span><span class="n">demo</span><span class="err">”</span>
+<span class="w">  </span><span class="n">auth_url</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="err">“</span><span class="n">OS_AUTH_URL</span><span class="err">”</span>
+<span class="w">  </span><span class="n">region</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="err">“</span><span class="n">OS_REGION</span><span class="err">”</span>
+<span class="p">}</span>
+
+<span class="n">resource</span><span class="w"> </span><span class="s">&quot;openstack_compute_keypair_v2&quot;</span><span class="w"> </span><span class="s">&quot;demo-keypair&quot;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">name</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;demo-key&quot;</span>
+<span class="w">  </span><span class="n">public_key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;ssh-rsa ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ&quot;</span>
+<span class="p">}</span>
+
+
+<span class="n">resource</span><span class="w"> </span><span class="s">&quot;openstack_networking_network_v2&quot;</span><span class="w"> </span><span class="s">&quot;demo-network&quot;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">name</span><span class="w">           </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;demo-network&quot;</span>
+<span class="w">  </span><span class="n">admin_state_up</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;true&quot;</span>
+<span class="p">}</span>
+
+<span class="n">resource</span><span class="w"> </span><span class="s">&quot;openstack_networking_subnet_v2&quot;</span><span class="w"> </span><span class="s">&quot;demo-subnet&quot;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">network_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">openstack_networking_network_v2</span><span class="p">.</span><span class="n">demo</span><span class="o">-</span><span class="n">network</span><span class="p">.</span><span class="n">id</span>
+<span class="w">  </span><span class="n">name</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;demo-subnet&quot;</span>
+<span class="w">  </span><span class="n">cidr</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;192.168.26.0/24&quot;</span>
+<span class="p">}</span>
+
+<span class="n">resource</span><span class="w"> </span><span class="s">&quot;openstack_networking_router_interface_v2&quot;</span><span class="w"> </span><span class="s">&quot;demo-router-interface&quot;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">router_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">“</span><span class="n">XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX</span><span class="err">”</span>
+<span class="w">  </span><span class="n">subnet_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">openstack_networking_subnet_v2</span><span class="p">.</span><span class="n">demo</span><span class="o">-</span><span class="n">subnet</span><span class="p">.</span><span class="n">id</span>
+<span class="p">}</span>
+
+<span class="n">resource</span><span class="w"> </span><span class="s">&quot;openstack_compute_instance_v2&quot;</span><span class="w"> </span><span class="s">&quot;demo-instance&quot;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">name</span><span class="w">            </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;demo&quot;</span>
+<span class="w">  </span><span class="n">image_id</span><span class="w">        </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY&quot;</span>
+<span class="w">  </span><span class="n">flavor_id</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;3&quot;</span>
+<span class="w">  </span><span class="n">key_pair</span><span class="w">        </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;demo-key&quot;</span>
+<span class="w">  </span><span class="n">security_groups</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s">&quot;default&quot;</span><span class="p">]</span>
+
+<span class="w">  </span><span class="n">metadata</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">this</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;that&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+
+<span class="w">  </span><span class="n">network</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;demo-network&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3>初始化你的 Terraform</h3>
+<p>创建 Terraform 文件后，你需要初始化 Terraform。</p>
+<p>对于管理员：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>AdminTF
+
+$<span class="w"> </span>terraform<span class="w"> </span>init
+
+$<span class="w"> </span>terraform<span class="w"> </span>fmt
+</code></pre></div>
+
+<p>对于租户：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>TenantTF
+
+$<span class="w"> </span>terraform<span class="w"> </span>init
+
+$<span class="w"> </span>terraform<span class="w"> </span>fmt
+</code></pre></div>
+
+<p>命令解释：</p>
+<ul>
+<li><code>terraform init</code> 从镜像源下载提供者用于置备此项目。</li>
+<li><code>terraform fmt</code> 格式化文件，以便在仓库中使用。</li>
+</ul>
+<h3>创建一个 Terraform 计划</h3>
+<p>接下来，为你创建一个 <ruby> 计划 <rt>  plan </rt></ruby>，看看将创建哪些资源。</p>
+<p>对于管理员：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>AdminTF
+
+$<span class="w"> </span>terraform<span class="w"> </span>validate
+
+$<span class="w"> </span>terraform<span class="w"> </span>plan
+</code></pre></div>
+
+<p>对于租户：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>TenantTF
+
+$<span class="w"> </span>terraform<span class="w"> </span>validate
+
+$<span class="w"> </span>terraform<span class="w"> </span>plan
+</code></pre></div>
+
+<p>命令解释：</p>
+<ul>
+<li><code>terraform validate</code> 验证 <code>.tf</code> 语法是否正确。</li>
+<li><code>terraform plan</code> 在缓存中创建一个计划文件，所有管理的资源在创建和销毁时都可以被跟踪。</li>
+</ul>
+<h3>应用你的第一个 TF</h3>
+<p>要部署资源，使用 <code>terraform apply</code> 命令。该命令应用计划文件中的所有资源状态。</p>
+<p>对于管理员：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>AdminTF
+
+$<span class="w"> </span>terraform<span class="w"> </span>apply
+</code></pre></div>
+
+<p>对于租户：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>TenantTF
+
+$<span class="w"> </span>terraform<span class="w"> </span>apply
+</code></pre></div>
+
+<h3>接下来的步骤</h3>
+<p>之前，我写了一篇关于在树莓派上部署最小 OpenStack 集群的 <a href="https://opensource.com/article/20/12/openstack-raspberry-pi">文章</a>。你可以找到更详细的 <a href="https://www.ansible.com/blog/ansible-vs.-terraform-demystified?intcmp=7013a000002qLH8AAM">Terraform 和 Ansible</a> 配置，并通过 GitLab 实现一些 CI/CD。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

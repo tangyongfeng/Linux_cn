@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 KRAWL 扫描 Kubernetes 错误</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Abhishek Tamrakar 用 KRAWL 脚本来识别 Kubernetes Pod 和容器中的错误。 当你使用 Kubernetes 运行容器时，你通常会发现它们堆积在一起。这是设计使然。它是 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2020/02/shi-yong-krawl-sao-miao-kubernetes-cuo-wu.html" rel="bookmark"
+           title="Permalink to 使用 KRAWL 扫描 Kubernetes 错误">使用 KRAWL 扫描 Kubernetes 错误</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2020-02-27T10:29:43+01:00">
+                Published: Thu 27 February 2020
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Abhishek Tamrakar</p>
+<blockquote>
+<p>用 KRAWL 脚本来识别 Kubernetes Pod 和容器中的错误。</p>
+</blockquote>
+<p><img alt="Ship captain sailing the Kubernetes seas" src="/data/attachment/album/202002/27/102958u1dprgrx4hh992cr.png" title="Ship captain sailing the Kubernetes seas"></p>
+<p>当你使用 Kubernetes 运行容器时，你通常会发现它们堆积在一起。这是设计使然。它是容器的优点之一：每当需要新的容器时，它们启动成本都很低。你可以使用前端工具（如 OpenShift 或 OKD）来管理 Pod 和容器。这些工具使可视化设置变得容易，并且它具有一组丰富的用于快速交互的命令。</p>
+<p>如果管理容器的平台不符合你的要求，你也可以仅使用 Kubernetes 工具链获取这些信息，但这需要大量命令才能全面了解复杂环境。出于这个原因，我编写了 <a href="https://github.com/abhiTamrakar/kube-plugins/tree/master/krawl">KRAWL</a>，这是一个简单的脚本，可用于扫描 Kubernetes 集群命名空间下的 Pod 和容器，并在发现任何事件时，显示事件的输出。它也可用作为 Kubernetes 插件使用。这是获取大量有用信息的快速简便方法。</p>
+<h3>先决条件</h3>
+<ul>
+<li>必须安装 <code>kubectl</code>。</li>
+<li>集群的 kubeconfig 配置必须在它的默认位置（<code>$HOME/.kube/config</code>）或已被导出到环境变量（<code>KUBECONFIG=/path/to/kubeconfig</code>）。</li>
+</ul>
+<h3>使用</h3>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>./krawl
+</code></pre></div>
+
+<p><img alt="KRAWL script" src="/data/attachment/album/202002/27/102959imepam5p3asfgggs.png" title="KRAWL script"></p>
+<h3>脚本</h3>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/bin/bash</span>
+<span class="c1"># AUTHOR: Abhishek Tamrakar</span>
+<span class="c1"># EMAIL: abhishek.tamrakar08@gmail.com</span>
+<span class="c1"># LICENSE: Copyright (C) 2018 Abhishek Tamrakar</span>
+<span class="c1">#</span>
+<span class="c1">#  Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);</span>
+<span class="c1">#  you may not use this file except in compliance with the License.</span>
+<span class="c1">#  You may obtain a copy of the License at</span>
+<span class="c1">#</span>
+<span class="c1">#       http://www.apache.org/licenses/LICENSE-2.0</span>
+<span class="c1">#</span>
+<span class="c1">#   Unless required by applicable law or agreed to in writing, software</span>
+<span class="c1">#   distributed under the License is distributed on an &quot;AS IS&quot; BASIS,</span>
+<span class="c1">#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.</span>
+<span class="c1">#   See the License for the specific language governing permissions and</span>
+<span class="c1">#   limitations under the License.</span>
+<span class="c1">##</span>
+<span class="c1">#define the variables</span>
+<span class="nv">KUBE_LOC</span><span class="o">=</span>~/.kube/config
+<span class="c1">#define variables</span>
+<span class="nv">KUBECTL</span><span class="o">=</span><span class="k">$(</span>which<span class="w"> </span>kubectl<span class="k">)</span>
+<span class="nv">GET</span><span class="o">=</span><span class="k">$(</span>which<span class="w"> </span>egrep<span class="k">)</span>
+<span class="nv">AWK</span><span class="o">=</span><span class="k">$(</span>which<span class="w"> </span>awk<span class="k">)</span>
+<span class="nv">red</span><span class="o">=</span><span class="k">$(</span>tput<span class="w"> </span>setaf<span class="w"> </span><span class="m">1</span><span class="k">)</span>
+<span class="nv">normal</span><span class="o">=</span><span class="k">$(</span>tput<span class="w"> </span>sgr0<span class="k">)</span>
+<span class="c1"># define functions</span>
+
+<span class="c1"># wrapper for printing info messages</span>
+info<span class="o">()</span>
+<span class="o">{</span>
+<span class="w">  </span><span class="nb">printf</span><span class="w"> </span><span class="s1">&#39;\n\e[34m%s\e[m: %s\n&#39;</span><span class="w"> </span><span class="s2">&quot;INFO&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$@</span><span class="s2">&quot;</span>
+<span class="o">}</span>
+
+<span class="c1"># cleanup when all done</span>
+cleanup<span class="o">()</span>
+<span class="o">{</span>
+<span class="w">  </span>rm<span class="w"> </span>-f<span class="w"> </span>results.csv
+<span class="o">}</span>
+
+<span class="c1"># just check if the command we are about to call is available</span>
+checkcmd<span class="o">()</span>
+<span class="o">{</span>
+<span class="w">  </span><span class="c1">#check if command exists</span>
+<span class="w">  </span><span class="nb">local</span><span class="w"> </span><span class="nv">cmd</span><span class="o">=</span><span class="nv">$1</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-z<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="p">!cmd</span><span class="si">}</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span>
+<span class="w">  </span><span class="k">then</span>
+<span class="w">    </span><span class="nb">printf</span><span class="w"> </span><span class="s1">&#39;\n\e[31m%s\e[m: %s\n&#39;</span><span class="w"> </span><span class="s2">&quot;ERROR&quot;</span><span class="w">  </span><span class="s2">&quot;check if </span><span class="nv">$1</span><span class="s2"> is installed !!!&quot;</span>
+<span class="w">    </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="k">fi</span>
+<span class="o">}</span>
+
+get_namespaces<span class="o">()</span>
+<span class="o">{</span>
+<span class="w">  </span><span class="c1">#get namespaces</span>
+<span class="w">  </span><span class="nv">namespaces</span><span class="o">=(</span><span class="w"> </span><span class="se">\</span>
+<span class="w">          </span><span class="k">$(</span><span class="nv">$KUBECTL</span><span class="w"> </span>get<span class="w"> </span>namespaces<span class="w"> </span>--ignore-not-found<span class="o">=</span><span class="nb">true</span><span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="se">\</span>
+<span class="w">          </span><span class="nv">$AWK</span><span class="w"> </span><span class="s1">&#39;/Active/ {print $1}&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">          </span><span class="nv">ORS</span><span class="o">=</span><span class="s2">&quot; &quot;</span><span class="k">)</span><span class="w"> </span><span class="se">\</span>
+<span class="w">          </span><span class="o">)</span>
+<span class="c1">#exit if namespaces are not found</span>
+<span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="si">${#</span><span class="nv">namespaces</span><span class="p">[@]</span><span class="si">}</span><span class="w"> </span>-eq<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="o">]</span>
+<span class="k">then</span>
+<span class="w">  </span><span class="nb">printf</span><span class="w"> </span><span class="s1">&#39;\n\e[31m%s\e[m: %s\n&#39;</span><span class="w"> </span><span class="s2">&quot;ERROR&quot;</span><span class="w">  </span><span class="s2">&quot;No namespaces found!!&quot;</span>
+<span class="w">  </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="k">fi</span>
+<span class="o">}</span>
+
+<span class="c1">#get events for pods in errored state</span>
+get_pod_events<span class="o">()</span>
+<span class="o">{</span>
+<span class="w">  </span><span class="nb">printf</span><span class="w"> </span><span class="s1">&#39;\n&#39;</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="si">${#</span><span class="nv">ERRORED</span><span class="p">[@]</span><span class="si">}</span><span class="w"> </span>-ne<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="o">]</span>
+<span class="w">  </span><span class="k">then</span>
+<span class="w">      </span>info<span class="w"> </span><span class="s2">&quot;</span><span class="si">${#</span><span class="nv">ERRORED</span><span class="p">[@]</span><span class="si">}</span><span class="s2"> errored pods found.&quot;</span>
+<span class="w">      </span><span class="k">for</span><span class="w"> </span>CULPRIT<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="si">${</span><span class="nv">ERRORED</span><span class="p">[@]</span><span class="si">}</span>
+<span class="w">      </span><span class="k">do</span>
+<span class="w">        </span>info<span class="w"> </span><span class="s2">&quot;POD: </span><span class="nv">$CULPRIT</span><span class="s2">&quot;</span>
+<span class="w">        </span>info
+<span class="w">        </span><span class="nv">$KUBECTL</span><span class="w"> </span>get<span class="w"> </span>events<span class="w"> </span><span class="se">\</span>
+<span class="w">        </span>--field-selector<span class="o">=</span>involvedObject.name<span class="o">=</span><span class="nv">$CULPRIT</span><span class="w"> </span><span class="se">\</span>
+<span class="w">        </span>-ocustom-columns<span class="o">=</span>LASTSEEN:.lastTimestamp,REASON:.reason,MESSAGE:.message<span class="w"> </span><span class="se">\</span>
+<span class="w">        </span>--all-namespaces<span class="w"> </span><span class="se">\</span>
+<span class="w">        </span>--ignore-not-found<span class="o">=</span><span class="nb">true</span>
+<span class="w">      </span><span class="k">done</span>
+<span class="w">  </span><span class="k">else</span>
+<span class="w">      </span>info<span class="w"> </span><span class="s2">&quot;0 pods with errored events found.&quot;</span>
+<span class="w">  </span><span class="k">fi</span>
+<span class="o">}</span>
+
+<span class="c1">#define the logic</span>
+get_pod_errors<span class="o">()</span>
+<span class="o">{</span>
+<span class="w">  </span><span class="nb">printf</span><span class="w"> </span><span class="s2">&quot;%s %s %s\n&quot;</span><span class="w"> </span><span class="s2">&quot;NAMESPACE,POD_NAME,CONTAINER_NAME,ERRORS&quot;</span><span class="w"> </span>&gt;<span class="w"> </span>results.csv
+<span class="w">  </span><span class="nb">printf</span><span class="w"> </span><span class="s2">&quot;%s %s %s\n&quot;</span><span class="w"> </span><span class="s2">&quot;---------,--------,--------------,------&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span>results.csv
+<span class="w">  </span><span class="k">for</span><span class="w"> </span>NAMESPACE<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="si">${</span><span class="nv">namespaces</span><span class="p">[@]</span><span class="si">}</span>
+<span class="w">  </span><span class="k">do</span>
+<span class="w">    </span><span class="k">while</span><span class="w"> </span><span class="nv">IFS</span><span class="o">=</span><span class="s1">&#39; &#39;</span><span class="w"> </span><span class="nb">read</span><span class="w"> </span>-r<span class="w"> </span>POD<span class="w"> </span>CONTAINERS
+<span class="w">    </span><span class="k">do</span>
+<span class="w">      </span><span class="k">for</span><span class="w"> </span>CONTAINER<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="si">${</span><span class="nv">CONTAINERS</span><span class="p">//,/ </span><span class="si">}</span>
+<span class="w">      </span><span class="k">do</span>
+<span class="w">        </span><span class="nv">COUNT</span><span class="o">=</span><span class="k">$(</span><span class="nv">$KUBECTL</span><span class="w"> </span>logs<span class="w"> </span>--since<span class="o">=</span>1h<span class="w"> </span>--tail<span class="o">=</span><span class="m">20</span><span class="w"> </span><span class="nv">$POD</span><span class="w"> </span>-c<span class="w"> </span><span class="nv">$CONTAINER</span><span class="w"> </span>-n<span class="w"> </span><span class="nv">$NAMESPACE</span><span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="p">|</span><span class="w"> </span><span class="se">\</span>
+<span class="w">        </span><span class="nv">$GET</span><span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;^error|Error|ERROR|Warn|WARN&#39;</span><span class="k">)</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="nv">$COUNT</span><span class="w"> </span>-gt<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="o">]</span>
+<span class="w">        </span><span class="k">then</span>
+<span class="w">            </span><span class="nv">STATE</span><span class="o">=(</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">STATE</span><span class="p">[@]</span><span class="si">}</span><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$NAMESPACE</span><span class="s2">,</span><span class="nv">$POD</span><span class="s2">,</span><span class="nv">$CONTAINER</span><span class="s2">,</span><span class="nv">$COUNT</span><span class="s2">&quot;</span><span class="o">)</span>
+<span class="w">        </span><span class="k">else</span>
+<span class="w">        </span><span class="c1">#catch pods in errored state</span>
+<span class="w">            </span><span class="nv">ERRORED</span><span class="o">=(</span><span class="k">$(</span><span class="nv">$KUBECTL</span><span class="w"> </span>get<span class="w"> </span>pods<span class="w"> </span>-n<span class="w"> </span><span class="nv">$NAMESPACE</span><span class="w"> </span>--no-headers<span class="o">=</span><span class="nb">true</span><span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="se">\</span>
+<span class="w">                </span>awk<span class="w"> </span><span class="s1">&#39;!/Running/ {print $1}&#39;</span><span class="w"> </span><span class="nv">ORS</span><span class="o">=</span><span class="s2">&quot; &quot;</span><span class="k">)</span><span class="w"> </span><span class="se">\</span>
+<span class="w">                </span><span class="o">)</span>
+<span class="w">        </span><span class="k">fi</span>
+<span class="w">      </span><span class="k">done</span>
+<span class="w">    </span><span class="k">done</span>&lt;<span class="w"> </span>&lt;<span class="o">(</span><span class="nv">$KUBECTL</span><span class="w"> </span>get<span class="w"> </span>pods<span class="w"> </span>-n<span class="w"> </span><span class="nv">$NAMESPACE</span><span class="w"> </span>--ignore-not-found<span class="o">=</span><span class="nb">true</span><span class="w"> </span>-o<span class="o">=</span>custom-columns<span class="o">=</span>NAME:.metadata.name,CONTAINERS:.spec.containers<span class="o">[</span>*<span class="o">]</span>.name<span class="w"> </span>--no-headers<span class="o">=</span><span class="nb">true</span><span class="o">)</span>
+<span class="w">  </span><span class="k">done</span>
+<span class="w">  </span><span class="nb">printf</span><span class="w"> </span><span class="s2">&quot;%s\n&quot;</span><span class="w"> </span><span class="si">${</span><span class="nv">STATE</span><span class="p">[@]</span><span class="k">:-</span><span class="nv">None</span><span class="si">}</span><span class="w"> </span>&gt;&gt;<span class="w"> </span>results.csv
+<span class="w">  </span><span class="nv">STATE</span><span class="o">=()</span>
+<span class="o">}</span>
+<span class="c1">#define usage for seprate run</span>
+usage<span class="o">()</span>
+<span class="o">{</span>
+cat<span class="w"> </span><span class="s">&lt;&lt; EOF</span>
+
+<span class="s">  USAGE: &quot;${0##*/} &lt;/path/to/kube-config&gt;(optional)&quot;</span>
+
+<span class="s">  This program is a free software under the terms of Apache 2.0 License.</span>
+<span class="s">  COPYRIGHT (C) 2018 Abhishek Tamrakar</span>
+
+<span class="s">EOF</span>
+<span class="nb">exit</span><span class="w"> </span><span class="m">0</span>
+<span class="o">}</span>
+
+<span class="c1">#check if basic commands are found</span>
+<span class="nb">trap</span><span class="w"> </span>cleanup<span class="w"> </span>EXIT
+checkcmd<span class="w"> </span>KUBECTL
+<span class="c1">#</span>
+<span class="c1">#set the ground</span>
+<span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="nv">$#</span><span class="w"> </span>-lt<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>!<span class="w"> </span>-e<span class="w"> </span><span class="si">${</span><span class="nv">KUBE_LOC</span><span class="si">}</span><span class="w"> </span>-a<span class="w"> </span>!<span class="w"> </span>-s<span class="w"> </span><span class="si">${</span><span class="nv">KUBE_LOC</span><span class="si">}</span><span class="w"> </span><span class="o">]</span>
+<span class="w">  </span><span class="k">then</span>
+<span class="w">    </span>info<span class="w"> </span><span class="s2">&quot;A readable kube config location is required!!&quot;</span>
+<span class="w">    </span>usage
+<span class="w">  </span><span class="k">fi</span>
+<span class="k">elif</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="nv">$#</span><span class="w"> </span>-eq<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="o">]</span>
+<span class="k">then</span>
+<span class="w">  </span><span class="nb">export</span><span class="w"> </span><span class="nv">KUBECONFIG</span><span class="o">=</span><span class="nv">$1</span>
+<span class="k">elif</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="nv">$#</span><span class="w"> </span>-gt<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="o">]</span>
+<span class="k">then</span>
+<span class="w">  </span>usage
+<span class="k">fi</span>
+<span class="c1">#play</span>
+get_namespaces
+get_pod_errors
+
+<span class="nb">printf</span><span class="w"> </span><span class="s1">&#39;\n%40s\n&#39;</span><span class="w"> </span><span class="s1">&#39;KRAWL&#39;</span>
+<span class="nb">printf</span><span class="w"> </span><span class="s1">&#39;%s\n&#39;</span><span class="w"> </span><span class="s1">&#39;---------------------------------------------------------------------------------&#39;</span>
+<span class="nb">printf</span><span class="w"> </span><span class="s1">&#39;%s\n&#39;</span><span class="w"> </span><span class="s1">&#39;  Krawl is a command line utility to scan pods and prints name of errored pods   &#39;</span>
+<span class="nb">printf</span><span class="w"> </span><span class="s1">&#39;%s\n\n&#39;</span><span class="w"> </span><span class="s1">&#39; +and containers within. To use it as kubernetes plugin, please check their page &#39;</span>
+<span class="nb">printf</span><span class="w"> </span><span class="s1">&#39;%s\n&#39;</span><span class="w"> </span><span class="s1">&#39;=================================================================================&#39;</span>
+
+cat<span class="w"> </span>results.csv<span class="w"> </span><span class="p">|</span><span class="w"> </span>sed<span class="w"> </span><span class="s1">&#39;s/,/,|/g&#39;</span><span class="p">|</span><span class="w"> </span>column<span class="w"> </span>-s<span class="w"> </span><span class="s1">&#39;,&#39;</span><span class="w"> </span>-t
+get_pod_events
+</code></pre></div>
+
+<p>此文最初发布在 <a href="https://github.com/abhiTamrakar/kube-plugins/tree/master/krawl">KRAWL 的 GitHub 仓库</a>下的 README 中，并被或许重用。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何使用Monit部署服务器监控系统</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Iulian Murgulet 很多Linux系统管理员依赖一个集中式的远程监控系统（比如Nagios或者Cacti）来检查他们网络基础设备的健康状况。虽然集中式监控让管理员的生活更简单了，然而处理 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/05/ru-he-shi-yong-monitbu-shu-fu-wu-qi-jian-kong-xi-tong.html" rel="bookmark"
+           title="Permalink to 如何使用Monit部署服务器监控系统">如何使用Monit部署服务器监控系统</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-05-30T23:14:34+02:00">
+                Published: Sat 30 May 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Iulian Murgulet</p>
+<p>很多Linux系统管理员依赖一个集中式的远程监控系统（比如<a href="http://xmodulo.com/monitor-common-services-nagios.html">Nagios</a>或者<a href="http://xmodulo.com/monitor-linux-servers-snmp-cacti.html">Cacti</a>）来检查他们网络基础设备的健康状况。虽然集中式监控让管理员的生活更简单了，然而处理很多机器和服务时，专用的监控中心显然成为了一个单点故障，如果监控中心挂了或者因为什么原因（比如硬件或者网络故障）不可访问了，你就会失去整个网络基础设备情况的任何信息。</p>
+<p>一个给你的监控系统增加冗余度的方法是安装独立的监控软件（作为后备），至少在网络中的关键/核心服务器上。这样在集中式监控系统挂掉的情况，你还有能力通过后备的监控方式来获取核心服务器的运行状况。</p>
+<h3>Monit是什么？</h3>
+<p><img alt="" src="/data/attachment/album/201505/30/225353hxk79hw9xw996vqz.png"></p>
+<p><a href="http://mmonit.com/monit/">Monit</a>是一个跨平台的用来监控Unix/linux系统（比如Linux、BSD、OSX、Solaris）的工具。Monit特别易于安装，而且非常轻量级（只有500KB大小），并且不依赖任何第三方程序、插件或者库。然而，Monit可以胜任全面监控、进程状态监控、文件系统变动监控、邮件通知和对核心服务的自定义动作等场景。易于安装、轻量级的实现以及强大的功能，让Monit成为一个理想的后备监控工具。</p>
+<p>我已经在一些机器使用Monit几年了，而且我对它的可靠性非常满意。甚至作为全面的监控系统，对任何Linux系统管理员来说Monit也是非常有用和强大的。在这篇教程中，我会展示如何在一个本地服务器部署Monit（作为后备监控系统）来监控常见的服务。在部署过程中，我只会展示我们用到的部分。</p>
+<h3>在Linux安装Monit</h3>
+<p>Monit已经被包含在多数Linux发行版的软件仓库中了。</p>
+<p>Debian、Ubuntu或者Linux Mint：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>aptitude<span class="w"> </span>install<span class="w"> </span>monit
+</code></pre></div>
+
+<p>Fedora或者CentOS/RHEL：</p>
+<p>在CentOS/RHEL中，你必须首先启用<a href="/article-2324-1.html">EPEL</a>或者<a href="http://xmodulo.com/how-to-set-up-rpmforge-repoforge-repository-on-centos.html">Repoforge</a>软件仓库.</p>
+<div class="highlight"><pre><span></span><code># yum install monit
+</code></pre></div>
+
+<p>Monit自带一个文档完善的配置文件，其中包含了很多例子。主配置文件在/etc/monit.conf（Fedora/CentOS/RHEL 中），或者/etc/monit/monitrc（Debian/Ubuntu/Mint 中）。Monit配置文件有两部分：“Global”（全局）和“Services”（服务）。</p>
+<h3>Global Configuration: Web Status Page （全局配置：Web状态页面）</h3>
+<p>Monit可以使用邮件服务来发送通知，也可以使用HTTP/HTTPS页面来展示。我们先使用如下配置的web状态页面吧：</p>
+<ul>
+<li>Monit监听1966端口。</li>
+<li>对web状态页面的访问是通过SSL加密的。</li>
+<li>使用monituser/romania作为用户名/口令登录。</li>
+<li>只允许通过localhost、myhost.mydomain.ro和在局域网内部（192.168.0.0/16）访问。</li>
+<li>Monit使用pem格式的SSL证书。</li>
+</ul>
+<p>之后的步骤，我会使用一个基于Red Hat的系统。在基于Debian的系统中的步骤也是类似的。</p>
+<p>首先，在/var/cert生成一个自签名的证书（monit.pem）：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># mkdir /var/certs</span>
+<span class="c1"># cd /etc/pki/tls/certs</span>
+<span class="c1"># ./make-dummy-cert monit.pem</span>
+<span class="c1"># cp monit.pem /var/certs</span>
+<span class="c1"># chmod 0400 /var/certs/monit.pem </span>
+</code></pre></div>
+
+<p>现在将下列代码片段放到Monit的主配置文件中。你可以创建一个空配置文件，或者基于自带的配置文件修改。</p>
+<div class="highlight"><pre><span></span><code><span class="n">set</span><span class="w"> </span><span class="n">httpd</span><span class="w"> </span><span class="n">port</span><span class="w"> </span><span class="mi">1966</span><span class="w"> </span><span class="ow">and</span>
+<span class="w">     </span><span class="n">SSL</span><span class="w"> </span><span class="n">ENABLE</span>
+<span class="w">     </span><span class="n">PEMFILE</span><span class="w">  </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">certs</span><span class="o">/</span><span class="n">monit</span><span class="o">.</span><span class="n">pem</span>
+<span class="w">     </span><span class="n">allow</span><span class="w"> </span><span class="n">monituser</span><span class="p">:</span><span class="n">romania</span>
+<span class="w">     </span><span class="n">allow</span><span class="w"> </span><span class="n">localhost</span>
+<span class="w">     </span><span class="n">allow</span><span class="w"> </span><span class="mf">192.168</span><span class="o">.</span><span class="mf">0.0</span><span class="o">/</span><span class="mi">16</span>
+<span class="w">     </span><span class="n">allow</span><span class="w"> </span><span class="n">myhost</span><span class="o">.</span><span class="n">mydomain</span><span class="o">.</span><span class="n">ro</span>
+</code></pre></div>
+
+<h3>Global Configuration: Email Notification （全局配置：邮件通知）</h3>
+<p>然后，我们来设置Monit的邮件通知。我们至少需要一个可用的<a href="http://xmodulo.com/mail-server-ubuntu-debian.html">SMTP服务器</a>来让Monit发送邮件。这样就可以（按照你的实际情况修改）：</p>
+<ul>
+<li>邮件服务器的机器名：smtp.monit.ro</li>
+<li>Monit使用的发件人：monit@monit.ro</li>
+<li>邮件的收件人：guletz@monit.ro</li>
+<li>邮件服务器使用的SMTP端口：587（默认是25）</li>
+</ul>
+<p>有了以上信息，邮件通知就可以这样配置：</p>
+<div class="highlight"><pre><span></span><code><span class="k">set</span><span class="w"> </span><span class="n">mailserver</span><span class="w">  </span><span class="n">smtp</span><span class="p">.</span><span class="n">monit</span><span class="p">.</span><span class="n">ro</span><span class="w"> </span><span class="n">port</span><span class="w"> </span><span class="mi">587</span>
+<span class="k">set</span><span class="w"> </span><span class="n">mail</span><span class="o">-</span><span class="nf">format</span><span class="w"> </span><span class="err">{</span>
+<span class="w"> </span><span class="k">from</span><span class="err">:</span><span class="w"> </span><span class="n">monit</span><span class="nv">@monit</span><span class="p">.</span><span class="n">ro</span>
+<span class="w"> </span><span class="nl">subject</span><span class="p">:</span><span class="w"> </span><span class="err">$</span><span class="n">SERVICE</span><span class="w"> </span><span class="err">$</span><span class="n">EVENT</span><span class="w"> </span><span class="k">at</span><span class="w"> </span><span class="err">$</span><span class="nc">DATE</span><span class="w"> </span><span class="k">on</span><span class="w"> </span><span class="err">$</span><span class="k">HOST</span>
+<span class="w"> </span><span class="nl">message</span><span class="p">:</span><span class="w"> </span><span class="n">Monit</span><span class="w"> </span><span class="err">$</span><span class="k">ACTION</span><span class="w"> </span><span class="err">$</span><span class="n">SERVICE</span><span class="w"> </span><span class="err">$</span><span class="n">EVENT</span><span class="w"> </span><span class="k">at</span><span class="w"> </span><span class="err">$</span><span class="nc">DATE</span><span class="w"> </span><span class="k">on</span><span class="w"> </span><span class="err">$</span><span class="k">HOST</span><span class="w"> </span><span class="err">:</span><span class="w"> </span><span class="err">$</span><span class="n">DESCRIPTION</span><span class="p">.</span>
+
+<span class="w">       </span><span class="n">Yours</span><span class="w"> </span><span class="n">sincerely</span><span class="p">,</span>
+<span class="w">          </span><span class="n">Monit</span>
+
+<span class="w">  </span><span class="err">}</span>
+
+<span class="k">set</span><span class="w"> </span><span class="n">alert</span><span class="w"> </span><span class="n">guletz</span><span class="nv">@monit</span><span class="p">.</span><span class="n">ro</span>
+</code></pre></div>
+
+<p>就像你看到的，Monit会提供几个内部变量（<code>$DATE</code>、<code>$EVENT</code>、<code>$HOST</code>等），你可以按照你的需求自定义邮件内容。如果你想要从Monit所在机器发送邮件，就需要一个已经安装的与sendmail兼容的程序（如postfix或者ssmtp）。</p>
+<h3>Global Configuration: Monit Daemon （全局配置：Monit守护进程）</h3>
+<p>接下来就该配置Monit守护进程了。可以将其设置成这样：</p>
+<ul>
+<li>在120秒后进行第一次检测。</li>
+<li>每3分钟检测一次服务。</li>
+<li>使用syslog来记录日志。</li>
+</ul>
+<p>如下代码段可以满足上述需求。</p>
+<div class="highlight"><pre><span></span><code>set daemon 120
+   with start delay 240
+set logfile syslog facility log_daemon
+</code></pre></div>
+
+<p>我们必须定义“idfile”，Monit守护进程的一个独一无二的ID文件；以及“eventqueue”，当monit的邮件因为SMTP或者网络故障发不出去，邮件会暂存在这里；以及确保/var/monit路径是存在的。然后使用下边的配置就可以了。</p>
+<div class="highlight"><pre><span></span><code><span class="n">set</span><span class="w"> </span><span class="n">idfile</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">monit</span><span class="o">/</span><span class="n">id</span>
+<span class="n">set</span><span class="w"> </span><span class="n">eventqueue</span>
+<span class="w">     </span><span class="n">basedir</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">monit</span>
+</code></pre></div>
+
+<h3>测试全局配置</h3>
+<p>现在“Global”部分就完成了。Monit配置文件看起来像这样：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">#  Global Section</span>
+
+<span class="c1"># status webpage and acl&#39;s</span>
+<span class="n">set</span><span class="w"> </span><span class="n">httpd</span><span class="w"> </span><span class="n">port</span><span class="w"> </span><span class="mi">1966</span><span class="w"> </span><span class="ow">and</span>
+<span class="w">     </span><span class="n">SSL</span><span class="w"> </span><span class="n">ENABLE</span>
+<span class="w">     </span><span class="n">PEMFILE</span><span class="w">  </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">certs</span><span class="o">/</span><span class="n">monit</span><span class="o">.</span><span class="n">pem</span>
+<span class="w">     </span><span class="n">allow</span><span class="w"> </span><span class="n">monituser</span><span class="p">:</span><span class="n">romania</span>
+<span class="w">     </span><span class="n">allow</span><span class="w"> </span><span class="n">localhost</span>
+<span class="w">     </span><span class="n">allow</span><span class="w"> </span><span class="mf">192.168</span><span class="o">.</span><span class="mf">0.0</span><span class="o">/</span><span class="mi">16</span>
+<span class="w">     </span><span class="n">allow</span><span class="w"> </span><span class="n">myhost</span><span class="o">.</span><span class="n">mydomain</span><span class="o">.</span><span class="n">ro</span>
+
+<span class="c1"># mail-server</span>
+<span class="n">set</span><span class="w"> </span><span class="n">mailserver</span><span class="w">  </span><span class="n">smtp</span><span class="o">.</span><span class="n">monit</span><span class="o">.</span><span class="n">ro</span><span class="w"> </span><span class="n">port</span><span class="w"> </span><span class="mi">587</span>
+<span class="c1"># email-format</span>
+<span class="n">set</span><span class="w"> </span><span class="n">mail</span><span class="o">-</span><span class="n">format</span><span class="w"> </span><span class="p">{</span>
+<span class="w"> </span><span class="n">from</span><span class="p">:</span><span class="w"> </span><span class="n">monit</span><span class="err">@</span><span class="n">monit</span><span class="o">.</span><span class="n">ro</span>
+<span class="w"> </span><span class="n">subject</span><span class="p">:</span><span class="w"> </span><span class="o">$</span><span class="n">SERVICE</span><span class="w"> </span><span class="o">$</span><span class="n">EVENT</span><span class="w"> </span><span class="n">at</span><span class="w"> </span><span class="o">$</span><span class="n">DATE</span><span class="w"> </span><span class="n">on</span><span class="w"> </span><span class="o">$</span><span class="n">HOST</span>
+<span class="w"> </span><span class="n">message</span><span class="p">:</span><span class="w"> </span><span class="n">Monit</span><span class="w"> </span><span class="o">$</span><span class="n">ACTION</span><span class="w"> </span><span class="o">$</span><span class="n">SERVICE</span><span class="w"> </span><span class="o">$</span><span class="n">EVENT</span><span class="w"> </span><span class="n">at</span><span class="w"> </span><span class="o">$</span><span class="n">DATE</span><span class="w"> </span><span class="n">on</span><span class="w"> </span><span class="o">$</span><span class="n">HOST</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="o">$</span><span class="n">DESCRIPTION</span><span class="o">.</span>
+
+<span class="w">       </span><span class="n">Yours</span><span class="w"> </span><span class="n">sincerely</span><span class="p">,</span>
+<span class="w">          </span><span class="n">Monit</span>
+
+<span class="w">  </span><span class="p">}</span>
+
+<span class="n">set</span><span class="w"> </span><span class="n">alert</span><span class="w"> </span><span class="n">guletz</span><span class="err">@</span><span class="n">monit</span><span class="o">.</span><span class="n">ro</span>
+
+<span class="c1"># delay checks</span>
+<span class="n">set</span><span class="w"> </span><span class="n">daemon</span><span class="w"> </span><span class="mi">120</span>
+<span class="w">   </span><span class="n">with</span><span class="w"> </span><span class="n">start</span><span class="w"> </span><span class="n">delay</span><span class="w"> </span><span class="mi">240</span>
+<span class="n">set</span><span class="w"> </span><span class="n">logfile</span><span class="w"> </span><span class="n">syslog</span><span class="w"> </span><span class="n">facility</span><span class="w"> </span><span class="n">log_daemon</span>
+
+<span class="c1"># idfile and mail queue path</span>
+<span class="n">set</span><span class="w"> </span><span class="n">idfile</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">monit</span><span class="o">/</span><span class="n">id</span>
+<span class="w"> </span><span class="n">set</span><span class="w"> </span><span class="n">eventqueue</span>
+<span class="w">     </span><span class="n">basedir</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">monit</span>
+</code></pre></div>
+
+<p>现在是时候验证我们的工作了，你可以通过运行如下命令来验证存在的配置文件（/etc/monit.conf）：</p>
+<div class="highlight"><pre><span></span><code># monit -t
+
+Control file syntax OK
+</code></pre></div>
+
+<p>如果monit提示任何错误，请再检查下配置文件。幸运的是，错误/警告信息是可以帮助你发现问题的，比如：</p>
+<div class="highlight"><pre><span></span><code><span class="n">monit</span><span class="o">:</span><span class="w"> </span><span class="n">Cannot</span><span class="w"> </span><span class="n">stat</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">SSL</span><span class="w"> </span><span class="n">server</span><span class="w"> </span><span class="n">PEM</span><span class="w"> </span><span class="n">file</span><span class="w"> </span><span class="s1">&#39;/var/certs/monit.pem&#39;</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="n">No</span><span class="w"> </span><span class="n">such</span><span class="w"> </span><span class="n">file</span><span class="w"> </span><span class="n">or</span><span class="w"> </span><span class="n">directory</span>
+<span class="sr">/etc/monit/</span><span class="n">monitrc</span><span class="o">:</span><span class="mi">10</span><span class="o">:</span><span class="w"> </span><span class="n">Warning</span><span class="o">:</span><span class="w"> </span><span class="n">hostname</span><span class="w"> </span><span class="n">did</span><span class="w"> </span><span class="n">not</span><span class="w"> </span><span class="n">resolve</span><span class="w"> </span><span class="s1">&#39;smtp.monit.ro&#39;</span>
+</code></pre></div>
+
+<p>一旦你确认配置文件没问题了，可以启动monit守护进程，然后等2到3分钟：</p>
+<div class="highlight"><pre><span></span><code># service monit start
+</code></pre></div>
+
+<p>如果你使用的是systemd，运行：</p>
+<div class="highlight"><pre><span></span><code># systemctl start monit
+</code></pre></div>
+
+<p>现在打开一个浏览器窗口，然后访问<code>https://&lt;monit_host&gt;:1966</code>。将<code>&lt;monit_host&gt;</code>替换成Monit所在机器的机器名或者IP地址。</p>
+<p>如果你使用的是自签名的SSL证书，你会在浏览器中看到一个警告信息。继续访问即可。</p>
+<p><img alt="" src="/data/attachment/album/201505/30/225357tnryary3xncuruyx.jpg"></p>
+<p>你完成登录后，就会看到这个页面。</p>
+<p><img alt="" src="/data/attachment/album/201505/30/225357g4ln5h6qnwwnm4gg.jpg"></p>
+<p>在这个教程的其余部分，我们演示监控一个本地服务器和常见服务的方法。你会在<a href="http://mmonit.com/wiki/Monit/ConfigurationExamples">官方wiki页面</a>看到很多有用的例子。其中的多数是可以直接复制粘贴的！</p>
+<h3>Service Configuration: CPU/Memory Monitoring （服务配置：CPU、内存监控）</h3>
+<p>我们先来监控本地服务器的CPU、内存占用。复制如下代码段到配置文件中。</p>
+<div class="highlight"><pre><span></span><code><span class="n">check</span><span class="w"> </span><span class="n">system</span><span class="w"> </span><span class="n">localhost</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">loadavg</span><span class="w"> </span><span class="p">(</span><span class="mi">1</span><span class="nb">min</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">10</span><span class="w"> </span><span class="n">then</span><span class="w"> </span><span class="n">alert</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">loadavg</span><span class="w"> </span><span class="p">(</span><span class="mi">5</span><span class="nb">min</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">6</span><span class="w"> </span><span class="n">then</span><span class="w"> </span><span class="n">alert</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">memory</span><span class="w"> </span><span class="n">usage</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">75</span><span class="o">%</span><span class="w"> </span><span class="n">then</span><span class="w"> </span><span class="n">alert</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">cpu</span><span class="w"> </span><span class="n">usage</span><span class="w"> </span><span class="p">(</span><span class="n">user</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">70</span><span class="o">%</span><span class="w"> </span><span class="n">then</span><span class="w"> </span><span class="n">alert</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">cpu</span><span class="w"> </span><span class="n">usage</span><span class="w"> </span><span class="p">(</span><span class="n">system</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">60</span><span class="o">%</span><span class="w"> </span><span class="n">then</span><span class="w"> </span><span class="n">alert</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">cpu</span><span class="w"> </span><span class="n">usage</span><span class="w"> </span><span class="p">(</span><span class="n">wait</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">75</span><span class="o">%</span><span class="w"> </span><span class="n">then</span><span class="w"> </span><span class="n">alert</span>
+</code></pre></div>
+
+<p>你可以很容易理解上边的配置。最上边的check是指每个监控周期（全局配置里设置的120秒）都对本机进行下面的操作。如果满足了任何条件，monit守护进程就会使用邮件发送一条报警。</p>
+<p>如果某个监控项不需要每个周期都检查，可以使用如下格式，它会每240秒检查一次平均负载。</p>
+<div class="highlight"><pre><span></span><code><span class="k">if</span><span class="w"> </span><span class="n">loadavg</span><span class="w"> </span><span class="p">(</span><span class="mi">1</span><span class="nb">min</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">10</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="n">cycles</span><span class="w"> </span><span class="n">then</span><span class="w"> </span><span class="n">alert</span>
+</code></pre></div>
+
+<h3>Service Configuration: SSH Service Monitoring （服务配置：SSH服务监控）</h3>
+<p>先检查我们的sshd是否安装在/usr/sbin/sshd：</p>
+<div class="highlight"><pre><span></span><code>check file sshd_bin with path /usr/sbin/sshd
+</code></pre></div>
+
+<p>我们还想检查sshd的启动脚本是否存在：</p>
+<div class="highlight"><pre><span></span><code>check file sshd_init with path /etc/init.d/sshd
+</code></pre></div>
+
+<p>最后，我们还想检查sshd守护进程是否存活，并且在监听22端口：</p>
+<div class="highlight"><pre><span></span><code><span class="n">check</span><span class="w"> </span><span class="n">process</span><span class="w"> </span><span class="n">sshd</span><span class="w"> </span><span class="n">with</span><span class="w"> </span><span class="n">pidfile</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">run</span><span class="o">/</span><span class="n">sshd</span><span class="o">.</span><span class="n">pid</span>
+<span class="w">   </span><span class="n">start</span><span class="w"> </span><span class="n">program</span><span class="w">  </span><span class="s2">&quot;/etc/init.d/sshd start&quot;</span>
+<span class="w">   </span><span class="n">stop</span><span class="w"> </span><span class="n">program</span><span class="w">  </span><span class="s2">&quot;/etc/init.d/sshd stop&quot;</span>
+<span class="w">   </span><span class="k">if</span><span class="w"> </span><span class="n">failed</span><span class="w"> </span><span class="n">port</span><span class="w"> </span><span class="mi">22</span><span class="w"> </span><span class="n">protocol</span><span class="w"> </span><span class="n">ssh</span><span class="w"> </span><span class="n">then</span><span class="w"> </span><span class="n">restart</span>
+<span class="w">   </span><span class="k">if</span><span class="w"> </span><span class="mi">5</span><span class="w"> </span><span class="n">restarts</span><span class="w"> </span><span class="n">within</span><span class="w"> </span><span class="mi">5</span><span class="w"> </span><span class="n">cycles</span><span class="w"> </span><span class="n">then</span><span class="w"> </span><span class="n">timeout</span>
+</code></pre></div>
+
+<p>我们可以这样解释上述配置：我们检查是否存在名为sshd的进程，并且有一个保存其pid的文件存在（/var/run/sshd.pid）。如果任何一个不存在，我们就使用启动脚本重启sshd。我们检查是否有进程在监听22端口，并且使用的是SSH协议。如果没有，我们还是重启sshd。如果在最近的5个监控周期（5x120秒）至少重启5次了，sshd就被认为是不能用的，我们就不再检查了。</p>
+<p><img alt="" src="/data/attachment/album/201505/30/225400u8bg8fo970tooykg.jpg"></p>
+<h3>Service Configuration: SMTP Service Monitoring （服务配置：SMTP服务监控）</h3>
+<p>现在我们来设置一个检查远程SMTP服务器（如192.168.111.102）的监控。假定SMTP服务器运行着SMTP、IMAP、SSH服务。</p>
+<div class="highlight"><pre><span></span><code><span class="nx">check</span><span class="w"> </span><span class="nx">host</span><span class="w"> </span><span class="nx">MAIL</span><span class="w"> </span><span class="nx">with</span><span class="w"> </span><span class="nx">address</span><span class="w"> </span><span class="m m-Double">192.168.111.102</span>
+<span class="w">   </span><span class="k">if</span><span class="w"> </span><span class="nx">failed</span><span class="w"> </span><span class="nx">icmp</span><span class="w"> </span><span class="k">type</span><span class="w"> </span><span class="nx">echo</span><span class="w"> </span><span class="nx">within</span><span class="w"> </span><span class="mi">10</span><span class="w"> </span><span class="nx">cycles</span><span class="w"> </span><span class="k">then</span><span class="w"> </span><span class="nx">alert</span>
+<span class="w">   </span><span class="k">if</span><span class="w"> </span><span class="nx">failed</span><span class="w"> </span><span class="nx">port</span><span class="w"> </span><span class="mi">25</span><span class="w">  </span><span class="nx">protocol</span><span class="w"> </span><span class="nx">smtp</span><span class="w"> </span><span class="k">then</span><span class="w"> </span><span class="nx">alert</span>
+<span class="w">             </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="nx">recovered</span><span class="w"> </span><span class="k">then</span><span class="w"> </span><span class="nx">exec</span><span class="w"> </span><span class="s">&quot;/scripts/mail-script&quot;</span>
+<span class="w">   </span><span class="k">if</span><span class="w"> </span><span class="nx">failed</span><span class="w"> </span><span class="nx">port</span><span class="w"> </span><span class="mi">22</span><span class="w">  </span><span class="nx">protocol</span><span class="w"> </span><span class="nx">ssh</span><span class="w">  </span><span class="k">then</span><span class="w"> </span><span class="nx">alert</span>
+<span class="w">   </span><span class="k">if</span><span class="w"> </span><span class="nx">failed</span><span class="w"> </span><span class="nx">port</span><span class="w"> </span><span class="mi">143</span><span class="w"> </span><span class="nx">protocol</span><span class="w"> </span><span class="nx">imap</span><span class="w"> </span><span class="k">then</span><span class="w"> </span><span class="nx">alert</span>
+</code></pre></div>
+
+<p>我们检查远程主机是否响应ICMP协议。如果我们在10个周期内没有收到ICMP回应，就发送一条报警。如果监测到25端口上的SMTP协议是异常的，就发送一条报警。如果在一次监测失败后又监测成功了，就运行一个脚本（/scripts/mail-script）。如果检查22端口上的SSH或者143端口上的IMAP协议不正常，同样发送报警。</p>
+<h3>总结</h3>
+<p>在这个教程，我演示了如何在本地服务器设置Monit，当然这只是Monit功能的冰山一角。你可以花些时间阅读Monit的man手册（写得很好）。Monit可以为任何Linux系统管理员做很多事情，并且具有非常优美和易于理解的语法。如果你将一个集中式的远程监控系统和Monit一同使用，你会得到一个更可靠的监控系统。你感觉Monit怎么样？</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

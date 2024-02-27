@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何解决服务器存储 inode 耗尽的问题</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: 老颜随笔 今天群里一朋友遇到这样一个问题，明明硬盘只用了 30% 左右的空间，但是却无法写入文件。使用 df -iT 命令查看 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2023/08/ru-he-jie-jue-fu-wu-qi-cun-chu-inode-hao-jin-de-wen-ti.html" rel="bookmark"
+           title="Permalink to 如何解决服务器存储 inode 耗尽的问题">如何解决服务器存储 inode 耗尽的问题</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2023-08-27T11:34:00+02:00">
+                Published: Sun 27 August 2023
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: 老颜随笔</p>
+<p><img alt="" src="/data/attachment/album/202308/27/113344y7f14v4gvbd014g0.jpg"></p>
+<p>今天群里一朋友遇到这样一个问题，明明硬盘只用了 30% 左右的空间，但是却无法写入文件。使用 <code>df -iT</code> 命令查看文件系统使用情况时，发现根目录的 inode 使用率竟然是 100%。后来通过聊天得知，原来他的服务器主要用于存储 1KB 左右的小文件，这一下就破案了。</p>
+<p>inode 主要用来记录文件的属性，及此文件的数据所在的块编号。每一个文件会占用一个 inode，因此如果都是小文件的话，那么就会出现 inode 已经耗尽，但文件系统还有很大的空闲空间，从而无法写入新文件。</p>
+<h3>如何获得更多的 inode</h3>
+<p>其实在创建 ext4 文件系统时，我们可以使用 <code>-T small</code> 参数来获得更多的 inode，从而优化对小文件的存储。接下来我们通过一个示例来看看效果。</p>
+<p>这是两块相同大小的硬盘：</p>
+<div class="highlight"><pre><span></span><code><span class="n">root</span><span class="nv">@debian</span><span class="err">:</span><span class="o">~</span><span class="err">#</span><span class="w"> </span><span class="n">lsblk</span>
+<span class="n">NAME</span><span class="w">   </span><span class="nl">MAJ</span><span class="p">:</span><span class="nf">MIN</span><span class="w"> </span><span class="n">RM</span><span class="w">  </span><span class="k">SIZE</span><span class="w"> </span><span class="n">RO</span><span class="w"> </span><span class="n">TYPE</span><span class="w"> </span><span class="n">MOUNTPOINTS</span>
+<span class="n">sdb</span><span class="w">      </span><span class="mi">8</span><span class="err">:</span><span class="mi">16</span><span class="w">   </span><span class="mi">0</span><span class="w">    </span><span class="mi">1</span><span class="n">G</span><span class="w">  </span><span class="mi">0</span><span class="w"> </span><span class="k">disk</span>
+<span class="err">└─</span><span class="n">sdb1</span><span class="w">   </span><span class="mi">8</span><span class="err">:</span><span class="mi">17</span><span class="w">   </span><span class="mi">0</span><span class="w"> </span><span class="mi">1023</span><span class="n">M</span><span class="w">  </span><span class="mi">0</span><span class="w"> </span><span class="n">part</span>
+<span class="n">sdc</span><span class="w">      </span><span class="mi">8</span><span class="err">:</span><span class="mi">32</span><span class="w">   </span><span class="mi">0</span><span class="w">    </span><span class="mi">1</span><span class="n">G</span><span class="w">  </span><span class="mi">0</span><span class="w"> </span><span class="k">disk</span>
+<span class="err">└─</span><span class="n">sdc1</span><span class="w">   </span><span class="mi">8</span><span class="err">:</span><span class="mi">33</span><span class="w">   </span><span class="mi">0</span><span class="w"> </span><span class="mi">1023</span><span class="n">M</span><span class="w">  </span><span class="mi">0</span><span class="w"> </span><span class="n">part</span>
+</code></pre></div>
+
+<p>首先使用默认参数给 <code>/dev/sdb1</code> 创建文件系统：</p>
+<div class="highlight"><pre><span></span><code><span class="n">root</span><span class="nv">@debian</span><span class="err">:</span><span class="o">~</span><span class="err">#</span><span class="w"> </span><span class="o">/</span><span class="n">sbin</span><span class="o">/</span><span class="n">mkfs</span><span class="p">.</span><span class="n">ext4</span><span class="w"> </span><span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="n">sdb1</span>
+<span class="n">mke2fs</span><span class="w"> </span><span class="mf">1.47.0</span><span class="w"> </span><span class="p">(</span><span class="mi">5</span><span class="o">-</span><span class="n">Feb</span><span class="o">-</span><span class="mi">2023</span><span class="p">)</span>
+<span class="n">Creating</span><span class="w"> </span><span class="n">filesystem</span><span class="w"> </span><span class="k">with</span><span class="w"> </span><span class="mi">261888</span><span class="w"> </span><span class="mi">4</span><span class="n">k</span><span class="w"> </span><span class="n">blocks</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="mi">65536</span><span class="w"> </span><span class="n">inodes</span>
+<span class="n">Filesystem</span><span class="w"> </span><span class="nl">UUID</span><span class="p">:</span><span class="w"> </span><span class="mi">8935</span><span class="n">c902</span><span class="o">-</span><span class="n">df71</span><span class="o">-</span><span class="mi">4808</span><span class="o">-</span><span class="n">b547</span><span class="o">-</span><span class="n">c85b6fd37a46</span>
+<span class="n">Superblock</span><span class="w"> </span><span class="n">backups</span><span class="w"> </span><span class="n">stored</span><span class="w"> </span><span class="k">on</span><span class="w"> </span><span class="nl">blocks</span><span class="p">:</span>
+<span class="w">        </span><span class="mi">32768</span><span class="p">,</span><span class="w"> </span><span class="mi">98304</span><span class="p">,</span><span class="w"> </span><span class="mi">163840</span><span class="p">,</span><span class="w"> </span><span class="mi">229376</span>
+
+<span class="n">Allocating</span><span class="w"> </span><span class="k">group</span><span class="w"> </span><span class="nl">tables</span><span class="p">:</span><span class="w"> </span><span class="n">done</span>
+<span class="n">Writing</span><span class="w"> </span><span class="n">inode</span><span class="w"> </span><span class="nl">tables</span><span class="p">:</span><span class="w"> </span><span class="n">done</span>
+<span class="n">Creating</span><span class="w"> </span><span class="n">journal</span><span class="w"> </span><span class="p">(</span><span class="mi">4096</span><span class="w"> </span><span class="n">blocks</span><span class="p">)</span><span class="err">:</span><span class="w"> </span><span class="n">done</span>
+<span class="n">Writing</span><span class="w"> </span><span class="n">superblocks</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">filesystem</span><span class="w"> </span><span class="n">accounting</span><span class="w"> </span><span class="nl">information</span><span class="p">:</span><span class="w"> </span><span class="n">done</span>
+</code></pre></div>
+
+<p>从输出中可见，该文件系统有 261888 个 4KB 大小的块和 65536 个 inode。</p>
+<p>然后使用 <code>-T</code> 参数对 <code>/dev/sdc1</code> 创建文件系统：</p>
+<div class="highlight"><pre><span></span><code><span class="n">root</span><span class="nv">@debian</span><span class="err">:</span><span class="o">~</span><span class="err">#</span><span class="w"> </span><span class="o">/</span><span class="n">sbin</span><span class="o">/</span><span class="n">mkfs</span><span class="p">.</span><span class="n">ext4</span><span class="w"> </span><span class="o">-</span><span class="n">T</span><span class="w"> </span><span class="n">small</span><span class="w"> </span><span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="n">sdc1</span>
+<span class="n">mke2fs</span><span class="w"> </span><span class="mf">1.47.0</span><span class="w"> </span><span class="p">(</span><span class="mi">5</span><span class="o">-</span><span class="n">Feb</span><span class="o">-</span><span class="mi">2023</span><span class="p">)</span>
+<span class="n">Creating</span><span class="w"> </span><span class="n">filesystem</span><span class="w"> </span><span class="k">with</span><span class="w"> </span><span class="mi">1047552</span><span class="w"> </span><span class="mi">1</span><span class="n">k</span><span class="w"> </span><span class="n">blocks</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="mi">262144</span><span class="w"> </span><span class="n">inodes</span>
+<span class="n">Filesystem</span><span class="w"> </span><span class="nl">UUID</span><span class="p">:</span><span class="w"> </span><span class="n">f521096d</span><span class="o">-</span><span class="n">a5a1</span><span class="o">-</span><span class="mi">41</span><span class="n">c9</span><span class="o">-</span><span class="n">bbf7</span><span class="o">-</span><span class="n">e6102e74e87a</span>
+<span class="n">Superblock</span><span class="w"> </span><span class="n">backups</span><span class="w"> </span><span class="n">stored</span><span class="w"> </span><span class="k">on</span><span class="w"> </span><span class="nl">blocks</span><span class="p">:</span>
+<span class="w">        </span><span class="mi">8193</span><span class="p">,</span><span class="w"> </span><span class="mi">24577</span><span class="p">,</span><span class="w"> </span><span class="mi">40961</span><span class="p">,</span><span class="w"> </span><span class="mi">57345</span><span class="p">,</span><span class="w"> </span><span class="mi">73729</span><span class="p">,</span><span class="w"> </span><span class="mi">204801</span><span class="p">,</span><span class="w"> </span><span class="mi">221185</span><span class="p">,</span><span class="w"> </span><span class="mi">401409</span><span class="p">,</span><span class="w"> </span><span class="mi">663553</span><span class="p">,</span>
+<span class="w">        </span><span class="mi">1024001</span>
+
+<span class="n">Allocating</span><span class="w"> </span><span class="k">group</span><span class="w"> </span><span class="nl">tables</span><span class="p">:</span><span class="w"> </span><span class="n">done</span>
+<span class="n">Writing</span><span class="w"> </span><span class="n">inode</span><span class="w"> </span><span class="nl">tables</span><span class="p">:</span><span class="w"> </span><span class="n">done</span>
+<span class="n">Creating</span><span class="w"> </span><span class="n">journal</span><span class="w"> </span><span class="p">(</span><span class="mi">16384</span><span class="w"> </span><span class="n">blocks</span><span class="p">)</span><span class="err">:</span><span class="w"> </span><span class="n">done</span>
+<span class="n">Writing</span><span class="w"> </span><span class="n">superblocks</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">filesystem</span><span class="w"> </span><span class="n">accounting</span><span class="w"> </span><span class="nl">information</span><span class="p">:</span><span class="w"> </span><span class="n">done</span>
+</code></pre></div>
+
+<p>从输出中可见，该文件系统有 1047552 个 1KB 大小的块和 262144 个 inode。</p>
+<p>也可以通过以下方式对比两个文件系统的 inode 数量：</p>
+<div class="highlight"><pre><span></span><code><span class="n">root</span><span class="nv">@debian</span><span class="err">:</span><span class="o">~</span><span class="err">#</span><span class="w"> </span><span class="n">mkdir</span><span class="w"> </span><span class="k">default</span><span class="w"> </span><span class="n">small</span>
+<span class="n">root</span><span class="nv">@debian</span><span class="err">:</span><span class="o">~</span><span class="err">#</span><span class="w"> </span><span class="n">mount</span><span class="w"> </span><span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="n">sdb1</span><span class="w"> </span><span class="k">default</span><span class="o">/</span>
+<span class="n">root</span><span class="nv">@debian</span><span class="err">:</span><span class="o">~</span><span class="err">#</span><span class="w"> </span><span class="n">mount</span><span class="w"> </span><span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="n">sdc1</span><span class="w"> </span><span class="n">small</span><span class="o">/</span>
+<span class="n">root</span><span class="nv">@debian</span><span class="err">:</span><span class="o">~</span><span class="err">#</span><span class="w"> </span><span class="n">df</span><span class="w"> </span><span class="o">-</span><span class="n">iT</span>
+<span class="n">Filesystem</span><span class="w">     </span><span class="n">Type</span><span class="w">      </span><span class="n">Inodes</span><span class="w"> </span><span class="n">IUsed</span><span class="w">   </span><span class="n">IFree</span><span class="w"> </span><span class="n">IUse</span><span class="o">%</span><span class="w"> </span><span class="n">Mounted</span><span class="w"> </span><span class="k">on</span>
+<span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="n">sdb1</span><span class="w">      </span><span class="n">ext4</span><span class="w">       </span><span class="mi">65536</span><span class="w">    </span><span class="mi">11</span><span class="w">   </span><span class="mi">65525</span><span class="w">    </span><span class="mi">1</span><span class="o">%</span><span class="w"> </span><span class="o">/</span><span class="n">root</span><span class="o">/</span><span class="k">default</span>
+<span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="n">sdc1</span><span class="w">      </span><span class="n">ext4</span><span class="w">      </span><span class="mi">262144</span><span class="w">    </span><span class="mi">11</span><span class="w">  </span><span class="mi">262133</span><span class="w">    </span><span class="mi">1</span><span class="o">%</span><span class="w"> </span><span class="o">/</span><span class="n">root</span><span class="o">/</span><span class="n">small</span>
+</code></pre></div>
+
+<p>从以上示例中我们可以看出，在使用 <code>-T small</code> 参数后，inode 数量多了近 20 万个！</p>
+<p><strong>注意：</strong> 这样做也是有代价的。在使用默认参数创建 ext4 文件系统时，默认数据块大小为 4KB，而使用 <code>-T small</code> 参数后，数据块大小为 1KB。这就意味着我们存储一个同样大小的文件，使用 <code>-T small</code> 参数创建的文件系统存储该数据时，占用的数据块更多，数据更分散，如果文件较大，会直接影响文件的读取速度</p>
+<blockquote>
+<p><code>mke2fs</code>（<code>mkfs.ext4</code>）的 <code>-T</code> 参数指定了如何使用该文件系统，以便 <code>mke2fs</code> 可以为该用途选择最佳的文件系统参数，其支持的使用类型在配置文件 <code>/etc/mke2fs.conf</code> 中定义，可以使用逗号分隔指定一个或多个使用类型</p>
+</blockquote>
+<h3>inode 不足的解决方法</h3>
+<p>当你已有的文件系统上出现 inode 不足的问题时，除了备份数据、重建分区并恢复分区数据外，还有两种临时解决方案：</p>
+<p>1、删除文件大小为 0 的空文件，可以使用如下命令查找：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">find</span><span class="w"> </span><span class="nx">PATH</span><span class="w"> </span><span class="o">-</span><span class="nx">name</span><span class="w"> </span><span class="s">&quot;*&quot;</span><span class="w"> </span><span class="o">-</span><span class="k">type</span><span class="w"> </span><span class="nx">f</span><span class="w"> </span><span class="o">-</span><span class="nx">size</span><span class="w"> </span><span class="mi">0</span><span class="nx">c</span><span class="w"> </span>
+</code></pre></div>
+
+<p><strong>注意：</strong> 使用 <code>-size</code> 参数时，不要用 <code>-size 1k</code>，这个表示占用空间为 1KB，而不是文件大小为 1KB，应该使用 <code>-size 1024c</code> 才表示文件大小为 1KB。</p>
+<p>2、可以定期对历史小文件进行打包、归档，以减少文件数量。</p>
+<p>via: <a href="http://www.yanjun.pro/?p=128">http://www.yanjun.pro/?p=128</a> 作者：<a href="http://www.yanjun.pro">老颜随笔</a> 编辑：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由贡献者投稿至 <a href="https://github.com/LCTT/Articles/">Linux 中国公开投稿计划</a>，采用 <a href="https://creativecommons.org/licenses/by-sa/4.0/deed.zh">CC-BY-SA 协议</a> 发布，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

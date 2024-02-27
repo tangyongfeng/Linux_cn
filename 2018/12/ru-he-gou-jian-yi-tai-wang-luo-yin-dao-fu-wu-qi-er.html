@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何构建一台网络引导服务器（二）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Gregory Bartholomew 在 如何构建一台网络引导服务器（一） 的文章中，我们展示了如何创建一个网络引导镜像，在那个镜像中使用了一个 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/12/ru-he-gou-jian-yi-tai-wang-luo-yin-dao-fu-wu-qi-er.html" rel="bookmark"
+           title="Permalink to 如何构建一台网络引导服务器（二）">如何构建一台网络引导服务器（二）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-12-29T22:46:32+01:00">
+                Published: Sat 29 December 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Gregory Bartholomew</p>
+<p><img alt="" src="/data/attachment/album/201812/29/224635ia5a06njzjy00zsz.jpg"></p>
+<p>在 <a href="/article-10379-1.html">如何构建一台网络引导服务器（一）</a> 的文章中，我们展示了如何创建一个网络引导镜像，在那个镜像中使用了一个名为 <code>liveuser</code> 帐户，它的家目录位于内存中，重启后家目录中的内容将全部消失。然而很多用户都希望机器重启后保存他们的文件和设置。因此，在本系列的第二部分，我们将向你展示如何在第一部分的基础上，重新配置网络引导镜像，以便 <a href="https://en.wikipedia.org/wiki/Active_Directory">活动目录</a> 中的用户帐户可以进行登录，然后从一个 NFS 服务器上自动挂载他们的家目录。</p>
+<p>本系列的第三部分，我们将向你展示网络引导客户端如何与中心化配置的 iPXE 引导菜单进行交互。</p>
+<h3>设置使用 KRB5 认证的 NFS4 Home 目录</h3>
+<p>按以前的文章 “<a href="https://fedoramagazine.org/secure-nfs-home-directories-kerberos">使用 Kerberos 强化共享的 NFS Home 目录安全性</a>” 的指导来做这个设置。</p>
+<h3>删除 Liveuser 帐户</h3>
+<p>删除本系列文章第一部分中创建的 <code>liveuser</code> 帐户：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>-i
+<span class="c1"># sed -i &#39;/automaticlogin/Id&#39; /fc28/etc/gdm/custom.conf</span>
+<span class="c1"># rm -f /fc28/etc/sudoers.d/liveuser</span>
+<span class="c1"># for i in passwd shadow group gshadow; do sed -i &#39;/^liveuser:/d&#39; /fc28/etc/$i; done</span>
+</code></pre></div>
+
+<h3>配置 NTP、KRB5 和 SSSD</h3>
+<p>接下来，我们需要将 NTP、KRB5 和 SSSD 的配置文件复制进客户端使用的镜像中，以便于它们能够使用同一个帐户：</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span>MY_HOSTNAME=$(<span class="err">&lt;</span>/etc/hostname)
+#<span class="w"> </span>MY_DOMAIN=<span class="cp">${</span><span class="n">MY_HOSTNAME</span><span class="c1">#*.</span><span class="cp">}</span>
+#<span class="w"> </span>dnf<span class="w"> </span>-y<span class="w"> </span>--installroot=/fc28<span class="w"> </span>install<span class="w"> </span>ntp<span class="w"> </span>krb5-workstation<span class="w"> </span>sssd
+#<span class="w"> </span>cp<span class="w"> </span>/etc/ntp.conf<span class="w"> </span>/fc28/etc
+#<span class="w"> </span>chroot<span class="w"> </span>/fc28<span class="w"> </span>systemctl<span class="w"> </span>enable<span class="w"> </span>ntpd.service
+#<span class="w"> </span>cp<span class="w"> </span>/etc/krb5.conf.d/<span class="cp">${</span><span class="n">MY_DOMAIN</span><span class="o">%%.*</span><span class="cp">}</span><span class="w"> </span>/fc28/etc/krb5.conf.d
+#<span class="w"> </span>cp<span class="w"> </span>/etc/sssd/sssd.conf<span class="w"> </span>/fc28/etc/sssd
+</code></pre></div>
+
+<p>在已配置的识别服务的基础上，重新配置 sssd 提供认证服务：</p>
+<div class="highlight"><pre><span></span><code># sed -i &#39;/services =/s/$/, pam/&#39; /fc28/etc/sssd/sssd.conf
+</code></pre></div>
+
+<p>另外，配置成确保客户端不能更改这个帐户密码：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> sed -i &#39;/id_provider/a \ \ ad_maximum_machine_account_password_age = 0&#39; /fc28/etc/sssd/sssd.conf
+</code></pre></div>
+
+<p>另外，复制 nfsnobody 的定义：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="nt">for</span><span class="w"> </span><span class="nt">i</span><span class="w"> </span><span class="nt">in</span><span class="w"> </span><span class="nt">passwd</span><span class="w"> </span><span class="nt">shadow</span><span class="w"> </span><span class="nt">group</span><span class="w"> </span><span class="nt">gshadow</span><span class="o">;</span><span class="w"> </span><span class="nt">do</span><span class="w"> </span><span class="nt">grep</span><span class="w"> </span><span class="s2">&quot;^nfsnobody:&quot;</span><span class="w"> </span><span class="o">/</span><span class="nt">etc</span><span class="o">/$</span><span class="nt">i</span><span class="w"> </span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="o">/</span><span class="nt">fc28</span><span class="o">/</span><span class="nt">etc</span><span class="o">/$</span><span class="nt">i</span><span class="o">;</span><span class="w"> </span><span class="nt">done</span>
+</code></pre></div>
+
+<h3>加入活动目录</h3>
+<p>接下来，你将执行一个 <code>chroot</code> 将客户端镜像加入到活动目录。从删除预置在网络引导镜像中同名的计算机帐户开始：</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span>MY_USERNAME=jsmith
+#<span class="w"> </span>MY_CLIENT_HOSTNAME=$(<span class="err">&lt;</span>/fc28/etc/hostname)
+#<span class="w"> </span>adcli<span class="w"> </span>delete-computer<span class="w"> </span>&quot;<span class="cp">${</span><span class="n">MY_CLIENT_HOSTNAME</span><span class="o">%%.*</span><span class="cp">}</span>&quot;<span class="w"> </span>-U<span class="w"> </span>&quot;<span class="nv">$MY_USERNAME</span>&quot;
+</code></pre></div>
+
+<p>在网络引导镜像中如果有 <code>krb5.keytab</code> 文件，也删除它：</p>
+<div class="highlight"><pre><span></span><code># rm -f /fc28/etc/krb5.keytab
+</code></pre></div>
+
+<p><code>chroot</code> 到网络引导镜像中：</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nv">i</span><span class="w"> </span><span class="nv">in</span><span class="w"> </span><span class="nv">dev</span><span class="w"> </span><span class="nv">dev</span><span class="o">/</span><span class="nv">pts</span><span class="w"> </span><span class="nv">dev</span><span class="o">/</span><span class="nv">shm</span><span class="w"> </span><span class="nv">proc</span><span class="w"> </span><span class="nv">sys</span><span class="w"> </span><span class="nv">run</span><span class="c1">; do mount -o bind /$i /fc28/$i; done</span>
+#<span class="w"> </span><span class="nv">chroot</span><span class="w"> </span><span class="o">/</span><span class="nv">fc28</span><span class="w"> </span><span class="o">/</span><span class="nv">usr</span><span class="o">/</span><span class="nv">bin</span><span class="o">/</span><span class="nv">bash</span><span class="w"> </span><span class="o">--</span><span class="nv">login</span>
+</code></pre></div>
+
+<p>执行一个加入操作：</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span>MY_USERNAME=jsmith
+#<span class="w"> </span>MY_HOSTNAME=$(<span class="err">&lt;</span>/etc/hostname)
+#<span class="w"> </span>MY_DOMAIN=<span class="cp">${</span><span class="n">MY_HOSTNAME</span><span class="c1">#*.</span><span class="cp">}</span>
+#<span class="w"> </span>MY_REALM=<span class="cp">${</span><span class="n">MY_DOMAIN</span><span class="o">^^</span><span class="cp">}</span>
+#<span class="w"> </span>MY_OU=&quot;cn=computers,dc=<span class="cp">${</span><span class="n">MY_DOMAIN</span><span class="o">//./</span><span class="p">,</span><span class="n">dc</span><span class="o">=</span><span class="cp">}</span>&quot;
+#<span class="w"> </span>adcli<span class="w"> </span>join<span class="w"> </span><span class="nv">$MY_DOMAIN</span><span class="w"> </span>--login-user=&quot;<span class="nv">$MY_USERNAME</span>&quot;<span class="w"> </span>--computer-name=&quot;<span class="cp">${</span><span class="n">MY_HOSTNAME</span><span class="o">%%.*</span><span class="cp">}</span>&quot;<span class="w"> </span>--host-fqdn=&quot;<span class="nv">$MY_HOSTNAME</span>&quot;<span class="w"> </span>--user-principal=&quot;host/<span class="nv">$MY_HOSTNAME</span>@<span class="nv">$MY_REALM</span>&quot;<span class="w"> </span>--domain-ou=&quot;<span class="nv">$MY_OU</span>&quot;
+</code></pre></div>
+
+<p>现在登出 chroot，并清除 root 用户的命令历史：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> logout
+<span class="gh">#</span> for i in run sys proc dev/shm dev/pts dev; do umount /fc28/$i; done
+<span class="gh">#</span> &gt; /fc28/root/.bash_history
+</code></pre></div>
+
+<h3>安装和配置 PAM 挂载</h3>
+<p>我们希望客户端登入后自动挂载用户家目录。为实现这个目的，我们将要使用 <code>pam_mount</code> 模块。安装和配置 <code>pam_mount</code>：</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>--installroot=/fc28<span class="w"> </span>pam_mount
+#<span class="w"> </span>cat<span class="w"> </span><span class="err">&lt;</span><span class="nt">&lt; END</span><span class="w"> </span><span class="nt">&gt;</span><span class="w"> </span>/fc28/etc/security/pam_mount.conf.xml
+<span class="cp">&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot; ?&gt;</span>
+<span class="cp">&lt;!DOCTYPE pam_mount SYSTEM &quot;pam_mount.conf.xml.dtd&quot;&gt;</span>
+<span class="nt">&lt;pam_mount&gt;</span>
+<span class="nt">&lt;debug</span><span class="w"> </span><span class="na">enable=</span><span class="s">&quot;0&quot;</span><span class="w"> </span><span class="nt">/&gt;</span>
+<span class="nt">&lt;volume</span><span class="w"> </span><span class="na">uid=</span><span class="s">&quot;1400000000-1499999999&quot;</span><span class="w"> </span><span class="na">fstype=</span><span class="s">&quot;nfs4&quot;</span><span class="w"> </span><span class="na">server=</span><span class="s">&quot;$MY_HOSTNAME&quot;</span><span class="w"> </span><span class="na">path=</span><span class="s">&quot;/home/%(USER)&quot;</span><span class="w"> </span><span class="na">mountpoint=</span><span class="s">&quot;/home/%(USER)&quot;</span><span class="w"> </span><span class="na">options=</span><span class="s">&quot;sec=krb5&quot;</span><span class="w"> </span><span class="nt">/&gt;</span>
+<span class="nt">&lt;mkmountpoint</span><span class="w"> </span><span class="na">enable=</span><span class="s">&quot;1&quot;</span><span class="w"> </span><span class="na">remove=</span><span class="s">&quot;0&quot;</span><span class="w"> </span><span class="nt">/&gt;</span>
+<span class="nt">&lt;msg-authpw&gt;</span>Password:<span class="nt">&lt;/msg-authpw&gt;</span>
+<span class="nt">&lt;/pam_mount&gt;</span>
+END
+</code></pre></div>
+
+<p>重新配置 PAM 去使用 <code>pam_mount</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="o">#</span> <span class="n">dnf</span> <span class="n">install</span> <span class="o">-</span><span class="n">y</span> <span class="n">patch</span>
+<span class="o">#</span> <span class="n">cp</span> <span class="o">-</span><span class="n">r</span> <span class="o">/</span><span class="n">fc28</span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">share</span><span class="o">/</span><span class="n">authselect</span><span class="o">/</span><span class="n">default</span><span class="o">/</span><span class="n">sssd</span> <span class="o">/</span><span class="n">fc28</span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">authselect</span><span class="o">/</span><span class="n">custom</span>
+<span class="o">#</span> <span class="n">echo</span> <span class="s">&#39;initgroups: files&#39;</span> <span class="o">&gt;&gt;</span> <span class="o">/</span><span class="n">fc28</span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">authselect</span><span class="o">/</span><span class="n">custom</span><span class="o">/</span><span class="n">sssd</span><span class="o">/</span><span class="n">nsswitch</span><span class="p">.</span><span class="n">conf</span>
+<span class="o">#</span> <span class="n">patch</span> <span class="o">/</span><span class="n">fc28</span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">authselect</span><span class="o">/</span><span class="n">custom</span><span class="o">/</span><span class="n">sssd</span><span class="o">/</span><span class="n">system</span><span class="o">-</span><span class="n">auth</span> <span class="o">&lt;&lt;</span> <span class="kr">END</span>
+<span class="err">@@</span> <span class="o">-</span><span class="mi">12</span> <span class="o">+</span><span class="mi">12</span><span class="p">,</span><span class="mi">2</span> <span class="err">@@</span>
+<span class="o">-</span><span class="n">auth</span>        <span class="n">sufficient</span>                                   <span class="n">pam_sss</span><span class="p">.</span><span class="n">so</span> <span class="n">forward_pass</span>
+<span class="o">+</span><span class="n">auth</span>        <span class="n">requisite</span>                                    <span class="n">pam_mount</span><span class="p">.</span><span class="n">so</span> <span class="p">{</span><span class="n">include</span> <span class="n">if</span> <span class="s">&quot;with-pammount&quot;</span><span class="p">}</span>
+<span class="o">+</span><span class="n">auth</span>        <span class="n">sufficient</span>                                   <span class="n">pam_sss</span><span class="p">.</span><span class="n">so</span> <span class="p">{</span><span class="n">if</span> <span class="s">&quot;with-pammount&quot;</span><span class="p">:</span><span class="n">use_first_pass</span><span class="p">|</span><span class="n">forward_pass</span><span class="p">}</span>
+<span class="err">@@</span> <span class="o">-</span><span class="mi">35</span><span class="p">,</span><span class="mi">2</span> <span class="o">+</span><span class="mi">36</span><span class="p">,</span><span class="mi">3</span> <span class="err">@@</span>
+ <span class="n">session</span>     <span class="n">required</span>                                     <span class="n">pam_unix</span><span class="p">.</span><span class="n">so</span>
+<span class="o">+</span><span class="n">session</span>     <span class="n">optional</span>                                     <span class="n">pam_mount</span><span class="p">.</span><span class="n">so</span> <span class="p">{</span><span class="n">include</span> <span class="n">if</span> <span class="s">&quot;with-pammount&quot;</span><span class="p">}</span>
+ <span class="n">session</span>     <span class="n">optional</span>                                     <span class="n">pam_sss</span><span class="p">.</span><span class="n">so</span>
+<span class="kr">END</span>
+<span class="o">#</span> <span class="n">patch</span> <span class="o">/</span><span class="n">fc28</span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">authselect</span><span class="o">/</span><span class="n">custom</span><span class="o">/</span><span class="n">sssd</span><span class="o">/</span><span class="n">password</span><span class="o">-</span><span class="n">auth</span> <span class="o">&lt;&lt;</span> <span class="kr">END</span>
+<span class="err">@@</span> <span class="o">-</span><span class="mi">9</span> <span class="o">+</span><span class="mi">9</span><span class="p">,</span><span class="mi">2</span> <span class="err">@@</span>
+<span class="o">-</span><span class="n">auth</span>        <span class="n">sufficient</span>                                   <span class="n">pam_sss</span><span class="p">.</span><span class="n">so</span> <span class="n">forward_pass</span>
+<span class="o">+</span><span class="n">auth</span>        <span class="n">requisite</span>                                    <span class="n">pam_mount</span><span class="p">.</span><span class="n">so</span> <span class="p">{</span><span class="n">include</span> <span class="n">if</span> <span class="s">&quot;with-pammount&quot;</span><span class="p">}</span>
+<span class="o">+</span><span class="n">auth</span>        <span class="n">sufficient</span>                                   <span class="n">pam_sss</span><span class="p">.</span><span class="n">so</span> <span class="p">{</span><span class="n">if</span> <span class="s">&quot;with-pammount&quot;</span><span class="p">:</span><span class="n">use_first_pass</span><span class="p">|</span><span class="n">forward_pass</span><span class="p">}</span>
+<span class="err">@@</span> <span class="o">-</span><span class="mi">32</span><span class="p">,</span><span class="mi">2</span> <span class="o">+</span><span class="mi">33</span><span class="p">,</span><span class="mi">3</span> <span class="err">@@</span>
+ <span class="n">session</span>     <span class="n">required</span>                                     <span class="n">pam_unix</span><span class="p">.</span><span class="n">so</span>
+<span class="o">+</span><span class="n">session</span>     <span class="n">optional</span>                                     <span class="n">pam_mount</span><span class="p">.</span><span class="n">so</span> <span class="p">{</span><span class="n">include</span> <span class="n">if</span> <span class="s">&quot;with-pammount&quot;</span><span class="p">}</span>
+ <span class="n">session</span>     <span class="n">optional</span>                                     <span class="n">pam_sss</span><span class="p">.</span><span class="n">so</span>
+<span class="kr">END</span>
+<span class="o">#</span> <span class="n">chroot</span> <span class="o">/</span><span class="n">fc28</span> <span class="n">authselect</span> <span class="n">select</span> <span class="n">custom</span><span class="o">/</span><span class="n">sssd</span> <span class="n">with</span><span class="o">-</span><span class="n">pammount</span> <span class="o">--</span><span class="n">force</span>
+</code></pre></div>
+
+<p>另外，要确保从客户端上总是可解析 NFS 服务器的主机名：</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span>MY_IP=$(host<span class="w"> </span>-t<span class="w"> </span>A<span class="w"> </span><span class="nv">$MY_HOSTNAME</span><span class="w"> </span>|<span class="w"> </span>awk<span class="w"> </span>&#39;{print<span class="w"> </span>$4}&#39;)
+#<span class="w"> </span>echo<span class="w"> </span>&quot;<span class="nv">$MY_IP</span><span class="w"> </span><span class="nv">$MY_HOSTNAME</span><span class="w"> </span><span class="cp">${</span><span class="n">MY_HOSTNAME</span><span class="o">%%.*</span><span class="cp">}</span>&quot;<span class="w"> </span>&gt;&gt;<span class="w"> </span>/fc28/etc/hosts
+</code></pre></div>
+
+<p>可选，允许所有用户可以使用 <code>sudo</code>：</p>
+<div class="highlight"><pre><span></span><code># echo &#39;%users ALL=(ALL) NOPASSWD: ALL&#39; &gt; /fc28/etc/sudoers.d/users
+</code></pre></div>
+
+<h3>转换 NFS 根目录到一个 iSCSI 后备存储器</h3>
+<p>在一个 nfsroot 连接建立之后，目前版本的 nfs-utils 可能很难为家目录建立一个从客户端到 NFS 服务器的第二个连接。当尝试去访问家目录时，客户端将被挂起。因此，为了共享网络引导镜像，我们将使用一个不同的协议（iSCSI）来规避这个问题。</p>
+<p>首先 <code>chroot</code> 到镜像中，重新配置它的 <code>initramfs</code>，让它从一个 iSCSI 根目录中去引导：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> for i in dev dev/pts dev/shm proc sys run; do mount -o bind /$i /fc28/$i; done
+<span class="gh">#</span> chroot /fc28 /usr/bin/bash --login
+<span class="gh">#</span> dnf install -y iscsi-initiator-utils
+<span class="gh">#</span> sed -i &#39;s/nfs/iscsi/&#39; /etc/dracut.conf.d/netboot.conf
+<span class="gh">#</span> echo &#39;omit_drivers+=&quot; qedi &quot;&#39; &gt; /etc/dracut.conf.d/omit-qedi.conf
+<span class="gh">#</span> echo &#39;blacklist qedi&#39; &gt; /etc/modprobe.d/blacklist-qedi.conf
+<span class="gh">#</span> KERNEL=$(ls -c /lib/modules | head -n 1)
+<span class="gh">#</span> INITRD=$(find /boot -name &#39;init*&#39; | grep -m 1 $KERNEL)
+<span class="gh">#</span> dracut -f $INITRD $KERNEL
+<span class="gh">#</span> logout
+<span class="gh">#</span> for i in run sys proc dev/shm dev/pts dev; do umount /fc28/$i; done
+<span class="gh">#</span> &gt; /fc28/root/.bash_history
+</code></pre></div>
+
+<p>在测试时，qedi 驱动会破坏 iSCSI，因此我们将它禁用。</p>
+<p>接着，创建一个 <code>fc28.img</code> <a href="https://en.wikipedia.org/wiki/Sparse_file">稀疏文件</a>。这个稀疏文件代表 iSCSI 目标的后备存储器：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> FC28_SIZE=$(du -ms /fc28 | cut -f 1)
+<span class="gh">#</span> dd if=/dev/zero of=/fc28.img bs=1MiB count=0 seek=$(($FC28_SIZE*2))
+</code></pre></div>
+
+<p>（如果你有一个可使用的独立分区或磁盘驱动器，也可以用它，而不用再去创建这个稀疏文件了。）</p>
+<p>接着，使用一个文件系统去格式化镜像、挂载它、然后将网络引导镜像复制进去：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> mkfs -t xfs -L NETROOT /fc28.img
+<span class="gh">#</span> TEMP_MNT=$(mktemp -d)
+<span class="gh">#</span> mount /fc28.img $TEMP_MNT
+<span class="gh">#</span> cp -a /fc28/* $TEMP_MNT
+<span class="gh">#</span> umount $TEMP_MNT
+</code></pre></div>
+
+<p>在使用 SquashFS 测试时，客户端偶尔会出现小状况。似乎是因为 SquashFS 在多处理器客户端上没法执行随机 I/O。（更多内容见 <a href="https://chrisdown.name/2018/04/17/kernel-adventures-the-curious-case-of-squashfs-stalls.html">squashfs 读取卡顿的奇怪案例</a>）。如果你希望使用文件系统压缩来提升吞吐性能，<a href="https://en.wikipedia.org/wiki/ZFS">ZFS</a> 或许是个很好的选择。</p>
+<p>如果你对 iSCSI 服务器的吞吐性能要求非常高（比如，成百上千的客户端要连接它），可能需要使用带 <a href="https://en.wikipedia.org/wiki/Load_balancing_(computing)">负载均衡</a> 的 <a href="http://docs.ceph.com/docs/mimic/rbd/iscsi-overview/">Ceph</a> 集群了。更多相关内容，请查看 <a href="https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/load_balancer_administration/ceph_example">使用 HAProxy 和 Keepalived 负载均衡的 Ceph 对象网关</a>。</p>
+<h3>安装和配置 iSCSI</h3>
+<p>为了给我们的客户端提供网络引导镜像，安装 <code>scsi-target-utils</code> 包：</p>
+<div class="highlight"><pre><span></span><code># dnf install -y scsi-target-utils
+</code></pre></div>
+
+<p>配置 iSCSI 守护程序去提供 <code>fc28.img</code> 文件：</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span>MY_REVERSE_HOSTNAME=$(echo<span class="w"> </span><span class="nv">$MY_HOSTNAME</span><span class="w"> </span>|<span class="w"> </span>tr<span class="w"> </span>&#39;.&#39;<span class="w"> </span>&quot;\n&quot;<span class="w"> </span>|<span class="w"> </span>tac<span class="w"> </span>|<span class="w"> </span>tr<span class="w"> </span>&quot;\n&quot;<span class="w"> </span>&#39;.&#39;<span class="w"> </span>|<span class="w"> </span>cut<span class="w"> </span>-b<span class="w"> </span>-<span class="cp">${</span><span class="c1">#MY_HOSTNAME</span><span class="cp">}</span>)
+#<span class="w"> </span>cat<span class="w"> </span><span class="err">&lt;</span><span class="nt">&lt; END</span> <span class="nt">&gt;</span><span class="w"> </span>/etc/tgt/conf.d/fc28.conf
+<span class="nt">&lt;target</span> <span class="err">iqn.$MY_REVERSE_HOSTNAME:fc28</span><span class="nt">&gt;</span>
+<span class="w">  </span>backing-store<span class="w"> </span>/fc28.img
+<span class="w">  </span>readonly<span class="w"> </span>1
+<span class="nt">&lt;/target&gt;</span>
+END
+</code></pre></div>
+
+<p>开头的 <code>iqn.</code> 是 <code>/usr/lib/dracut/modules.d/40network/net-lib.sh</code> 所需要的。</p>
+<p>添加一个防火墙例外，并启用和启动这个服务：</p>
+<div class="highlight"><pre><span></span><code># firewall-cmd --add-service=iscsi-target
+# firewall-cmd --runtime-to-permanent
+# systemctl enable tgtd.service
+# systemctl start tgtd.service
+</code></pre></div>
+
+<p>你现在应该能够使用 <code>tatadm</code> 命令看到这个镜像共享了：</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span><span class="nv">tgtadm</span><span class="w"> </span><span class="o">--</span><span class="nv">mode</span><span class="w"> </span><span class="nv">target</span><span class="w"> </span><span class="o">--</span><span class="nv">op</span><span class="w"> </span><span class="k">show</span>
+</code></pre></div>
+
+<p>上述命令的输出应该类似如下的内容：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">Target</span><span class="w"> </span><span class="mi">1</span><span class="p">:</span><span class="w"> </span><span class="nx">iqn</span><span class="p">.</span><span class="nx">edu</span><span class="p">.</span><span class="nx">example</span><span class="p">.</span><span class="nx">server</span><span class="o">-</span><span class="mi">01</span><span class="p">:</span><span class="nx">fc28</span>
+<span class="w">    </span><span class="nx">System</span><span class="w"> </span><span class="nx">information</span><span class="p">:</span>
+<span class="w">        </span><span class="nx">Driver</span><span class="p">:</span><span class="w"> </span><span class="nx">iscsi</span>
+<span class="w">        </span><span class="nx">State</span><span class="p">:</span><span class="w"> </span><span class="nx">ready</span>
+<span class="w">    </span><span class="nx">I_T</span><span class="w"> </span><span class="nx">nexus</span><span class="w"> </span><span class="nx">information</span><span class="p">:</span>
+<span class="w">    </span><span class="nx">LUN</span><span class="w"> </span><span class="nx">information</span><span class="p">:</span>
+<span class="w">        </span><span class="nx">LUN</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">            </span><span class="nx">Type</span><span class="p">:</span><span class="w"> </span><span class="nx">controller</span>
+<span class="w">            </span><span class="nx">SCSI</span><span class="w"> </span><span class="nx">ID</span><span class="p">:</span><span class="w"> </span><span class="nx">IET</span><span class="w">     </span><span class="mi">00010000</span>
+<span class="w">            </span><span class="nx">SCSI</span><span class="w"> </span><span class="nx">SN</span><span class="p">:</span><span class="w"> </span><span class="nx">beaf10</span>
+<span class="w">            </span><span class="nx">Size</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="nx">MB</span><span class="p">,</span><span class="w"> </span><span class="nx">Block</span><span class="w"> </span><span class="nx">size</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span>
+<span class="w">            </span><span class="nx">Online</span><span class="p">:</span><span class="w"> </span><span class="nx">Yes</span>
+<span class="w">            </span><span class="nx">Removable</span><span class="w"> </span><span class="nx">media</span><span class="p">:</span><span class="w"> </span><span class="nx">No</span>
+<span class="w">            </span><span class="nx">Prevent</span><span class="w"> </span><span class="nx">removal</span><span class="p">:</span><span class="w"> </span><span class="nx">No</span>
+<span class="w">            </span><span class="nx">Readonly</span><span class="p">:</span><span class="w"> </span><span class="nx">No</span>
+<span class="w">            </span><span class="nx">SWP</span><span class="p">:</span><span class="w"> </span><span class="nx">No</span>
+<span class="w">            </span><span class="nx">Thin</span><span class="o">-</span><span class="nx">provisioning</span><span class="p">:</span><span class="w"> </span><span class="nx">No</span>
+<span class="w">            </span><span class="nx">Backing</span><span class="w"> </span><span class="nx">store</span><span class="w"> </span><span class="k">type</span><span class="p">:</span><span class="w"> </span><span class="nx">null</span>
+<span class="w">            </span><span class="nx">Backing</span><span class="w"> </span><span class="nx">store</span><span class="w"> </span><span class="nx">path</span><span class="p">:</span><span class="w"> </span><span class="nx">None</span>
+<span class="w">            </span><span class="nx">Backing</span><span class="w"> </span><span class="nx">store</span><span class="w"> </span><span class="nx">flags</span><span class="p">:</span><span class="w"> </span>
+<span class="w">        </span><span class="nx">LUN</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span>
+<span class="w">            </span><span class="nx">Type</span><span class="p">:</span><span class="w"> </span><span class="nx">disk</span>
+<span class="w">            </span><span class="nx">SCSI</span><span class="w"> </span><span class="nx">ID</span><span class="p">:</span><span class="w"> </span><span class="nx">IET</span><span class="w">     </span><span class="mi">00010001</span>
+<span class="w">            </span><span class="nx">SCSI</span><span class="w"> </span><span class="nx">SN</span><span class="p">:</span><span class="w"> </span><span class="nx">beaf11</span>
+<span class="w">            </span><span class="nx">Size</span><span class="p">:</span><span class="w"> </span><span class="mi">10488</span><span class="w"> </span><span class="nx">MB</span><span class="p">,</span><span class="w"> </span><span class="nx">Block</span><span class="w"> </span><span class="nx">size</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span>
+<span class="w">            </span><span class="nx">Online</span><span class="p">:</span><span class="w"> </span><span class="nx">Yes</span>
+<span class="w">            </span><span class="nx">Removable</span><span class="w"> </span><span class="nx">media</span><span class="p">:</span><span class="w"> </span><span class="nx">No</span>
+<span class="w">            </span><span class="nx">Prevent</span><span class="w"> </span><span class="nx">removal</span><span class="p">:</span><span class="w"> </span><span class="nx">No</span>
+<span class="w">            </span><span class="nx">Readonly</span><span class="p">:</span><span class="w"> </span><span class="nx">Yes</span>
+<span class="w">            </span><span class="nx">SWP</span><span class="p">:</span><span class="w"> </span><span class="nx">No</span><span class="w"> </span>
+<span class="w">            </span><span class="nx">Thin</span><span class="o">-</span><span class="nx">provisioning</span><span class="p">:</span><span class="w"> </span><span class="nx">No</span>
+<span class="w">            </span><span class="nx">Backing</span><span class="w"> </span><span class="nx">store</span><span class="w"> </span><span class="k">type</span><span class="p">:</span><span class="w"> </span><span class="nx">rdwr</span>
+<span class="w">            </span><span class="nx">Backing</span><span class="w"> </span><span class="nx">store</span><span class="w"> </span><span class="nx">path</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="nx">fc28</span><span class="p">.</span><span class="nx">img</span>
+<span class="w">            </span><span class="nx">Backing</span><span class="w"> </span><span class="nx">store</span><span class="w"> </span><span class="nx">flags</span><span class="p">:</span>
+<span class="w">    </span><span class="nx">Account</span><span class="w"> </span><span class="nx">information</span><span class="p">:</span>
+<span class="w">    </span><span class="nx">ACL</span><span class="w"> </span><span class="nx">information</span><span class="p">:</span>
+<span class="w">        </span><span class="nx">ALL</span>
+</code></pre></div>
+
+<p>现在，我们可以去删除本系列文章的第一部分中创建的 NFS 共享了：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># rm -f /etc/exports.d/fc28.exports</span>
+<span class="c1"># exportfs -rv</span>
+<span class="c1"># umount /export/fc28</span>
+<span class="c1"># rmdir /export/fc28</span>
+<span class="c1"># sed -i &#39;/^\/fc28 /d&#39; /etc/fstab</span>
+</code></pre></div>
+
+<p>你也可以删除 <code>/fc28</code> 文件系统，但为了以后进一步更新，你可能需要保留它。</p>
+<h3>更新 ESP 去使用 iSCSI 内核</h3>
+<p>更新 ESP 去包含启用了 iSCSI 的 <code>initramfs</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>rm<span class="w"> </span>-vf<span class="w"> </span><span class="nv">$HOME</span>/esp/linux/*.fc28.*
+$<span class="w"> </span><span class="nv">MY_KRNL</span><span class="o">=</span><span class="k">$(</span>ls<span class="w"> </span>-c<span class="w"> </span>/fc28/lib/modules<span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-n<span class="w"> </span><span class="m">1</span><span class="k">)</span>
+$<span class="w"> </span>cp<span class="w"> </span><span class="k">$(</span>find<span class="w"> </span>/fc28/lib/modules<span class="w"> </span>-maxdepth<span class="w"> </span><span class="m">2</span><span class="w"> </span>-name<span class="w"> </span><span class="s1">&#39;vmlinuz&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-m<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="nv">$MY_KRNL</span><span class="k">)</span><span class="w"> </span><span class="nv">$HOME</span>/esp/linux/vmlinuz-<span class="nv">$MY_KRNL</span>
+$<span class="w"> </span>cp<span class="w"> </span><span class="k">$(</span>find<span class="w"> </span>/fc28/boot<span class="w"> </span>-name<span class="w"> </span><span class="s1">&#39;init*&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-m<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="nv">$MY_KRNL</span><span class="k">)</span><span class="w"> </span><span class="nv">$HOME</span>/esp/linux/initramfs-<span class="nv">$MY_KRNL</span>.img
+</code></pre></div>
+
+<p>更新 <code>boot.cfg</code> 文件去传递新的 <code>root</code> 和 <code>netroot</code> 参数：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nv">MY_NAME</span><span class="o">=</span>server-01.example.edu
+$<span class="w"> </span><span class="nv">MY_EMAN</span><span class="o">=</span><span class="k">$(</span><span class="nb">echo</span><span class="w"> </span><span class="nv">$MY_NAME</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>tr<span class="w"> </span><span class="s1">&#39;.&#39;</span><span class="w"> </span><span class="s2">&quot;\n&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>tac<span class="w"> </span><span class="p">|</span><span class="w"> </span>tr<span class="w"> </span><span class="s2">&quot;\n&quot;</span><span class="w"> </span><span class="s1">&#39;.&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>cut<span class="w"> </span>-b<span class="w"> </span>-<span class="si">${#</span><span class="nv">MY_NAME</span><span class="si">}</span><span class="k">)</span>
+$<span class="w"> </span><span class="nv">MY_ADDR</span><span class="o">=</span><span class="k">$(</span>host<span class="w"> </span>-t<span class="w"> </span>A<span class="w"> </span><span class="nv">$MY_NAME</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>awk<span class="w"> </span><span class="s1">&#39;{print $4}&#39;</span><span class="k">)</span>
+$<span class="w"> </span>sed<span class="w"> </span>-i<span class="w"> </span><span class="s2">&quot;s! root=[^ ]*! root=/dev/disk/by-path/ip-</span><span class="nv">$MY_ADDR</span><span class="s2">:3260-iscsi-iqn.</span><span class="nv">$MY_EMAN</span><span class="s2">:fc28-lun-1 netroot=iscsi:</span><span class="nv">$MY_ADDR</span><span class="s2">::::iqn.</span><span class="nv">$MY_EMAN</span><span class="s2">:fc28!&quot;</span><span class="w"> </span><span class="nv">$HOME</span>/esp/linux/boot.cfg
+</code></pre></div>
+
+<p>现在，你只需要从 <code>$HOME/esp/linux</code> 目录中复制更新后的文件到所有客户端系统的 ESP 中。你应该会看到类似下面屏幕截图的结果：</p>
+<p><img alt="" src="/data/attachment/album/201812/29/224636y556nyrt5r6rw3n0.png"></p>
+<h3>更新镜像</h3>
+<p>首先，复制出一个当前镜像的副本：</p>
+<div class="highlight"><pre><span></span><code># cp -a /fc28 /fc29
+</code></pre></div>
+
+<p><code>chroot</code> 进入到镜像的新副本：</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nv">i</span><span class="w"> </span><span class="nv">in</span><span class="w"> </span><span class="nv">dev</span><span class="w"> </span><span class="nv">dev</span><span class="o">/</span><span class="nv">pts</span><span class="w"> </span><span class="nv">dev</span><span class="o">/</span><span class="nv">shm</span><span class="w"> </span><span class="nv">proc</span><span class="w"> </span><span class="nv">sys</span><span class="w"> </span><span class="nv">run</span><span class="c1">; do mount -o bind /$i /fc29/$i; done</span>
+#<span class="w"> </span><span class="nv">chroot</span><span class="w"> </span><span class="o">/</span><span class="nv">fc29</span><span class="w"> </span><span class="o">/</span><span class="nv">usr</span><span class="o">/</span><span class="nv">bin</span><span class="o">/</span><span class="nv">bash</span><span class="w"> </span><span class="o">--</span><span class="nv">login</span>
+</code></pre></div>
+
+<p>允许更新内核：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> sed -i &#39;s/^exclude=kernel-\*$/#exclude=kernel-*/&#39; /etc/dnf/dnf.conf
+</code></pre></div>
+
+<p>执行升级：</p>
+<div class="highlight"><pre><span></span><code># dnf distro-sync -y --releasever=29
+</code></pre></div>
+
+<p>阻止更新过的内核被再次更新：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> sed -i &#39;s/^#exclude=kernel-\*$/exclude=kernel-*/&#39; /etc/dnf/dnf.conf
+</code></pre></div>
+
+<p>上述命令是可选的，但是在以后，如果在镜像中添加和更新了几个包，在你的客户端之外保存有一个最新内核的副本，会在关键时刻对你非常有帮助。</p>
+<p>清理 dnf 的包缓存：</p>
+<div class="highlight"><pre><span></span><code># dnf clean all
+</code></pre></div>
+
+<p>退出 chroot 并清理 root 的命令历史：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> logout
+<span class="gh">#</span> for i in run sys proc dev/shm dev/pts dev; do umount /fc29/$i; done
+<span class="gh">#</span> &gt; /fc29/root/.bash_history
+</code></pre></div>
+
+<p>创建 iSCSI 镜像：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> FC29_SIZE=$(du -ms /fc29 | cut -f 1)
+<span class="gh">#</span> dd if=/dev/zero of=/fc29.img bs=1MiB count=0 seek=$(($FC29_SIZE*2))
+<span class="gh">#</span> mkfs -t xfs -L NETROOT /fc29.img
+<span class="gh">#</span> TEMP_MNT=$(mktemp -d)
+<span class="gh">#</span> mount /fc29.img $TEMP_MNT
+<span class="gh">#</span> cp -a /fc29/* $TEMP_MNT
+<span class="gh">#</span> umount $TEMP_MNT
+</code></pre></div>
+
+<p>定义一个新的 iSCSI 目标，指向到新的镜像并导出它：</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span>MY_HOSTNAME=$(<span class="err">&lt;</span>/etc/hostname)
+#<span class="w"> </span>MY_REVERSE_HOSTNAME=$(echo<span class="w"> </span><span class="nv">$MY_HOSTNAME</span><span class="w"> </span>|<span class="w"> </span>tr<span class="w"> </span>&#39;.&#39;<span class="w"> </span>&quot;\n&quot;<span class="w"> </span>|<span class="w"> </span>tac<span class="w"> </span>|<span class="w"> </span>tr<span class="w"> </span>&quot;\n&quot;<span class="w"> </span>&#39;.&#39;<span class="w"> </span>|<span class="w"> </span>cut<span class="w"> </span>-b<span class="w"> </span>-<span class="cp">${</span><span class="c1">#MY_HOSTNAME</span><span class="cp">}</span>)
+#<span class="w"> </span>cat<span class="w"> </span><span class="err">&lt;</span><span class="nt">&lt; END</span> <span class="nt">&gt;</span><span class="w"> </span>/etc/tgt/conf.d/fc29.conf
+<span class="nt">&lt;target</span> <span class="err">iqn.$MY_REVERSE_HOSTNAME:fc29</span><span class="nt">&gt;</span>
+<span class="w"> </span>backing-store<span class="w"> </span>/fc29.img
+<span class="w"> </span>readonly<span class="w"> </span>1
+<span class="nt">&lt;/target&gt;</span>
+END
+#<span class="w"> </span>tgt-admin<span class="w"> </span>--update<span class="w"> </span>ALL
+</code></pre></div>
+
+<p>添加新内核和 <code>initramfs</code> 到 ESP：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nv">MY_KRNL</span><span class="o">=</span><span class="k">$(</span>ls<span class="w"> </span>-c<span class="w"> </span>/fc29/lib/modules<span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-n<span class="w"> </span><span class="m">1</span><span class="k">)</span>
+$<span class="w"> </span>cp<span class="w"> </span><span class="k">$(</span>find<span class="w"> </span>/fc29/lib/modules<span class="w"> </span>-maxdepth<span class="w"> </span><span class="m">2</span><span class="w"> </span>-name<span class="w"> </span><span class="s1">&#39;vmlinuz&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-m<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="nv">$MY_KRNL</span><span class="k">)</span><span class="w"> </span><span class="nv">$HOME</span>/esp/linux/vmlinuz-<span class="nv">$MY_KRNL</span>
+$<span class="w"> </span>cp<span class="w"> </span><span class="k">$(</span>find<span class="w"> </span>/fc29/boot<span class="w"> </span>-name<span class="w"> </span><span class="s1">&#39;init*&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-m<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="nv">$MY_KRNL</span><span class="k">)</span><span class="w"> </span><span class="nv">$HOME</span>/esp/linux/initramfs-<span class="nv">$MY_KRNL</span>.img
+</code></pre></div>
+
+<p>更新 ESP 的 <code>boot.cfg</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nv">MY_DNS1</span><span class="o">=</span><span class="m">192</span>.0.2.91
+$<span class="w"> </span><span class="nv">MY_DNS2</span><span class="o">=</span><span class="m">192</span>.0.2.92
+$<span class="w"> </span><span class="nv">MY_NAME</span><span class="o">=</span>server-01.example.edu
+$<span class="w"> </span><span class="nv">MY_EMAN</span><span class="o">=</span><span class="k">$(</span><span class="nb">echo</span><span class="w"> </span><span class="nv">$MY_NAME</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>tr<span class="w"> </span><span class="s1">&#39;.&#39;</span><span class="w"> </span><span class="s2">&quot;\n&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>tac<span class="w"> </span><span class="p">|</span><span class="w"> </span>tr<span class="w"> </span><span class="s2">&quot;\n&quot;</span><span class="w"> </span><span class="s1">&#39;.&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>cut<span class="w"> </span>-b<span class="w"> </span>-<span class="si">${#</span><span class="nv">MY_NAME</span><span class="si">}</span><span class="k">)</span>
+$<span class="w"> </span><span class="nv">MY_ADDR</span><span class="o">=</span><span class="k">$(</span>host<span class="w"> </span>-t<span class="w"> </span>A<span class="w"> </span><span class="nv">$MY_NAME</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>awk<span class="w"> </span><span class="s1">&#39;{print $4}&#39;</span><span class="k">)</span>
+$<span class="w"> </span>cat<span class="w"> </span><span class="s">&lt;&lt; END &gt; $HOME/esp/linux/boot.cfg</span>
+<span class="s">#!ipxe</span>
+
+<span class="s">kernel --name kernel.efi \${prefix}/vmlinuz-$MY_KRNL initrd=initrd.img ro ip=dhcp rd.peerdns=0 nameserver=$MY_DNS1 nameserver=$MY_DNS2 root=/dev/disk/by-path/ip-$MY_ADDR:3260-iscsi-iqn.$MY_EMAN:fc29-lun-1 netroot=iscsi:$MY_ADDR::::iqn.$MY_EMAN:fc29 console=tty0 console=ttyS0,115200n8 audit=0 selinux=0 quiet</span>
+<span class="s">initrd --name initrd.img \${prefix}/initramfs-$MY_KRNL.img</span>
+<span class="s">boot || exit</span>
+<span class="s">END</span>
+</code></pre></div>
+
+<p>最后，从我的 <code>$HOME/esp/linux</code> 目录中复制文件到所有客户端系统的 ESP 中去使用它吧！</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何在 Docker 容器中架设一个完整的 WordPress 站点</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Arun Pyasi 大家好，今天我们来学习一下如何在 Docker 容器里运行的 Nginx Web 服务器中安装 WordPress。WordPress 是一个很好的免费开源的内容管理 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/06/ru-he-zai-docker-rong-qi-zhong-jia-she-yi-ge-wan-zheng-de-wordpress-zhan-dian.html" rel="bookmark"
+           title="Permalink to 如何在 Docker 容器中架设一个完整的 WordPress 站点">如何在 Docker 容器中架设一个完整的 WordPress 站点</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-06-03T08:11:00+02:00">
+                Published: Wed 03 June 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Arun Pyasi</p>
+<p>大家好，今天我们来学习一下如何在 Docker 容器里运行的 Nginx Web 服务器中安装 WordPress。WordPress 是一个很好的免费开源的内容管理系统，全球成千上万的网站都在使用它。<a href="http://docker.io/">Docker</a> 是一个开源项目，提供了一个可以打包、装载和运行任何应用的轻量级容器的开放平台。它没有语言支持、框架和打包系统的限制，从小型的家用电脑到高端服务器，在何时何地都可以运行。这使它们可以不依赖于特定软件栈和供应商，像一块块积木一样部署和扩展网络应用、数据库和后端服务。</p>
+<p>今天，我们会在 docker 容器上部署最新的 WordPress 软件包，包括需要的前提条件，例如 Nginx Web 服务器、PHP5、MariaDB 服务器等。下面是在运行在 Docker 容器上成功安装 WordPress 的简单步骤。</p>
+<h3>1. 安装 Docker</h3>
+<p>在我们真正开始之前，我们需要确保在我们的 Linux 机器上已经安装了 Docker。我们使用的主机是 CentOS 7，因此我们用下面的命令使用 yum 管理器安装 docker。</p>
+<div class="highlight"><pre><span></span><code># yum install docker
+</code></pre></div>
+
+<p><img alt="安装 Docker" src="/data/attachment/album/201506/02/221353kzwwz4gwfq2gdgwk.png"></p>
+<div class="highlight"><pre><span></span><code># systemctl restart docker.service
+</code></pre></div>
+
+<h3>2. 创建 WordPress 的 Dockerfile</h3>
+<p>我们需要创建用于自动安装 wordpress 以及其前置需求的 Dockerfile。这个 Dockerfile 将用于构建 WordPress 的安装镜像。这个 WordPress Dockerfile 会从 Docker Registry Hub 获取 CentOS 7 镜像并用最新的可用更新升级系统。然后它会安装必要的软件，例如 Nginx Web 服务器、PHP、MariaDB、Open SSH 服务器，以及其它保证 Docker 容器正常运行不可缺少的组件。最后它会执行一个初始化 WordPress 安装的脚本。</p>
+<div class="highlight"><pre><span></span><code># nano Dockerfile
+</code></pre></div>
+
+<p>然后，我们需要将下面的配置行添加到 Dockerfile中。</p>
+<div class="highlight"><pre><span></span><code><span class="n">FROM</span><span class="w"> </span><span class="n">centos</span><span class="p">:</span><span class="n">centos7</span>
+<span class="n">MAINTAINER</span><span class="w"> </span><span class="n">The</span><span class="w"> </span><span class="n">CentOS</span><span class="w"> </span><span class="n">Project</span><span class="w"> </span><span class="o">&lt;</span><span class="n">cloud</span><span class="o">-</span><span class="n">ops</span><span class="err">@</span><span class="n">centos</span><span class="o">.</span><span class="n">org</span><span class="o">&gt;</span>
+
+<span class="n">RUN</span><span class="w"> </span><span class="n">yum</span><span class="w"> </span><span class="o">-</span><span class="n">y</span><span class="w"> </span><span class="n">update</span><span class="p">;</span><span class="w"> </span><span class="n">yum</span><span class="w"> </span><span class="n">clean</span><span class="w"> </span><span class="n">all</span>
+<span class="n">RUN</span><span class="w"> </span><span class="n">yum</span><span class="w"> </span><span class="o">-</span><span class="n">y</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="n">epel</span><span class="o">-</span><span class="n">release</span><span class="p">;</span><span class="w"> </span><span class="n">yum</span><span class="w"> </span><span class="n">clean</span><span class="w"> </span><span class="n">all</span>
+<span class="n">RUN</span><span class="w"> </span><span class="n">yum</span><span class="w"> </span><span class="o">-</span><span class="n">y</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="n">mariadb</span><span class="w"> </span><span class="n">mariadb</span><span class="o">-</span><span class="n">server</span><span class="w"> </span><span class="n">mariadb</span><span class="o">-</span><span class="n">client</span><span class="w"> </span><span class="n">nginx</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">fpm</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">cli</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">mysql</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">gd</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">imap</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">ldap</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">odbc</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">pear</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">xml</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">xmlrpc</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">magickwand</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">magpierss</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">mbstring</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">mcrypt</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">mssql</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">shout</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">snmp</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">soap</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">tidy</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">apc</span><span class="w"> </span><span class="n">pwgen</span><span class="w"> </span><span class="n">python</span><span class="o">-</span><span class="n">setuptools</span><span class="w"> </span><span class="n">curl</span><span class="w"> </span><span class="n">git</span><span class="w"> </span><span class="n">tar</span><span class="p">;</span><span class="w"> </span><span class="n">yum</span><span class="w"> </span><span class="n">clean</span><span class="w"> </span><span class="n">all</span>
+<span class="n">ADD</span><span class="w"> </span><span class="o">./</span><span class="n">start</span><span class="o">.</span><span class="n">sh</span><span class="w"> </span><span class="o">/</span><span class="n">start</span><span class="o">.</span><span class="n">sh</span>
+<span class="n">ADD</span><span class="w"> </span><span class="o">./</span><span class="n">nginx</span><span class="o">-</span><span class="n">site</span><span class="o">.</span><span class="n">conf</span><span class="w"> </span><span class="o">/</span><span class="n">nginx</span><span class="o">.</span><span class="n">conf</span>
+<span class="n">RUN</span><span class="w"> </span><span class="n">mv</span><span class="w"> </span><span class="o">/</span><span class="n">nginx</span><span class="o">.</span><span class="n">conf</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span><span class="n">nginx</span><span class="o">.</span><span class="n">conf</span>
+<span class="n">RUN</span><span class="w"> </span><span class="n">rm</span><span class="w"> </span><span class="o">-</span><span class="n">rf</span><span class="w"> </span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">share</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span><span class="n">html</span><span class="o">/*</span>
+<span class="n">RUN</span><span class="w"> </span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">easy_install</span><span class="w"> </span><span class="n">supervisor</span>
+<span class="n">RUN</span><span class="w"> </span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">easy_install</span><span class="w"> </span><span class="n">supervisor</span><span class="o">-</span><span class="n">stdout</span>
+<span class="n">ADD</span><span class="w"> </span><span class="o">./</span><span class="n">supervisord</span><span class="o">.</span><span class="n">conf</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">supervisord</span><span class="o">.</span><span class="n">conf</span>
+<span class="n">RUN</span><span class="w"> </span><span class="n">echo</span><span class="w"> </span><span class="o">%</span><span class="n">sudo</span><span class="w"> </span><span class="n">ALL</span><span class="o">=</span><span class="n">NOPASSWD</span><span class="p">:</span><span class="w"> </span><span class="n">ALL</span><span class="w"> </span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">sudoers</span>
+<span class="n">ADD</span><span class="w"> </span><span class="n">http</span><span class="p">:</span><span class="o">//</span><span class="n">wordpress</span><span class="o">.</span><span class="n">org</span><span class="o">/</span><span class="n">latest</span><span class="o">.</span><span class="n">tar</span><span class="o">.</span><span class="n">gz</span><span class="w"> </span><span class="o">/</span><span class="n">wordpress</span><span class="o">.</span><span class="n">tar</span><span class="o">.</span><span class="n">gz</span>
+<span class="n">RUN</span><span class="w"> </span><span class="n">tar</span><span class="w"> </span><span class="n">xvzf</span><span class="w"> </span><span class="o">/</span><span class="n">wordpress</span><span class="o">.</span><span class="n">tar</span><span class="o">.</span><span class="n">gz</span>
+<span class="n">RUN</span><span class="w"> </span><span class="n">mv</span><span class="w"> </span><span class="o">/</span><span class="n">wordpress</span><span class="o">/*</span><span class="w"> </span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">share</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span><span class="n">html</span><span class="o">/.</span>
+<span class="n">RUN</span><span class="w"> </span><span class="n">chown</span><span class="w"> </span><span class="o">-</span><span class="n">R</span><span class="w"> </span><span class="n">apache</span><span class="p">:</span><span class="n">apache</span><span class="w"> </span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">share</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span>
+<span class="n">RUN</span><span class="w"> </span><span class="n">chmod</span><span class="w"> </span><span class="mi">755</span><span class="w"> </span><span class="o">/</span><span class="n">start</span><span class="o">.</span><span class="n">sh</span>
+<span class="n">RUN</span><span class="w"> </span><span class="n">mkdir</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">run</span><span class="o">/</span><span class="n">sshd</span>
+
+<span class="n">EXPOSE</span><span class="w"> </span><span class="mi">80</span>
+<span class="n">EXPOSE</span><span class="w"> </span><span class="mi">22</span>
+
+<span class="n">CMD</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;/bin/bash&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;/start.sh&quot;</span><span class="p">]</span>
+</code></pre></div>
+
+<p><img alt="Wordpress Docker 文件" src="/data/attachment/album/201506/02/221354trljuuvwdiwvbled.png"></p>
+<h3>3. 创建启动脚本</h3>
+<p>我们创建了 Dockerfile 之后，我们需要创建用于运行和配置 WordPress 安装的脚本，名称为 start.sh。它会为 WordPress 创建并配置数据库和密码。用我们喜欢的文本编辑器打开 start.sh。</p>
+<div class="highlight"><pre><span></span><code># nano start.sh
+</code></pre></div>
+
+<p>打开 start.sh 之后，我们要添加下面的配置行到文件中。</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/bin/bash</span>
+
+__check<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-f<span class="w"> </span>/usr/share/nginx/html/wp-config.php<span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="nb">exit</span>
+<span class="k">fi</span>
+<span class="o">}</span>
+
+__create_user<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="c1"># 创建用于 SSH 登录的用户</span>
+<span class="nv">SSH_USERPASS</span><span class="o">=</span><span class="sb">`</span>pwgen<span class="w"> </span>-c<span class="w"> </span>-n<span class="w"> </span>-1<span class="w"> </span><span class="m">8</span><span class="sb">`</span>
+useradd<span class="w"> </span>-G<span class="w"> </span>wheel<span class="w"> </span>user
+<span class="nb">echo</span><span class="w"> </span>user:<span class="nv">$SSH_USERPASS</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>chpasswd
+<span class="nb">echo</span><span class="w"> </span>ssh<span class="w"> </span>user<span class="w"> </span>password:<span class="w"> </span><span class="nv">$SSH_USERPASS</span>
+<span class="o">}</span>
+
+__mysql_config<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="c1"># 启用并运行 MySQL</span>
+yum<span class="w"> </span>-y<span class="w"> </span>erase<span class="w"> </span>mariadb<span class="w"> </span>mariadb-server
+rm<span class="w"> </span>-rf<span class="w"> </span>/var/lib/mysql/<span class="w"> </span>/etc/my.cnf
+yum<span class="w"> </span>-y<span class="w"> </span>install<span class="w"> </span>mariadb<span class="w"> </span>mariadb-server
+mysql_install_db
+chown<span class="w"> </span>-R<span class="w"> </span>mysql:mysql<span class="w"> </span>/var/lib/mysql
+/usr/bin/mysqld_safe<span class="w"> </span><span class="p">&amp;</span>
+sleep<span class="w"> </span><span class="m">10</span>
+<span class="o">}</span>
+
+__handle_passwords<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="c1"># 在这里我们生成随机密码(多亏了 pwgen)。前面两个用于 mysql 用户，最后一个用于 wp-config.php 的随机密钥。</span>
+<span class="nv">WORDPRESS_DB</span><span class="o">=</span><span class="s2">&quot;wordpress&quot;</span>
+<span class="nv">MYSQL_PASSWORD</span><span class="o">=</span><span class="sb">`</span>pwgen<span class="w"> </span>-c<span class="w"> </span>-n<span class="w"> </span>-1<span class="w"> </span><span class="m">12</span><span class="sb">`</span>
+<span class="nv">WORDPRESS_PASSWORD</span><span class="o">=</span><span class="sb">`</span>pwgen<span class="w"> </span>-c<span class="w"> </span>-n<span class="w"> </span>-1<span class="w"> </span><span class="m">12</span><span class="sb">`</span>
+<span class="c1"># 这是在日志中显示的密码。</span>
+<span class="nb">echo</span><span class="w"> </span>mysql<span class="w"> </span>root<span class="w"> </span>password:<span class="w"> </span><span class="nv">$MYSQL_PASSWORD</span>
+<span class="nb">echo</span><span class="w"> </span>wordpress<span class="w"> </span>password:<span class="w"> </span><span class="nv">$WORDPRESS_PASSWORD</span>
+<span class="nb">echo</span><span class="w"> </span><span class="nv">$MYSQL_PASSWORD</span><span class="w"> </span>&gt;<span class="w"> </span>/mysql-root-pw.txt
+<span class="nb">echo</span><span class="w"> </span><span class="nv">$WORDPRESS_PASSWORD</span><span class="w"> </span>&gt;<span class="w"> </span>/wordpress-db-pw.txt
+<span class="c1"># 这里原来是一个包括 sed、cat、pipe 和 stuff 的很长的行，但多亏了</span>
+<span class="c1">#  @djfiander 的 https://gist.github.com/djfiander/6141138</span>
+<span class="c1"># 现在没有了</span>
+sed<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;s/database_name_here/</span><span class="nv">$WORDPRESS_DB</span><span class="s2">/</span>
+<span class="s2">s/username_here/</span><span class="nv">$WORDPRESS_DB</span><span class="s2">/</span>
+<span class="s2">s/password_here/</span><span class="nv">$WORDPRESS_PASSWORD</span><span class="s2">/</span>
+<span class="s2">/&#39;AUTH_KEY&#39;/s/put your unique phrase here/`pwgen -c -n -1 65`/</span>
+<span class="s2">/&#39;SECURE_AUTH_KEY&#39;/s/put your unique phrase here/`pwgen -c -n -1 65`/</span>
+<span class="s2">/&#39;LOGGED_IN_KEY&#39;/s/put your unique phrase here/`pwgen -c -n -1 65`/</span>
+<span class="s2">/&#39;NONCE_KEY&#39;/s/put your unique phrase here/`pwgen -c -n -1 65`/</span>
+<span class="s2">/&#39;AUTH_SALT&#39;/s/put your unique phrase here/`pwgen -c -n -1 65`/</span>
+<span class="s2">/&#39;SECURE_AUTH_SALT&#39;/s/put your unique phrase here/`pwgen -c -n -1 65`/</span>
+<span class="s2">/&#39;LOGGED_IN_SALT&#39;/s/put your unique phrase here/`pwgen -c -n -1 65`/</span>
+<span class="s2">/&#39;NONCE_SALT&#39;/s/put your unique phrase here/`pwgen -c -n -1 65`/&quot;</span><span class="w"> </span>/usr/share/nginx/html/wp-config-sample.php<span class="w"> </span>&gt;<span class="w"> </span>/usr/share/nginx/html/wp-config.php
+<span class="o">}</span>
+
+__httpd_perms<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+chown<span class="w"> </span>apache:apache<span class="w"> </span>/usr/share/nginx/html/wp-config.php
+<span class="o">}</span>
+
+__start_mysql<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="c1"># systemctl 启动 mysqld 服务</span>
+mysqladmin<span class="w"> </span>-u<span class="w"> </span>root<span class="w"> </span>password<span class="w"> </span><span class="nv">$MYSQL_PASSWORD</span>
+mysql<span class="w"> </span>-uroot<span class="w"> </span>-p<span class="nv">$MYSQL_PASSWORD</span><span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;CREATE DATABASE wordpress; GRANT ALL PRIVILEGES ON wordpress.* TO &#39;wordpress&#39;@&#39;localhost&#39; IDENTIFIED BY &#39;</span><span class="nv">$WORDPRESS_PASSWORD</span><span class="s2">&#39;; FLUSH PRIVILEGES;&quot;</span>
+killall<span class="w"> </span>mysqld
+sleep<span class="w"> </span><span class="m">10</span>
+<span class="o">}</span>
+
+__run_supervisor<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+supervisord<span class="w"> </span>-n
+<span class="o">}</span>
+
+<span class="c1"># 调用所有函数</span>
+__check
+__create_user
+__mysql_config
+__handle_passwords
+__httpd_perms
+__start_mysql
+__run_supervisor
+</code></pre></div>
+
+<p><img alt="启动脚本" src="/data/attachment/album/201506/02/221354r6s9hsbunfzsjt3s.png"></p>
+<p>增加完上面的配置之后，保存并关闭文件。</p>
+<h3>4. 创建配置文件</h3>
+<p>现在，我们需要创建 Nginx Web 服务器的配置文件，命名为 nginx-site.conf。</p>
+<div class="highlight"><pre><span></span><code># nano nginx-site.conf
+</code></pre></div>
+
+<p>然后，增加下面的配置信息到配置文件。</p>
+<div class="highlight"><pre><span></span><code><span class="nx">user</span><span class="w"> </span><span class="nx">nginx</span><span class="p">;</span>
+<span class="nx">worker_processes</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+
+<span class="nx">error_log</span><span class="w"> </span><span class="o">/</span><span class="kd">var</span><span class="o">/</span><span class="nx">log</span><span class="o">/</span><span class="nx">nginx</span><span class="o">/</span><span class="nx">error</span><span class="p">.</span><span class="nx">log</span><span class="p">;</span>
+<span class="err">#</span><span class="nx">error_log</span><span class="w"> </span><span class="o">/</span><span class="kd">var</span><span class="o">/</span><span class="nx">log</span><span class="o">/</span><span class="nx">nginx</span><span class="o">/</span><span class="nx">error</span><span class="p">.</span><span class="nx">log</span><span class="w"> </span><span class="nx">notice</span><span class="p">;</span>
+<span class="err">#</span><span class="nx">error_log</span><span class="w"> </span><span class="o">/</span><span class="kd">var</span><span class="o">/</span><span class="nx">log</span><span class="o">/</span><span class="nx">nginx</span><span class="o">/</span><span class="nx">error</span><span class="p">.</span><span class="nx">log</span><span class="w"> </span><span class="nx">info</span><span class="p">;</span>
+
+<span class="nx">pid</span><span class="w"> </span><span class="o">/</span><span class="nx">run</span><span class="o">/</span><span class="nx">nginx</span><span class="p">.</span><span class="nx">pid</span><span class="p">;</span>
+<span class="nx">events</span><span class="w"> </span><span class="p">{</span>
+<span class="nx">worker_connections</span><span class="w"> </span><span class="mi">1024</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="nx">http</span><span class="w"> </span><span class="p">{</span>
+<span class="nx">include</span><span class="w"> </span><span class="o">/</span><span class="nx">etc</span><span class="o">/</span><span class="nx">nginx</span><span class="o">/</span><span class="nx">mime</span><span class="p">.</span><span class="nx">types</span><span class="p">;</span>
+<span class="nx">default_type</span><span class="w"> </span><span class="nx">application</span><span class="o">/</span><span class="nx">octet</span><span class="o">-</span><span class="nx">stream</span><span class="p">;</span>
+
+<span class="nx">log_format</span><span class="w"> </span><span class="nx">main</span><span class="w"> </span><span class="err">&#39;$</span><span class="nx">remote_addr</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="err">$</span><span class="nx">remote_user</span><span class="w"> </span><span class="p">[</span><span class="err">$</span><span class="nx">time_local</span><span class="p">]</span><span class="w"> </span><span class="s">&quot;$request&quot;</span><span class="w"> </span><span class="sc">&#39;</span>
+<span class="sc">&#39;</span><span class="err">$</span><span class="nx">status</span><span class="w"> </span><span class="err">$</span><span class="nx">body_bytes_sent</span><span class="w"> </span><span class="s">&quot;$http_referer&quot;</span><span class="w"> </span><span class="sc">&#39;</span>
+<span class="sc">&#39;</span><span class="s">&quot;$http_user_agent&quot;</span><span class="w"> </span><span class="s">&quot;$http_x_forwarded_for&quot;</span><span class="err">&#39;</span><span class="p">;</span>
+
+<span class="nx">access_log</span><span class="w"> </span><span class="o">/</span><span class="kd">var</span><span class="o">/</span><span class="nx">log</span><span class="o">/</span><span class="nx">nginx</span><span class="o">/</span><span class="nx">access</span><span class="p">.</span><span class="nx">log</span><span class="w"> </span><span class="nx">main</span><span class="p">;</span>
+
+<span class="nx">sendfile</span><span class="w"> </span><span class="nx">on</span><span class="p">;</span>
+<span class="err">#</span><span class="nx">tcp_nopush</span><span class="w"> </span><span class="nx">on</span><span class="p">;</span>
+
+<span class="err">#</span><span class="nx">keepalive_timeout</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="nx">keepalive_timeout</span><span class="w"> </span><span class="mi">65</span><span class="p">;</span>
+
+<span class="err">#</span><span class="nx">gzip</span><span class="w"> </span><span class="nx">on</span><span class="p">;</span>
+
+<span class="nx">index</span><span class="w"> </span><span class="nx">index</span><span class="p">.</span><span class="nx">html</span><span class="w"> </span><span class="nx">index</span><span class="p">.</span><span class="nx">htm</span><span class="w"> </span><span class="nx">index</span><span class="p">.</span><span class="nx">php</span><span class="p">;</span>
+
+<span class="err">#</span><span class="w"> </span><span class="nx">Load</span><span class="w"> </span><span class="nx">modular</span><span class="w"> </span><span class="nx">configuration</span><span class="w"> </span><span class="nx">files</span><span class="w"> </span><span class="nx">from</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="o">/</span><span class="nx">etc</span><span class="o">/</span><span class="nx">nginx</span><span class="o">/</span><span class="nx">conf</span><span class="p">.</span><span class="nx">d</span><span class="w"> </span><span class="nx">directory</span><span class="p">.</span>
+<span class="err">#</span><span class="w"> </span><span class="nx">See</span><span class="w"> </span><span class="nx">http</span><span class="p">:</span><span class="c1">//nginx.org/en/docs/ngx_core_module.html#include</span>
+<span class="err">#</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nx">more</span><span class="w"> </span><span class="nx">information</span><span class="p">.</span>
+<span class="nx">include</span><span class="w"> </span><span class="o">/</span><span class="nx">etc</span><span class="o">/</span><span class="nx">nginx</span><span class="o">/</span><span class="nx">conf</span><span class="p">.</span><span class="nx">d</span><span class="o">/*</span><span class="p">.</span><span class="nx">conf</span><span class="p">;</span>
+
+<span class="nx">server</span><span class="w"> </span><span class="p">{</span>
+<span class="nx">listen</span><span class="w"> </span><span class="mi">80</span><span class="p">;</span>
+<span class="nx">server_name</span><span class="w"> </span><span class="nx">localhost</span><span class="p">;</span>
+
+<span class="err">#</span><span class="nx">charset</span><span class="w"> </span><span class="nx">koi8</span><span class="o">-</span><span class="nx">r</span><span class="p">;</span>
+
+<span class="err">#</span><span class="nx">access_log</span><span class="w"> </span><span class="nx">logs</span><span class="o">/</span><span class="nx">host</span><span class="p">.</span><span class="nx">access</span><span class="p">.</span><span class="nx">log</span><span class="w"> </span><span class="nx">main</span><span class="p">;</span>
+<span class="nx">root</span><span class="w"> </span><span class="o">/</span><span class="nx">usr</span><span class="o">/</span><span class="nx">share</span><span class="o">/</span><span class="nx">nginx</span><span class="o">/</span><span class="nx">html</span><span class="p">;</span>
+
+<span class="err">#</span><span class="nx">error_page</span><span class="w"> </span><span class="mi">404</span><span class="w"> </span><span class="o">/</span><span class="mi">404</span><span class="p">.</span><span class="nx">html</span><span class="p">;</span>
+
+<span class="err">#</span><span class="w"> </span><span class="nx">redirect</span><span class="w"> </span><span class="nx">server</span><span class="w"> </span><span class="nx">error</span><span class="w"> </span><span class="nx">pages</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">static</span><span class="w"> </span><span class="nx">page</span><span class="w"> </span><span class="o">/</span><span class="mi">50</span><span class="nx">x</span><span class="p">.</span><span class="nx">html</span>
+<span class="err">#</span>
+<span class="nx">error_page</span><span class="w"> </span><span class="mi">500</span><span class="w"> </span><span class="mi">502</span><span class="w"> </span><span class="mi">503</span><span class="w"> </span><span class="mi">504</span><span class="w"> </span><span class="o">/</span><span class="mi">50</span><span class="nx">x</span><span class="p">.</span><span class="nx">html</span><span class="p">;</span>
+<span class="nx">location</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="o">/</span><span class="mi">50</span><span class="nx">x</span><span class="p">.</span><span class="nx">html</span><span class="w"> </span><span class="p">{</span>
+<span class="nx">root</span><span class="w"> </span><span class="nx">html</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="err">#</span><span class="w"> </span><span class="nx">proxy</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">PHP</span><span class="w"> </span><span class="nx">scripts</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">Apache</span><span class="w"> </span><span class="nx">listening</span><span class="w"> </span><span class="nx">on</span><span class="w"> </span><span class="m m-Double">127.0.0.1</span><span class="p">:</span><span class="mi">80</span>
+<span class="err">#</span>
+<span class="err">#</span><span class="nx">location</span><span class="w"> </span><span class="o">~</span><span class="w"> </span><span class="err">\</span><span class="p">.</span><span class="nx">php</span><span class="err">$</span><span class="w"> </span><span class="p">{</span>
+<span class="err">#</span><span class="w"> </span><span class="nx">proxy_pass</span><span class="w"> </span><span class="nx">http</span><span class="p">:</span><span class="c1">//127.0.0.1;</span>
+<span class="err">#</span><span class="p">}</span>
+
+<span class="err">#</span><span class="w"> </span><span class="nx">pass</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">PHP</span><span class="w"> </span><span class="nx">scripts</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">FastCGI</span><span class="w"> </span><span class="nx">server</span><span class="w"> </span><span class="nx">listening</span><span class="w"> </span><span class="nx">on</span><span class="w"> </span><span class="m m-Double">127.0.0.1</span><span class="p">:</span><span class="mi">9000</span>
+<span class="err">#</span>
+<span class="nx">location</span><span class="w"> </span><span class="o">~</span><span class="w"> </span><span class="err">\</span><span class="p">.</span><span class="nx">php</span><span class="err">$</span><span class="w"> </span><span class="p">{</span>
+
+<span class="nx">root</span><span class="w"> </span><span class="o">/</span><span class="nx">usr</span><span class="o">/</span><span class="nx">share</span><span class="o">/</span><span class="nx">nginx</span><span class="o">/</span><span class="nx">html</span><span class="p">;</span>
+<span class="nx">try_files</span><span class="w"> </span><span class="err">$</span><span class="nx">uri</span><span class="w"> </span><span class="p">=</span><span class="mi">404</span><span class="p">;</span>
+<span class="nx">fastcgi_pass</span><span class="w"> </span><span class="m m-Double">127.0.0.1</span><span class="p">:</span><span class="mi">9000</span><span class="p">;</span>
+<span class="nx">fastcgi_index</span><span class="w"> </span><span class="nx">index</span><span class="p">.</span><span class="nx">php</span><span class="p">;</span>
+<span class="nx">fastcgi_param</span><span class="w"> </span><span class="nx">SCRIPT_FILENAME</span><span class="w"> </span><span class="err">$</span><span class="nx">document_root</span><span class="err">$</span><span class="nx">fastcgi_script_name</span><span class="p">;</span>
+<span class="nx">include</span><span class="w"> </span><span class="nx">fastcgi_params</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="err">#</span><span class="w"> </span><span class="nx">deny</span><span class="w"> </span><span class="nx">access</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="p">.</span><span class="nx">htaccess</span><span class="w"> </span><span class="nx">files</span><span class="p">,</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="nx">Apache</span><span class="err">&#39;</span><span class="nx">s</span><span class="w"> </span><span class="nx">document</span><span class="w"> </span><span class="nx">root</span>
+<span class="err">#</span><span class="w"> </span><span class="nx">concurs</span><span class="w"> </span><span class="nx">with</span><span class="w"> </span><span class="nx">nginx</span><span class="err">&#39;</span><span class="nx">s</span><span class="w"> </span><span class="nx">one</span>
+<span class="err">#</span>
+<span class="err">#</span><span class="nx">location</span><span class="w"> </span><span class="o">~</span><span class="w"> </span><span class="o">/</span><span class="err">\</span><span class="p">.</span><span class="nx">ht</span><span class="w"> </span><span class="p">{</span>
+<span class="err">#</span><span class="w"> </span><span class="nx">deny</span><span class="w"> </span><span class="nx">all</span><span class="p">;</span>
+<span class="err">#</span><span class="p">}</span>
+
+<span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><img alt="Nginx 配置" src="/data/attachment/album/201506/02/221356vuzomqo2b24pn8rp.png"></p>
+<p>现在，创建 supervisor.conf 文件并添加下面的行。</p>
+<div class="highlight"><pre><span></span><code># nano supervisord.conf
+</code></pre></div>
+
+<p>然后，添加以下行。</p>
+<div class="highlight"><pre><span></span><code><span class="k">[unix_http_server]</span>
+<span class="na">file</span><span class="o">=</span><span class="s">/tmp/supervisor.sock</span><span class="w"> </span><span class="c1">; (the path to the socket file)</span>
+
+<span class="k">[supervisord]</span>
+<span class="na">logfile</span><span class="o">=</span><span class="s">/tmp/supervisord.log</span><span class="w"> </span><span class="c1">; (main log file;default $CWD/supervisord.log)</span>
+<span class="na">logfile_maxbytes</span><span class="o">=</span><span class="s">50MB</span><span class="w"> </span><span class="c1">; (max main logfile bytes b4 rotation;default 50MB)</span>
+<span class="na">logfile_backups</span><span class="o">=</span><span class="s">10</span><span class="w"> </span><span class="c1">; (num of main logfile rotation backups;default 10)</span>
+<span class="na">loglevel</span><span class="o">=</span><span class="s">info</span><span class="w"> </span><span class="c1">; (log level;default info; others: debug,warn,trace)</span>
+<span class="na">pidfile</span><span class="o">=</span><span class="s">/tmp/supervisord.pid</span><span class="w"> </span><span class="c1">; (supervisord pidfile;default supervisord.pid)</span>
+<span class="na">nodaemon</span><span class="o">=</span><span class="s">false</span><span class="w"> </span><span class="c1">; (start in foreground if true;default false)</span>
+<span class="na">minfds</span><span class="o">=</span><span class="s">1024</span><span class="w"> </span><span class="c1">; (min. avail startup file descriptors;default 1024)</span>
+<span class="na">minprocs</span><span class="o">=</span><span class="s">200</span><span class="w"> </span><span class="c1">; (min. avail process descriptors;default 200)</span>
+
+<span class="c1">; the below section must remain in the config file for RPC</span>
+<span class="c1">; (supervisorctl/web interface) to work, additional interfaces may be</span>
+<span class="c1">; added by defining them in separate rpcinterface: sections</span>
+<span class="k">[rpcinterface:supervisor]</span>
+<span class="na">supervisor.rpcinterface_factory</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">supervisor.rpcinterface:make_main_rpcinterface</span>
+
+<span class="k">[supervisorctl]</span>
+<span class="na">serverurl</span><span class="o">=</span><span class="s">unix:///tmp/supervisor.sock</span><span class="w"> </span><span class="c1">; use a unix:// URL for a unix socket</span>
+
+<span class="k">[program:php-fpm]</span>
+<span class="na">command</span><span class="o">=</span><span class="s">/usr/sbin/php-fpm -c /etc/php/fpm</span>
+<span class="na">stdout_events_enabled</span><span class="o">=</span><span class="s">true</span>
+<span class="na">stderr_events_enabled</span><span class="o">=</span><span class="s">true</span>
+
+<span class="k">[program:php-fpm-log]</span>
+<span class="na">command</span><span class="o">=</span><span class="s">tail -f /var/log/php-fpm/php-fpm.log</span>
+<span class="na">stdout_events_enabled</span><span class="o">=</span><span class="s">true</span>
+<span class="na">stderr_events_enabled</span><span class="o">=</span><span class="s">true</span>
+
+<span class="k">[program:mysql]</span>
+<span class="na">command</span><span class="o">=</span><span class="s">/usr/bin/mysql --basedir=/usr --datadir=/var/lib/mysql --plugin-dir=/usr/lib/mysql/plugin --user=mysql --log-error=/var/log/mysql/error.log --pid-file=/var/run/mysqld/mysqld.pid --socket=/var/run/mysqld/mysqld.sock --port=3306</span>
+<span class="na">stdout_events_enabled</span><span class="o">=</span><span class="s">true</span>
+<span class="na">stderr_events_enabled</span><span class="o">=</span><span class="s">true</span>
+
+<span class="k">[program:nginx]</span>
+<span class="na">command</span><span class="o">=</span><span class="s">/usr/sbin/nginx</span>
+<span class="na">stdout_events_enabled</span><span class="o">=</span><span class="s">true</span>
+<span class="na">stderr_events_enabled</span><span class="o">=</span><span class="s">true</span>
+
+<span class="k">[eventlistener:stdout]</span>
+<span class="na">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">supervisor_stdout</span>
+<span class="na">buffer_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">100</span>
+<span class="na">events</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">PROCESS_LOG</span>
+<span class="na">result_handler</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">supervisor_stdout:event_handler</span>
+</code></pre></div>
+
+<p><img alt="Supervisord 配置" src="/data/attachment/album/201506/02/221358ba4ozggg4vzxoppe.png"></p>
+<p>添加完后，保存并关闭文件。</p>
+<h3>5. 构建 WordPress 容器</h3>
+<p>现在，完成了创建配置文件和脚本之后，我们终于要使用 Dockerfile 来创建安装最新的 WordPress CMS（译者注：Content Management System，内容管理系统）所需要的容器，并根据配置文件进行配置。做到这点，我们需要在对应的目录中运行以下命令。</p>
+<div class="highlight"><pre><span></span><code># docker build --rm -t wordpress:centos7 .
+</code></pre></div>
+
+<p><img alt="构建 WordPress 容器" src="/data/attachment/album/201506/02/221400ofsgfa8s882k287t.png"></p>
+<h3>6. 运行 WordPress 容器</h3>
+<p>现在，执行以下命令运行新构建的容器，并为 Nginx Web 服务器和 SSH 访问打开88 和 22号相应端口 。</p>
+<div class="highlight"><pre><span></span><code># CID=$(docker run -d -p 80:80 wordpress:centos7)
+</code></pre></div>
+
+<p><img alt="运行 WordPress Docker" src="/data/attachment/album/201506/02/221401ql9ljv6ot49drto4.png"></p>
+<p>运行以下命令检查进程以及容器内部执行的命令。</p>
+<div class="highlight"><pre><span></span><code>#  echo &quot;$(docker logs $CID )&quot;
+</code></pre></div>
+
+<p>运行以下命令检查端口映射是否正确。</p>
+<div class="highlight"><pre><span></span><code># docker ps
+</code></pre></div>
+
+<p><img alt="docker 状态" src="/data/attachment/album/201506/02/221402k2kk2022zcxwi0xw.png"></p>
+<h3>7. Web 界面</h3>
+<p>最后如果一切正常的话，当我们用浏览器打开 http://ip-address/ 或者 <a href="http://mywebsite.com/">http://mywebsite.com/</a> 的时候会看到 WordPress 的欢迎界面。</p>
+<p><img alt="启动Wordpress" src="/data/attachment/album/201506/02/221403tyu8k8ysldddkabt.png"></p>
+<p>现在，我们将通过 Web 界面为 WordPress 面板设置 WordPress 的配置、用户名和密码。</p>
+<p><img alt="Wordpress 欢迎界面" src="/data/attachment/album/201506/02/221405hsq3bfs7skzsqe3e.png"></p>
+<p>然后，用上面用户名和密码输入到 WordPress 登录界面。</p>
+<p><img alt="wordpress 登录" src="/data/attachment/album/201506/02/221406uh2w2zi357yccm2h.png"></p>
+<h3>总结</h3>
+<p>我们已经成功地在以 CentOS 7 作为 docker OS 的 LEMP 栈上构建并运行了 WordPress CMS。从安全层面来说，在容器中运行 WordPress 对于宿主系统更加安全可靠。这篇文章介绍了在 Docker 容器中运行的 Nginx Web 服务器上使用 WordPress 的完整配置。如果你有任何问题、建议、反馈，请在下面的评论框中写下来，让我们可以改进和更新我们的内容。非常感谢！Enjoy :-)</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何在 Linux 系统中创建一个云端加密文件系统</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Dan Nanni Amazon S3 和 Google Cloud Storage 之类的商业云存储服务以能承受的价格提供了高可用性、可扩展、无限容量的对象存储服务。为了加 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2014/12/ru-he-zai-linux-xi-tong-zhong-chuang-jian-yi-ge-yun-duan-jia-mi-wen-jian-xi-tong.html" rel="bookmark"
+           title="Permalink to 如何在 Linux 系统中创建一个云端加密文件系统">如何在 Linux 系统中创建一个云端加密文件系统</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2014-12-03T21:49:06+01:00">
+                Published: Wed 03 December 2014
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Dan Nanni</p>
+<p><a href="http://aws.amazon.com/s3">Amazon S3</a> 和 <a href="http://code.google.com/apis/storage/">Google Cloud Storage</a> 之类的商业云存储服务以能承受的价格提供了高可用性、可扩展、无限容量的对象存储服务。为了加速这些云产品的广泛采用，这些提供商为他们的产品通过明确的 API 和 SDK 培养了一个良好的开发者生态系统。而基于云的文件系统便是这些活跃的开发者社区中的典型产品，已经有了好几个开源的实现。</p>
+<p><a href="https://bitbucket.org/nikratio/s3ql/">S3QL</a> 便是最流行的开源云端文件系统之一。它是一个基于 FUSE 的文件系统，提供了好几个商业或开源的云存储后端，比如 Amazon S3、Google Cloud Storage、Rackspace CloudFiles，还有 OpenStack。作为一个功能完整的文件系统，S3QL 拥有不少强大的功能：最大 2T 的文件大小、压缩、UNIX 属性、加密、基于写入时复制的快照、不可变树、重复数据删除，以及软、硬链接支持等等。写入 S3QL 文件系统任何数据都将首先被本地压缩、加密，之后才会传输到云后端。当你试图从 S3QL 文件系统中取出内容的时候，如果它们不在本地缓存中，相应的对象会从云端下载回来，然后再即时地解密、解压缩。</p>
+<p><img alt="" src="/data/attachment/album/201412/03/214908zv11ioidj8ikxzxa.png"></p>
+<p>需要明确的是，S3QL 的确也有它的限制。比如，你不能把同一个 S3FS 文件系统在几个不同的电脑上同时挂载，只能有一台电脑同时访问它。另外，ACL（访问控制列表）也并没有被支持。</p>
+<p>在这篇教程中，我将会描述“如何基于 Amazon S3 用 S3QL 配置一个加密文件系统”。作为一个使用范例，我还会说明如何在挂载的 S3QL 文件系统上运行 rsync 备份工具。</p>
+<h3>准备工作</h3>
+<p>本教程首先需要你创建一个 <a href="http://aws.amazon.com/">Amazon AWS 帐号</a>（注册是免费的，但是需要一张有效的信用卡）。</p>
+<p>然后 <a href="http://aws.amazon.com/">创建一个 AWS access key</a>（access key ID 和 secret access key），S3QL 使用这些信息来访问你的 AWS 帐号。</p>
+<p>之后通过 AWS 管理面板访问 AWS S3，并为 S3QL 创建一个新的空 bucket。</p>
+<p><img alt="" src="/data/attachment/album/201412/03/214915cgrbcl4ji0x04jgs.jpg"></p>
+<p>为最佳性能考虑，请选择一个地理上距离你最近的区域。</p>
+<p><img alt="" src="/data/attachment/album/201412/03/214917bfgjyjd87zzrprgt.jpg"></p>
+<h3>在 Linux 上安装 S3QL</h3>
+<p>在大多数 Linux 发行版中都有预先编译好的 S3QL 软件包。</p>
+<h4>对于 Debian、Ubuntu 或 Linux Mint：</h4>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>s3ql
+</code></pre></div>
+
+<h4>对于 Fedora：</h4>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>s3ql
+</code></pre></div>
+
+<p>对于 Arch Linux，使用 <a href="https://aur.archlinux.org/packages/s3ql/">AUR</a>。</p>
+<h3>首次配置 S3QL</h3>
+<p>在 ~/.s3ql 目录中创建 autoinfo2 文件，它是 S3QL 的一个默认的配置文件。这个文件里的信息包括必须的 AWS access key，S3 bucket 名，以及加密口令。这个加密口令将被用来加密一个随机生成的主密钥，而主密钥将被用来实际地加密 S3QL 文件系统数据。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>mkdir<span class="w"> </span>~/.s3ql
+$<span class="w"> </span>vi<span class="w"> </span>~/.s3ql/authinfo2
+</code></pre></div>
+
+<p>via: <a href="http://xmodulo.com/2014/09/create-cloud-based-encrypted-file-system-linux.html">http://xmodulo.com/2014/09/create-cloud-based-encrypted-file-system-linux.html</a></p>
+<p>作者：<a href="http://xmodulo.com/author/nanni">Dan Nanni</a> 译者：<a href="https://github.com/felixonmars">felixonmars</a> 校对：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创翻译，<a href="http://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

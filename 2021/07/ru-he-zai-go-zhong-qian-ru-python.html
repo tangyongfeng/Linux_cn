@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何在 Go 中嵌入 Python</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Massimiliano Pippi 如果你看一下 新的 Datadog Agent，你可能会注意到大部分代码库是用 Go 编写的，尽管我们用来收集指标的检查仍然是用 Python …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2021/07/ru-he-zai-go-zhong-qian-ru-python.html" rel="bookmark"
+           title="Permalink to 如何在 Go 中嵌入 Python">如何在 Go 中嵌入 Python</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2021-07-09T12:33:00+02:00">
+                Published: Fri 09 July 2021
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Massimiliano Pippi</p>
+<p><img alt="" src="/data/attachment/album/202107/09/123330cgk3ktfu3y3qtyy7.png"></p>
+<p>如果你看一下 <a href="https://github.com/DataDog/datadog-agent/">新的 Datadog Agent</a>，你可能会注意到大部分代码库是用 Go 编写的，尽管我们用来收集指标的检查仍然是用 Python 编写的。这大概是因为 Datadog Agent 是一个 <a href="https://docs.python.org/2/extending/embedding.html">嵌入了</a> CPython 解释器的普通 Go 二进制文件，可以在任何时候按需执行 Python 代码。这个过程通过抽象层来透明化，使得你可以编写惯用的 Go 代码而底层运行的是 Python。</p>
+<p>在 Go 应用程序中嵌入 Python 的原因有很多：</p>
+<ul>
+<li>它在过渡期间很有用；可以逐步将现有 Python 项目的部分迁移到新语言，而不会在此过程中丢失任何功能。</li>
+<li>你可以复用现有的 Python 软件或库，而无需用新语言重新实现。</li>
+<li>你可以通过加载去执行常规 Python 脚本来动态扩展你软件，甚至在运行时也可以。</li>
+</ul>
+<p>理由还可以列很多，但对于 Datadog Agent 来说，最后一点至关重要：我们希望做到无需重新编译 Agent，或者说编译任何内容就能够执行自定义检查或更改现有检查。</p>
+<p>嵌入 CPython 非常简单，而且文档齐全。解释器本身是用 C 编写的，并且提供了一个 C API 以编程方式来执行底层操作，例如创建对象、导入模块和调用函数。</p>
+<p>在本文中，我们将展示一些代码示例，我们将会在与 Python 交互的同时继续保持 Go 代码的惯用语，但在我们继续之前，我们需要解决一个间隙：嵌入 API 是 C 语言，但我们的主要应用程序是 Go，这怎么可能工作？</p>
+<p><img alt="" src="/data/attachment/album/202107/09/123332ok9ofot98a8unobk.png"></p>
+<h3>介绍 cgo</h3>
+<p>有 <a href="https://dave.cheney.net/2016/01/18/cgo-is-not-go">很多好的理由</a> 说服你为什么不要在堆栈中引入 cgo，但嵌入 CPython 是你必须这样做的原因。<a href="https://golang.org/cmd/cgo/">cgo</a> 不是语言，也不是编译器。它是 <ruby> <a href="https://en.wikipedia.org/wiki/Foreign_function_interface">  外部函数接口 </a> <rt>  Foreign Function Interface </rt></ruby>（FFI），一种让我们可以在 Go 中使用来调用不同语言（特别是 C）编写的函数和服务的机制。</p>
+<p>当我们提起 “cgo” 时，我们实际上指的是 Go 工具链在底层使用的一组工具、库、函数和类型，因此我们可以通过执行 <code>go build</code> 来获取我们的 Go 二进制文件。下面是使用 cgo 的示例程序：</p>
+<div class="highlight"><pre><span></span><code><span class="n">package</span> <span class="n">main</span>
+
+<span class="o">//</span> <span class="c1">#include &lt;float.h&gt;</span>
+<span class="kn">import</span> <span class="s2">&quot;C&quot;</span>
+<span class="kn">import</span> <span class="s2">&quot;fmt&quot;</span>
+
+<span class="n">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">fmt</span><span class="o">.</span><span class="n">Println</span><span class="p">(</span><span class="s2">&quot;Max float value of float is&quot;</span><span class="p">,</span> <span class="n">C</span><span class="o">.</span><span class="n">FLT_MAX</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>在这种包含头文件情况下，<code>import "C"</code> 指令上方的注释块称为“<ruby> 序言 <rt>  preamble </rt></ruby>”，可以包含实际的 C 代码。导入后，我们可以通过“C”伪包来“跳转”到外部代码，访问常量 <code>FLT_MAX</code>。你可以通过调用 <code>go build</code> 来构建，它就像普通的 Go 一样。</p>
+<p>如果你想查看 cgo 在这背后到底做了什么，可以运行 <code>go build -x</code>。你将看到 “cgo” 工具将被调用以生成一些 C 和 Go 模块，然后将调用 C 和 Go 编译器来构建目标模块，最后链接器将所有内容放在一起。</p>
+<p>你可以在 <a href="https://blog.golang.org/c-go-cgo">Go 博客</a> 上阅读更多有关 cgo 的信息，该文章包含更多的例子以及一些有用的链接来做进一步了解细节。</p>
+<p>现在我们已经了解了 cgo 可以为我们做什么，让我们看看如何使用这种机制运行一些 Python 代码。</p>
+<p><img alt="" src="/data/attachment/album/202107/09/123332swrpoxxox6xxhx0u.png"></p>
+<h3>嵌入 CPython：一个入门指南</h3>
+<p>从技术上讲，嵌入 CPython 的 Go 程序并没有你想象的那么复杂。事实上，我们只需在运行 Python 代码之前初始化解释器，并在完成后关闭它。请注意，我们在所有示例中使用 Python 2.x，但我们只需做很少的调整就可以应用于 Python 3.x。让我们看一个例子：</p>
+<div class="highlight"><pre><span></span><code><span class="n">package</span> <span class="n">main</span>
+
+<span class="o">//</span> <span class="c1">#cgo pkg-config: python-2.7</span>
+<span class="o">//</span> <span class="c1">#include &lt;Python.h&gt;</span>
+<span class="kn">import</span> <span class="s2">&quot;C&quot;</span>
+<span class="kn">import</span> <span class="s2">&quot;fmt&quot;</span>
+
+<span class="n">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">C</span><span class="o">.</span><span class="n">Py_Initialize</span><span class="p">()</span>
+    <span class="n">fmt</span><span class="o">.</span><span class="n">Println</span><span class="p">(</span><span class="n">C</span><span class="o">.</span><span class="n">GoString</span><span class="p">(</span><span class="n">C</span><span class="o">.</span><span class="n">Py_GetVersion</span><span class="p">()))</span>
+    <span class="n">C</span><span class="o">.</span><span class="n">Py_Finalize</span><span class="p">()</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>上面的例子做的正是下面 Python 代码要做的事：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">sys</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">version</span><span class="p">)</span>
+</code></pre></div>
+
+<p>你可以看到我们在序言加入了一个 <code>#cgo</code> 指令；这些指令被会被传递到工具链，让你改变构建工作流程。在这种情况下，我们告诉 cgo 调用 <code>pkg-config</code> 来收集构建和链接名为 <code>python-2.7</code> 的库所需的标志，并将这些标志传递给 C 编译器。如果你的系统中安装了 CPython 开发库和 pkg-config，你只需要运行 <code>go build</code> 来编译上面的示例。</p>
+<p>回到代码，我们使用 <code>Py_Initialize()</code> 和 <code>Py_Finalize()</code> 来初始化和关闭解释器，并使用 <code>Py_GetVersion</code> C 函数来获取嵌入式解释器版本信息的字符串。</p>
+<p>如果你想知道，所有我们需要放在一起调用 C 语言 Python API的 cgo 代码都是模板代码。这就是为什么 Datadog Agent 依赖 <a href="https://github.com/sbinet/go-python">go-python</a> 来完成所有的嵌入操作；该库为 C API 提供了一个 Go 友好的轻量级包，并隐藏了 cgo 细节。这是另一个基本的嵌入式示例，这次使用 go-python：</p>
+<div class="highlight"><pre><span></span><code><span class="n">package</span> <span class="n">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="n">python</span> <span class="s2">&quot;github.com/sbinet/go-python&quot;</span>
+<span class="p">)</span>
+
+<span class="n">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">python</span><span class="o">.</span><span class="n">Initialize</span><span class="p">()</span>
+    <span class="n">python</span><span class="o">.</span><span class="n">PyRun_SimpleString</span><span class="p">(</span><span class="s2">&quot;print &#39;hello, world!&#39;&quot;</span><span class="p">)</span>
+    <span class="n">python</span><span class="o">.</span><span class="n">Finalize</span><span class="p">()</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这看起来更接近普通 Go 代码，不再暴露 cgo，我们可以在访问 Python API 时来回使用 Go 字符串。嵌入式看起来功能强大且对开发人员友好，是时候充分利用解释器了：让我们尝试从磁盘加载 Python 模块。</p>
+<p>在 Python 方面我们不需要任何复杂的东西，无处不在的“hello world” 就可以达到目的：</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span><span class="nv">foo</span>.<span class="nv">py</span>
+<span class="nv">def</span><span class="w"> </span><span class="nv">hello</span><span class="ss">()</span>:
+<span class="w">    </span><span class="s2">&quot;&quot;</span><span class="err">&quot;</span>
+<span class="err">    Print hello world for fun and profit.</span>
+<span class="w">    </span><span class="s2">&quot;&quot;</span><span class="err">&quot;</span>
+<span class="w">    </span><span class="nv">print</span><span class="w"> </span><span class="s2">&quot;hello, world!&quot;</span>
+</code></pre></div>
+
+<p>Go 代码稍微复杂一些，但仍然可读：</p>
+<div class="highlight"><pre><span></span><code><span class="o">//</span> <span class="n">main</span><span class="o">.</span><span class="n">go</span>
+<span class="n">package</span> <span class="n">main</span>
+
+<span class="kn">import</span> <span class="s2">&quot;github.com/sbinet/go-python&quot;</span>
+
+<span class="n">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">python</span><span class="o">.</span><span class="n">Initialize</span><span class="p">()</span>
+    <span class="n">defer</span> <span class="n">python</span><span class="o">.</span><span class="n">Finalize</span><span class="p">()</span>
+
+    <span class="n">fooModule</span> <span class="o">:=</span> <span class="n">python</span><span class="o">.</span><span class="n">PyImport_ImportModule</span><span class="p">(</span><span class="s2">&quot;foo&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">fooModule</span> <span class="o">==</span> <span class="n">nil</span> <span class="p">{</span>
+        <span class="n">panic</span><span class="p">(</span><span class="s2">&quot;Error importing module&quot;</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="n">helloFunc</span> <span class="o">:=</span> <span class="n">fooModule</span><span class="o">.</span><span class="n">GetAttrString</span><span class="p">(</span><span class="s2">&quot;hello&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">helloFunc</span> <span class="o">==</span> <span class="n">nil</span> <span class="p">{</span>
+        <span class="n">panic</span><span class="p">(</span><span class="s2">&quot;Error importing function&quot;</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="o">//</span> <span class="n">The</span> <span class="n">Python</span> <span class="n">function</span> <span class="n">takes</span> <span class="n">no</span> <span class="n">params</span> <span class="n">but</span> <span class="n">when</span> <span class="n">using</span> <span class="n">the</span> <span class="n">C</span> <span class="n">api</span>
+    <span class="o">//</span> <span class="n">we</span><span class="s1">&#39;re required to send (empty) *args and **kwargs anyways.</span>
+    <span class="n">helloFunc</span><span class="o">.</span><span class="n">Call</span><span class="p">(</span><span class="n">python</span><span class="o">.</span><span class="n">PyTuple_New</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="n">python</span><span class="o">.</span><span class="n">PyDict_New</span><span class="p">())</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>构建时，我们需要将 <code>PYTHONPATH</code> 环境变量设置为当前工作目录，以便导入语句能够找到 <code>foo.py</code> 模块。在 shell 中，该命令如下所示：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>go<span class="w"> </span>build<span class="w"> </span>main.go<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nv">PYTHONPATH</span><span class="o">=</span>.<span class="w"> </span>./main
+hello,<span class="w"> </span>world!
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/202107/09/123333j3ybqtxkxy7lrtqt.png"></p>
+<h3>可怕的全局解释器锁</h3>
+<p>为了嵌入 Python 必须引入 cgo ，这是一种权衡：构建速度会变慢，垃圾收集器不会帮助我们管理外部系统使用的内存，交叉编译也很难。对于一个特定的项目来说，这些问题是否是可以争论的，但我认为有一些不容商量的问题：Go 并发模型。如果我们不能从 goroutine 中运行 Python，那么使用 Go 就没有意义了。</p>
+<p>在处理并发、Python 和 cgo 之前，我们还需要知道一些事情：它就是<ruby> 全局解释器锁 <rt>  Global Interpreter Lock </rt></ruby>，即 GIL。GIL 是语言解释器（CPython 就是其中之一）中广泛采用的一种机制，可防止多个线程同时运行。这意味着 CPython 执行的任何 Python 程序都无法在同一进程中并行运行。并发仍然是可能的，锁是速度、安全性和实现简易性之间的一个很好的权衡，那么，当涉及到嵌入时，为什么这会造成问题呢？</p>
+<p>当一个常规的、非嵌入式的 Python 程序启动时，不涉及 GIL 以避免锁定操作中的无用开销；在某些 Python 代码首次请求生成线程时 GIL 就启动了。对于每个线程，解释器创建一个数据结构来存储当前的相关状态信息并锁定 GIL。当线程完成时，状态被恢复，GIL 被解锁，准备被其他线程使用。</p>
+<p>当我们从 Go 程序运行 Python 时，上述情况都不会自动发生。如果没有 GIL，我们的 Go 程序可以创建多个 Python 线程，这可能会导致竞争条件，从而导致致命的运行时错误，并且很可能出现分段错误导致整个 Go 应用程序崩溃。</p>
+<p>解决方案是在我们从 Go 运行多线程代码时显式调用 GIL；代码并不复杂，因为 C API 提供了我们需要的所有工具。为了更好地暴露这个问题，我们需要写一些受 CPU 限制的 Python 代码。让我们将这些函数添加到前面示例中的 <code>foo.py</code> 模块中：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># foo.py</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+
+<span class="k">def</span> <span class="nf">print_odds</span><span class="p">(</span><span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Print odds numbers &lt; limit</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">limit</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">i</span><span class="o">%</span><span class="mi">2</span><span class="p">:</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">{}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">i</span><span class="p">))</span>
+
+<span class="k">def</span> <span class="nf">print_even</span><span class="p">(</span><span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Print even numbers &lt; limit</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">limit</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">i</span><span class="o">%</span><span class="mi">2</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">{}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">i</span><span class="p">))</span>
+</code></pre></div>
+
+<p>我们将尝试从 Go 并发打印奇数和偶数，使用两个不同的 goroutine（因此涉及线程）：</p>
+<div class="highlight"><pre><span></span><code><span class="n">package</span> <span class="n">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s2">&quot;sync&quot;</span>
+
+    <span class="s2">&quot;github.com/sbinet/go-python&quot;</span>
+<span class="p">)</span>
+
+<span class="n">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+    <span class="o">//</span> <span class="n">The</span> <span class="n">following</span> <span class="n">will</span> <span class="n">also</span> <span class="n">create</span> <span class="n">the</span> <span class="n">GIL</span> <span class="n">explicitly</span>
+    <span class="o">//</span> <span class="n">by</span> <span class="n">calling</span> <span class="n">PyEval_InitThreads</span><span class="p">(),</span> <span class="n">without</span> <span class="n">waiting</span>
+    <span class="o">//</span> <span class="k">for</span> <span class="n">the</span> <span class="n">interpreter</span> <span class="n">to</span> <span class="n">do</span> <span class="n">that</span>
+    <span class="n">python</span><span class="o">.</span><span class="n">Initialize</span><span class="p">()</span>
+
+    <span class="n">var</span> <span class="n">wg</span> <span class="n">sync</span><span class="o">.</span><span class="n">WaitGroup</span>
+    <span class="n">wg</span><span class="o">.</span><span class="n">Add</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+
+    <span class="n">fooModule</span> <span class="o">:=</span> <span class="n">python</span><span class="o">.</span><span class="n">PyImport_ImportModule</span><span class="p">(</span><span class="s2">&quot;foo&quot;</span><span class="p">)</span>
+    <span class="n">odds</span> <span class="o">:=</span> <span class="n">fooModule</span><span class="o">.</span><span class="n">GetAttrString</span><span class="p">(</span><span class="s2">&quot;print_odds&quot;</span><span class="p">)</span>
+    <span class="n">even</span> <span class="o">:=</span> <span class="n">fooModule</span><span class="o">.</span><span class="n">GetAttrString</span><span class="p">(</span><span class="s2">&quot;print_even&quot;</span><span class="p">)</span>
+
+    <span class="o">//</span> <span class="n">Initialize</span><span class="p">()</span> <span class="n">has</span> <span class="n">locked</span> <span class="n">the</span> <span class="n">the</span> <span class="n">GIL</span> <span class="n">but</span> <span class="n">at</span> <span class="n">this</span> <span class="n">point</span> <span class="n">we</span> <span class="n">don</span><span class="s1">&#39;t need it</span>
+    <span class="o">//</span> <span class="n">anymore</span><span class="o">.</span> <span class="n">We</span> <span class="n">save</span> <span class="n">the</span> <span class="n">current</span> <span class="n">state</span> <span class="ow">and</span> <span class="n">release</span> <span class="n">the</span> <span class="n">lock</span>
+    <span class="o">//</span> <span class="n">so</span> <span class="n">that</span> <span class="n">goroutines</span> <span class="n">can</span> <span class="n">acquire</span> <span class="n">it</span>
+    <span class="n">state</span> <span class="o">:=</span> <span class="n">python</span><span class="o">.</span><span class="n">PyEval_SaveThread</span><span class="p">()</span>
+
+    <span class="n">go</span> <span class="n">func</span><span class="p">()</span> <span class="p">{</span>
+        <span class="n">_gstate</span> <span class="o">:=</span> <span class="n">python</span><span class="o">.</span><span class="n">PyGILState_Ensure</span><span class="p">()</span>
+        <span class="n">odds</span><span class="o">.</span><span class="n">Call</span><span class="p">(</span><span class="n">python</span><span class="o">.</span><span class="n">PyTuple_New</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="n">python</span><span class="o">.</span><span class="n">PyDict_New</span><span class="p">())</span>
+        <span class="n">python</span><span class="o">.</span><span class="n">PyGILState_Release</span><span class="p">(</span><span class="n">_gstate</span><span class="p">)</span>
+
+        <span class="n">wg</span><span class="o">.</span><span class="n">Done</span><span class="p">()</span>
+    <span class="p">}()</span>
+
+    <span class="n">go</span> <span class="n">func</span><span class="p">()</span> <span class="p">{</span>
+        <span class="n">_gstate</span> <span class="o">:=</span> <span class="n">python</span><span class="o">.</span><span class="n">PyGILState_Ensure</span><span class="p">()</span>
+        <span class="n">even</span><span class="o">.</span><span class="n">Call</span><span class="p">(</span><span class="n">python</span><span class="o">.</span><span class="n">PyTuple_New</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="n">python</span><span class="o">.</span><span class="n">PyDict_New</span><span class="p">())</span>
+        <span class="n">python</span><span class="o">.</span><span class="n">PyGILState_Release</span><span class="p">(</span><span class="n">_gstate</span><span class="p">)</span>
+
+        <span class="n">wg</span><span class="o">.</span><span class="n">Done</span><span class="p">()</span>
+    <span class="p">}()</span>
+
+    <span class="n">wg</span><span class="o">.</span><span class="n">Wait</span><span class="p">()</span>
+
+    <span class="o">//</span> <span class="n">At</span> <span class="n">this</span> <span class="n">point</span> <span class="n">we</span> <span class="n">know</span> <span class="n">we</span> <span class="n">won</span><span class="s1">&#39;t need Python anymore in this</span>
+    <span class="o">//</span> <span class="n">program</span><span class="p">,</span> <span class="n">we</span> <span class="n">can</span> <span class="n">restore</span> <span class="n">the</span> <span class="n">state</span> <span class="ow">and</span> <span class="n">lock</span> <span class="n">the</span> <span class="n">GIL</span> <span class="n">to</span> <span class="n">perform</span>
+    <span class="o">//</span> <span class="n">the</span> <span class="n">final</span> <span class="n">operations</span> <span class="n">before</span> <span class="n">exiting</span><span class="o">.</span>
+    <span class="n">python</span><span class="o">.</span><span class="n">PyEval_RestoreThread</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+    <span class="n">python</span><span class="o">.</span><span class="n">Finalize</span><span class="p">()</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>在阅读示例时，你可能会注意到一个模式，该模式将成为我们运行嵌入式 Python 代码的习惯写法：</p>
+<ol>
+<li>保存状态并锁定 GIL。</li>
+<li>执行 Python。</li>
+<li>恢复状态并解锁 GIL。</li>
+</ol>
+<p>代码应该很简单，但我们想指出一个微妙的细节：请注意，尽管借用了 GIL 执行，有时我们通过调用 <code>PyEval_SaveThread()</code> 和 <code>PyEval_RestoreThread()</code> 来操作 GIL，有时（查看 goroutines 里面）我们对 <code>PyGILState_Ensure()</code> 和 <code>PyGILState_Release()</code> 来做同样的事情。</p>
+<p>我们说过当从 Python 操作多线程时，解释器负责创建存储当前状态所需的数据结构，但是当同样的事情发生在 C API 时，我们来负责处理。</p>
+<p>当我们用 go-python 初始化解释器时，我们是在 Python 上下文中操作的。因此，当调用 <code>PyEval_InitThreads()</code> 时，它会初始化数据结构并锁定 GIL。我们可以使用 <code>PyEval_SaveThread()</code> 和 <code>PyEval_RestoreThread()</code> 对已经存在的状态进行操作。</p>
+<p>在 goroutines 中，我们从 Go 上下文操作，我们需要显式创建状态并在完成后将其删除，这就是 <code>PyGILState_Ensure()</code> 和 <code>PyGILState_Release()</code> 为我们所做的。</p>
+<p><img alt="" src="/data/attachment/album/202107/09/123334mfkhcf5xcc5djef1.png"></p>
+<h3>释放 Gopher</h3>
+<p>在这一点上，我们知道如何处理在嵌入式解释器中执行 Python 的多线程 Go 代码，但在 GIL 之后，另一个挑战即将来临：Go 调度程序。</p>
+<p>当一个 goroutine 启动时，它被安排在可用的 <code>GOMAXPROCS</code> 线程之一上执行，<a href="https://morsmachine.dk/go-scheduler">参见此处</a> 可了解有关该主题的更多详细信息。如果一个 goroutine 碰巧执行了系统调用或调用 C 代码，当前线程会将线程队列中等待运行的其他 goroutine 移交给另一个线程，以便它们有更好的机会运行； 当前 goroutine 被暂停，等待系统调用或 C 函数返回。当这种情况发生时，线程会尝试恢复暂停的 goroutine，但如果这不可能，它会要求 Go 运行时找到另一个线程来完成 goroutine 并进入睡眠状态。 goroutine 最后被安排给另一个线程，它就完成了。</p>
+<p>考虑到这一点，让我们看看当一个 goroutine 被移动到一个新线程时，运行一些 Python 代码的 goroutine 会发生什么：</p>
+<ol>
+<li>我们的 goroutine 启动，执行 C 调用并暂停。GIL 被锁定。</li>
+<li>当 C 调用返回时，当前线程尝试恢复 goroutine，但失败了。</li>
+<li>当前线程告诉 Go 运行时寻找另一个线程来恢复我们的 goroutine。</li>
+<li>Go 调度器找到一个可用线程并恢复 goroutine。</li>
+<li>goroutine 快完成了，并在返回之前尝试解锁 GIL。</li>
+<li>当前状态中存储的线程 ID 来自原线程，与当前线程的 ID 不同。</li>
+<li>崩溃！</li>
+</ol>
+<p>所幸，我们可以通过从 goroutine 中调用运行时包中的 <code>LockOSThread</code> 函数来强制 Go runtime 始终保持我们的 goroutine 在同一线程上运行：</p>
+<div class="highlight"><pre><span></span><code><span class="k">go</span><span class="w"> </span><span class="n">func</span><span class="p">()</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">runtime</span><span class="p">.</span><span class="n">LockOSThread</span><span class="p">()</span>
+
+<span class="w">    </span><span class="n">_gstate</span><span class="w"> </span><span class="err">:</span><span class="o">=</span><span class="w"> </span><span class="n">python</span><span class="p">.</span><span class="n">PyGILState_Ensure</span><span class="p">()</span>
+<span class="w">    </span><span class="n">odds</span><span class="p">.</span><span class="k">Call</span><span class="p">(</span><span class="n">python</span><span class="p">.</span><span class="n">PyTuple_New</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span><span class="w"> </span><span class="n">python</span><span class="p">.</span><span class="n">PyDict_New</span><span class="p">())</span>
+<span class="w">    </span><span class="n">python</span><span class="p">.</span><span class="n">PyGILState_Release</span><span class="p">(</span><span class="n">_gstate</span><span class="p">)</span>
+<span class="w">    </span><span class="n">wg</span><span class="p">.</span><span class="n">Done</span><span class="p">()</span>
+<span class="err">}</span><span class="p">()</span>
+</code></pre></div>
+
+<p>这会干扰调度器并可能引入一些开销，但这是我们愿意付出的代价。</p>
+<h3>结论</h3>
+<p>为了嵌入 Python，Datadog Agent 必须接受一些权衡：</p>
+<ul>
+<li>cgo 引入的开销。</li>
+<li>手动处理 GIL 的任务。</li>
+<li>在执行期间将 goroutine 绑定到同一线程的限制。</li>
+</ul>
+<p>为了能方便在 Go 中运行 Python 检查，我们很乐意接受其中的每一项。但通过意识到这些权衡，我们能够最大限度地减少它们的影响，除了为支持 Python 而引入的其他限制，我们没有对策来控制潜在问题：</p>
+<ul>
+<li>构建是自动化和可配置的，因此开发人员仍然需要拥有与 <code>go build</code> 非常相似的东西。</li>
+<li>Agent 的轻量级版本，可以使用 Go 构建标签，完全剥离 Python 支持。</li>
+<li>这样的版本仅依赖于在 Agent 本身硬编码的核心检查（主要是系统和网络检查），但没有 cgo 并且可以交叉编译。</li>
+</ul>
+<p>我们将在未来重新评估我们的选择，并决定是否仍然值得保留 cgo；我们甚至可以重新考虑整个 Python 是否仍然值得，等待 <a href="https://golang.org/pkg/plugin/">Go 插件包</a> 成熟到足以支持我们的用例。但就目前而言，嵌入式 Python 运行良好，从旧代理过渡到新代理再简单不过了。</p>
+<p>你是一个喜欢混合不同编程语言的多语言者吗？你喜欢了解语言的内部工作原理以提高你的代码性能吗？</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

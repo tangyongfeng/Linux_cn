@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Samba 系列（十四）：在命令行中将 CentOS 7 与 Samba4 AD 集成</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Matei Cezar 本指南将向你介绍如何使用 Authconfig 在命令行中将无图形界面的 CentOS 7 服务器集成到 Samba4 AD 域控制器中。 这类设置提供了 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/08/samba-xi-lie-shi-si-zai-ming-ling-xing-zhong-jiang-centos-7-yu-samba4-ad-ji-cheng.html" rel="bookmark"
+           title="Permalink to Samba 系列（十四）：在命令行中将 CentOS 7 与 Samba4 AD 集成">Samba 系列（十四）：在命令行中将 CentOS 7 与 Samba4 AD 集成</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-08-14T17:58:03+02:00">
+                Published: Mon 14 August 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Matei Cezar</p>
+<p><img alt="" src="/data/attachment/album/201708/14/175556fx2zo3er3vxuumun.jpg"></p>
+<p>本指南将向你介绍如何使用 Authconfig 在命令行中将无图形界面的 CentOS 7 服务器集成到 <a href="/article-8065-1.html">Samba4 AD 域控制器</a>中。</p>
+<p>这类设置提供了由 Samba 持有的单一集中式帐户数据库，允许 AD 用户通过网络基础设施对 CentOS 服务器进行身份验证。</p>
+<h4>要求</h4>
+<ol>
+<li><a href="/article-8065-1.html">在 Ubuntu 上使用 Samba4 创建 AD 基础架构</a></li>
+<li><a href="/article-8048-1.html">CentOS 7.3 安装指南</a></li>
+</ol>
+<h3>步骤 1：为 Samba4 AD DC 配置 CentOS</h3>
+<p>1、 在开始将 CentOS 7 服务器加入 Samba4 DC 之前，你需要确保网络接口被正确配置为通过 DNS 服务查询域。</p>
+<p>运行 <code>ip address</code> 命令列出你机器网络接口，选择要编辑的特定网卡，通过针对接口名称运行 <code>nmtui-edit</code> 命令（如本例中的 ens33），如下所示。</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">address</span>
+<span class="err">#</span><span class="w"> </span><span class="nx">nmtui</span><span class="o">-</span><span class="nx">edit</span><span class="w"> </span><span class="nx">ens33</span>
+</code></pre></div>
+
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/List-Network-Interfaces.jpg"><img alt="List Network Interfaces" src="/data/attachment/album/201708/14/175810uz3uwc1iw2r21i92.jpg"></a></p>
+<p><em>列出网络接口</em></p>
+<p>2、 打开网络接口进行编辑后，添加最适合 LAN 的静态 IPv4 配置，并确保为 DNS 服务器设置 Samba AD 域控制器 IP 地址。</p>
+<p>另外，在搜索域中追加你的域的名称，并使用 [TAB] 键跳到确定按钮来应用更改。</p>
+<p>当你仅对域 dns 记录使用短名称时, 已提交的搜索域保证域对应项会自动追加到 dns 解析 (FQDN) 中。</p>
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/Configure-Network-Interface.png"><img alt="Configure Network Interface" src="/data/attachment/album/201708/14/175810sgkfhckg6vkovjph.png"></a></p>
+<p><em>配置网络接口</em></p>
+<p>3、最后，重启网络守护进程以应用更改，并通过对域名和域控制器 ping 来测试 DNS 解析是否正确配置，如下所示。</p>
+<div class="highlight"><pre><span></span><code># systemctl restart network.service
+# ping -c2 tecmint.lan
+# ping -c2 adc1
+# ping -c2 adc2
+</code></pre></div>
+
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/Verify-DNS-Resolution-on-Domain.png"><img alt="Verify DNS Resolution on Domain" src="/data/attachment/album/201708/14/175810akrfkkok620r2jz3.png"></a></p>
+<p><em>验证域上的 DNS 解析</em></p>
+<p>4、 另外，使用下面的命令配置你的计算机主机名并重启机器应用更改。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> hostnamectl set-hostname your_hostname
+<span class="gh">#</span> init 6
+</code></pre></div>
+
+<p>使用以下命令验证主机名是否正确配置。</p>
+<div class="highlight"><pre><span></span><code># cat /etc/hostname
+# hostname
+</code></pre></div>
+
+<p>5、 最后，使用 root 权限运行以下命令，与 Samba4 AD DC 同步本地时间。</p>
+<div class="highlight"><pre><span></span><code># yum install ntpdate
+# ntpdate domain.tld
+</code></pre></div>
+
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/Sync-Time-with-Samba4-AD-DC.png"><img alt="Sync Time with Samba4 AD DC" src="/data/attachment/album/201708/14/175811b9963uhbsywwbw96.png"></a></p>
+<p><em>与 Samba4 AD DC 同步时间</em></p>
+<h3>步骤 2：将 CentOS 7 服务器加入到 Samba4 AD DC</h3>
+<p>6、 要将 CentOS 7 服务器加入到 Samba4 AD 中，请先用具有 root 权限的帐户在计算机上安装以下软件包。</p>
+<div class="highlight"><pre><span></span><code># yum install authconfig samba-winbind samba-client samba-winbind-clients
+</code></pre></div>
+
+<p>7、 为了将 CentOS 7 服务器与域控制器集成，可以使用 root 权限运行 <code>authconfig-tui</code>，并使用下面的配置。</p>
+<div class="highlight"><pre><span></span><code># authconfig-tui
+</code></pre></div>
+
+<p>首屏选择：</p>
+<ul>
+<li>在 User Information 中：<ul>
+<li>Use Winbind</li>
+</ul>
+</li>
+<li>在 Authentication 中使用[空格键]选择:<ul>
+<li>Use Shadow Password</li>
+<li>Use Winbind Authentication</li>
+<li>Local authorization is sufficient</li>
+</ul>
+</li>
+</ul>
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/Authentication-Configuration.png"><img alt="Authentication Configuration" src="/data/attachment/album/201708/14/175812n2nm84lmmh7jc8jc.png"></a></p>
+<p><em>验证配置</em></p>
+<p>8、 点击 Next 进入 Winbind 设置界面并配置如下：</p>
+<ul>
+<li>Security Model: ads</li>
+<li>Domain = YOUR_DOMAIN (use upper case)</li>
+<li>Domain Controllers = domain machines FQDN (comma separated if more than one)</li>
+<li>ADS Realm = YOUR_DOMAIN.TLD</li>
+<li>Template Shell = /bin/bash</li>
+</ul>
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/Winbind-Settings.png"><img alt="Winbind Settings" src="/data/attachment/album/201708/14/175812vlssskbsyzqdssd7.png"></a></p>
+<p><em>Winbind 设置</em></p>
+<p>9、 要加入域，使用 [tab] 键跳到 “Join Domain” 按钮，然后按[回车]键加入域。</p>
+<p>在下一个页面，添加具有提升权限的 Samba4 AD 帐户的凭据，以将计算机帐户加入 AD，然后单击 “OK” 应用设置并关闭提示。</p>
+<p>请注意，当你输入用户密码时，凭据将不会显示在屏幕中。在下面再次点击 OK，完成 CentOS 7 的域集成。</p>
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/Join-Domain-to-Samba4-AD-DC.png"><img alt="Join Domain to Samba4 AD DC" src="/data/attachment/album/201708/14/175814ma11plvh00hapu6b.png"></a></p>
+<p><em>加入域到 Samba4 AD DC</em></p>
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/Confirm-Winbind-Settings.png"><img alt="Confirm Winbind Settings" src="/data/attachment/album/201708/14/175814r7558a8aamhmb7bt.png"></a></p>
+<p><em>确认 Winbind 设置</em></p>
+<p>要强制将机器添加到特定的 Samba AD OU 中，请使用 hostname 命令获取计算机的完整名称，并使用机器名称在该 OU 中创建一个新的计算机对象。</p>
+<p>将新对象添加到 Samba4 AD 中的最佳方法是已经集成到<a href="/article-8097-1.html">安装了 RSAT 工具</a>的域的 Windows 机器上使用 ADUC 工具。</p>
+<p>重要：加入域的另一种方法是使用 <code>authconfig</code> 命令行，它可以对集成过程进行广泛的控制。</p>
+<p>但是，这种方法很容易因为其众多参数造成错误，如下所示。该命令必须输入一条长命令行。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> authconfig --enablewinbind --enablewinbindauth --smbsecurity ads --smbworkgroup=YOUR_DOMAIN --smbrealm YOUR_DOMAIN.TLD --smbservers=adc1.yourdomain.tld --krb5realm=YOUR_DOMAIN.TLD --enablewinbindoffline --enablewinbindkrb5 --winbindtemplateshell=/bin/bash--winbindjoin=domain_admin_user --update  --enablelocauthorize   --savebackup=/backups
+</code></pre></div>
+
+<p>10、 机器加入域后，通过使用以下命令验证 winbind 服务是否正常运行。</p>
+<div class="highlight"><pre><span></span><code># systemctl status winbind.service
+</code></pre></div>
+
+<p>11、 接着检查是否在 Samba4 AD 中成功创建了 CentOS 机器对象。从安装了 RSAT 工具的 Windows 机器使用 AD 用户和计算机工具，并进入到你的域计算机容器。一个名为 CentOS 7 Server 的新 AD 计算机帐户对象应该在右边的列表中。</p>
+<p>12、 最后，使用文本编辑器打开 samba 主配置文件（<code>/etc/samba/smb.conf</code>）来调整配置，并在 <code>[global]</code> 配置块的末尾附加以下行，如下所示：</p>
+<div class="highlight"><pre><span></span><code>winbind use default domain = true
+winbind offline logon = true
+</code></pre></div>
+
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/Configure-Samba.jpg"><img alt="Configure Samba" src="/data/attachment/album/201708/14/175817no5sm6nrxssyy6y3.jpg"></a></p>
+<p><em>配置 Samba</em></p>
+<p>13、 为了在 AD 帐户首次登录时在机器上创建本地家目录，请运行以下命令：</p>
+<div class="highlight"><pre><span></span><code># authconfig --enablemkhomedir --update
+</code></pre></div>
+
+<p>14、 最后，重启 Samba 守护进程使更改生效，并使用一个 AD 账户登陆验证域加入。AD 帐户的家目录应该会自动创建。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> systemctl restart winbind
+<span class="gh">#</span> su - domain_account
+</code></pre></div>
+
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/Verify-Domain-Joining.jpg"><img alt="Verify Domain Joining" src="/data/attachment/album/201708/14/175818c228xkmaxmvl84h8.jpg"></a></p>
+<p><em>验证域加入</em></p>
+<p>15、 通过以下命令之一列出域用户或域组。</p>
+<div class="highlight"><pre><span></span><code># wbinfo -u
+# wbinfo -g
+</code></pre></div>
+
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/List-Domain-Users-and-Groups.png"><img alt="List Domain Users and Groups" src="/data/attachment/album/201708/14/175818b5i4x789pk18ivbo.png"></a></p>
+<p><em>列出域用户和组</em></p>
+<p>16、 要获取有关域用户的信息，请运行以下命令。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> wbinfo -i domain_user
+</code></pre></div>
+
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/List-Domain-User-Info.jpg"><img alt="List Domain User Info" src="/data/attachment/album/201708/14/175818le5soht6mwsxze58.jpg"></a></p>
+<p><em>列出域用户信息</em></p>
+<p>17、 要显示域摘要信息，请使用以下命令。</p>
+<div class="highlight"><pre><span></span><code># net ads info
+</code></pre></div>
+
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/List-Domain-Summary.jpg"><img alt="List Domain Summary" src="/data/attachment/album/201708/14/175819iygqzt6m8ddbmdma.jpg"></a></p>
+<p><em>列出域摘要</em></p>
+<h3>步骤 3：使用 Samba4 AD DC 帐号登录CentOS</h3>
+<p>18、 要在 CentOS 中与域用户进行身份验证，请使用以下命令语法之一。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> su - ‘domain\domain_user’
+<span class="gh">#</span> su - domain\\domain_user
+</code></pre></div>
+
+<p>或者在 samba 配置文件中设置了 <code>winbind use default domain = true</code> 参数的情况下，使用下面的语法。</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="n">su</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">domain_user</span>
+<span class="err">#</span><span class="w"> </span><span class="n">su</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">domain_user</span><span class="nv">@domain</span><span class="p">.</span><span class="n">tld</span>
+</code></pre></div>
+
+<p>19、 要为域用户或组添加 root 权限，请使用 <code>visudocommand</code> 编辑 <code>sudoers</code> 文件，并添加以下截图所示的行。</p>
+<div class="highlight"><pre><span></span><code><span class="n">YOUR_DOMAIN</span><span class="o">\\</span><span class="n">domain_username</span><span class="w">             </span><span class="n">ALL</span><span class="p">=(</span><span class="n">ALL</span><span class="p">:</span><span class="n">ALL</span><span class="p">)</span><span class="w"> </span><span class="n">ALL</span><span class="w">      </span>#<span class="n">For</span><span class="w"> </span><span class="n">domain</span><span class="w"> </span><span class="n">users</span>
+<span class="c">%YOUR_DOMAIN\\your_domain\  group            ALL=(ALL:ALL) ALL  #For domain groups</span>
+</code></pre></div>
+
+<p>或者在 samba 配置文件中设置了 <code>winbind use default domain = true</code> 参数的情况下，使用下面的语法。</p>
+<div class="highlight"><pre><span></span><code><span class="n">domain_username</span><span class="w">                  </span><span class="n">ALL</span><span class="o">=</span><span class="p">(</span><span class="n">ALL</span><span class="o">:</span><span class="n">ALL</span><span class="p">)</span><span class="w"> </span><span class="n">ALL</span><span class="w">      </span><span class="cp">#For</span><span class="w"> </span><span class="n">domain</span><span class="w"> </span><span class="n">users</span>
+<span class="nf">%your_domain</span><span class="err">\</span><span class="w">  </span><span class="n">group</span><span class="w">             </span><span class="n">ALL</span><span class="o">=</span><span class="p">(</span><span class="n">ALL</span><span class="o">:</span><span class="n">ALL</span><span class="p">)</span><span class="w"> </span><span class="n">ALL</span><span class="w">  </span><span class="cp">#For</span><span class="w"> </span><span class="n">domain</span><span class="w"> </span><span class="n">groups</span>
+</code></pre></div>
+
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/Grant-Root-Privileges-on-Domain-Users.jpg"><img alt="Grant Root Privileges on Domain Users" src="/data/attachment/album/201708/14/175821r616i6k3fs191ijc.jpg"></a></p>
+<p><em>授予域用户 root 权限</em></p>
+<p>20、 针对 Samba4 AD DC 的以下一系列命令也可用于故障排除：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> wbinfo -p #Ping domain
+<span class="gh">#</span> wbinfo -n domain_account #Get the SID of a domain account
+<span class="gh">#</span> wbinfo -t  #Check trust relationship
+</code></pre></div>
+
+<p>21、 要离开该域, 请使用具有提升权限的域帐户对你的域名运行以下命令。从 AD 中删除计算机帐户后, 重启计算机以在集成进程之前还原更改。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> net ads leave -w DOMAIN -U domain_admin
+<span class="gh">#</span> init 6
+</code></pre></div>
+
+<p>就是这样了！尽管此过程主要集中在将 CentOS 7 服务器加入到 Samba4 AD DC 中，但这里描述的相同步骤也适用于将 CentOS 服务器集成到 Microsoft Windows Server 2012 AD 中。</p>
+<p>via: <a href="https://www.tecmint.com/integrate-centos-7-to-samba4-active-directory/">https://www.tecmint.com/integrate-centos-7-to-samba4-active-directory/</a></p>
+<p>作者：<a href="https://www.tecmint.com/author/cezarmatei/">Matei Cezar</a> 译者：<a href="https://github.com/geekpi">geekpi</a> 校对：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创编译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

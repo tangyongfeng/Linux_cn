@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何编写和使用自定义的 Shell 函数和函数库</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Aaron Kili 在 Linux 系统下，Shell 脚本可以在各种不同的情形下帮到我们，例如展示信息，甚至 自动执行特定的系统管理任务，创建简 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/03/ru-he-bian-xie-he-shi-yong-zi-ding-yi-de-shell-han-shu-he-han-shu-ku.html" rel="bookmark"
+           title="Permalink to 如何编写和使用自定义的 Shell 函数和函数库">如何编写和使用自定义的 Shell 函数和函数库</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-03-15T10:38:00+01:00">
+                Published: Wed 15 March 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Aaron Kili</p>
+<p>在 Linux 系统下，Shell 脚本可以在各种不同的情形下帮到我们，例如展示信息，甚至 <a href="http://www.tecmint.com/using-shell-script-to-automate-linux-system-maintenance-tasks/">自动执行特定的系统管理任务</a>，创建简单的命令行工具等等。</p>
+<p>在本指南中，我们将向 Linux 新手展示如何可靠地存储自定义的 shell 脚本，解释如何编写 shell 函数和函数库，以及如何在其它的脚本中使用函数库中的函数。</p>
+<p><img alt="" src="/data/attachment/album/201703/15/103818fl34e8all0weu58z.jpg"></p>
+<h3>Shell 脚本要存储在何处</h3>
+<p>为了在执行你自己的脚本时不必输入脚本所在位置的完整或绝对路径，脚本必须被存储在 <code>$PATH</code> 环境变量所定义的路径里的其中一个。</p>
+<p>使用下面的命令可以查看你系统中的 <code>$PATH</code> 环境变量：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="nv">$PATH</span>
+/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games
+</code></pre></div>
+
+<p>通常来说，如果在用户的家目录下存在名为 <code>bin</code> 的目录，你就可以将 shell 脚本存储在那个目录下，因为那个目录会自动地被包含在用户的 <code>$PATH</code> 环境变量中（LCTT 译注：在 Centos 6/7 下是这样的，在 Debian 8 下不是这样的，在 Ubuntu 16.04 下又是这样的)。</p>
+<p>因此，在你的主目录下创建 <code>bin</code> 目录吧（当然这里也可以用来存储 Perl、Awk 或 Python 的脚本，或者其它程序）：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>mkdir<span class="w"> </span>~/bin
+</code></pre></div>
+
+<p>接着，建立一个名为 <code>lib</code>（libraries 的简写）的目录来存放你自己的函数库。你也可以在其中存放其它编程语言的函数库，如 C ，Python 等语言。在 <code>lib</code> 目录下建立另一个名为 <code>sh</code> 的目录，这个目录将被用来存放你的 shell 函数库：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>~/lib/sh<span class="w"> </span>
+</code></pre></div>
+
+<h3>创建你自己的 Shell 函数和函数库</h3>
+<p>一个 <code>shell 函数</code> 就是在脚本中能够完成特定任务的一组命令。它们的工作原理与其他编程语言中的过程（LCTT 译注：可能指的是类似 SQL 中的存储过程之类的吧）、子例程、函数类似。</p>
+<p>编写一个函数的语法如下：</p>
+<div class="highlight"><pre><span></span><code>函数名() { 一系列的命令 } 
+</code></pre></div>
+
+<p>( LCTT 校注：在函数名前可以加上 <code>function</code> 关键字，但也可省略不写）</p>
+<p>例如，你可以像下面那样在一个脚本中写一个用来显示日期的函数：</p>
+<div class="highlight"><pre><span></span><code>showDATE() {date;}
+</code></pre></div>
+
+<p>每当你需要显示日期时，只需调用该函数的函数名即可：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>showDATE
+</code></pre></div>
+
+<p>简单来说 shell 函数库也是一个 shell 脚本，不过你可以在一个函数库中仅存储其它 shell 脚本中需要调用的函数。</p>
+<p>下面展示的是在我的 <code>~/lib/sh</code> 目录下一个名为 <code>libMYFUNCS.sh</code> 的库函数：</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/bin/bash </span>
+<span class="c1">### Function to clearly list directories in PATH </span>
+showPATH<span class="o">()</span><span class="w"> </span><span class="o">{</span><span class="w"> </span>
+<span class="w">  </span><span class="nv">oldifs</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$IFS</span><span class="s2">&quot;</span><span class="w">   </span><span class="c1">### store old internal field separator</span>
+<span class="w">  </span><span class="nv">IFS</span><span class="o">=</span>:<span class="w">              </span><span class="c1">### specify a new internal field separator</span>
+<span class="w">  </span><span class="k">for</span><span class="w"> </span>DIR<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nv">$PATH</span>&lt;br&gt;<span class="w">  </span><span class="k">do</span>&lt;br&gt;<span class="w">     </span><span class="nb">echo</span><span class="w"> </span><span class="nv">$DIR</span>&lt;br&gt;<span class="w">  </span><span class="k">done</span>
+<span class="w">  </span><span class="nv">IFS</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$oldifs</span><span class="s2">&quot;</span><span class="w">    </span><span class="c1">### restore old internal field separator</span>
+<span class="o">}</span>
+<span class="c1">### Function to show logged user</span>
+showUSERS<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span>-e<span class="w"> </span>“Below<span class="w"> </span>are<span class="w"> </span>the<span class="w"> </span>user<span class="w"> </span>logged<span class="w"> </span>on<span class="w"> </span>the<span class="w"> </span>system:<span class="se">\n</span>”
+<span class="w">  </span>w
+<span class="o">}</span>
+<span class="c1">### Print a user’s details </span>
+printUSERDETS<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">  </span><span class="nv">oldifs</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$IFS</span><span class="s2">&quot;</span><span class="w">    </span><span class="c1">### store old internal field separator</span>
+<span class="w">  </span><span class="nv">IFS</span><span class="o">=</span>:<span class="w">                 </span><span class="c1">### specify a new internal field separator</span>
+<span class="w">  </span><span class="nb">read</span><span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;Enter user name to be searched:&quot;</span><span class="w"> </span>uname<span class="w">   </span><span class="c1">### read username</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;&quot;</span>
+<span class="w">  </span><span class="c1">### read and store from a here string values into variables</span>
+<span class="w">  </span><span class="c1">### using : as  a  field delimiter</span>
+<span class="w">  </span><span class="nb">read</span><span class="w"> </span>-r<span class="w"> </span>username<span class="w"> </span>pass<span class="w"> </span>uid<span class="w"> </span>gid<span class="w"> </span>comments<span class="w"> </span>homedir<span class="w"> </span>shell<span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>cat<span class="w"> </span>/etc/passwd<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w">   </span><span class="s2">&quot;^</span><span class="nv">$uname</span><span class="s2">&quot;</span><span class="k">)</span><span class="s2">&quot;</span>
+<span class="w">  </span><span class="c1">### print out captured values</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;Username is            : </span><span class="nv">$username</span><span class="s2">\n&quot;</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;User&#39;s ID                 : </span><span class="nv">$uid</span><span class="s2">\n&quot;</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;User&#39;s GID              : </span><span class="nv">$gid</span><span class="s2">\n&quot;</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;User&#39;s Comments    : </span><span class="nv">$comments</span><span class="s2">\n&quot;</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;User&#39;s Home Dir     : </span><span class="nv">$homedir</span><span class="s2">\n&quot;</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;User&#39;s Shell             : </span><span class="nv">$shell</span><span class="s2">\n&quot;</span>
+<span class="w">  </span><span class="nv">IFS</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$oldifs</span><span class="s2">&quot;</span><span class="w">         </span><span class="c1">### store old internal field separator</span>
+<span class="o">}</span>
+</code></pre></div>
+
+<p>保存文件并且给脚本添加执行权限。</p>
+<h3>如何从函数库中调用函数</h3>
+<p>要使用某个 <code>lib</code> 目录下的函数，首先你需要按照下面的形式 将包含该函数的函数库导入到需要执行的 shell 脚本中：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>.<span class="w"> </span>/path/to/lib<span class="w"> </span>
+或
+$<span class="w"> </span><span class="nb">source</span><span class="w"> </span>/path/to/lib
+</code></pre></div>
+
+<p>（LCTT 译注：第一行的 <code>.</code> 和路径间<strong>必须</strong>是有空格的）</p>
+<p>这样你就可以像下面演示的那样，在其它的脚本中使用来自 <code>~/lib/sh/libMYFUNCS.sh</code> 的 <code>printUSERDETS</code> 函数了。</p>
+<p>在下面的脚本中，如果要打印出某个特定用户的详细信息，你不必再一一编写代码，而只需要简单地调用已存在的函数即可。</p>
+<p>创建一个名为 <code>test.sh</code> 的新文件：</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/bin/bash </span>
+<span class="c1">### include lib</span>
+.<span class="w">  </span>~/lib/sh/libMYFUNCS.sh
+<span class="c1">### use function from lib</span>
+printUSERDETS
+<span class="c1">### exit script</span>
+<span class="nb">exit</span><span class="w"> </span><span class="m">0</span>
+</code></pre></div>
+
+<p>保存这个文件，并使得这个脚本可被执行，然后运行它：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>chmod<span class="w"> </span><span class="m">755</span><span class="w"> </span>test.sh
+$<span class="w"> </span>./test.sh<span class="w"> </span>
+</code></pre></div>
+
+<p><img alt="Write Shell Functions" src="/data/attachment/album/201703/15/103857fb9ii0uibzk2uub9.png"></p>
+<p><em>编写 shell 函数</em></p>
+<p>在本文中，我们介绍了在哪里可靠地存储 shell 脚本，如何编写自己的 shell 函数和函数库，以及如何在一个普通的 shell 脚本中从函数库中调用库中的某些函数。</p>
+<p>在之后，我们还会介绍一种相当简单直接的方式来将 Vim 配置为一个编写 Bash 脚本的 IDE（集成开发环境）。在那之前，记得要经常关注我们 ，如果能和我们分享你对这份指南的想法就更好了。</p>
+<p>via: <a href="http://www.tecmint.com/write-custom-shell-functions-and-libraries-in-linux/">http://www.tecmint.com/write-custom-shell-functions-and-libraries-in-linux/</a></p>
+<p>作者：<a href="http://www.tecmint.com/author/aaronkili/">Aaron Kili</a> 译者：<a href="https://github.com/wcnnbdk1">wcnnbdk1</a> 校对：<a href="https://github.com/FSSlc">FSSlc</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创编译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

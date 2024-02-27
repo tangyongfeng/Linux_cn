@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用开源工具进行 Linux 内存取证</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Gaurav Kamathe 利用 Volatility 找出应用程序、网络连接、内核模块、文件等方面的情况。 计算机的操作系统和应用使用主内存（RAM）来执行不同 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2021/05/shi-yong-kai-yuan-gong-ju-jin-xing-linux-nei-cun-qu-zheng.html" rel="bookmark"
+           title="Permalink to 使用开源工具进行 Linux 内存取证">使用开源工具进行 Linux 内存取证</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2021-05-26T11:20:06+02:00">
+                Published: Wed 26 May 2021
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Gaurav Kamathe</p>
+<blockquote>
+<p>利用 Volatility 找出应用程序、网络连接、内核模块、文件等方面的情况。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/202105/26/111959fzkhzf7q3qwmhh7z.jpg" title="Brain on a computer screen"></p>
+<p>计算机的操作系统和应用使用主内存（RAM）来执行不同的任务。这种易失性内存包含大量关于运行应用、网络连接、内核模块、打开的文件以及几乎所有其他的内容信息，但这些信息每次计算机重启的时候都会被清除。</p>
+<p><ruby> 内存取证 <rt>  Memory forensics </rt></ruby>是一种从内存中找到和抽取这些有价值的信息的方式。<a href="https://github.com/volatilityfoundation/volatility">Volatility</a> 是一种使用插件来处理这类信息的开源工具。但是，存在一个问题：在你处理这些信息前，必须将物理内存转储到一个文件中，而 Volatility 没有这种能力。</p>
+<p>因此，这篇文章分为两部分：</p>
+<ul>
+<li>第一部分是处理获取物理内存并将其转储到一个文件中。</li>
+<li>第二部分使用 Volatility 从这个内存转储中读取并处理这些信息。</li>
+</ul>
+<p>我在本教程中使用了以下测试系统，不过它可以在任何 Linux 发行版上工作：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cat<span class="w"> </span>/etc/redhat-release
+Red<span class="w"> </span>Hat<span class="w"> </span>Enterprise<span class="w"> </span>Linux<span class="w"> </span>release<span class="w"> </span><span class="m">8</span>.3<span class="w"> </span><span class="o">(</span>Ootpa<span class="o">)</span>
+$
+$<span class="w"> </span>uname<span class="w"> </span>-r
+<span class="m">4</span>.18.0-240.el8.x86_64
+$
+</code></pre></div>
+
+<blockquote>
+<p><strong>注意事项：</strong> 部分 1 涉及到编译和加载一个内核模块。不要担心：它并不像听起来那么困难。</p>
+<p>一些指南：</p>
+<ul>
+<li>按照以下的步骤。</li>
+<li>不要在生产系统或你的主要计算机上尝试任何这些步骤。</li>
+<li>始终使用测试的虚拟机（VM）来尝试，直到你熟悉使用这些工具并理解它们的工作原理为止。</li>
+</ul>
+</blockquote>
+<h3>安装需要的包</h3>
+<p>在开始之前安装必要的工具。如果你经常使用基于 Debian 的发行版，可以使用 <code>apt-get</code> 命令。这些包大多数提供了需要的内核信息和工具来编译代码：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>kernel-headers<span class="w"> </span>kernel-devel<span class="w"> </span>gcc<span class="w"> </span>elfutils-libelf-devel<span class="w"> </span>make<span class="w"> </span>git<span class="w"> </span>libdwarf-tools<span class="w"> </span>python2-devel.x86_64-y
+</code></pre></div>
+
+<h3>部分 1：使用 LiME 获取内存并将其转储到一个文件中</h3>
+<p>在开始分析内存之前，你需要一个内存转储供你使用。在实际的取证活动中，这可能来自一个被破坏或者被入侵的系统。这些信息通常会被收集和存储来分析入侵是如何发生的及其影响。由于你可能没有可用的内存转储，你可以获取你的测试 VM 的内存转储，并使用它来执行内存取证。</p>
+<p><ruby> Linux 内存提取器 <rt>  Linux Memory Extractor </rt></ruby>（<a href="https://github.com/504ensicsLabs/LiME">LiME</a>）是一个在 Linux 系统上获取内存很常用的工具。使用以下命令获得 LiME：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/504ensicsLabs/LiME.git
+$
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>LiME/src/
+$
+$<span class="w"> </span>ls
+deflate.c<span class="w">  </span>disk.c<span class="w">  </span>hash.c<span class="w">  </span>lime.h<span class="w">  </span>main.c<span class="w">  </span>Makefile<span class="w">  </span>Makefile.sample<span class="w">  </span>tcp.c
+$
+</code></pre></div>
+
+<h4>构建 LiME 内核模块</h4>
+<p>在 <code>src</code> 文件夹下运行 <code>make</code> 命令。这会创建一个以 .ko 为扩展名的内核模块。理想情况下，在 <code>make</code> 结束时，<code>lime.ko</code> 文件会使用格式 <code>lime-&lt;your-kernel-version&gt;.ko</code> 被重命名。</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">make</span>
+<span class="n">make</span><span class="w"> </span><span class="o">-</span><span class="n">C</span><span class="w"> </span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">modules</span><span class="o">/</span><span class="mf">4.18.0</span><span class="o">-</span><span class="mf">240.</span><span class="n">el8</span><span class="p">.</span><span class="n">x86_64</span><span class="o">/</span><span class="n">build</span><span class="w"> </span><span class="n">M</span><span class="o">=</span><span class="ss">&quot;/root/LiME/src&quot;</span><span class="w"> </span><span class="n">modules</span>
+<span class="n">make</span><span class="o">[</span><span class="n">1</span><span class="o">]</span><span class="err">:</span><span class="w"> </span><span class="n">Entering</span><span class="w"> </span><span class="n">directory</span><span class="w"> </span><span class="s1">&#39;/usr/src/kernels/4.18.0-240.el8.x86_64&#39;</span>
+
+<span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">删节</span><span class="w"> </span><span class="o">&gt;&gt;</span>
+
+<span class="n">make</span><span class="o">[</span><span class="n">1</span><span class="o">]</span><span class="err">:</span><span class="w"> </span><span class="n">Leaving</span><span class="w"> </span><span class="n">directory</span><span class="w"> </span><span class="s1">&#39;/usr/src/kernels/4.18.0-240.el8.x86_64&#39;</span>
+<span class="n">strip</span><span class="w"> </span><span class="o">--</span><span class="n">strip</span><span class="o">-</span><span class="n">unneeded</span><span class="w"> </span><span class="n">lime</span><span class="p">.</span><span class="n">ko</span>
+<span class="n">mv</span><span class="w"> </span><span class="n">lime</span><span class="p">.</span><span class="n">ko</span><span class="w"> </span><span class="n">lime</span><span class="o">-</span><span class="mf">4.18.0</span><span class="o">-</span><span class="mf">240.</span><span class="n">el8</span><span class="p">.</span><span class="n">x86_64</span><span class="p">.</span><span class="n">ko</span>
+<span class="err">$</span>
+<span class="err">$</span>
+<span class="err">$</span><span class="w"> </span><span class="n">ls</span><span class="w"> </span><span class="o">-</span><span class="n">l</span><span class="w"> </span><span class="n">lime</span><span class="o">-</span><span class="mf">4.18.0</span><span class="o">-</span><span class="mf">240.</span><span class="n">el8</span><span class="p">.</span><span class="n">x86_64</span><span class="p">.</span><span class="n">ko</span>
+<span class="o">-</span><span class="n">rw</span><span class="o">-</span><span class="n">r</span><span class="o">--</span><span class="n">r</span><span class="o">--</span><span class="p">.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="mi">25696</span><span class="w"> </span><span class="n">Apr</span><span class="w"> </span><span class="mi">17</span><span class="w"> </span><span class="mi">14</span><span class="err">:</span><span class="mi">45</span><span class="w"> </span><span class="n">lime</span><span class="o">-</span><span class="mf">4.18.0</span><span class="o">-</span><span class="mf">240.</span><span class="n">el8</span><span class="p">.</span><span class="n">x86_64</span><span class="p">.</span><span class="n">ko</span>
+<span class="err">$</span>
+<span class="err">$</span><span class="w"> </span><span class="k">file</span><span class="w"> </span><span class="n">lime</span><span class="o">-</span><span class="mf">4.18.0</span><span class="o">-</span><span class="mf">240.</span><span class="n">el8</span><span class="p">.</span><span class="n">x86_64</span><span class="p">.</span><span class="n">ko</span>
+<span class="n">lime</span><span class="o">-</span><span class="mf">4.18.0</span><span class="o">-</span><span class="mf">240.</span><span class="n">el8</span><span class="p">.</span><span class="n">x86_64</span><span class="p">.</span><span class="nl">ko</span><span class="p">:</span><span class="w"> </span><span class="n">ELF</span><span class="w"> </span><span class="mi">64</span><span class="o">-</span><span class="nc">bit</span><span class="w"> </span><span class="n">LSB</span><span class="w"> </span><span class="n">relocatable</span><span class="p">,</span><span class="w"> </span><span class="n">x86</span><span class="o">-</span><span class="mi">64</span><span class="p">,</span><span class="w"> </span><span class="n">version</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">(</span><span class="n">SYSV</span><span class="p">),</span><span class="w"> </span><span class="n">BuildID</span><span class="o">[</span><span class="n">sha1</span><span class="o">]=</span><span class="mi">1</span><span class="n">d0b5cf932389000d960a7e6b57c428b8e46c9cf</span><span class="p">,</span><span class="w"> </span><span class="ow">not</span><span class="w"> </span><span class="n">stripped</span>
+<span class="err">$</span>
+</code></pre></div>
+
+<h4>加载LiME 内核模块</h4>
+<p>现在是时候加载内核模块来获取系统内存了。<code>insmod</code> 命令会帮助加载内核模块；模块一旦被加载，会在你的系统上读取主内存（RAM）并且将内存的内容转储到命令行所提供的 <code>path</code> 目录下的文件中。另一个重要的参数是 <code>format</code>；保持 <code>lime</code> 的格式，如下所示。在插入内核模块之后，使用 <code>lsmod</code> 命令验证它是否真的被加载。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>lsmod<span class="w">  </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>lime
+$
+$<span class="w"> </span>insmod<span class="w"> </span>./lime-4.18.0-240.el8.x86_64.ko<span class="w"> </span><span class="s2">&quot;path=../RHEL8.3_64bit.mem format=lime&quot;</span>
+$
+$<span class="w"> </span>lsmod<span class="w">  </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>lime
+lime<span class="w">                   </span><span class="m">16384</span><span class="w">  </span><span class="m">0</span>
+$
+</code></pre></div>
+
+<p>你应该看到给 <code>path</code> 命令的文件已经创建好了，而且文件大小与你系统的物理内存（RAM）大小相同（并不奇怪）。一旦你有了内存转储，你就可以使用 <code>rmmod</code> 命令删除该内核模块：</p>
+<div class="highlight"><pre><span></span><code><span class="p">$</span>
+<span class="p">$</span><span class="w"> </span><span class="nv">ls</span><span class="w"> </span><span class="o">-</span><span class="nv">l</span><span class="w"> </span>~<span class="o">/</span><span class="nv">LiME</span><span class="o">/</span><span class="nv">RHEL8</span><span class="o">.</span><span class="mi">3</span><span class="nv">_64bit</span><span class="o">.</span><span class="nv">mem</span>
+<span class="o">-</span><span class="nv">r</span><span class="o">--</span><span class="nv">r</span><span class="o">--</span><span class="nv">r</span><span class="o">--.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="nv">root</span><span class="w"> </span><span class="nv">root</span><span class="w"> </span><span class="mi">4294544480</span><span class="w"> </span><span class="nv">Apr</span><span class="w"> </span><span class="mi">17</span><span class="w"> </span><span class="mi">14</span><span class="o">:</span><span class="mi">47</span><span class="w"> </span><span class="o">/</span><span class="nv">root</span><span class="o">/</span><span class="nv">LiME</span><span class="o">/</span><span class="nv">RHEL8</span><span class="o">.</span><span class="mi">3</span><span class="nv">_64bit</span><span class="o">.</span><span class="nv">mem</span>
+<span class="p">$</span>
+<span class="p">$</span><span class="w"> </span><span class="nv">du</span><span class="w"> </span><span class="o">-</span><span class="nv">sh</span><span class="w"> </span>~<span class="o">/</span><span class="nv">LiME</span><span class="o">/</span><span class="nv">RHEL8</span><span class="o">.</span><span class="mi">3</span><span class="nv">_64bit</span><span class="o">.</span><span class="nv">mem</span>
+<span class="mf">4.0</span><span class="nv">G</span><span class="w">    </span><span class="o">/</span><span class="nv">root</span><span class="o">/</span><span class="nv">LiME</span><span class="o">/</span><span class="nv">RHEL8</span><span class="o">.</span><span class="mi">3</span><span class="nv">_64bit</span><span class="o">.</span><span class="nv">mem</span>
+<span class="p">$</span>
+<span class="p">$</span><span class="w"> </span><span class="nv">free</span><span class="w"> </span><span class="o">-</span><span class="nv">m</span>
+<span class="w">              </span><span class="k">to</span><span class="nv">tal</span><span class="w">        </span><span class="nv">used</span><span class="w">        </span><span class="nv">free</span><span class="w">      </span><span class="nv">shared</span><span class="w">  </span><span class="nv">buff</span><span class="o">/</span><span class="nv">cache</span><span class="w">   </span><span class="nv">available</span>
+<span class="nv">Mem</span><span class="o">:</span><span class="w">           </span><span class="mi">3736</span><span class="w">         </span><span class="mi">220</span><span class="w">         </span><span class="mi">366</span><span class="w">           </span><span class="mi">8</span><span class="w">        </span><span class="mi">3149</span><span class="w">        </span><span class="mi">3259</span>
+<span class="nv">Swap</span><span class="o">:</span><span class="w">          </span><span class="mi">4059</span><span class="w">           </span><span class="mi">8</span><span class="w">        </span><span class="mi">4051</span>
+<span class="p">$</span>
+<span class="p">$</span><span class="w"> </span><span class="nv">rmmod</span><span class="w"> </span><span class="nv">lime</span>
+<span class="p">$</span>
+<span class="p">$</span><span class="w"> </span><span class="nv">lsmod</span><span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="nv">grep</span><span class="w"> </span><span class="nv">lime</span>
+<span class="p">$</span>
+</code></pre></div>
+
+<h4>内存转储中是什么？</h4>
+<p>这个内存转储文件只是原始数据，就像使用 <code>file</code> 命令可以看到的一样。你不可能通过手动去理解它；是的，在这里边有一些 ASCII 字符，但是你无法用编辑器打开这个文件并把它读出来。<code>hexdump</code> 的输出显示，最初的几个字节是 <code>EmiL</code>；这是因为你的请求格式在上面的命令行中是 <code>lime</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>file<span class="w"> </span>~/LiME/RHEL8.3_64bit.mem
+/root/LiME/RHEL8.3_64bit.mem:<span class="w"> </span>data
+$
+
+$<span class="w"> </span>hexdump<span class="w"> </span>-C<span class="w"> </span>~/LiME/RHEL8.3_64bit.mem<span class="w"> </span><span class="p">|</span><span class="w"> </span>head
+<span class="m">00000000</span><span class="w">  </span><span class="m">45</span><span class="w"> </span>4d<span class="w"> </span><span class="m">69</span><span class="w"> </span>4c<span class="w"> </span><span class="m">01</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w">  </span><span class="m">00</span><span class="w"> </span><span class="m">10</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w">  </span><span class="p">|</span>EMiL............<span class="p">|</span>
+<span class="m">00000010</span><span class="w">  </span>ff<span class="w"> </span>fb<span class="w"> </span><span class="m">09</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w">  </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w">  </span><span class="p">|</span>................<span class="p">|</span>
+<span class="m">00000020</span><span class="w">  </span>b8<span class="w"> </span>fe<span class="w"> </span>4c<span class="w"> </span><span class="nb">cd</span><span class="w"> </span><span class="m">21</span><span class="w"> </span><span class="m">44</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">32</span><span class="w">  </span><span class="m">20</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span>2a<span class="w"> </span>2a<span class="w"> </span>2a<span class="w"> </span>2a<span class="w"> </span>2a<span class="w">  </span><span class="p">|</span>..L.!D.2<span class="w"> </span>..*****<span class="p">|</span>
+<span class="m">00000030</span><span class="w">  </span>2a<span class="w"> </span>2a<span class="w"> </span>2a<span class="w"> </span>2a<span class="w"> </span>2a<span class="w"> </span>2a<span class="w"> </span>2a<span class="w"> </span>2a<span class="w">  </span>2a<span class="w"> </span>2a<span class="w"> </span>2a<span class="w"> </span>2a<span class="w"> </span>2a<span class="w"> </span>2a<span class="w"> </span>2a<span class="w"> </span>2a<span class="w">  </span><span class="p">|</span>****************<span class="p">|</span>
+<span class="m">00000040</span><span class="w">  </span>2a<span class="w"> </span>2a<span class="w"> </span>2a<span class="w"> </span>2a<span class="w"> </span>2a<span class="w"> </span>2a<span class="w"> </span>2a<span class="w"> </span>2a<span class="w">  </span>2a<span class="w"> </span>2a<span class="w"> </span>2a<span class="w"> </span>2a<span class="w"> </span>2a<span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">20</span><span class="w">  </span><span class="p">|</span>*************<span class="w"> </span>.<span class="w"> </span><span class="p">|</span>
+<span class="m">00000050</span><span class="w">  </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w">  </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w">  </span><span class="p">|</span>................<span class="p">|</span>
+*
+<span class="m">00000080</span><span class="w">  </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w">  </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">70</span><span class="w"> </span><span class="m">78</span><span class="w"> </span><span class="m">65</span><span class="w"> </span>6c<span class="w">  </span><span class="p">|</span>............pxel<span class="p">|</span>
+<span class="m">00000090</span><span class="w">  </span><span class="m">69</span><span class="w"> </span>6e<span class="w"> </span><span class="m">75</span><span class="w"> </span><span class="m">78</span><span class="w"> </span>2e<span class="w"> </span><span class="m">30</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w">  </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w">  </span><span class="p">|</span>inux.0..........<span class="p">|</span>
+000000a0<span class="w">  </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w">  </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w">  </span><span class="p">|</span>................<span class="p">|</span>
+$
+</code></pre></div>
+
+<h3>部分 2：获得 Volatility 并使用它来分析你的内存转储</h3>
+<p>现在你有了要分析的示例内存转储，使用下面的命令获取 Volatility 软件。Volatility 已经用 Python 3 重写了，但是本教程使用的是用 Python 2 写的原始的 Volatility 包。如果你想用 Volatility 3 进行实验，可以从合适的 Git 仓库下载它，并在以下命令中使用 Python 3 而不是 Python 2：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/volatilityfoundation/volatility.git
+$
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>volatility/
+$
+$<span class="w"> </span>ls
+AUTHORS.txt<span class="w">    </span>contrib<span class="w">      </span>LEGAL.txt<span class="w">    </span>Makefile<span class="w">     </span>PKG-INFO<span class="w">     </span>pyinstaller.spec<span class="w">  </span>resources<span class="w">  </span>tools<span class="w">       </span>vol.py
+CHANGELOG.txt<span class="w">  </span>CREDITS.txt<span class="w">  </span>LICENSE.txt<span class="w">  </span>MANIFEST.in<span class="w">  </span>pyinstaller<span class="w">  </span>README.txt<span class="w">        </span>setup.py<span class="w">   </span>volatility
+$
+</code></pre></div>
+
+<p>Volatility 使用两个 Python 库来实现某些功能，所以使用以下命令来安装它们。否则，在你运行 Volatility 工具时，你可能看到一些导入错误；你可以忽略它们，除非你正在运行的插件需要这些库；这种情况下，工具将会报错：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>pip2<span class="w"> </span>install<span class="w"> </span>pycrypto
+$<span class="w"> </span>pip2<span class="w"> </span>install<span class="w"> </span>distorm3
+</code></pre></div>
+
+<h4>列出 Volatility 的 Linux 配置文件</h4>
+<p>你将要运行的第一个 Volatility 命令列出了可用的 Linux 配置文件，运行 Volatility 命令的主要入口点是 <code>vol.py</code> 脚本。使用 Python 2 解释器调用它并提供 <code>--info</code> 选项。为了缩小输出，查找以 Linux 开头的字符串。正如你所看到的，并没有很多 Linux 配置文件被列出：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python2<span class="w"> </span>vol.py<span class="w"> </span>--info<span class="w">  </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>^Linux
+Volatility<span class="w"> </span>Foundation<span class="w"> </span>Volatility<span class="w"> </span>Framework<span class="w"> </span><span class="m">2</span>.6.1
+LinuxAMD64PagedMemory<span class="w">          </span>-<span class="w"> </span>Linux-specific<span class="w"> </span>AMD<span class="w"> </span><span class="m">64</span>-bit<span class="w"> </span>address<span class="w"> </span>space.
+$
+</code></pre></div>
+
+<h4>构建你自己的 Linux 配置文件</h4>
+<p>Linux 发行版是多种多样的，并且是为不同架构而构建的。这就是为什么配置文件是必要的 —— Volatility 在提取信息前必须知道内存转储是从哪个系统和架构获得的。有一些 Volatility 命令可以找到这些信息；但是这个方法很费时。为了加快速度，可以使用以下命令构建一个自定义的 Linux 配置文件：</p>
+<p>移动到 Volatility 仓库的 <code>tools/linux</code>目录下，运行 <code>make</code> 命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>tools/linux/
+$
+$<span class="w"> </span><span class="nb">pwd</span>
+/root/volatility/tools/linux
+$
+$<span class="w"> </span>ls
+kcore<span class="w">  </span>Makefile<span class="w">  </span>Makefile.enterprise<span class="w">  </span>module.c
+$
+$<span class="w"> </span>make
+make<span class="w"> </span>-C<span class="w"> </span>//lib/modules/4.18.0-240.el8.x86_64/build<span class="w"> </span><span class="nv">CONFIG_DEBUG_INFO</span><span class="o">=</span>y<span class="w"> </span><span class="nv">M</span><span class="o">=</span><span class="s2">&quot;/root/volatility/tools/linux&quot;</span><span class="w"> </span>modules
+make<span class="o">[</span><span class="m">1</span><span class="o">]</span>:<span class="w"> </span>Entering<span class="w"> </span>directory<span class="w"> </span><span class="s1">&#39;/usr/src/kernels/4.18.0-240.el8.x86_64&#39;</span>
+&lt;&lt;<span class="w"> </span>删节<span class="w"> </span>&gt;&gt;
+make<span class="o">[</span><span class="m">1</span><span class="o">]</span>:<span class="w"> </span>Leaving<span class="w"> </span>directory<span class="w"> </span><span class="s1">&#39;/usr/src/kernels/4.18.0-240.el8.x86_64&#39;</span>
+$
+</code></pre></div>
+
+<p>你应该看到一个新的 <code>module.dwarf</code> 文件。你也需要 <code>/boot</code> 目录下的 <code>System.map</code> 文件，因为它包含了所有与当前运行的内核相关的符号：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ls
+kcore<span class="w">  </span>Makefile<span class="w">  </span>Makefile.enterprise<span class="w">  </span>module.c<span class="w">  </span>module.dwarf
+$
+$<span class="w"> </span>ls<span class="w"> </span>-l<span class="w"> </span>module.dwarf
+-rw-r--r--.<span class="w"> </span><span class="m">1</span><span class="w"> </span>root<span class="w"> </span>root<span class="w"> </span><span class="m">3987904</span><span class="w"> </span>Apr<span class="w"> </span><span class="m">17</span><span class="w"> </span><span class="m">15</span>:17<span class="w"> </span>module.dwarf
+$
+$<span class="w"> </span>ls<span class="w"> </span>-l<span class="w"> </span>/boot/System.map-4.18.0-240.el8.x86_64
+-rw-------.<span class="w"> </span><span class="m">1</span><span class="w"> </span>root<span class="w"> </span>root<span class="w"> </span><span class="m">4032815</span><span class="w"> </span>Sep<span class="w"> </span><span class="m">23</span><span class="w">  </span><span class="m">2020</span><span class="w"> </span>/boot/System.map-4.18.0-240.el8.x86_64
+$
+$
+</code></pre></div>
+
+<p>要创建一个自定义配置文件，移动回到 Volatility 目录并且运行下面的命令。第一个参数提供了一个自定义 .zip 文件，文件名是你自己命名的。我经常使用操作系统和内核版本来命名。下一个参数是前边创建的 <code>module.dwarf</code> 文件，最后一个参数是 <code>/boot</code> 目录下的 <code>System.map</code> 文件：</p>
+<div class="highlight"><pre><span></span><code><span class="o">$</span>
+<span class="o">$</span><span class="w"> </span><span class="n">cd</span><span class="w"> </span><span class="n">volatility</span><span class="o">/</span>
+<span class="o">$</span>
+<span class="o">$</span><span class="w"> </span><span class="n">zip</span><span class="w"> </span><span class="n">volatility</span><span class="o">/</span><span class="n">plugins</span><span class="o">/</span><span class="n">overlays</span><span class="o">/</span><span class="n">linux</span><span class="o">/</span><span class="n">Redhat8</span><span class="o">.</span><span class="mi">3</span><span class="n">_4</span><span class="o">.</span><span class="mf">18.0</span><span class="o">-</span><span class="mf">240.</span><span class="n">zip</span><span class="w"> </span><span class="n">tools</span><span class="o">/</span><span class="n">linux</span><span class="o">/</span><span class="n">module</span><span class="o">.</span><span class="n">dwarf</span><span class="w"> </span><span class="o">/</span><span class="n">boot</span><span class="o">/</span><span class="n">System</span><span class="o">.</span><span class="n">map</span><span class="o">-</span><span class="mf">4.18</span><span class="o">.</span><span class="mi">0</span><span class="o">-</span><span class="mf">240.</span><span class="n">el8</span><span class="o">.</span><span class="n">x86_64</span>
+<span class="w">  </span><span class="n">adding</span><span class="p">:</span><span class="w"> </span><span class="n">tools</span><span class="o">/</span><span class="n">linux</span><span class="o">/</span><span class="n">module</span><span class="o">.</span><span class="n">dwarf</span><span class="w"> </span><span class="p">(</span><span class="n">deflated</span><span class="w"> </span><span class="mi">91</span><span class="o">%</span><span class="p">)</span>
+<span class="w">  </span><span class="n">adding</span><span class="p">:</span><span class="w"> </span><span class="n">boot</span><span class="o">/</span><span class="n">System</span><span class="o">.</span><span class="n">map</span><span class="o">-</span><span class="mf">4.18</span><span class="o">.</span><span class="mi">0</span><span class="o">-</span><span class="mf">240.</span><span class="n">el8</span><span class="o">.</span><span class="n">x86_64</span><span class="w"> </span><span class="p">(</span><span class="n">deflated</span><span class="w"> </span><span class="mi">79</span><span class="o">%</span><span class="p">)</span>
+<span class="o">$</span>
+</code></pre></div>
+
+<p>现在自定义配置文件就准备好了，所以在前边给出的位置检查一下 .zip 文件是否被创建好。如果你想知道 Volatility 是否检测到这个自定义配置文件，再一次运行 <code>--info</code> 命令。现在，你应该可以在下边的列出的内容中看到新的配置文件：</p>
+<div class="highlight"><pre><span></span><code><span class="p">$</span>
+<span class="p">$</span><span class="w"> </span><span class="nv">ls</span><span class="w"> </span><span class="o">-</span><span class="nv">l</span><span class="w"> </span><span class="nv">volatility</span><span class="o">/</span><span class="nv">plugins</span><span class="o">/</span><span class="nv">overlays</span><span class="o">/</span><span class="nv">linux</span><span class="o">/</span><span class="nv">Redhat8</span><span class="o">.</span><span class="mi">3</span><span class="nv">_4</span><span class="o">.</span><span class="mf">18.0</span><span class="o">-</span><span class="mi">240</span><span class="o">.</span><span class="nv">zip</span>
+<span class="o">-</span><span class="nv">rw</span><span class="o">-</span><span class="nv">r</span><span class="o">--</span><span class="nv">r</span><span class="o">--.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="nv">root</span><span class="w"> </span><span class="nv">root</span><span class="w"> </span><span class="mi">1190360</span><span class="w"> </span><span class="nv">Apr</span><span class="w"> </span><span class="mi">17</span><span class="w"> </span><span class="mi">15</span><span class="o">:</span><span class="mi">20</span><span class="w"> </span><span class="nv">volatility</span><span class="o">/</span><span class="nv">plugins</span><span class="o">/</span><span class="nv">overlays</span><span class="o">/</span><span class="nv">linux</span><span class="o">/</span><span class="nv">Redhat8</span><span class="o">.</span><span class="mi">3</span><span class="nv">_4</span><span class="o">.</span><span class="mf">18.0</span><span class="o">-</span><span class="mi">240</span><span class="o">.</span><span class="nv">zip</span>
+<span class="p">$</span>
+<span class="p">$</span>
+<span class="p">$</span><span class="w"> </span><span class="nv">python2</span><span class="w"> </span><span class="nv">vol</span><span class="o">.</span><span class="nv">py</span><span class="w"> </span><span class="o">--</span><span class="no">inf</span><span class="nv">o</span><span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="nv">grep</span><span class="w"> </span><span class="nv">Redhat</span>
+<span class="nv">Volatility</span><span class="w"> </span><span class="nv">Foundation</span><span class="w"> </span><span class="nv">Volatility</span><span class="w"> </span><span class="nv">Framework</span><span class="w"> </span><span class="mf">2.6</span><span class="o">.</span><span class="mi">1</span>
+<span class="nv">LinuxRedhat8_3_4_18_0</span><span class="o">-</span><span class="mi">240</span><span class="nv">x64</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nv">A</span><span class="w"> </span><span class="nv">Profile</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nv">Linux</span><span class="w"> </span><span class="nv">Redhat8</span><span class="o">.</span><span class="mi">3</span><span class="nv">_4</span><span class="o">.</span><span class="mf">18.0</span><span class="o">-</span><span class="mi">240</span><span class="w"> </span><span class="nv">x64</span>
+<span class="p">$</span>
+<span class="p">$</span>
+</code></pre></div>
+
+<h4>开始使用 Volatility</h4>
+<p>现在你已经准备好去做一些真正的内存取证了。记住，Volatility 是由自定义的插件组成的，你可以针对内存转储来获得信息。命令的通用格式是：</p>
+<div class="highlight"><pre><span></span><code>python2 vol.py -f &lt;memory-dump-file-taken-by-Lime&gt; &lt;plugin-name&gt; --profile=&lt;name-of-our-custom-profile&gt;
+</code></pre></div>
+
+<p>有了这些信息，运行 <code>linux_banner</code> 插件来看看你是否可从内存转储中识别正确的发行版信息：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python2<span class="w"> </span>vol.py<span class="w"> </span>-f<span class="w"> </span>~/LiME/RHEL8.3_64bit.mem<span class="w"> </span>linux_banner<span class="w"> </span>--profile<span class="o">=</span>LinuxRedhat8_3_4_18_0-240x64
+Volatility<span class="w"> </span>Foundation<span class="w"> </span>Volatility<span class="w"> </span>Framework<span class="w"> </span><span class="m">2</span>.6.1
+Linux<span class="w"> </span>version<span class="w"> </span><span class="m">4</span>.18.0-240.el8.x86_64<span class="w"> </span><span class="o">([</span>mockbuild@vm09.test.com<span class="o">][</span><span class="m">4</span><span class="o">])</span><span class="w"> </span><span class="o">(</span>gcc<span class="w"> </span>version<span class="w"> </span><span class="m">8</span>.3.1<span class="w"> </span><span class="m">20191121</span><span class="w"> </span><span class="o">(</span>Red<span class="w"> </span>Hat<span class="w"> </span><span class="m">8</span>.3.1-5<span class="o">)</span><span class="w"> </span><span class="o">(</span>GCC<span class="o">))</span><span class="w"> </span><span class="c1">#1 SMP Wed Sep 23 05:13:10 EDT 2020</span>
+$
+</code></pre></div>
+
+<h4>找到 Linux 插件</h4>
+<p>到现在都很顺利，所以现在你可能对如何找到所有 Linux 插件的名字比较好奇。有一个简单的技巧：运行 <code>--info</code> 命令并抓取 <code>linux_</code> 字符串。有各种各样的插件可用于不同的用途。这里列出一部分：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python2<span class="w"> </span>vol.py<span class="w"> </span>--info<span class="w">  </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>linux_
+Volatility<span class="w"> </span>Foundation<span class="w"> </span>Volatility<span class="w"> </span>Framework<span class="w"> </span><span class="m">2</span>.6.1
+linux_apihooks<span class="w">             </span>-<span class="w"> </span>Checks<span class="w"> </span><span class="k">for</span><span class="w"> </span>userland<span class="w"> </span>apihooks
+linux_arp<span class="w">                  </span>-<span class="w"> </span>Print<span class="w"> </span>the<span class="w"> </span>ARP<span class="w"> </span>table
+linux_aslr_shift<span class="w">           </span>-<span class="w"> </span>Automatically<span class="w"> </span>detect<span class="w"> </span>the<span class="w"> </span>Linux<span class="w"> </span>ASLR<span class="w"> </span><span class="nb">shift</span>
+
+&lt;&lt;<span class="w"> </span>删节<span class="w"> </span>&gt;&gt;
+
+linux_banner<span class="w">               </span>-<span class="w"> </span>Prints<span class="w"> </span>the<span class="w"> </span>Linux<span class="w"> </span>banner<span class="w"> </span>information
+linux_vma_cache<span class="w">            </span>-<span class="w"> </span>Gather<span class="w"> </span>VMAs<span class="w"> </span>from<span class="w"> </span>the<span class="w"> </span>vm_area_struct<span class="w"> </span>cache
+linux_volshell<span class="w">             </span>-<span class="w"> </span>Shell<span class="w"> </span><span class="k">in</span><span class="w"> </span>the<span class="w"> </span>memory<span class="w"> </span>image
+linux_yarascan<span class="w">             </span>-<span class="w"> </span>A<span class="w"> </span>shell<span class="w"> </span><span class="k">in</span><span class="w"> </span>the<span class="w"> </span>Linux<span class="w"> </span>memory<span class="w"> </span>image
+$
+</code></pre></div>
+
+<p>使用 <code>linux_psaux</code> 插件检查内存转储时系统上正在运行哪些进程。注意列表中的最后一个命令：它是你在转储之前运行的 <code>insmod</code> 命令。</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">python2</span><span class="w"> </span><span class="n">vol</span><span class="p">.</span><span class="n">py</span><span class="w"> </span><span class="o">-</span><span class="n">f</span><span class="w"> </span><span class="o">~/</span><span class="n">LiME</span><span class="o">/</span><span class="n">RHEL8</span><span class="mf">.3</span><span class="n">_64bit</span><span class="p">.</span><span class="n">mem</span><span class="w"> </span><span class="n">linux_psaux</span><span class="w"> </span><span class="o">--</span><span class="n">profile</span><span class="o">=</span><span class="n">LinuxRedhat8_3_4_18_0</span><span class="o">-</span><span class="mi">240</span><span class="n">x64</span>
+<span class="n">Volatility</span><span class="w"> </span><span class="n">Foundation</span><span class="w"> </span><span class="n">Volatility</span><span class="w"> </span><span class="n">Framework</span><span class="w"> </span><span class="mf">2.6.1</span>
+<span class="n">Pid</span><span class="w">    </span><span class="n">Uid</span><span class="w">    </span><span class="n">Gid</span><span class="w">    </span><span class="n">Arguments</span><span class="w">                                                      </span>
+<span class="mi">1</span><span class="w">      </span><span class="mi">0</span><span class="w">      </span><span class="mi">0</span><span class="w">      </span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">systemd</span><span class="o">/</span><span class="n">systemd</span><span class="w"> </span><span class="o">--</span><span class="n">switched</span><span class="o">-</span><span class="n">root</span><span class="w"> </span><span class="o">--</span><span class="k">system</span><span class="w"> </span><span class="o">--</span><span class="n">deserialize</span><span class="w"> </span><span class="mi">18</span>
+<span class="mi">2</span><span class="w">      </span><span class="mi">0</span><span class="w">      </span><span class="mi">0</span><span class="w">      </span><span class="o">[</span><span class="n">kthreadd</span><span class="o">]</span><span class="w">                                                      </span>
+<span class="mi">3</span><span class="w">      </span><span class="mi">0</span><span class="w">      </span><span class="mi">0</span><span class="w">      </span><span class="o">[</span><span class="n">rcu_gp</span><span class="o">]</span><span class="w">                                                        </span>
+<span class="mi">4</span><span class="w">      </span><span class="mi">0</span><span class="w">      </span><span class="mi">0</span><span class="w">      </span><span class="o">[</span><span class="n">rcu_par_gp</span><span class="o">]</span><span class="w">                                                    </span>
+<span class="mi">861</span><span class="w">    </span><span class="mi">0</span><span class="w">      </span><span class="mi">0</span><span class="w">      </span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">libexec</span><span class="o">/</span><span class="n">platform</span><span class="o">-</span><span class="n">python</span><span class="w"> </span><span class="o">-</span><span class="n">Es</span><span class="w"> </span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">sbin</span><span class="o">/</span><span class="n">tuned</span><span class="w"> </span><span class="o">-</span><span class="n">l</span><span class="w"> </span><span class="o">-</span><span class="n">P</span><span class="w">          </span>
+<span class="mi">869</span><span class="w">    </span><span class="mi">0</span><span class="w">      </span><span class="mi">0</span><span class="w">      </span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">rhsmcertd</span><span class="w">                                              </span>
+<span class="mi">875</span><span class="w">    </span><span class="mi">0</span><span class="w">      </span><span class="mi">0</span><span class="w">      </span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">libexec</span><span class="o">/</span><span class="n">sssd</span><span class="o">/</span><span class="n">sssd_be</span><span class="w"> </span><span class="o">--</span><span class="k">domain</span><span class="w"> </span><span class="n">implicit_files</span><span class="w"> </span><span class="o">--</span><span class="n">uid</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="o">--</span><span class="n">gid</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="o">--</span><span class="n">logger</span><span class="o">=</span><span class="n">files</span>
+<span class="mi">878</span><span class="w">    </span><span class="mi">0</span><span class="w">      </span><span class="mi">0</span><span class="w">      </span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">libexec</span><span class="o">/</span><span class="n">sssd</span><span class="o">/</span><span class="n">sssd_nss</span><span class="w"> </span><span class="o">--</span><span class="n">uid</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="o">--</span><span class="n">gid</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="o">--</span><span class="n">logger</span><span class="o">=</span><span class="n">files</span><span class="w">      </span>
+
+<span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">删节</span><span class="w"> </span><span class="o">&gt;&gt;</span>
+
+<span class="mi">11064</span><span class="w">  </span><span class="mi">89</span><span class="w">     </span><span class="mi">89</span><span class="w">     </span><span class="n">qmgr</span><span class="w"> </span><span class="o">-</span><span class="n">l</span><span class="w"> </span><span class="o">-</span><span class="n">t</span><span class="w"> </span><span class="n">unix</span><span class="w"> </span><span class="o">-</span><span class="n">u</span><span class="w">                                              </span>
+<span class="mi">227148</span><span class="w"> </span><span class="mi">0</span><span class="w">      </span><span class="mi">0</span><span class="w">      </span><span class="o">[</span><span class="n">kworker/0:0</span><span class="o">]</span><span class="w">                                                  </span>
+<span class="mi">227298</span><span class="w"> </span><span class="mi">0</span><span class="w">      </span><span class="mi">0</span><span class="w">      </span><span class="o">-</span><span class="n">bash</span><span class="w">                                                          </span>
+<span class="mi">227374</span><span class="w"> </span><span class="mi">0</span><span class="w">      </span><span class="mi">0</span><span class="w">      </span><span class="o">[</span><span class="n">kworker/u2:1</span><span class="o">]</span><span class="w">                                                  </span>
+<span class="mi">227375</span><span class="w"> </span><span class="mi">0</span><span class="w">      </span><span class="mi">0</span><span class="w">      </span><span class="o">[</span><span class="n">kworker/0:2</span><span class="o">]</span><span class="w">                                                  </span>
+<span class="mi">227884</span><span class="w"> </span><span class="mi">0</span><span class="w">      </span><span class="mi">0</span><span class="w">      </span><span class="o">[</span><span class="n">kworker/0:3</span><span class="o">]</span><span class="w">                                                  </span>
+<span class="mi">228573</span><span class="w"> </span><span class="mi">0</span><span class="w">      </span><span class="mi">0</span><span class="w">      </span><span class="n">insmod</span><span class="w"> </span><span class="p">.</span><span class="o">/</span><span class="n">lime</span><span class="o">-</span><span class="mf">4.18.0</span><span class="o">-</span><span class="mf">240.</span><span class="n">el8</span><span class="p">.</span><span class="n">x86_64</span><span class="p">.</span><span class="n">ko</span><span class="w"> </span><span class="k">path</span><span class="o">=</span><span class="p">..</span><span class="o">/</span><span class="n">RHEL8</span><span class="mf">.3</span><span class="n">_64bit</span><span class="p">.</span><span class="n">mem</span><span class="w"> </span><span class="nf">format</span><span class="o">=</span><span class="n">lime</span>
+<span class="mi">228576</span><span class="w"> </span><span class="mi">0</span><span class="w">      </span><span class="mi">0</span><span class="w">                                                                      </span>
+<span class="err">$</span>
+</code></pre></div>
+
+<p>想要知道系统的网络状态吗？运行 <code>linux_netstat</code> 插件来找到在内存转储期间网络连接的状态：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python2<span class="w"> </span>vol.py<span class="w"> </span>-f<span class="w"> </span>~/LiME/RHEL8.3_64bit.mem<span class="w"> </span>linux_netstat<span class="w"> </span>--profile<span class="o">=</span>LinuxRedhat8_3_4_18_0-240x64
+Volatility<span class="w"> </span>Foundation<span class="w"> </span>Volatility<span class="w"> </span>Framework<span class="w"> </span><span class="m">2</span>.6.1
+UNIX<span class="w"> </span><span class="m">18113</span><span class="w">              </span>systemd/1<span class="w">     </span>/run/systemd/private
+UNIX<span class="w"> </span><span class="m">11411</span><span class="w">              </span>systemd/1<span class="w">     </span>/run/systemd/notify
+UNIX<span class="w"> </span><span class="m">11413</span><span class="w">              </span>systemd/1<span class="w">     </span>/run/systemd/cgroups-agent
+UNIX<span class="w"> </span><span class="m">11415</span><span class="w">              </span>systemd/1<span class="w">    </span>
+UNIX<span class="w"> </span><span class="m">11416</span><span class="w">              </span>systemd/1<span class="w">    </span>
+
+&lt;&lt;<span class="w"> </span>删节<span class="w"> </span>&gt;&gt;
+$
+</code></pre></div>
+
+<p>接下来，使用 <code>linux_mount</code> 插件来看在内存转储期间哪些文件系统被挂载：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python2<span class="w"> </span>vol.py<span class="w"> </span>-f<span class="w"> </span>~/LiME/RHEL8.3_64bit.mem<span class="w"> </span>linux_mount<span class="w"> </span>--profile<span class="o">=</span>LinuxRedhat8_3_4_18_0-240x64
+Volatility<span class="w"> </span>Foundation<span class="w"> </span>Volatility<span class="w"> </span>Framework<span class="w"> </span><span class="m">2</span>.6.1
+tmpfs<span class="w">                     </span>/sys/fs/cgroup<span class="w">                      </span>tmpfs<span class="w">        </span>ro,nosuid,nodev,noexec<span class="w">                  </span>
+cgroup<span class="w">                    </span>/sys/fs/cgroup/pids<span class="w">                 </span>cgroup<span class="w">       </span>rw,relatime,nosuid,nodev,noexec<span class="w">        </span>
+systemd-1<span class="w">                 </span>/proc/sys/fs/binfmt_misc<span class="w">            </span>autofs<span class="w">       </span>rw,relatime<span class="w">                            </span>
+sunrpc<span class="w">                    </span>/var/lib/nfs/rpc_pipefs<span class="w">             </span>rpc_pipefs<span class="w">   </span>rw,relatime<span class="w">                            </span>
+/dev/mapper/rhel_kvm--03--guest11-root<span class="w"> </span>/<span class="w">                                   </span>xfs<span class="w">          </span>rw,relatime<span class="w">                </span>
+tmpfs<span class="w">                     </span>/dev/shm<span class="w">                            </span>tmpfs<span class="w">        </span>rw,nosuid,nodev<span class="w">                        </span>
+selinuxfs<span class="w">                 </span>/sys/fs/selinux<span class="w">                     </span>selinuxfs<span class="w">    </span>rw,relatime
+
+&lt;&lt;<span class="w"> </span>删节<span class="w"> </span>&gt;&gt;
+
+cgroup<span class="w">                    </span>/sys/fs/cgroup/net_cls,net_prio<span class="w">     </span>cgroup<span class="w">       </span>rw,relatime,nosuid,nodev,noexec<span class="w">        </span>
+cgroup<span class="w">                    </span>/sys/fs/cgroup/cpu,cpuacct<span class="w">          </span>cgroup<span class="w">       </span>rw,relatime,nosuid,nodev,noexec<span class="w">        </span>
+bpf<span class="w">                       </span>/sys/fs/bpf<span class="w">                         </span>bpf<span class="w">          </span>rw,relatime,nosuid,nodev,noexec<span class="w">        </span>
+cgroup<span class="w">                    </span>/sys/fs/cgroup/memory<span class="w">               </span>cgroup<span class="w">       </span>ro,relatime,nosuid,nodev,noexec<span class="w">        </span>
+cgroup<span class="w">                    </span>/sys/fs/cgroup/cpuset<span class="w">               </span>cgroup<span class="w">       </span>rw,relatime,nosuid,nodev,noexec<span class="w">        </span>
+mqueue<span class="w">                    </span>/dev/mqueue<span class="w">                         </span>mqueue<span class="w">       </span>rw,relatime<span class="w">                            </span>
+$
+</code></pre></div>
+
+<p>好奇哪些内核模块被加载了吗？Volatility 也为这个提供了一个插件 <code>linux_lsmod</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python2<span class="w"> </span>vol.py<span class="w"> </span>-f<span class="w"> </span>~/LiME/RHEL8.3_64bit.mem<span class="w"> </span>linux_lsmod<span class="w"> </span>--profile<span class="o">=</span>LinuxRedhat8_3_4_18_0-240x64
+Volatility<span class="w"> </span>Foundation<span class="w"> </span>Volatility<span class="w"> </span>Framework<span class="w"> </span><span class="m">2</span>.6.1
+ffffffffc0535040<span class="w"> </span>lime<span class="w"> </span><span class="m">20480</span>
+ffffffffc0530540<span class="w"> </span>binfmt_misc<span class="w"> </span><span class="m">20480</span>
+ffffffffc05e8040<span class="w"> </span>sunrpc<span class="w"> </span><span class="m">479232</span>
+&lt;&lt;<span class="w"> </span>删节<span class="w"> </span>&gt;&gt;
+ffffffffc04f9540<span class="w"> </span>nfit<span class="w"> </span><span class="m">65536</span>
+ffffffffc0266280<span class="w"> </span>dm_mirror<span class="w"> </span><span class="m">28672</span>
+ffffffffc025e040<span class="w"> </span>dm_region_hash<span class="w"> </span><span class="m">20480</span>
+ffffffffc0258180<span class="w"> </span>dm_log<span class="w"> </span><span class="m">20480</span>
+ffffffffc024bbc0<span class="w"> </span>dm_mod<span class="w"> </span><span class="m">151552</span>
+$
+</code></pre></div>
+
+<p>想知道哪些文件被哪些进程打开了吗？使用 <code>linux_bash</code> 插件可以列出这些信息：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python2<span class="w"> </span>vol.py<span class="w"> </span>-f<span class="w"> </span>~/LiME/RHEL8.3_64bit.mem<span class="w"> </span>linux_bash<span class="w"> </span>--profile<span class="o">=</span>LinuxRedhat8_3_4_18_0-240x64<span class="w"> </span>-v
+Volatility<span class="w"> </span>Foundation<span class="w"> </span>Volatility<span class="w"> </span>Framework<span class="w"> </span><span class="m">2</span>.6.1
+Pid<span class="w">      </span>Name<span class="w">                 </span>Command<span class="w"> </span>Time<span class="w">                   </span>Command
+--------<span class="w"> </span>--------------------<span class="w"> </span>------------------------------<span class="w"> </span>-------
+<span class="w">  </span><span class="m">227221</span><span class="w"> </span>bash<span class="w">                 </span><span class="m">2021</span>-04-17<span class="w"> </span><span class="m">18</span>:38:24<span class="w"> </span>UTC+0000<span class="w">   </span>lsmod
+<span class="w">  </span><span class="m">227221</span><span class="w"> </span>bash<span class="w">                 </span><span class="m">2021</span>-04-17<span class="w"> </span><span class="m">18</span>:38:24<span class="w"> </span>UTC+0000<span class="w">   </span>rm<span class="w"> </span>-f<span class="w"> </span>.log
+<span class="w">  </span><span class="m">227221</span><span class="w"> </span>bash<span class="w">                 </span><span class="m">2021</span>-04-17<span class="w"> </span><span class="m">18</span>:38:24<span class="w"> </span>UTC+0000<span class="w">   </span>ls<span class="w"> </span>-l<span class="w"> </span>/etc/zzz
+<span class="w">  </span><span class="m">227221</span><span class="w"> </span>bash<span class="w">                 </span><span class="m">2021</span>-04-17<span class="w"> </span><span class="m">18</span>:38:24<span class="w"> </span>UTC+0000<span class="w">   </span>cat<span class="w"> </span>~/.vimrc
+<span class="w">  </span><span class="m">227221</span><span class="w"> </span>bash<span class="w">                 </span><span class="m">2021</span>-04-17<span class="w"> </span><span class="m">18</span>:38:24<span class="w"> </span>UTC+0000<span class="w">   </span>ls
+<span class="w">  </span><span class="m">227221</span><span class="w"> </span>bash<span class="w">                 </span><span class="m">2021</span>-04-17<span class="w"> </span><span class="m">18</span>:38:24<span class="w"> </span>UTC+0000<span class="w">   </span>cat<span class="w"> </span>/proc/817/cwd
+<span class="w">  </span><span class="m">227221</span><span class="w"> </span>bash<span class="w">                 </span><span class="m">2021</span>-04-17<span class="w"> </span><span class="m">18</span>:38:24<span class="w"> </span>UTC+0000<span class="w">   </span>ls<span class="w"> </span>-l<span class="w"> </span>/proc/817/cwd
+<span class="w">  </span><span class="m">227221</span><span class="w"> </span>bash<span class="w">                 </span><span class="m">2021</span>-04-17<span class="w"> </span><span class="m">18</span>:38:24<span class="w"> </span>UTC+0000<span class="w">   </span>ls<span class="w"> </span>/proc/817/
+&lt;&lt;<span class="w"> </span>删节<span class="w"> </span>&gt;&gt;
+<span class="w">  </span><span class="m">227298</span><span class="w"> </span>bash<span class="w">                 </span><span class="m">2021</span>-04-17<span class="w"> </span><span class="m">18</span>:40:30<span class="w"> </span>UTC+0000<span class="w">   </span>gcc<span class="w"> </span>prt.c
+<span class="w">  </span><span class="m">227298</span><span class="w"> </span>bash<span class="w">                 </span><span class="m">2021</span>-04-17<span class="w"> </span><span class="m">18</span>:40:30<span class="w"> </span>UTC+0000<span class="w">   </span>ls
+<span class="w">  </span><span class="m">227298</span><span class="w"> </span>bash<span class="w">                 </span><span class="m">2021</span>-04-17<span class="w"> </span><span class="m">18</span>:40:30<span class="w"> </span>UTC+0000<span class="w">   </span>./a.out
+<span class="w">  </span><span class="m">227298</span><span class="w"> </span>bash<span class="w">                 </span><span class="m">2021</span>-04-17<span class="w"> </span><span class="m">18</span>:40:30<span class="w"> </span>UTC+0000<span class="w">   </span>vim<span class="w"> </span>prt.c
+<span class="w">  </span><span class="m">227298</span><span class="w"> </span>bash<span class="w">                 </span><span class="m">2021</span>-04-17<span class="w"> </span><span class="m">18</span>:40:30<span class="w"> </span>UTC+0000<span class="w">   </span>gcc<span class="w"> </span>prt.c
+<span class="w">  </span><span class="m">227298</span><span class="w"> </span>bash<span class="w">                 </span><span class="m">2021</span>-04-17<span class="w"> </span><span class="m">18</span>:40:30<span class="w"> </span>UTC+0000<span class="w">   </span>./a.out
+<span class="w">  </span><span class="m">227298</span><span class="w"> </span>bash<span class="w">                 </span><span class="m">2021</span>-04-17<span class="w"> </span><span class="m">18</span>:40:30<span class="w"> </span>UTC+0000<span class="w">   </span>ls
+$
+</code></pre></div>
+
+<p>想知道哪些文件被哪些进程打开了吗？使用 <code>linux_lsof</code> 插件可以列出这些信息：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python2<span class="w"> </span>vol.py<span class="w"> </span>-f<span class="w"> </span>~/LiME/RHEL8.3_64bit.mem<span class="w"> </span>linux_lsof<span class="w"> </span>--profile<span class="o">=</span>LinuxRedhat8_3_4_18_0-240x64
+Volatility<span class="w"> </span>Foundation<span class="w"> </span>Volatility<span class="w"> </span>Framework<span class="w"> </span><span class="m">2</span>.6.1
+Offset<span class="w">             </span>Name<span class="w">                           </span>Pid<span class="w">      </span>FD<span class="w">       </span>Path
+------------------<span class="w"> </span>------------------------------<span class="w"> </span>--------<span class="w"> </span>--------<span class="w"> </span>----
+0xffff9c83fb1e9f40<span class="w"> </span>rsyslogd<span class="w">                          </span><span class="m">71194</span><span class="w">        </span><span class="m">0</span><span class="w"> </span>/dev/null
+0xffff9c83fb1e9f40<span class="w"> </span>rsyslogd<span class="w">                          </span><span class="m">71194</span><span class="w">        </span><span class="m">1</span><span class="w"> </span>/dev/null
+0xffff9c83fb1e9f40<span class="w"> </span>rsyslogd<span class="w">                          </span><span class="m">71194</span><span class="w">        </span><span class="m">2</span><span class="w"> </span>/dev/null
+0xffff9c83fb1e9f40<span class="w"> </span>rsyslogd<span class="w">                          </span><span class="m">71194</span><span class="w">        </span><span class="m">3</span><span class="w"> </span>/dev/urandom
+0xffff9c83fb1e9f40<span class="w"> </span>rsyslogd<span class="w">                          </span><span class="m">71194</span><span class="w">        </span><span class="m">4</span><span class="w"> </span>socket:<span class="o">[</span><span class="m">83565</span><span class="o">]</span>
+0xffff9c83fb1e9f40<span class="w"> </span>rsyslogd<span class="w">                          </span><span class="m">71194</span><span class="w">        </span><span class="m">5</span><span class="w"> </span>/var/log/messages
+0xffff9c83fb1e9f40<span class="w"> </span>rsyslogd<span class="w">                          </span><span class="m">71194</span><span class="w">        </span><span class="m">6</span><span class="w"> </span>anon_inode:<span class="o">[</span><span class="m">9063</span><span class="o">]</span>
+0xffff9c83fb1e9f40<span class="w"> </span>rsyslogd<span class="w">                          </span><span class="m">71194</span><span class="w">        </span><span class="m">7</span><span class="w"> </span>/var/log/secure
+
+&lt;&lt;<span class="w"> </span>删节<span class="w"> </span>&gt;&gt;
+
+0xffff9c8365761f40<span class="w"> </span>insmod<span class="w">                           </span><span class="m">228573</span><span class="w">        </span><span class="m">0</span><span class="w"> </span>/dev/pts/0
+0xffff9c8365761f40<span class="w"> </span>insmod<span class="w">                           </span><span class="m">228573</span><span class="w">        </span><span class="m">1</span><span class="w"> </span>/dev/pts/0
+0xffff9c8365761f40<span class="w"> </span>insmod<span class="w">                           </span><span class="m">228573</span><span class="w">        </span><span class="m">2</span><span class="w"> </span>/dev/pts/0
+0xffff9c8365761f40<span class="w"> </span>insmod<span class="w">                           </span><span class="m">228573</span><span class="w">        </span><span class="m">3</span><span class="w"> </span>/root/LiME/src/lime-4.18.0-240.el8.x86_64.ko
+$
+</code></pre></div>
+
+<h4>访问 Linux 插件脚本位置</h4>
+<p>通过读取内存转储和处理这些信息，你可以获得更多的信息。如果你会 Python，并且好奇这些信息是如何被处理的，可以到存储所有插件的目录，选择一个你感兴趣的，并看看 Volatility 是如何获得这些信息的：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ls<span class="w"> </span>volatility/plugins/linux/
+apihooks.py<span class="w">              </span>common.py<span class="w">            </span>kernel_opened_files.py<span class="w">   </span>malfind.py<span class="w">          </span>psaux.py
+apihooks.pyc<span class="w">             </span>common.pyc<span class="w">           </span>kernel_opened_files.pyc<span class="w">  </span>malfind.pyc<span class="w">         </span>psaux.pyc
+arp.py<span class="w">                   </span>cpuinfo.py<span class="w">           </span>keyboard_notifiers.py<span class="w">    </span>mount_cache.py<span class="w">      </span>psenv.py
+arp.pyc<span class="w">                  </span>cpuinfo.pyc<span class="w">          </span>keyboard_notifiers.pyc<span class="w">   </span>mount_cache.pyc<span class="w">     </span>psenv.pyc
+aslr_shift.py<span class="w">            </span>dentry_cache.py<span class="w">      </span>ld_env.py<span class="w">                </span>mount.py<span class="w">            </span>pslist_cache.py
+aslr_shift.pyc<span class="w">           </span>dentry_cache.pyc<span class="w">     </span>ld_env.pyc<span class="w">               </span>mount.pyc<span class="w">           </span>pslist_cache.pyc
+&lt;&lt;<span class="w"> </span>删节<span class="w"> </span>&gt;&gt;
+check_syscall_arm.py<span class="w">     </span>__init__.py<span class="w">          </span>lsmod.py<span class="w">                 </span>proc_maps.py<span class="w">        </span>tty_check.py
+check_syscall_arm.pyc<span class="w">    </span>__init__.pyc<span class="w">         </span>lsmod.pyc<span class="w">                </span>proc_maps.pyc<span class="w">       </span>tty_check.pyc
+check_syscall.py<span class="w">         </span>iomem.py<span class="w">             </span>lsof.py<span class="w">                  </span>proc_maps_rb.py<span class="w">     </span>vma_cache.py
+check_syscall.pyc<span class="w">        </span>iomem.pyc<span class="w">            </span>lsof.pyc<span class="w">                 </span>proc_maps_rb.pyc<span class="w">    </span>vma_cache.pyc
+$
+$
+</code></pre></div>
+
+<p>我喜欢 Volatility 的理由是他提供了许多安全插件。这些信息很难手动获取：</p>
+<div class="highlight"><pre><span></span><code>linux_hidden_modules       - Carves memory to find hidden kernel modules
+linux_malfind              - Looks for suspicious process mappings
+linux_truecrypt_passphrase - Recovers cached Truecrypt passphrases
+</code></pre></div>
+
+<p>Volatility 也允许你在内存转储中打开一个 shell，所以你可以运行 shell 命令来代替上面所有命令，并获得相同的信息：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python2<span class="w"> </span>vol.py<span class="w"> </span>-f<span class="w"> </span>~/LiME/RHEL8.3_64bit.mem<span class="w"> </span>linux_volshell<span class="w"> </span>--profile<span class="o">=</span>LinuxRedhat8_3_4_18_0-240x64<span class="w"> </span>-v
+Volatility<span class="w"> </span>Foundation<span class="w"> </span>Volatility<span class="w"> </span>Framework<span class="w"> </span><span class="m">2</span>.6.1
+Current<span class="w"> </span>context:<span class="w"> </span>process<span class="w"> </span>systemd,<span class="w"> </span><span class="nv">pid</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="nv">DTB</span><span class="o">=</span>0x1042dc000
+Welcome<span class="w"> </span>to<span class="w"> </span>volshell!<span class="w"> </span>Current<span class="w"> </span>memory<span class="w"> </span>image<span class="w"> </span>is:
+file:///root/LiME/RHEL8.3_64bit.mem
+To<span class="w"> </span>get<span class="w"> </span>help,<span class="w"> </span><span class="nb">type</span><span class="w"> </span><span class="s1">&#39;hh()&#39;</span>
+&gt;&gt;&gt;
+&gt;&gt;&gt;<span class="w"> </span>sc<span class="o">()</span>
+Current<span class="w"> </span>context:<span class="w"> </span>process<span class="w"> </span>systemd,<span class="w"> </span><span class="nv">pid</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="nv">DTB</span><span class="o">=</span>0x1042dc000
+&gt;&gt;&gt;
+</code></pre></div>
+
+<h3>接下来的步骤</h3>
+<p>内存转储是了解 Linux 内部情况的好方法。试一试 Volatility 的所有插件，并详细研究它们的输出。然后思考这些信息如何能够帮助你识别入侵或安全问题。深入了解这些插件的工作原理，甚至尝试改进它们。如果你没有找到你想做的事情的插件，那就写一个并提交给 Volatility，这样其他人也可以使用它。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

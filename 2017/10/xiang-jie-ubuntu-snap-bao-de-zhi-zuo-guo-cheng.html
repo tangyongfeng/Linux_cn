@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>详解 Ubuntu snap 包的制作过程</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Mi Blog Lah! 如果你看过译者以前翻译的 snappy 文章，不知有没有感觉相关主题都是浅尝辄止，讲得不够透彻，看得也不太过瘾？如 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/10/xiang-jie-ubuntu-snap-bao-de-zhi-zuo-guo-cheng.html" rel="bookmark"
+           title="Permalink to 详解 Ubuntu snap 包的制作过程">详解 Ubuntu snap 包的制作过程</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-10-04T09:29:00+02:00">
+                Published: Wed 04 October 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Mi Blog Lah!</p>
+<blockquote>
+<p>如果你看过译者以前翻译的 snappy 文章，不知有没有感觉相关主题都是浅尝辄止，讲得不够透彻，看得也不太过瘾？如果有的话，相信这篇详细讲解如何从零开始制作一个 snap 包的文章应该不会让你失望。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/201710/04/005358bmfkk33gzwmfwtkf.jpg"></p>
+<p>在这篇文章中，我们将看到如何为名为 <a href="https://github.com/hzeller/timg">timg</a> 的实用程序制作对应的 snap 包。如果这是你第一次听说 snap 安装包，你可以先看看 <a href="https://tutorials.ubuntu.com/tutorial/create-your-first-snap">如何创建你的第一个 snap 包</a>。</p>
+<p>今天我们将学习以下有关使用 snapcraft 制作 snap 包的内容：</p>
+<ul>
+<li><a href="https://github.com/hzeller/timg">timg</a> 源码中的 Makefile 文件是手工编写，我们需要修改一些 <a href="https://snapcraft.io/docs/reference/plugins/make">make 插件参数</a>。</li>
+<li>这个程序是用 C++ 语言写的，依赖几个额外的库文件。我们需要把相关的代码添加到 snap 包中。</li>
+<li><a href="https://snapcraft.io/docs/reference/confinement">严格限制还是传统限制</a>？我们将会讨论如何在它们之间进行选择。</li>
+</ul>
+<p>首先，我们了解下 <a href="https://github.com/hzeller/timg">timg</a> 有什么用？</p>
+<h3>背景</h3>
+<p>Linux 终端模拟器已经变得非常炫酷，并且还能显示颜色！</p>
+<p><img alt="1.png-19.9kB" src="/data/attachment/album/201710/04/005427sz50aoivjjctwxuh.png"></p>
+<p>除了标准的颜色，大多数终端模拟器（如上图显示的 GNOME 终端）都支持真彩色（1600 万种颜色）。</p>
+<p><img alt="图片.png-61.9kB" src="/data/attachment/album/201710/04/005428jpmp2g9xdgwdgf12.png"></p>
+<p>是的！终端模拟器已经支持真彩色了！从这个页面“ <a href="https://gist.github.com/XVilka/8346728">多个终端和终端应用程序已经支持真彩色（1600 万种颜色）</a>” 可以获取 AWK 代码自己进行测试。你可以看到在代码中使用了一些 <a href="https://en.wikipedia.org/wiki/Escape_sequence">转义序列</a> 来指定 RGB 的值（256 * 256 * 256 ~= 1600 万种颜色）。</p>
+<h3>timg 是什么？</h3>
+<p>好了，言归正传，<a href="https://github.com/hzeller/timg">timg</a> 有什么用？它能将输入的图片重新调整为终端窗口字符所能显示范围的大小（比如：80 x 25），然后在任何分辨率的终端窗口用彩色字符显示图像。</p>
+<p><img alt="图片.png-37.3kB" src="/data/attachment/album/201710/04/005428q9ixpu5if25pnqxp.png"></p>
+<p>这幅图用彩色块字符显示了 <a href="http://design.ubuntu.com/wp-content/uploads/ubuntu-logo112.png">Ubuntu 的 logo</a>，原图是一个 PNG 格式的文件。</p>
+<p><img alt="图片.png-165kB" src="/data/attachment/album/201710/04/005428h6yta595ykwsokz7.png"></p>
+<p>这是 <a href="https://www.flickr.com/photos/doug88888/5776072628/in/photolist-9WCiNQ-7U3Trc-7YUZBL-5DwkEQ-6e1iT8-a372aS-5F75aL-a1gbow-6eNayj-8gWK2H-5CtH7P-6jVqZv-86RpwN-a2nEnB-aiRmsc-6aKvwK-8hmXrN-5CWDNP-62hWM8-a9smn1-ahQqHw-a22p3w-a36csK-ahN4Pv-7VEmnt-ahMSiT-9NpTa7-5A3Pon-ai7DL7-9TKCqV-ahr7gN-a1boqP-83ZzpH-9Sqjmq-5xujdi-7UmDVb-6J2zQR-5wAGNR-5eERar-5KVDym-5dL8SZ-5S2Uut-7RVyHg-9Z6MAt-aiRiT4-5tLesw-aGLSv6-5ftp6j-5wAVBq-5T2KAP">@Doug8888 拍摄的花</a>。</p>
+<p>如果你通过远程连接服务器来管理自己的业务，并想要查看图像文件，那么 <a href="https://github.com/hzeller/timg">timg</a> 将会特别有用。</p>
+<p>除了静态图片，<a href="https://github.com/hzeller/timg">timg</a> 同样也可以显示 gif 动图。</p>
+<p>那么让我们开始 snap 之旅吧！</p>
+<h3>熟悉 timg 的源码</h3>
+<p><a href="https://github.com/hzeller/timg">timg</a> 的源码可以在 <a href="https://github.com/hzeller/timg">https://github.com/hzeller/timg</a> 找到。让我们试着手动编译它，以了解它有什么需求。</p>
+<p><img alt="图片.png-128.4kB" src="/data/attachment/album/201710/04/005429o3521zzmp9mcc950.png"></p>
+<p><code>Makefile</code> 在 <code>src/</code> 子文件夹中而不是项目的根文件夹中。在 github 页面上，他们说需要安装两个开发包（GraphicsMagic++ 和 WebP），然后使用 <code>make</code> 就能生成可执行文件。在截图中可以看到我已经将它们安装好了（在我读完相关的 Readme.md 文件后）。</p>
+<p>因此，在编写 <code>snapcraft.yaml</code> 文件时已经有了四条腹稿：</p>
+<ol>
+<li><code>Makefile</code> 在 <code>src/</code> 子文件夹中而不是项目的根文件夹中。</li>
+<li>这个程序编译时需要两个开发库。</li>
+<li>为了让 timg 以 snap 包形式运行，我们需要将这两个库捆绑在 snap 包中（或者静态链接它们）。</li>
+<li><a href="https://github.com/hzeller/timg">timg</a> 是用 C++ 编写的，所以需要安装 g++。在编译之前，让我们通过 <code>snapcraft.yaml</code> 文件来检查 <code>build-essential</code> 元包是否已经安装。</li>
+</ol>
+<h3>从 snapcraft 开始</h3>
+<p>让我们新建一个名为 <code>timg-snap/</code> 的文件夹，并在其中运行 <code>snapcraft init</code> 这条命令来创建 <code>snapcraft.yaml</code> 工作的框架。</p>
+<div class="highlight"><pre><span></span><code><span class="n">ubuntu</span><span class="nv">@snaps</span><span class="o">:~</span><span class="n">$</span><span class="w"> </span><span class="n">mkdir</span><span class="w"> </span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span>
+<span class="n">ubuntu</span><span class="nv">@snaps</span><span class="o">:~</span><span class="n">$</span><span class="w"> </span><span class="n">cd</span><span class="w"> </span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="o">/</span>
+<span class="n">ubuntu</span><span class="nv">@snaps</span><span class="o">:~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap$</span><span class="w"> </span><span class="n">snapcraft</span><span class="w"> </span><span class="n">init</span>
+<span class="n">Created</span><span class="w"> </span><span class="n">snap</span><span class="o">/</span><span class="n">snapcraft</span><span class="p">.</span><span class="n">yaml</span><span class="p">.</span>
+<span class="n">Edit</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="k">file</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">your</span><span class="w"> </span><span class="n">liking</span><span class="w"> </span><span class="k">or</span><span class="w"> </span><span class="n">run</span><span class="w"> </span><span class="n n-Quoted">`snapcraft`</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="k">get</span><span class="w"> </span><span class="n">started</span>
+<span class="n">ubuntu</span><span class="nv">@snaps</span><span class="o">:~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap$</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="n">snap</span><span class="o">/</span><span class="n">snapcraft</span><span class="p">.</span><span class="n">yaml</span><span class="w"> </span>
+<span class="k">name</span><span class="o">:</span><span class="w"> </span><span class="n">my</span><span class="o">-</span><span class="n">snap</span><span class="o">-</span><span class="k">name</span><span class="w"> </span><span class="c1"># you probably want to &#39;snapcraft register &lt;name&gt;&#39;</span>
+<span class="n">version</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;0.1&#39;</span><span class="w"> </span><span class="c1"># just for humans, typically &#39;1.2+git&#39; or &#39;1.3.2&#39;</span>
+<span class="n">summary</span><span class="o">:</span><span class="w"> </span><span class="n">Single</span><span class="o">-</span><span class="n">line</span><span class="w"> </span><span class="n">elevator</span><span class="w"> </span><span class="n">pitch</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">your</span><span class="w"> </span><span class="n">amazing</span><span class="w"> </span><span class="n">snap</span><span class="w"> </span><span class="c1"># 79 char long summary</span>
+<span class="k">description</span><span class="o">:</span><span class="w"> </span><span class="o">|</span>
+<span class="w">  </span><span class="n">This</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">my</span><span class="o">-</span><span class="n">snap</span><span class="s1">&#39;s description. You have a paragraph or two to tell the most important story about your snap. Keep it under 100 words though, we live in tweetspace and your description wants to look good in the snap store.</span>
+
+<span class="s1">grade: devel # must be &#39;</span><span class="n">stable</span><span class="s1">&#39; to release into candidate/stable channels</span>
+<span class="s1">confinement: devmode # use &#39;</span><span class="n">strict</span><span class="s1">&#39; once you have the right plugs and slots</span>
+
+<span class="s1">parts:</span>
+<span class="s1">  my-part:</span>
+<span class="s1">    # See &#39;</span><span class="n">snapcraft</span><span class="w"> </span><span class="k">plugins</span><span class="s1">&#39;</span>
+<span class="s1">    plugin: nil</span>
+</code></pre></div>
+
+<h3>填充元数据</h3>
+<p><code>snapcraft.yaml</code> 配置文件的上半部分是元数据。我们需要一个一个把它们填满，这算是比较容易的部分。元数据由以下字段组成：</p>
+<ol>
+<li><code>name</code> （名字）—— snap 包的名字，它将公开在 Ubuntu 商店中。</li>
+<li><code>version</code> （版本）—— snap 包的版本号。可以是源代码存储库中一个适当的分支或者标记，如果没有分支或标记的话，也可以是当前日期。</li>
+<li><code>summary</code> （摘要）—— 不超过 80 个字符的简短描述。</li>
+<li><code>description</code> （描述）—— 长一点的描述, 100 个字以下。</li>
+<li><code>grade</code> （等级）—— <code>stable</code> （稳定）或者 <code>devel</code> （开发）。因为我们想要在 Ubuntu 商店的稳定通道中发布这个 snap 包，所以在 snap 包能正常工作后，就把它设置成 <code>stable</code>。</li>
+<li><code>confinement</code> （限制）—— 我们首先设置为 <code>devmode</code> （开发模式），这样系统将不会以任何方式限制 snap 包。一旦它在 <code>devmode</code>下能正常工作，我们再考虑选择 <code>strict</code> （严格）还是 <code>classic</code> （传统）限制。</li>
+</ol>
+<p>我们将使用 <code>timg</code> 这个名字：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ubuntu</span><span class="nv">@snaps</span><span class="err">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="err">$</span><span class="w"> </span><span class="n">snapcraft</span><span class="w"> </span><span class="n">register</span><span class="w"> </span><span class="n">timg</span>
+<span class="n">Registering</span><span class="w"> </span><span class="n">timg</span><span class="p">.</span>
+<span class="n">You</span><span class="w"> </span><span class="n">already</span><span class="w"> </span><span class="n">own</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">name</span><span class="w"> </span><span class="s1">&#39;timg&#39;</span><span class="p">.</span>
+</code></pre></div>
+
+<p>是的，这个名字我已经注册了 :-)。</p>
+<p>接下来，我们应该选择哪个版本的 timg？</p>
+<p><img alt="图片.png-72.7kB" src="/data/attachment/album/201710/04/005429bf4787aa48787899.png"></p>
+<p>当在仓库中寻找分支或标记时，我们会发现有一个 v0.9.5 标签，其中有 2016 年 6 月 27 日最新提交的代码。</p>
+<p><img alt="图片.png-71.4kB" src="/data/attachment/album/201710/04/005429isi8z381pkdsf1gs.png"></p>
+<p>然而主分支（<code>master</code>）中有两个看起来很重要的提交。因此我们使用主分支而不用 <code>v0.9.5</code> 标签的那个。我们使用今天的日期—— <code>20170226</code> 做为版本号。</p>
+<p>我们从仓库中搜集了摘要和描述。其中摘要的内容为 <code>A terminal image viewer</code>，描述的内容为 <code>A viewer that uses 24-Bit color capabilities and unicode character blocks to display images in the terminal</code>。</p>
+<p>最后，将 <code>grade</code> （等级）设置为 <code>stable</code> （稳定），将 <code>confinement</code> 限制设置为 <code>devmode</code> （开发模式）（一直到 snap 包真正起作用）。</p>
+<p>这是更新后的 <code>snapcraft.yaml</code>，带有所有的元数据：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ubuntu</span><span class="nv">@snaps</span><span class="err">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="err">$</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="n">snap</span><span class="o">/</span><span class="n">snapcraft</span><span class="p">.</span><span class="n">yaml</span><span class="w"> </span>
+<span class="nl">name</span><span class="p">:</span><span class="w"> </span><span class="n">timg</span>
+<span class="nl">version</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;20170226&#39;</span>
+<span class="nl">summary</span><span class="p">:</span><span class="w"> </span><span class="n">A</span><span class="w"> </span><span class="n">terminal</span><span class="w"> </span><span class="nc">image</span><span class="w"> </span><span class="n">viewer</span>
+<span class="nl">description</span><span class="p">:</span><span class="w"> </span><span class="o">|</span>
+<span class="w">  </span><span class="n">A</span><span class="w"> </span><span class="n">viewer</span><span class="w"> </span><span class="n">that</span><span class="w"> </span><span class="n">uses</span><span class="w"> </span><span class="mi">24</span><span class="o">-</span><span class="nc">Bit</span><span class="w"> </span><span class="n">color</span><span class="w"> </span><span class="n">capabilities</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="nf">unicode</span><span class="w"> </span><span class="k">character</span><span class="w"> </span><span class="n">blocks</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">display</span><span class="w"> </span><span class="n">images</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">terminal</span><span class="p">.</span>
+
+<span class="nl">grade</span><span class="p">:</span><span class="w"> </span><span class="n">stable</span><span class="w"> </span>
+<span class="nl">confinement</span><span class="p">:</span><span class="w"> </span><span class="n">devmode</span>
+
+<span class="nl">parts</span><span class="p">:</span>
+<span class="w">  </span><span class="n">my</span><span class="o">-</span><span class="nl">part</span><span class="p">:</span>
+<span class="w">    </span><span class="err">#</span><span class="w"> </span><span class="n">See</span><span class="w"> </span><span class="s1">&#39;snapcraft plugins&#39;</span>
+<span class="w">    </span><span class="nl">plugin</span><span class="p">:</span><span class="w"> </span><span class="n">nil</span>
+</code></pre></div>
+
+<h3>弄清楚 <code>parts:</code> 是什么</h3>
+<p>现在我们需要将上面已经存在的 <code>parts:</code> 部分替换成真实的 <code>parts:</code>。</p>
+<p><img alt="timg-git-url.png-8kB" src="/data/attachment/album/201710/04/005430rbpub2wbkpkqwksp.png"></p>
+<p><em>Git 仓库的 URL。</em></p>
+<p><img alt="图片.png-28.7kB" src="/data/attachment/album/201710/04/005430j25sdioid56xz9kp.png"></p>
+<p><em>存在 Makefile，因此我们需要 make 插件。</em></p>
+<p>我们已经知道 git 仓库的 URL 链接，并且 timg 源码中已有了 <code>Makefile</code> 文件。至于 <a href="https://snapcraft.io/docs/reference/plugins/make">snapcraft make 插件</a> 的 Makefile 命令，正如文档所言，这个插件总是会运行 <code>make</code> 后再运行 <code>make install</code>。为了确认 <code>make</code> 插件的用法，我查看了 <a href="https://snapcraft.io/docs/reference/plugins/">snapcraft 可用插件列表</a>。</p>
+<p>因此，我们将最初的配置：</p>
+<div class="highlight"><pre><span></span><code><span class="n">parts</span><span class="o">:</span>
+<span class="w">  </span><span class="n">my</span><span class="o">-</span><span class="n">part</span><span class="o">:</span>
+<span class="w">    </span><span class="err">#</span><span class="w"> </span><span class="n">See</span><span class="w"> </span><span class="s1">&#39;snapcraft plugins&#39;</span>
+<span class="w">    </span><span class="n">plugin</span><span class="o">:</span><span class="w"> </span><span class="n">nil</span>
+</code></pre></div>
+
+<p>修改为：</p>
+<div class="highlight"><pre><span></span><code><span class="n">parts</span><span class="o">:</span>
+<span class="w">  </span><span class="n">timg</span><span class="o">:</span>
+<span class="w">    </span><span class="n">source</span><span class="o">:</span><span class="w"> </span><span class="n">https</span><span class="o">://</span><span class="n">github</span><span class="o">.</span><span class="na">com</span><span class="sr">/hzeller/</span><span class="n">timg</span><span class="o">.</span><span class="na">git</span>
+<span class="w">    </span><span class="n">plugin</span><span class="o">:</span><span class="w"> </span><span class="n">make</span>
+</code></pre></div>
+
+<p>这是当前 <code>snapcraft.yaml</code> 文件的内容：</p>
+<div class="highlight"><pre><span></span><code><span class="n">name</span><span class="o">:</span><span class="w"> </span><span class="n">timg</span>
+<span class="n">version</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;20170226&#39;</span>
+<span class="n">summary</span><span class="o">:</span><span class="w"> </span><span class="n">A</span><span class="w"> </span><span class="n">terminal</span><span class="w"> </span><span class="n">image</span><span class="w"> </span><span class="n">viewer</span>
+<span class="n">description</span><span class="o">:</span><span class="w"> </span><span class="o">|</span>
+<span class="w">  </span><span class="n">A</span><span class="w"> </span><span class="n">viewer</span><span class="w"> </span><span class="n">that</span><span class="w"> </span><span class="n">uses</span><span class="w"> </span><span class="mi">24</span><span class="o">-</span><span class="n">Bit</span><span class="w"> </span><span class="n">color</span><span class="w"> </span><span class="n">capabilities</span><span class="w"> </span><span class="n">and</span><span class="w"> </span><span class="n">unicode</span><span class="w"> </span><span class="n">character</span><span class="w"> </span><span class="n">blocks</span><span class="w"> </span>
+<span class="w">  </span><span class="n">to</span><span class="w"> </span><span class="n">display</span><span class="w"> </span><span class="n">images</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">terminal</span><span class="o">.</span>
+
+<span class="n">grade</span><span class="o">:</span><span class="w"> </span><span class="n">stable</span><span class="w"> </span>
+<span class="n">confinement</span><span class="o">:</span><span class="w"> </span><span class="n">devmode</span>
+
+<span class="n">parts</span><span class="o">:</span>
+<span class="w">  </span><span class="n">timg</span><span class="o">:</span>
+<span class="w">    </span><span class="n">source</span><span class="o">:</span><span class="w"> </span><span class="n">https</span><span class="o">://</span><span class="n">github</span><span class="o">.</span><span class="na">com</span><span class="sr">/hzeller/</span><span class="n">timg</span><span class="o">.</span><span class="na">git</span>
+<span class="w">    </span><span class="n">plugin</span><span class="o">:</span><span class="w"> </span><span class="n">make</span>
+</code></pre></div>
+
+<p>让我们运行下 <code>snapcraft prime</code> 命令看看会发生什么：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ubuntu</span><span class="nv">@snaps</span><span class="err">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="err">$</span><span class="w"> </span><span class="n">snapcraft</span><span class="w"> </span><span class="n">prime</span>
+<span class="n">Preparing</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">pull</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span>
+<span class="n">Pulling</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span>
+<span class="n">Cloning</span><span class="w"> </span><span class="k">into</span><span class="w"> </span><span class="s1">&#39;/home/ubuntu/timg-snap/parts/timg/src&#39;</span><span class="p">...</span>
+<span class="nl">remote</span><span class="p">:</span><span class="w"> </span><span class="n">Counting</span><span class="w"> </span><span class="nl">objects</span><span class="p">:</span><span class="w"> </span><span class="mi">144</span><span class="p">,</span><span class="w"> </span><span class="n">done</span><span class="p">.</span>
+<span class="nl">remote</span><span class="p">:</span><span class="w"> </span><span class="n">Total</span><span class="w"> </span><span class="mi">144</span><span class="w"> </span><span class="p">(</span><span class="n">delta</span><span class="w"> </span><span class="mi">0</span><span class="p">),</span><span class="w"> </span><span class="n">reused</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">(</span><span class="n">delta</span><span class="w"> </span><span class="mi">0</span><span class="p">),</span><span class="w"> </span><span class="n">pack</span><span class="o">-</span><span class="n">reused</span><span class="w"> </span><span class="mi">144</span>
+<span class="n">Receiving</span><span class="w"> </span><span class="nl">objects</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="o">%</span><span class="w"> </span><span class="p">(</span><span class="mi">144</span><span class="o">/</span><span class="mi">144</span><span class="p">),</span><span class="w"> </span><span class="mf">116.00</span><span class="w"> </span><span class="n">KiB</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="n">bytes</span><span class="o">/</span><span class="n">s</span><span class="p">,</span><span class="w"> </span><span class="n">done</span><span class="p">.</span>
+<span class="n">Resolving</span><span class="w"> </span><span class="nl">deltas</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="o">%</span><span class="w"> </span><span class="p">(</span><span class="mi">89</span><span class="o">/</span><span class="mi">89</span><span class="p">),</span><span class="w"> </span><span class="n">done</span><span class="p">.</span>
+<span class="n">Checking</span><span class="w"> </span><span class="n">connectivity</span><span class="p">...</span><span class="w"> </span><span class="n">done</span><span class="p">.</span>
+<span class="n">Preparing</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">build</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span>
+<span class="n">Building</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span>
+<span class="n">make</span><span class="w"> </span><span class="o">-</span><span class="n">j4</span>
+<span class="nl">make</span><span class="p">:</span><span class="w"> </span><span class="o">***</span><span class="w"> </span><span class="k">No</span><span class="w"> </span><span class="n">targets</span><span class="w"> </span><span class="n">specified</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="k">no</span><span class="w"> </span><span class="n">makefile</span><span class="w"> </span><span class="k">found</span><span class="p">.</span><span class="w">  </span><span class="n">Stop</span><span class="p">.</span>
+<span class="n">Command</span><span class="w"> </span><span class="s1">&#39;[&#39;</span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">sh</span><span class="s1">&#39;, &#39;</span><span class="o">/</span><span class="n">tmp</span><span class="o">/</span><span class="n">tmpem97fh9d</span><span class="s1">&#39;, &#39;</span><span class="n">make</span><span class="s1">&#39;, &#39;</span><span class="o">-</span><span class="n">j4</span><span class="s1">&#39;]&#39;</span><span class="w"> </span><span class="n">returned</span><span class="w"> </span><span class="n">non</span><span class="o">-</span><span class="n">zero</span><span class="w"> </span><span class="k">exit</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="mi">2</span>
+<span class="n">ubuntu</span><span class="nv">@snaps</span><span class="err">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="err">$</span>
+</code></pre></div>
+
+<p>我们可以看到 <code>snapcraft</code> 无法在源代码中找到 <code>Makefile</code> 文件，正如我们之前所暗示的，<code>Makefile</code> 位于 <code>src/</code> 子文件夹中。那么，我们可以让 <code>snapcraft</code> 使用 <code>src/</code> 文件夹中的 <code>Makefile</code> 文件吗？</p>
+<p>每个 snapcraft 插件都有自己的选项，并且有一些通用选项是所有插件共享的。在本例中，我们希望研究那些<a href="https://snapcraft.io/docs/reference/plugins/source">与源代码相关的 snapcraft 选项</a>。我们开始吧：</p>
+<p><strong>source-subdir：path</strong></p>
+<p>snapcraft 会<ruby> 检出 <rt>  checkout </rt></ruby> <code>source</code> 关键字所引用的仓库或者解压归档文件到 <code>parts/&lt;part-name&gt;/src/</code> 中，但是它只会将特定的子目录复制到 <code>parts/&lt;part-name&gt;/build/</code> 中。</p>
+<p>我们已经有了适当的选项，下面更新下 <code>parts</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="n">parts</span><span class="o">:</span>
+<span class="w">  </span><span class="n">timg</span><span class="o">:</span>
+<span class="w">    </span><span class="n">source</span><span class="o">:</span><span class="w"> </span><span class="n">https</span><span class="o">://</span><span class="n">github</span><span class="o">.</span><span class="na">com</span><span class="sr">/hzeller/</span><span class="n">timg</span><span class="o">.</span><span class="na">git</span>
+<span class="w">    </span><span class="n">source</span><span class="o">-</span><span class="n">subdir</span><span class="o">:</span><span class="w"> </span><span class="n">src</span>
+<span class="w">    </span><span class="n">plugin</span><span class="o">:</span><span class="w"> </span><span class="n">make</span>
+</code></pre></div>
+
+<p>然后再次运行 <code>snapcraft prime</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ubuntu</span><span class="nv">@snaps</span><span class="err">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="err">$</span><span class="w"> </span><span class="n">snapcraft</span><span class="w"> </span><span class="n">prime</span><span class="w"> </span>
+<span class="n">The</span><span class="w"> </span><span class="s1">&#39;pull&#39;</span><span class="w"> </span><span class="n">step</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="s1">&#39;timg&#39;</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="k">out</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="nc">date</span><span class="err">:</span>
+
+<span class="n">The</span><span class="w"> </span><span class="s1">&#39;source-subdir&#39;</span><span class="w"> </span><span class="n">part</span><span class="w"> </span><span class="n">property</span><span class="w"> </span><span class="n">appears</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">have</span><span class="w"> </span><span class="n">changed</span><span class="p">.</span>
+
+<span class="n">Please</span><span class="w"> </span><span class="n">clean</span><span class="w"> </span><span class="n">that</span><span class="w"> </span><span class="n">part</span><span class="s1">&#39;s &#39;</span><span class="n">pull</span><span class="s1">&#39; step in order to continue</span>
+<span class="s1">ubuntu@snaps:~/timg-snap$ snapcraft clean</span>
+<span class="s1">Cleaning up priming area</span>
+<span class="s1">Cleaning up staging area</span>
+<span class="s1">Cleaning up parts directory</span>
+<span class="s1">ubuntu@snaps:~/timg-snap$ snapcraft prime </span>
+<span class="s1">Skipping pull timg (already ran)</span>
+<span class="s1">Preparing to build timg </span>
+<span class="s1">Building timg </span>
+<span class="s1">make -j4</span>
+<span class="s1">g++ `GraphicsMagick++-config --cppflags --cxxflags` -Wall -O3 -fPIC -c -o timg.o timg.cc</span>
+<span class="s1">g++ -Wall -O3 -fPIC   -c -o terminal-canvas.o terminal-canvas.cc</span>
+<span class="s1">/bin/sh: 1: GraphicsMagick++-config: not found</span>
+<span class="s1">timg.cc:33:22: fatal error: Magick++.h: No such file or directory</span>
+<span class="s1">compilation terminated.</span>
+<span class="s1">Makefile:10: recipe for target &#39;</span><span class="n">timg</span><span class="p">.</span><span class="n">o</span><span class="s1">&#39; failed</span>
+<span class="s1">make: *** [timg.o] Error 1</span>
+<span class="s1">make: *** Waiting for unfinished jobs....</span>
+<span class="s1">Command &#39;</span><span class="o">[</span><span class="n">&#39;/bin/sh&#39;, &#39;/tmp/tmpeeyxj5kw&#39;, &#39;make&#39;, &#39;-j4&#39;</span><span class="o">]</span><span class="err">&#39;</span><span class="w"> </span><span class="n">returned</span><span class="w"> </span><span class="n">non</span><span class="o">-</span><span class="n">zero</span><span class="w"> </span><span class="k">exit</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="mi">2</span>
+<span class="n">ubuntu</span><span class="nv">@snaps</span><span class="err">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="err">$</span>
+</code></pre></div>
+
+<p>从错误信息我们可以得知 snapcraft 找不到 GraphicsMagick++ 这个开发库文件。根据 <a href="https://snapcraft.io/docs/reference/plugins/common">snapcraft 常见关键字</a> 可知，我们需要在 <code>snapcraft.yaml</code> 中指定这个库文件，这样 snapcraft 才能安装它。</p>
+<p><strong>build-packages：[deb, deb, deb…]</strong></p>
+<p>列出构建 part 前需要在主机中安装的 Ubuntu 包。这些包通常不会进入最终的 snap 包中，除非它们含有 snap 包中二进制文件直接依赖的库文件（在这种情况下，可以通过 <code>ldd</code> 发现它们），或者在 <code>stage-package</code> 中显式地指定了它们。</p>
+<p>让我们寻找下这个开发包的名字：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ubuntu</span><span class="nv">@snaps</span><span class="err">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="err">$</span><span class="w"> </span><span class="n">apt</span><span class="o">-</span><span class="n">cache</span><span class="w"> </span><span class="k">search</span><span class="w"> </span><span class="n">graphicsmagick</span><span class="o">++</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="n">dev</span>
+<span class="n">graphicsmagick</span><span class="o">-</span><span class="n">libmagick</span><span class="o">-</span><span class="n">dev</span><span class="o">-</span><span class="n">compat</span><span class="o">/</span><span class="n">xenial</span><span class="w"> </span><span class="mf">1.3.23</span><span class="o">-</span><span class="mi">1</span><span class="n">build1</span><span class="w"> </span><span class="ow">all</span>
+<span class="n">libgraphicsmagick</span><span class="o">++</span><span class="mi">1</span><span class="o">-</span><span class="n">dev</span><span class="o">/</span><span class="n">xenial</span><span class="w"> </span><span class="mf">1.3.23</span><span class="o">-</span><span class="mi">1</span><span class="n">build1</span><span class="w"> </span><span class="n">amd64</span>
+<span class="w">  </span><span class="nf">format</span><span class="o">-</span><span class="n">independent</span><span class="w"> </span><span class="nc">image</span><span class="w"> </span><span class="n">processing</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">C</span><span class="o">++</span><span class="w"> </span><span class="n">development</span><span class="w"> </span><span class="n">files</span>
+<span class="n">libgraphicsmagick1</span><span class="o">-</span><span class="n">dev</span><span class="o">/</span><span class="n">xenial</span><span class="w"> </span><span class="mf">1.3.23</span><span class="o">-</span><span class="mi">1</span><span class="n">build1</span><span class="w"> </span><span class="n">amd64</span>
+<span class="w">  </span><span class="nf">format</span><span class="o">-</span><span class="n">independent</span><span class="w"> </span><span class="nc">image</span><span class="w"> </span><span class="n">processing</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">C</span><span class="w"> </span><span class="n">development</span><span class="w"> </span><span class="n">files</span>
+<span class="n">ubuntu</span><span class="nv">@snaps</span><span class="err">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="err">$</span>
+</code></pre></div>
+
+<p>可以看到包名为 <code>libgraphicsmagick++1-dev</code>，下面是更新后的 <code>parts</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="n">parts</span><span class="o">:</span>
+<span class="w">  </span><span class="n">timg</span><span class="o">:</span>
+<span class="w">    </span><span class="n">source</span><span class="o">:</span><span class="w"> </span><span class="n">https</span><span class="o">://</span><span class="n">github</span><span class="o">.</span><span class="na">com</span><span class="sr">/hzeller/</span><span class="n">timg</span><span class="o">.</span><span class="na">git</span>
+<span class="w">    </span><span class="n">source</span><span class="o">-</span><span class="n">subdir</span><span class="o">:</span><span class="w"> </span><span class="n">src</span>
+<span class="w">    </span><span class="n">plugin</span><span class="o">:</span><span class="w"> </span><span class="n">make</span>
+<span class="w">    </span><span class="n">build</span><span class="o">-</span><span class="n">packages</span><span class="o">:</span><span class="w"> </span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">libgraphicsmagick</span><span class="o">++</span><span class="mi">1</span><span class="o">-</span><span class="n">dev</span>
+</code></pre></div>
+
+<p>再次运行 <code>snapcraft</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ubuntu</span><span class="nv">@snaps</span><span class="err">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="err">$</span><span class="w"> </span><span class="n">snapcraft</span>
+<span class="n">Installing</span><span class="w"> </span><span class="n">build</span><span class="w"> </span><span class="nl">dependencies</span><span class="p">:</span><span class="w"> </span><span class="n">libgraphicsmagick</span><span class="o">++</span><span class="mi">1</span><span class="o">-</span><span class="n">dev</span>
+<span class="o">[</span><span class="n">...</span><span class="o">]</span>
+<span class="n">The</span><span class="w"> </span><span class="n">following</span><span class="w"> </span><span class="k">NEW</span><span class="w"> </span><span class="n">packages</span><span class="w"> </span><span class="n">will</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="nl">installed</span><span class="p">:</span>
+<span class="w">  </span><span class="n">libgraphicsmagick</span><span class="o">++-</span><span class="n">q16</span><span class="o">-</span><span class="mi">12</span><span class="w"> </span><span class="n">libgraphicsmagick</span><span class="o">++</span><span class="mi">1</span><span class="o">-</span><span class="n">dev</span><span class="w"> </span><span class="n">libgraphicsmagick</span><span class="o">-</span><span class="n">q16</span><span class="o">-</span><span class="mi">3</span>
+<span class="w">  </span><span class="n">libgraphicsmagick1</span><span class="o">-</span><span class="n">dev</span><span class="w"> </span><span class="n">libwebp5</span>
+<span class="o">[</span><span class="n">...</span><span class="o">]</span>
+<span class="n">Building</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span>
+<span class="n">make</span><span class="w"> </span><span class="o">-</span><span class="n">j4</span>
+<span class="n">g</span><span class="o">++</span><span class="w"> </span><span class="err">`</span><span class="n">GraphicsMagick</span><span class="o">++-</span><span class="n">config</span><span class="w"> </span><span class="o">--</span><span class="n">cppflags</span><span class="w"> </span><span class="o">--</span><span class="n">cxxflags</span><span class="err">`</span><span class="w"> </span><span class="o">-</span><span class="n">Wall</span><span class="w"> </span><span class="o">-</span><span class="n">O3</span><span class="w"> </span><span class="o">-</span><span class="n">fPIC</span><span class="w"> </span><span class="o">-</span><span class="n">c</span><span class="w"> </span><span class="o">-</span><span class="n">o</span><span class="w"> </span><span class="n">timg</span><span class="p">.</span><span class="n">o</span><span class="w"> </span><span class="n">timg</span><span class="p">.</span><span class="n">cc</span>
+<span class="n">g</span><span class="o">++</span><span class="w"> </span><span class="o">-</span><span class="n">Wall</span><span class="w"> </span><span class="o">-</span><span class="n">O3</span><span class="w"> </span><span class="o">-</span><span class="n">fPIC</span><span class="w">   </span><span class="o">-</span><span class="n">c</span><span class="w"> </span><span class="o">-</span><span class="n">o</span><span class="w"> </span><span class="n">terminal</span><span class="o">-</span><span class="n">canvas</span><span class="p">.</span><span class="n">o</span><span class="w"> </span><span class="n">terminal</span><span class="o">-</span><span class="n">canvas</span><span class="p">.</span><span class="n">cc</span>
+<span class="n">g</span><span class="o">++</span><span class="w"> </span><span class="o">-</span><span class="n">o</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span><span class="n">timg</span><span class="p">.</span><span class="n">o</span><span class="w"> </span><span class="n">terminal</span><span class="o">-</span><span class="n">canvas</span><span class="p">.</span><span class="n">o</span><span class="w"> </span><span class="err">`</span><span class="n">GraphicsMagick</span><span class="o">++-</span><span class="n">config</span><span class="w"> </span><span class="o">--</span><span class="n">ldflags</span><span class="w"> </span><span class="o">--</span><span class="n">libs</span><span class="err">`</span>
+<span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="nl">ld</span><span class="p">:</span><span class="w"> </span><span class="n">cannot</span><span class="w"> </span><span class="n">find</span><span class="w"> </span><span class="o">-</span><span class="n">lwebp</span>
+<span class="nl">collect2</span><span class="p">:</span><span class="w"> </span><span class="nl">error</span><span class="p">:</span><span class="w"> </span><span class="n">ld</span><span class="w"> </span><span class="n">returned</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="k">exit</span><span class="w"> </span><span class="n">status</span>
+<span class="nl">Makefile</span><span class="p">:</span><span class="mi">7</span><span class="err">:</span><span class="w"> </span><span class="n">recipe</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">target</span><span class="w"> </span><span class="s1">&#39;timg&#39;</span><span class="w"> </span><span class="n">failed</span>
+<span class="nl">make</span><span class="p">:</span><span class="w"> </span><span class="o">***</span><span class="w"> </span><span class="o">[</span><span class="n">timg</span><span class="o">]</span><span class="w"> </span><span class="n">Error</span><span class="w"> </span><span class="mi">1</span>
+<span class="n">Command</span><span class="w"> </span><span class="s1">&#39;[&#39;</span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">sh</span><span class="s1">&#39;, &#39;</span><span class="o">/</span><span class="n">tmp</span><span class="o">/</span><span class="n">tmptma45jzl</span><span class="s1">&#39;, &#39;</span><span class="n">make</span><span class="s1">&#39;, &#39;</span><span class="o">-</span><span class="n">j4</span><span class="s1">&#39;]&#39;</span><span class="w"> </span><span class="n">returned</span><span class="w"> </span><span class="n">non</span><span class="o">-</span><span class="n">zero</span><span class="w"> </span><span class="k">exit</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="mi">2</span>
+<span class="n">ubuntu</span><span class="nv">@snaps</span><span class="err">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="err">$</span>
+</code></pre></div>
+
+<p>虽然只指定了开发库 <code>libgraphicsmagick+1-dev</code>，但 Ubuntu 还安装了一些代码库，包括 <code>libgraphicsmagick ++-q16-12</code>，以及动态代码库 <code>libwebp</code>。</p>
+<p>这里仍然有一个错误，这个是因为缺少开发版本的 <code>webp</code> 库（一个静态库）。我们可以通过下面的命令找到它：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ubuntu</span><span class="nv">@snaps</span><span class="err">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="err">$</span><span class="w"> </span><span class="n">apt</span><span class="o">-</span><span class="n">cache</span><span class="w"> </span><span class="k">search</span><span class="w"> </span><span class="n">libwebp</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="n">dev</span>
+<span class="n">libwebp</span><span class="o">-</span><span class="n">dev</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">Lossy</span><span class="w"> </span><span class="n">compression</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="n">digital</span><span class="w"> </span><span class="n">photographic</span><span class="w"> </span><span class="n">images</span><span class="p">.</span>
+<span class="n">ubuntu</span><span class="nv">@snaps</span><span class="err">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="err">$</span>
+</code></pre></div>
+
+<p>上面安装的 <code>libwebp5</code> 包只提供了一个动态库（.so）。通过 <code>libwebp-dev</code> 包，我们可以得到相应的静态库（.a）。好了，让我们更新下 <code>parts:</code> 部分：</p>
+<div class="highlight"><pre><span></span><code><span class="n">parts</span><span class="o">:</span>
+<span class="w">  </span><span class="n">timg</span><span class="o">:</span>
+<span class="w">    </span><span class="n">source</span><span class="o">:</span><span class="w"> </span><span class="n">https</span><span class="o">://</span><span class="n">github</span><span class="o">.</span><span class="na">com</span><span class="sr">/hzeller/</span><span class="n">timg</span><span class="o">.</span><span class="na">git</span>
+<span class="w">    </span><span class="n">source</span><span class="o">-</span><span class="n">subdir</span><span class="o">:</span><span class="w"> </span><span class="n">src</span>
+<span class="w">    </span><span class="n">plugin</span><span class="o">:</span><span class="w"> </span><span class="n">make</span>
+<span class="w">    </span><span class="n">build</span><span class="o">-</span><span class="n">packages</span><span class="o">:</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">libgraphicsmagick</span><span class="o">++</span><span class="mi">1</span><span class="o">-</span><span class="n">dev</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">libwebp</span><span class="o">-</span><span class="n">dev</span>
+</code></pre></div>
+
+<p>下面是更新后的 <code>snapcraft.yaml</code> 文件的内容：</p>
+<div class="highlight"><pre><span></span><code><span class="n">name</span><span class="o">:</span><span class="w"> </span><span class="n">timg</span>
+<span class="n">version</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;20170226&#39;</span>
+<span class="n">summary</span><span class="o">:</span><span class="w"> </span><span class="n">A</span><span class="w"> </span><span class="n">terminal</span><span class="w"> </span><span class="n">image</span><span class="w"> </span><span class="n">viewer</span>
+<span class="n">description</span><span class="o">:</span><span class="w"> </span><span class="o">|</span>
+<span class="w">  </span><span class="n">A</span><span class="w"> </span><span class="n">viewer</span><span class="w"> </span><span class="n">that</span><span class="w"> </span><span class="n">uses</span><span class="w"> </span><span class="mi">24</span><span class="o">-</span><span class="n">Bit</span><span class="w"> </span><span class="n">color</span><span class="w"> </span><span class="n">capabilities</span><span class="w"> </span><span class="n">and</span><span class="w"> </span><span class="n">unicode</span><span class="w"> </span><span class="n">character</span><span class="w"> </span><span class="n">blocks</span><span class="w"> </span>
+<span class="w">  </span><span class="n">to</span><span class="w"> </span><span class="n">display</span><span class="w"> </span><span class="n">images</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">terminal</span><span class="o">.</span>
+
+<span class="n">grade</span><span class="o">:</span><span class="w"> </span><span class="n">stable</span><span class="w"> </span>
+<span class="n">confinement</span><span class="o">:</span><span class="w"> </span><span class="n">devmode</span>
+
+<span class="n">parts</span><span class="o">:</span>
+<span class="w">  </span><span class="n">timg</span><span class="o">:</span>
+<span class="w">    </span><span class="n">source</span><span class="o">:</span><span class="w"> </span><span class="n">https</span><span class="o">://</span><span class="n">github</span><span class="o">.</span><span class="na">com</span><span class="sr">/hzeller/</span><span class="n">timg</span><span class="o">.</span><span class="na">git</span>
+<span class="w">    </span><span class="n">source</span><span class="o">-</span><span class="n">subdir</span><span class="o">:</span><span class="w"> </span><span class="n">src</span>
+<span class="w">    </span><span class="n">plugin</span><span class="o">:</span><span class="w"> </span><span class="n">make</span>
+<span class="w">    </span><span class="n">build</span><span class="o">-</span><span class="n">packages</span><span class="o">:</span><span class="w"> </span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">libgraphicsmagick</span><span class="o">++</span><span class="mi">1</span><span class="o">-</span><span class="n">dev</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">libwebp</span><span class="o">-</span><span class="n">dev</span>
+</code></pre></div>
+
+<p>让我们运行下 <code>snapcraft prime</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ubuntu</span><span class="nv">@snaps</span><span class="err">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="err">$</span><span class="w"> </span><span class="n">snapcraft</span><span class="w"> </span><span class="n">prime</span>
+<span class="n">Skipping</span><span class="w"> </span><span class="n">pull</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span><span class="p">(</span><span class="n">already</span><span class="w"> </span><span class="n">ran</span><span class="p">)</span>
+<span class="n">Preparing</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">build</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span>
+<span class="n">Building</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span>
+<span class="n">make</span><span class="w"> </span><span class="o">-</span><span class="n">j4</span>
+<span class="n">g</span><span class="o">++</span><span class="w"> </span><span class="err">`</span><span class="n">GraphicsMagick</span><span class="o">++-</span><span class="n">config</span><span class="w"> </span><span class="o">--</span><span class="n">cppflags</span><span class="w"> </span><span class="o">--</span><span class="n">cxxflags</span><span class="err">`</span><span class="w"> </span><span class="o">-</span><span class="n">Wall</span><span class="w"> </span><span class="o">-</span><span class="n">O3</span><span class="w"> </span><span class="o">-</span><span class="n">fPIC</span><span class="w"> </span><span class="o">-</span><span class="n">c</span><span class="w"> </span><span class="o">-</span><span class="n">o</span><span class="w"> </span><span class="n">timg</span><span class="p">.</span><span class="n">o</span><span class="w"> </span><span class="n">timg</span><span class="p">.</span><span class="n">cc</span>
+<span class="n">g</span><span class="o">++</span><span class="w"> </span><span class="o">-</span><span class="n">Wall</span><span class="w"> </span><span class="o">-</span><span class="n">O3</span><span class="w"> </span><span class="o">-</span><span class="n">fPIC</span><span class="w">   </span><span class="o">-</span><span class="n">c</span><span class="w"> </span><span class="o">-</span><span class="n">o</span><span class="w"> </span><span class="n">terminal</span><span class="o">-</span><span class="n">canvas</span><span class="p">.</span><span class="n">o</span><span class="w"> </span><span class="n">terminal</span><span class="o">-</span><span class="n">canvas</span><span class="p">.</span><span class="n">cc</span>
+<span class="n">g</span><span class="o">++</span><span class="w"> </span><span class="o">-</span><span class="n">o</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span><span class="n">timg</span><span class="p">.</span><span class="n">o</span><span class="w"> </span><span class="n">terminal</span><span class="o">-</span><span class="n">canvas</span><span class="p">.</span><span class="n">o</span><span class="w"> </span><span class="err">`</span><span class="n">GraphicsMagick</span><span class="o">++-</span><span class="n">config</span><span class="w"> </span><span class="o">--</span><span class="n">ldflags</span><span class="w"> </span><span class="o">--</span><span class="n">libs</span><span class="err">`</span>
+<span class="n">make</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="n">DESTDIR</span><span class="o">=/</span><span class="n">home</span><span class="o">/</span><span class="n">ubuntu</span><span class="o">/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="o">/</span><span class="n">parts</span><span class="o">/</span><span class="n">timg</span><span class="o">/</span><span class="n">install</span>
+<span class="n">install</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="k">local</span><span class="o">/</span><span class="n">bin</span>
+<span class="nl">install</span><span class="p">:</span><span class="w"> </span><span class="n">cannot</span><span class="w"> </span><span class="k">create</span><span class="w"> </span><span class="n">regular</span><span class="w"> </span><span class="k">file</span><span class="w"> </span><span class="s1">&#39;/usr/local/bin/timg&#39;</span><span class="err">:</span><span class="w"> </span><span class="n">Permission</span><span class="w"> </span><span class="n">denied</span>
+<span class="nl">Makefile</span><span class="p">:</span><span class="mi">13</span><span class="err">:</span><span class="w"> </span><span class="n">recipe</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">target</span><span class="w"> </span><span class="s1">&#39;install&#39;</span><span class="w"> </span><span class="n">failed</span>
+<span class="nl">make</span><span class="p">:</span><span class="w"> </span><span class="o">***</span><span class="w"> </span><span class="o">[</span><span class="n">install</span><span class="o">]</span><span class="w"> </span><span class="n">Error</span><span class="w"> </span><span class="mi">1</span>
+<span class="n">Command</span><span class="w"> </span><span class="s1">&#39;[&#39;</span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">sh</span><span class="s1">&#39;, &#39;</span><span class="o">/</span><span class="n">tmp</span><span class="o">/</span><span class="n">tmptq_s1itc</span><span class="s1">&#39;, &#39;</span><span class="n">make</span><span class="s1">&#39;, &#39;</span><span class="n">install</span><span class="s1">&#39;, &#39;</span><span class="n">DESTDIR</span><span class="o">=/</span><span class="n">home</span><span class="o">/</span><span class="n">ubuntu</span><span class="o">/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="o">/</span><span class="n">parts</span><span class="o">/</span><span class="n">timg</span><span class="o">/</span><span class="n">install</span><span class="s1">&#39;]&#39;</span><span class="w"> </span><span class="n">returned</span><span class="w"> </span><span class="n">non</span><span class="o">-</span><span class="n">zero</span><span class="w"> </span><span class="k">exit</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="mi">2</span>
+<span class="n">ubuntu</span><span class="nv">@snaps</span><span class="err">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="err">$</span>
+</code></pre></div>
+
+<p>我们遇到了一个新问题。由于 <code>Makefile</code> 文件是手工编写的，不符合 <a href="https://snapcraft.io/docs/reference/plugins/make">snapcraft make 插件</a> 的参数设置，所以不能正确安装到 <code>prime/</code> 文件夹中。<code>Makefile</code> 会尝试安装到 <code>usr/local/bin</code> 中。</p>
+<p>我们需要告诉 <a href="https://snapcraft.io/docs/reference/plugins/make">snapcraft make 插件</a> 不要运行 <code>make install</code>，而是找到 <code>timg</code> 可执行文件然后把它放到 <code>prime/</code> 文件夹中。根据文档的描述：</p>
+<div class="highlight"><pre><span></span><code>- artifacts:
+（列表）
+将 make 生成的指定文件复制或者链接到 snap 包安装目录。如果使用，则 `make install` 这步操作将被忽略。
+</code></pre></div>
+
+<p>所以，我们需要将一些东西放到 <code>artifacts:</code> 中。但是具体是哪些东西？</p>
+<div class="highlight"><pre><span></span><code><span class="n">ubuntu</span><span class="nv">@snaps</span><span class="err">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="o">/</span><span class="n">parts</span><span class="o">/</span><span class="n">timg</span><span class="err">$</span><span class="w"> </span><span class="n">ls</span><span class="w"> </span><span class="n">build</span><span class="o">/</span><span class="n">src</span><span class="o">/</span>
+<span class="n">Makefile</span><span class="w">            </span><span class="n">terminal</span><span class="o">-</span><span class="n">canvas</span><span class="p">.</span><span class="n">h</span><span class="w">  </span><span class="n">timg</span><span class="o">*</span><span class="w">     </span><span class="n">timg</span><span class="p">.</span><span class="n">o</span>
+<span class="n">terminal</span><span class="o">-</span><span class="n">canvas</span><span class="p">.</span><span class="n">cc</span><span class="w">  </span><span class="n">terminal</span><span class="o">-</span><span class="n">canvas</span><span class="p">.</span><span class="n">o</span><span class="w">  </span><span class="n">timg</span><span class="p">.</span><span class="n">cc</span>
+<span class="n">ubuntu</span><span class="nv">@snaps</span><span class="err">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="o">/</span><span class="n">parts</span><span class="o">/</span><span class="n">timg</span><span class="err">$</span>
+</code></pre></div>
+
+<p>在 <code>build/</code> 子目录中，我们可以找到 <code>make</code> 的输出结果。由于我们设置了 <code>source-subdir:</code> 为 <code>src</code>，所以 <code>artifacts:</code> 的基目录为 <code>build/src</code>。在这里我们可以找到可执行文件 <code>timg</code>，我们需要将它设置为 <code>artifacts:</code> 的一个参数。通过 <code>artifacts:</code>，我们可以把 <code>make</code> 输出的某些文件复制到 snap 包的安装目录（在 <code>prime/</code> 中）。</p>
+<p>下面是更新后 <code>snapcraft.yaml</code> 文件 <code>parts:</code> 部分的内容：</p>
+<div class="highlight"><pre><span></span><code><span class="nl">parts</span><span class="p">:</span>
+<span class="w">  </span><span class="nl">timg</span><span class="p">:</span>
+<span class="w">    </span><span class="nl">source</span><span class="p">:</span><span class="w"> </span><span class="nl">https</span><span class="p">:</span><span class="o">//</span><span class="n">github</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">hzeller</span><span class="o">/</span><span class="n">timg</span><span class="p">.</span><span class="n">git</span>
+<span class="w">    </span><span class="n">source</span><span class="o">-</span><span class="nl">subdir</span><span class="p">:</span><span class="w"> </span><span class="n">src</span>
+<span class="w">    </span><span class="nl">plugin</span><span class="p">:</span><span class="w"> </span><span class="n">make</span>
+<span class="w">    </span><span class="n">build</span><span class="o">-</span><span class="nl">packages</span><span class="p">:</span><span class="w"> </span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">libgraphicsmagick</span><span class="o">++</span><span class="mi">1</span><span class="o">-</span><span class="n">dev</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">libwebp</span><span class="o">-</span><span class="n">dev</span>
+<span class="w">    </span><span class="nl">artifacts</span><span class="p">:</span><span class="w"> </span><span class="o">[</span><span class="n">timg</span><span class="o">]</span>
+</code></pre></div>
+
+<p>让我们运行 <code>snapcraft prime</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ubuntu</span><span class="nv">@snaps</span><span class="err">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="err">$</span><span class="w"> </span><span class="n">snapcraft</span><span class="w"> </span><span class="n">prime</span>
+<span class="n">Preparing</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">pull</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span>
+<span class="n">Pulling</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span>
+<span class="n">Cloning</span><span class="w"> </span><span class="k">into</span><span class="w"> </span><span class="s1">&#39;/home/ubuntu/timg-snap/parts/timg/src&#39;</span><span class="p">...</span>
+<span class="nl">remote</span><span class="p">:</span><span class="w"> </span><span class="n">Counting</span><span class="w"> </span><span class="nl">objects</span><span class="p">:</span><span class="w"> </span><span class="mi">144</span><span class="p">,</span><span class="w"> </span><span class="n">done</span><span class="p">.</span>
+<span class="nl">remote</span><span class="p">:</span><span class="w"> </span><span class="n">Total</span><span class="w"> </span><span class="mi">144</span><span class="w"> </span><span class="p">(</span><span class="n">delta</span><span class="w"> </span><span class="mi">0</span><span class="p">),</span><span class="w"> </span><span class="n">reused</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">(</span><span class="n">delta</span><span class="w"> </span><span class="mi">0</span><span class="p">),</span><span class="w"> </span><span class="n">pack</span><span class="o">-</span><span class="n">reused</span><span class="w"> </span><span class="mi">144</span>
+<span class="n">Receiving</span><span class="w"> </span><span class="nl">objects</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="o">%</span><span class="w"> </span><span class="p">(</span><span class="mi">144</span><span class="o">/</span><span class="mi">144</span><span class="p">),</span><span class="w"> </span><span class="mf">116.00</span><span class="w"> </span><span class="n">KiB</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="mf">207.00</span><span class="w"> </span><span class="n">KiB</span><span class="o">/</span><span class="n">s</span><span class="p">,</span><span class="w"> </span><span class="n">done</span><span class="p">.</span>
+<span class="n">Resolving</span><span class="w"> </span><span class="nl">deltas</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="o">%</span><span class="w"> </span><span class="p">(</span><span class="mi">89</span><span class="o">/</span><span class="mi">89</span><span class="p">),</span><span class="w"> </span><span class="n">done</span><span class="p">.</span>
+<span class="n">Checking</span><span class="w"> </span><span class="n">connectivity</span><span class="p">...</span><span class="w"> </span><span class="n">done</span><span class="p">.</span>
+<span class="n">Preparing</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">build</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span>
+<span class="n">Building</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span>
+<span class="n">make</span><span class="w"> </span><span class="o">-</span><span class="n">j4</span>
+<span class="n">g</span><span class="o">++</span><span class="w"> </span><span class="err">`</span><span class="n">GraphicsMagick</span><span class="o">++-</span><span class="n">config</span><span class="w"> </span><span class="o">--</span><span class="n">cppflags</span><span class="w"> </span><span class="o">--</span><span class="n">cxxflags</span><span class="err">`</span><span class="w"> </span><span class="o">-</span><span class="n">Wall</span><span class="w"> </span><span class="o">-</span><span class="n">O3</span><span class="w"> </span><span class="o">-</span><span class="n">fPIC</span><span class="w"> </span><span class="o">-</span><span class="n">c</span><span class="w"> </span><span class="o">-</span><span class="n">o</span><span class="w"> </span><span class="n">timg</span><span class="p">.</span><span class="n">o</span><span class="w"> </span><span class="n">timg</span><span class="p">.</span><span class="n">cc</span>
+<span class="n">g</span><span class="o">++</span><span class="w"> </span><span class="o">-</span><span class="n">Wall</span><span class="w"> </span><span class="o">-</span><span class="n">O3</span><span class="w"> </span><span class="o">-</span><span class="n">fPIC</span><span class="w">   </span><span class="o">-</span><span class="n">c</span><span class="w"> </span><span class="o">-</span><span class="n">o</span><span class="w"> </span><span class="n">terminal</span><span class="o">-</span><span class="n">canvas</span><span class="p">.</span><span class="n">o</span><span class="w"> </span><span class="n">terminal</span><span class="o">-</span><span class="n">canvas</span><span class="p">.</span><span class="n">cc</span>
+<span class="n">g</span><span class="o">++</span><span class="w"> </span><span class="o">-</span><span class="n">o</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span><span class="n">timg</span><span class="p">.</span><span class="n">o</span><span class="w"> </span><span class="n">terminal</span><span class="o">-</span><span class="n">canvas</span><span class="p">.</span><span class="n">o</span><span class="w"> </span><span class="err">`</span><span class="n">GraphicsMagick</span><span class="o">++-</span><span class="n">config</span><span class="w"> </span><span class="o">--</span><span class="n">ldflags</span><span class="w"> </span><span class="o">--</span><span class="n">libs</span><span class="err">`</span>
+<span class="n">Staging</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span>
+<span class="n">Priming</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span>
+<span class="n">ubuntu</span><span class="nv">@snaps</span><span class="err">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="err">$</span>
+</code></pre></div>
+
+<p>我们还将继续迭代。</p>
+<h3>导出命令</h3>
+<p>到目前为止，snapcraft 生成了可执行文件，但没有导出给用户使用的命令。接下来我们需要通过 <code>apps:</code> 导出一个命令。</p>
+<p>首先我们需要知道命令在 <code>prime/</code> 的哪个子文件夹中：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ubuntu</span><span class="nv">@snaps</span><span class="err">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="err">$</span><span class="w"> </span><span class="n">ls</span><span class="w"> </span><span class="n">prime</span><span class="o">/</span>
+<span class="n">meta</span><span class="o">/</span><span class="w">  </span><span class="n">snap</span><span class="o">/</span><span class="w">  </span><span class="n">timg</span><span class="o">*</span><span class="w">  </span><span class="n">usr</span><span class="o">/</span>
+<span class="n">ubuntu</span><span class="nv">@snaps</span><span class="err">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="err">$</span>
+</code></pre></div>
+
+<p>它在 <code>prime/</code> 子文件夹的根目录中。现在，我们已经准备好要在 <code>snapcaft.yaml</code> 中增加 <code>apps:</code> 的内容：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ubuntu</span><span class="nv">@snaps</span><span class="err">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="err">$</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="n">snap</span><span class="o">/</span><span class="n">snapcraft</span><span class="p">.</span><span class="n">yaml</span><span class="w"> </span>
+<span class="nl">name</span><span class="p">:</span><span class="w"> </span><span class="n">timg</span>
+<span class="nl">version</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;20170226&#39;</span>
+<span class="nl">summary</span><span class="p">:</span><span class="w"> </span><span class="n">A</span><span class="w"> </span><span class="n">terminal</span><span class="w"> </span><span class="nc">image</span><span class="w"> </span><span class="n">viewer</span>
+<span class="nl">description</span><span class="p">:</span><span class="w"> </span><span class="o">|</span>
+<span class="w">  </span><span class="n">A</span><span class="w"> </span><span class="n">viewer</span><span class="w"> </span><span class="n">that</span><span class="w"> </span><span class="n">uses</span><span class="w"> </span><span class="mi">24</span><span class="o">-</span><span class="nc">Bit</span><span class="w"> </span><span class="n">color</span><span class="w"> </span><span class="n">capabilities</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="nf">unicode</span><span class="w"> </span><span class="k">character</span><span class="w"> </span><span class="n">blocks</span><span class="w"> </span>
+<span class="w">  </span><span class="k">to</span><span class="w"> </span><span class="n">display</span><span class="w"> </span><span class="n">images</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">terminal</span><span class="p">.</span>
+
+<span class="nl">grade</span><span class="p">:</span><span class="w"> </span><span class="n">stable</span><span class="w"> </span>
+<span class="nl">confinement</span><span class="p">:</span><span class="w"> </span><span class="n">devmode</span>
+
+<span class="nl">apps</span><span class="p">:</span>
+<span class="w">  </span><span class="nl">timg</span><span class="p">:</span><span class="w"> </span>
+<span class="w">    </span><span class="nl">command</span><span class="p">:</span><span class="w"> </span><span class="n">timg</span>
+
+<span class="nl">parts</span><span class="p">:</span>
+<span class="w">  </span><span class="nl">timg</span><span class="p">:</span>
+<span class="w">    </span><span class="nl">source</span><span class="p">:</span><span class="w"> </span><span class="nl">https</span><span class="p">:</span><span class="o">//</span><span class="n">github</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">hzeller</span><span class="o">/</span><span class="n">timg</span><span class="p">.</span><span class="n">git</span>
+<span class="w">    </span><span class="n">source</span><span class="o">-</span><span class="nl">subdir</span><span class="p">:</span><span class="w"> </span><span class="n">src</span>
+<span class="w">    </span><span class="nl">plugin</span><span class="p">:</span><span class="w"> </span><span class="n">make</span>
+<span class="w">    </span><span class="n">build</span><span class="o">-</span><span class="nl">packages</span><span class="p">:</span><span class="w"> </span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">libgraphicsmagick</span><span class="o">++</span><span class="mi">1</span><span class="o">-</span><span class="n">dev</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">libwebp</span><span class="o">-</span><span class="n">dev</span>
+<span class="w">    </span><span class="nl">artifacts</span><span class="p">:</span><span class="w"> </span><span class="o">[</span><span class="n">timg</span><span class="o">]</span>
+</code></pre></div>
+
+<p>让我们再次运行 <code>snapcraft prime</code>，然后测试下生成的 snap 包：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ubuntu</span><span class="nv">@snaps</span><span class="err">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="err">$</span><span class="w"> </span><span class="n">snapcraft</span><span class="w"> </span><span class="n">prime</span><span class="w"> </span>
+<span class="n">Skipping</span><span class="w"> </span><span class="n">pull</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span><span class="p">(</span><span class="n">already</span><span class="w"> </span><span class="n">ran</span><span class="p">)</span>
+<span class="n">Skipping</span><span class="w"> </span><span class="n">build</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span><span class="p">(</span><span class="n">already</span><span class="w"> </span><span class="n">ran</span><span class="p">)</span>
+<span class="n">Skipping</span><span class="w"> </span><span class="n">stage</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span><span class="p">(</span><span class="n">already</span><span class="w"> </span><span class="n">ran</span><span class="p">)</span>
+<span class="n">Skipping</span><span class="w"> </span><span class="n">prime</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span><span class="p">(</span><span class="n">already</span><span class="w"> </span><span class="n">ran</span><span class="p">)</span>
+<span class="n">ubuntu</span><span class="nv">@snaps</span><span class="err">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="err">$</span><span class="w"> </span><span class="n">snap</span><span class="w"> </span><span class="k">try</span><span class="w"> </span><span class="o">--</span><span class="n">devmode</span><span class="w"> </span><span class="n">prime</span><span class="o">/</span>
+<span class="n">timg</span><span class="w"> </span><span class="mi">20170226</span><span class="w"> </span><span class="n">mounted</span><span class="w"> </span><span class="k">from</span><span class="w"> </span><span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">ubuntu</span><span class="o">/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="o">/</span><span class="n">prime</span>
+<span class="n">ubuntu</span><span class="nv">@snaps</span><span class="err">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="err">$</span>
+</code></pre></div>
+
+<p><img alt="图片.png-42.3kB" src="/data/attachment/album/201710/04/005430z79wgjktgadlv7lk.png"></p>
+<p><em>图片来源： <a href="https://www.flickr.com/photos/mustangjoe/6091603784/">https://www.flickr.com/photos/mustangjoe/6091603784/</a></em></p>
+<p>我们可以通过 <code>snap try --devmode prime/</code> 启用该 snap 包然后测试 <code>timg</code> 命令。这是一种高效的测试方法，可以避免生成 .snap 文件，并且无需安装和卸载它们，因为 <code>snap try prime/</code> 直接使用了 <code>prime/</code> 文件夹中的内容。</p>
+<h3>限制 snap</h3>
+<p>到目前为止，snap 包一直是在不受限制的开发模式下运行的。让我们看看如何限制它的运行：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ubuntu</span><span class="err">@</span><span class="n">snaps</span><span class="p">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="o">$</span><span class="w"> </span><span class="n">snap</span><span class="w"> </span><span class="n">list</span>
+<span class="n">Name</span><span class="w">           </span><span class="n">Version</span><span class="w">   </span><span class="n">Rev</span><span class="w">   </span><span class="n">Developer</span><span class="w">  </span><span class="n">Notes</span>
+<span class="n">core</span><span class="w">           </span><span class="mi">16</span><span class="o">-</span><span class="mi">2</span><span class="w">      </span><span class="mi">1337</span><span class="w">  </span><span class="n">canonical</span><span class="w">  </span><span class="o">-</span>
+<span class="n">timg</span><span class="w">           </span><span class="mi">20170226</span><span class="w">  </span><span class="n">x1</span><span class="w">               </span><span class="n">devmode</span><span class="p">,</span><span class="n">try</span>
+<span class="n">ubuntu</span><span class="err">@</span><span class="n">snaps</span><span class="p">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="o">$</span><span class="w"> </span><span class="n">snap</span><span class="w"> </span><span class="n">try</span><span class="w"> </span><span class="o">--</span><span class="n">jailmode</span><span class="w"> </span><span class="n">prime</span>
+<span class="n">timg</span><span class="w"> </span><span class="mi">20170226</span><span class="w"> </span><span class="n">mounted</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">ubuntu</span><span class="o">/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="o">/</span><span class="n">prime</span>
+<span class="n">ubuntu</span><span class="err">@</span><span class="n">snaps</span><span class="p">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="o">$</span><span class="w"> </span><span class="n">snap</span><span class="w"> </span><span class="n">list</span>
+<span class="n">Name</span><span class="w">           </span><span class="n">Version</span><span class="w">   </span><span class="n">Rev</span><span class="w">   </span><span class="n">Developer</span><span class="w">  </span><span class="n">Notes</span>
+<span class="n">core</span><span class="w">           </span><span class="mi">16</span><span class="o">-</span><span class="mi">2</span><span class="w">      </span><span class="mi">1337</span><span class="w">  </span><span class="n">canonical</span><span class="w">  </span><span class="o">-</span>
+<span class="n">timg</span><span class="w">           </span><span class="mi">20170226</span><span class="w">  </span><span class="n">x2</span><span class="w">               </span><span class="n">jailmode</span><span class="p">,</span><span class="n">try</span>
+<span class="n">ubuntu</span><span class="err">@</span><span class="n">snaps</span><span class="p">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="o">$</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span><span class="n">pexels</span><span class="o">-</span><span class="n">photo</span><span class="o">-</span><span class="mf">149813.j</span><span class="n">peg</span><span class="w"> </span>
+<span class="n">Trouble</span><span class="w"> </span><span class="n">loading</span><span class="w"> </span><span class="n">pexels</span><span class="o">-</span><span class="n">photo</span><span class="o">-</span><span class="mf">149813.j</span><span class="n">peg</span><span class="w"> </span><span class="p">(</span><span class="n">Magick</span><span class="p">:</span><span class="w"> </span><span class="n">Unable</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">open</span><span class="w"> </span><span class="n">file</span><span class="w"> </span><span class="p">(</span><span class="n">pexels</span><span class="o">-</span><span class="n">photo</span><span class="o">-</span><span class="mf">149813.j</span><span class="n">peg</span><span class="p">)</span><span class="w"> </span><span class="n">reported</span><span class="w"> </span><span class="n">by</span><span class="w"> </span><span class="n">magick</span><span class="o">/</span><span class="n">blob</span><span class="o">.</span><span class="n">c</span><span class="p">:</span><span class="mi">2828</span><span class="w"> </span><span class="p">(</span><span class="n">OpenBlob</span><span class="p">))</span>
+<span class="n">ubuntu</span><span class="err">@</span><span class="n">snaps</span><span class="p">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="o">$</span>
+</code></pre></div>
+
+<p>通过这种方式，我们可以无需修改 <code>snapcraft.yaml</code> 文件就从开发模式（<code>devmode</code>）切换到限制模式（<code>jailmode</code>）（<code>confinement: strict</code>）。正如预期的那样，<code>timg</code> 无法读取图像，因为我们没有开放访问文件系统的权限。</p>
+<p>现在，我们需要作出决定。使用限制模式，我们可以很容易授予某个命令访问用户 <code>$HOME</code> 目录中文件的权限，但是只能访问那里。如果图像文件位于其它地方，我们总是需要复制到 <code>$HOME</code> 目录并在 <code>$HOME</code> 的副本上运行 timg。如果我们觉得可行，那我们可以设置 <code>snapcraf.yaml</code> 为:</p>
+<div class="highlight"><pre><span></span><code><span class="nl">name</span><span class="p">:</span><span class="w"> </span><span class="n">timg</span>
+<span class="nl">version</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;20170226&#39;</span>
+<span class="nl">summary</span><span class="p">:</span><span class="w"> </span><span class="n">A</span><span class="w"> </span><span class="n">terminal</span><span class="w"> </span><span class="nc">image</span><span class="w"> </span><span class="n">viewer</span>
+<span class="nl">description</span><span class="p">:</span><span class="w"> </span><span class="o">|</span>
+<span class="w">  </span><span class="n">A</span><span class="w"> </span><span class="n">viewer</span><span class="w"> </span><span class="n">that</span><span class="w"> </span><span class="n">uses</span><span class="w"> </span><span class="mi">24</span><span class="o">-</span><span class="nc">Bit</span><span class="w"> </span><span class="n">color</span><span class="w"> </span><span class="n">capabilities</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="nf">unicode</span><span class="w"> </span><span class="k">character</span><span class="w"> </span><span class="n">blocks</span><span class="w"> </span>
+<span class="w">  </span><span class="k">to</span><span class="w"> </span><span class="n">display</span><span class="w"> </span><span class="n">images</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">terminal</span><span class="p">.</span>
+
+<span class="nl">grade</span><span class="p">:</span><span class="w"> </span><span class="n">stable</span><span class="w"> </span>
+<span class="nl">confinement</span><span class="p">:</span><span class="w"> </span><span class="n">strict</span>
+
+<span class="nl">apps</span><span class="p">:</span>
+<span class="w">  </span><span class="nl">timg</span><span class="p">:</span><span class="w"> </span>
+<span class="w">    </span><span class="nl">command</span><span class="p">:</span><span class="w"> </span><span class="n">timg</span>
+<span class="w">    </span><span class="nl">plugs</span><span class="p">:</span><span class="w"> </span><span class="o">[</span><span class="n">home</span><span class="o">]</span>
+
+<span class="nl">parts</span><span class="p">:</span>
+<span class="w">  </span><span class="nl">timg</span><span class="p">:</span>
+<span class="w">    </span><span class="nl">source</span><span class="p">:</span><span class="w"> </span><span class="nl">https</span><span class="p">:</span><span class="o">//</span><span class="n">github</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">hzeller</span><span class="o">/</span><span class="n">timg</span><span class="p">.</span><span class="n">git</span>
+<span class="w">    </span><span class="n">source</span><span class="o">-</span><span class="nl">subdir</span><span class="p">:</span><span class="w"> </span><span class="n">src</span>
+<span class="w">    </span><span class="nl">plugin</span><span class="p">:</span><span class="w"> </span><span class="n">make</span>
+<span class="w">    </span><span class="n">build</span><span class="o">-</span><span class="nl">packages</span><span class="p">:</span><span class="w"> </span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">libgraphicsmagick</span><span class="o">++</span><span class="mi">1</span><span class="o">-</span><span class="n">dev</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">libwebp</span><span class="o">-</span><span class="n">dev</span>
+<span class="w">    </span><span class="nl">artifacts</span><span class="p">:</span><span class="w"> </span><span class="o">[</span><span class="n">timg</span><span class="o">]</span>
+</code></pre></div>
+
+<p>另一方面，如果希望 timg snap 包能访问整个文件系统，我们可以设置传统限制来实现。对应的 <code>snapcraft.yaml</code> 内容如下：</p>
+<div class="highlight"><pre><span></span><code><span class="nl">name</span><span class="p">:</span><span class="w"> </span><span class="n">timg</span>
+<span class="nl">version</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;20170226&#39;</span>
+<span class="nl">summary</span><span class="p">:</span><span class="w"> </span><span class="n">A</span><span class="w"> </span><span class="n">terminal</span><span class="w"> </span><span class="nc">image</span><span class="w"> </span><span class="n">viewer</span>
+<span class="nl">description</span><span class="p">:</span><span class="w"> </span><span class="o">|</span>
+<span class="w">  </span><span class="n">A</span><span class="w"> </span><span class="n">viewer</span><span class="w"> </span><span class="n">that</span><span class="w"> </span><span class="n">uses</span><span class="w"> </span><span class="mi">24</span><span class="o">-</span><span class="nc">Bit</span><span class="w"> </span><span class="n">color</span><span class="w"> </span><span class="n">capabilities</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="nf">unicode</span><span class="w"> </span><span class="k">character</span><span class="w"> </span><span class="n">blocks</span><span class="w"> </span>
+<span class="w">  </span><span class="k">to</span><span class="w"> </span><span class="n">display</span><span class="w"> </span><span class="n">images</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">terminal</span><span class="p">.</span>
+
+<span class="nl">grade</span><span class="p">:</span><span class="w"> </span><span class="n">stable</span><span class="w"> </span>
+<span class="nl">confinement</span><span class="p">:</span><span class="w"> </span><span class="n">classic</span>
+
+<span class="nl">apps</span><span class="p">:</span>
+<span class="w">  </span><span class="nl">timg</span><span class="p">:</span><span class="w"> </span>
+<span class="w">    </span><span class="nl">command</span><span class="p">:</span><span class="w"> </span><span class="n">timg</span>
+
+<span class="nl">parts</span><span class="p">:</span>
+<span class="w">  </span><span class="nl">timg</span><span class="p">:</span>
+<span class="w">    </span><span class="nl">source</span><span class="p">:</span><span class="w"> </span><span class="nl">https</span><span class="p">:</span><span class="o">//</span><span class="n">github</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">hzeller</span><span class="o">/</span><span class="n">timg</span><span class="p">.</span><span class="n">git</span>
+<span class="w">    </span><span class="n">source</span><span class="o">-</span><span class="nl">subdir</span><span class="p">:</span><span class="w"> </span><span class="n">src</span>
+<span class="w">    </span><span class="nl">plugin</span><span class="p">:</span><span class="w"> </span><span class="n">make</span>
+<span class="w">    </span><span class="n">build</span><span class="o">-</span><span class="nl">packages</span><span class="p">:</span><span class="w"> </span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">libgraphicsmagick</span><span class="o">++</span><span class="mi">1</span><span class="o">-</span><span class="n">dev</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">libwebp</span><span class="o">-</span><span class="n">dev</span>
+<span class="w">    </span><span class="nl">artifacts</span><span class="p">:</span><span class="w"> </span><span class="o">[</span><span class="n">timg</span><span class="o">]</span>
+</code></pre></div>
+
+<p>接下来我们将选择严格（<code>strict</code>）约束选项。因此，图像应该只能放在 $HOME 中。</p>
+<h3>打包和测试</h3>
+<p>让我们打包这个 snap，也就是制作 .snap 文件，然后在新安装的 Ubuntu 系统上对它进行测试。</p>
+<div class="highlight"><pre><span></span><code><span class="n">ubuntu</span><span class="nv">@snaps</span><span class="err">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="err">$</span><span class="w"> </span><span class="n">snapcraft</span><span class="w"> </span>
+<span class="n">Skipping</span><span class="w"> </span><span class="n">pull</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span><span class="p">(</span><span class="n">already</span><span class="w"> </span><span class="n">ran</span><span class="p">)</span>
+<span class="n">Skipping</span><span class="w"> </span><span class="n">build</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span><span class="p">(</span><span class="n">already</span><span class="w"> </span><span class="n">ran</span><span class="p">)</span>
+<span class="n">Skipping</span><span class="w"> </span><span class="n">stage</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span><span class="p">(</span><span class="n">already</span><span class="w"> </span><span class="n">ran</span><span class="p">)</span>
+<span class="n">Skipping</span><span class="w"> </span><span class="n">prime</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span><span class="p">(</span><span class="n">already</span><span class="w"> </span><span class="n">ran</span><span class="p">)</span>
+<span class="n">Snapping</span><span class="w"> </span><span class="s1">&#39;timg&#39;</span><span class="w"> </span><span class="err">\</span><span class="w">                                                 </span>
+<span class="n">Snapped</span><span class="w"> </span><span class="n">timg_20170226_amd64</span><span class="p">.</span><span class="n">snap</span>
+<span class="n">ubuntu</span><span class="nv">@snaps</span><span class="err">:</span><span class="o">~/</span><span class="n">timg</span><span class="o">-</span><span class="n">snap</span><span class="err">$</span>
+</code></pre></div>
+
+<p>我们如何在几秒钟内得到一个全新安装的 Ubuntu 系统来对 snap 包进行测试？</p>
+<p>请查看 <a href="https://blog.simos.info/trying-out-lxd-containers-on-our-ubuntu/">尝试在 Ubuntu 上使用 LXD 容器</a>，并在你的系统上设置 LXD。然后回到这里，尝试运行下面的命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>lxc<span class="w"> </span>launch<span class="w"> </span>ubuntu:x<span class="w"> </span>snaptesting
+Creating<span class="w"> </span>snaptesting
+Starting<span class="w"> </span>snaptesting
+$<span class="w"> </span>lxc<span class="w"> </span>file<span class="w"> </span>push<span class="w"> </span>timg_20170226_amd64.snap<span class="w"> </span>snaptesting/home/ubuntu/
+$<span class="w"> </span>lxc<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>snaptesting<span class="w"> </span>--<span class="w"> </span>sudo<span class="w"> </span>su<span class="w"> </span>-<span class="w"> </span>ubuntu
+To<span class="w"> </span>run<span class="w"> </span>a<span class="w"> </span><span class="nb">command</span><span class="w"> </span>as<span class="w"> </span>administrator<span class="w"> </span><span class="o">(</span>user<span class="w"> </span><span class="s2">&quot;root&quot;</span><span class="o">)</span>,<span class="w"> </span>use<span class="w"> </span><span class="s2">&quot;sudo &lt;command&gt;&quot;</span>.
+See<span class="w"> </span><span class="s2">&quot;man sudo_root&quot;</span><span class="w"> </span><span class="k">for</span><span class="w"> </span>details.
+
+ubuntu@snaptesting:~$<span class="w"> </span>ls
+timg_20170226_amd64.snap
+ubuntu@snaptesting:~$<span class="w"> </span>snap<span class="w"> </span>install<span class="w"> </span>timg_20170226_amd64.snap<span class="w"> </span>
+error:<span class="w"> </span>access<span class="w"> </span>denied<span class="w"> </span><span class="o">(</span>try<span class="w"> </span>with<span class="w"> </span>sudo<span class="o">)</span>
+ubuntu@snaptesting:~$<span class="w"> </span>sudo<span class="w"> </span>snap<span class="w"> </span>install<span class="w"> </span>timg_20170226_amd64.snap
+error:<span class="w"> </span>cannot<span class="w"> </span>find<span class="w"> </span>signatures<span class="w"> </span>with<span class="w"> </span>metadata<span class="w"> </span><span class="k">for</span><span class="w"> </span>snap<span class="w"> </span><span class="s2">&quot;timg_20170226_amd64.snap&quot;</span>
+ubuntu@snaptesting:~$<span class="w"> </span>sudo<span class="w"> </span>snap<span class="w"> </span>install<span class="w"> </span>timg_20170226_amd64.snap<span class="w"> </span>--dangerous
+error:<span class="w"> </span>cannot<span class="w"> </span>perform<span class="w"> </span>the<span class="w"> </span>following<span class="w"> </span>tasks:
+-<span class="w"> </span>Mount<span class="w"> </span>snap<span class="w"> </span><span class="s2">&quot;core&quot;</span><span class="w"> </span><span class="o">(</span><span class="m">1337</span><span class="o">)</span><span class="w"> </span><span class="o">([</span>start<span class="w"> </span>snap-core-1337.mount<span class="o">]</span><span class="w"> </span>failed<span class="w"> </span>with<span class="w"> </span><span class="nb">exit</span><span class="w"> </span>status<span class="w"> </span><span class="m">1</span>:<span class="w"> </span>Job<span class="w"> </span><span class="k">for</span><span class="w"> </span>snap-core-1337.mount<span class="w"> </span>failed.<span class="w"> </span>See<span class="w"> </span><span class="s2">&quot;systemctl status snap-core-1337.mount&quot;</span><span class="w"> </span>and<span class="w"> </span><span class="s2">&quot;journalctl -xe&quot;</span><span class="w"> </span><span class="k">for</span><span class="w"> </span>details.
+<span class="o">)</span>
+ubuntu@snaptesting:~$<span class="w"> </span>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>squashfuse
+<span class="o">[</span>...<span class="o">]</span>
+Setting<span class="w"> </span>up<span class="w"> </span>squashfuse<span class="w"> </span><span class="o">(</span><span class="m">0</span>.1.100-0ubuntu1~ubuntu16.04.1<span class="o">)</span><span class="w"> </span>...
+ubuntu@snaptesting:~$<span class="w"> </span>sudo<span class="w"> </span>snap<span class="w"> </span>install<span class="w"> </span>timg_20170226_amd64.snap<span class="w"> </span>--dangerous
+timg<span class="w"> </span><span class="m">20170226</span><span class="w"> </span>installed
+ubuntu@snaptesting:~$<span class="w"> </span>wget<span class="w"> </span>https://farm7.staticflickr.com/6187/6091603784_d6960c8be2_z_d.jpg
+<span class="o">[</span>...<span class="o">]</span>
+<span class="m">2017</span>-02-26<span class="w"> </span><span class="m">22</span>:12:18<span class="w"> </span><span class="o">(</span><span class="m">636</span><span class="w"> </span>KB/s<span class="o">)</span><span class="w"> </span>-<span class="w"> </span>‘6091603784_d6960c8be2_z_d.jpg’<span class="w"> </span>saved<span class="w"> </span><span class="o">[</span><span class="m">240886</span>/240886<span class="o">]</span>
+ubuntu@snaptesting:~$<span class="w"> </span>timg<span class="w"> </span>6091603784_d6960c8be2_z_d.jpg<span class="w"> </span>
+<span class="o">[</span>it<span class="w"> </span>worked!<span class="o">]</span>
+ubuntu@snaptesting:~$
+</code></pre></div>
+
+<p>我们启动了一个名为 <code>snaptesting</code> 的 LXD 容器，并将 .snap 文件复制进去。然后，通过普通用户连接到容器，并尝试安装 snap 包。最初，我们安装失败了，因为在无特权的 LXD 容器中安装 snap 包需要使用 <code>sudo</code> 。接着又失败了，因为 .snap 没有经过签名（我们需要使用 <code>--dangerous</code> 参数）。然而还是失败了，这次是因为我们需要安装 <code>squashfuse</code> 包（Ubuntu 16.04 镜像中没有预装）。最后，我们成功安装了snap，并设法查看了图像。</p>
+<p>在一个全新安装的 Linux 系统中测试 snap 包是很重要的，因为这样才能确保 snap 包中包含所有必须的代码库。在这个例子中，我们使用了静态库并运行良好。</p>
+<h3>发布到 Ubuntu 商店</h3>
+<p>这是 <a href="https://snapcraft.io/docs/build-snaps/publish">发布 snap 包到 Ubuntu 商店的说明</a>。 在之前的教程中，我们已经发布了一些 snap 包。对于 <code>timg</code> 来说，我们设置了严格限制和稳定等级。因此，我们会将它发布到稳定通道。</p>
+<div class="highlight"><pre><span></span><code><span class="o">$</span><span class="w"> </span><span class="n">snapcraft</span><span class="w"> </span><span class="n">push</span><span class="w"> </span><span class="n">timg_20170226_amd64</span><span class="o">.</span><span class="n">snap</span><span class="w"> </span>
+<span class="n">Pushing</span><span class="w"> </span><span class="s1">&#39;timg_20170226_amd64.snap&#39;</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">store</span><span class="o">.</span>
+<span class="n">Uploading</span><span class="w"> </span><span class="n">timg_20170226_amd64</span><span class="o">.</span><span class="n">snap</span><span class="w"> </span><span class="p">[</span><span class="w">                                       </span><span class="p">]</span><span class="w">   </span><span class="mi">0</span><span class="o">%</span>
+<span class="n">Uploading</span><span class="w"> </span><span class="n">timg_20170226_amd64</span><span class="o">.</span><span class="n">snap</span><span class="w"> </span><span class="p">[</span><span class="o">=======================================</span><span class="p">]</span><span class="w"> </span><span class="mi">100</span><span class="o">%</span>
+<span class="n">Ready</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">release</span><span class="o">!|</span><span class="w">                                                               </span>
+<span class="n">Revision</span><span class="w"> </span><span class="mi">6</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="s1">&#39;timg&#39;</span><span class="w"> </span><span class="n">created</span><span class="o">.</span>
+<span class="o">$</span><span class="w"> </span><span class="n">snapcraft</span><span class="w"> </span><span class="n">release</span><span class="w"> </span><span class="n">timg</span><span class="w"> </span><span class="mi">6</span><span class="w"> </span><span class="n">stable</span>
+<span class="n">Track</span><span class="w">    </span><span class="n">Arch</span><span class="w">    </span><span class="n">Series</span><span class="w">    </span><span class="n">Channel</span><span class="w">    </span><span class="n">Version</span><span class="w">    </span><span class="n">Revision</span>
+<span class="n">latest</span><span class="w">   </span><span class="n">amd64</span><span class="w">   </span><span class="mi">16</span><span class="w">        </span><span class="n">stable</span><span class="w">     </span><span class="mi">20170226</span><span class="w">   </span><span class="mi">6</span>
+<span class="w">                           </span><span class="n">candidate</span><span class="w">  </span><span class="o">^</span><span class="w">          </span><span class="o">^</span>
+<span class="w">                           </span><span class="n">beta</span><span class="w">       </span><span class="mf">0.9</span><span class="o">.</span><span class="mi">5</span><span class="w">      </span><span class="mi">5</span>
+<span class="w">                           </span><span class="n">edge</span><span class="w">       </span><span class="mf">0.9</span><span class="o">.</span><span class="mi">5</span><span class="w">      </span><span class="mi">5</span>
+<span class="n">The</span><span class="w"> </span><span class="s1">&#39;stable&#39;</span><span class="w"> </span><span class="n">channel</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">now</span><span class="w"> </span><span class="n">open</span><span class="o">.</span>
+</code></pre></div>
+
+<p>我们把 .snap 包推送到 Ubuntu 商店后，得到了一个 <code>Revision 6</code>。然后，我们将 timg <code>Revision 6</code> 发布到了 Ubuntu 商店的稳定通道。</p>
+<p>在候选通道中没有已发布的 snap 包，它继承的是稳定通道的包，所以显示 <code>^</code> 字符。</p>
+<p>在之前的测试中，我将一些较老版本的 snap 包上传到了测试和边缘通道。这些旧版本使用了 timg 标签为 <code>0.9.5</code> 的源代码。</p>
+<p>我们可以通过将稳定版本发布到测试和边缘通道来移除旧的 0.9.5 版本的包。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>snapcraft<span class="w"> </span>release<span class="w"> </span>timg<span class="w"> </span><span class="m">6</span><span class="w"> </span>beta
+Track<span class="w">    </span>Arch<span class="w">    </span>Series<span class="w">    </span>Channel<span class="w">    </span>Version<span class="w">    </span>Revision
+latest<span class="w">   </span>amd64<span class="w">   </span><span class="m">16</span><span class="w">        </span>stable<span class="w">     </span><span class="m">20170226</span><span class="w">   </span><span class="m">6</span>
+<span class="w">                           </span>candidate<span class="w">  </span>^<span class="w">          </span>^
+<span class="w">                           </span>beta<span class="w">       </span><span class="m">20170226</span><span class="w">   </span><span class="m">6</span>
+<span class="w">                           </span>edge<span class="w">       </span><span class="m">0</span>.9.5<span class="w">      </span><span class="m">5</span>
+$<span class="w"> </span>snapcraft<span class="w"> </span>release<span class="w"> </span>timg<span class="w"> </span><span class="m">6</span><span class="w"> </span>edge
+Track<span class="w">    </span>Arch<span class="w">    </span>Series<span class="w">    </span>Channel<span class="w">    </span>Version<span class="w">    </span>Revision
+latest<span class="w">   </span>amd64<span class="w">   </span><span class="m">16</span><span class="w">        </span>stable<span class="w">     </span><span class="m">20170226</span><span class="w">   </span><span class="m">6</span>
+<span class="w">                           </span>candidate<span class="w">  </span>^<span class="w">          </span>^
+<span class="w">                           </span>beta<span class="w">       </span><span class="m">20170226</span><span class="w">   </span><span class="m">6</span>
+<span class="w">                           </span>edge<span class="w">       </span><span class="m">20170226</span><span class="w">   </span><span class="m">6</span>
+</code></pre></div>
+
+<h3>使用 timg</h3>
+<p>让我们不带参数运行 <code>timg</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ubuntu</span><span class="nv">@snaptesting</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">timg</span>
+<span class="n">Expected</span><span class="w"> </span><span class="nc">image</span><span class="w"> </span><span class="n">filename</span><span class="p">.</span>
+<span class="k">usage</span><span class="err">:</span><span class="w"> </span><span class="o">/</span><span class="n">snap</span><span class="o">/</span><span class="n">timg</span><span class="o">/</span><span class="n">x1</span><span class="o">/</span><span class="n">timg</span><span class="w"> </span><span class="o">[</span><span class="n">options</span><span class="o">]</span><span class="w"> </span><span class="o">&lt;</span><span class="nc">image</span><span class="o">&gt;</span><span class="w"> </span><span class="o">[</span><span class="n">&lt;image&gt;...</span><span class="o">]</span>
+<span class="nl">Options</span><span class="p">:</span>
+<span class="w">    </span><span class="o">-</span><span class="n">g</span><span class="o">&lt;</span><span class="n">w</span><span class="o">&gt;</span><span class="n">x</span><span class="o">&lt;</span><span class="n">h</span><span class="o">&gt;</span><span class="w">  </span><span class="err">:</span><span class="w"> </span><span class="k">Output</span><span class="w"> </span><span class="n">pixel</span><span class="w"> </span><span class="n">geometry</span><span class="p">.</span><span class="w"> </span><span class="k">Default</span><span class="w"> </span><span class="k">from</span><span class="w"> </span><span class="n">terminal</span><span class="w"> </span><span class="mi">80</span><span class="n">x48</span>
+<span class="w">    </span><span class="o">-</span><span class="n">s</span><span class="o">[</span><span class="n">&lt;ms&gt;</span><span class="o">]</span><span class="w">   </span><span class="err">:</span><span class="w"> </span><span class="k">Scroll</span><span class="w"> </span><span class="n">horizontally</span><span class="w"> </span><span class="p">(</span><span class="nl">optionally</span><span class="p">:</span><span class="w"> </span><span class="n">delay</span><span class="w"> </span><span class="n">ms</span><span class="w"> </span><span class="p">(</span><span class="mi">60</span><span class="p">)).</span>
+<span class="w">    </span><span class="o">-</span><span class="n">d</span><span class="o">&lt;</span><span class="nl">dx</span><span class="p">:</span><span class="n">dy</span><span class="o">&gt;</span><span class="w">  </span><span class="err">:</span><span class="w"> </span><span class="n">delta</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">delta</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="k">when</span><span class="w"> </span><span class="n">scrolling</span><span class="w"> </span><span class="p">(</span><span class="k">default</span><span class="err">:</span><span class="w"> </span><span class="mi">1</span><span class="err">:</span><span class="mi">0</span><span class="p">).</span>
+<span class="w">    </span><span class="o">-</span><span class="n">w</span><span class="o">&lt;</span><span class="n">seconds</span><span class="o">&gt;</span><span class="err">:</span><span class="w"> </span><span class="k">If</span><span class="w"> </span><span class="n">multiple</span><span class="w"> </span><span class="n">images</span><span class="w"> </span><span class="nl">given</span><span class="p">:</span><span class="w"> </span><span class="n">Wait</span><span class="w"> </span><span class="nc">time</span><span class="w"> </span><span class="ow">between</span><span class="w"> </span><span class="p">(</span><span class="k">default</span><span class="err">:</span><span class="w"> </span><span class="mf">0.0</span><span class="p">).</span>
+<span class="w">    </span><span class="o">-</span><span class="n">t</span><span class="o">&lt;</span><span class="n">seconds</span><span class="o">&gt;</span><span class="err">:</span><span class="w"> </span><span class="k">Only</span><span class="w"> </span><span class="n">animation</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="nl">scrolling</span><span class="p">:</span><span class="w"> </span><span class="n">stop</span><span class="w"> </span><span class="k">after</span><span class="w"> </span><span class="n">this</span><span class="w"> </span><span class="nc">time</span><span class="p">.</span>
+<span class="w">    </span><span class="o">-</span><span class="n">c</span><span class="o">&lt;</span><span class="n">num</span><span class="o">&gt;</span><span class="w">    </span><span class="err">:</span><span class="w"> </span><span class="k">Only</span><span class="w"> </span><span class="n">Animation</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="nl">scrolling</span><span class="p">:</span><span class="w"> </span><span class="n">number</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="n">runs</span><span class="w"> </span><span class="n">through</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="k">full</span><span class="w"> </span><span class="k">cycle</span><span class="p">.</span>
+<span class="w">    </span><span class="o">-</span><span class="n">C</span><span class="w">         </span><span class="err">:</span><span class="w"> </span><span class="n">Clear</span><span class="w"> </span><span class="n">screen</span><span class="w"> </span><span class="k">before</span><span class="w"> </span><span class="n">showing</span><span class="w"> </span><span class="nc">image</span><span class="p">.</span>
+<span class="w">    </span><span class="o">-</span><span class="n">F</span><span class="w">         </span><span class="err">:</span><span class="w"> </span><span class="k">Print</span><span class="w"> </span><span class="n">filename</span><span class="w"> </span><span class="k">before</span><span class="w"> </span><span class="n">showing</span><span class="w"> </span><span class="n">picture</span><span class="p">.</span>
+<span class="w">    </span><span class="o">-</span><span class="n">v</span><span class="w">         </span><span class="err">:</span><span class="w"> </span><span class="k">Print</span><span class="w"> </span><span class="n">version</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="k">exit</span><span class="p">.</span>
+<span class="k">If</span><span class="w"> </span><span class="k">both</span><span class="w"> </span><span class="o">-</span><span class="n">c</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="o">-</span><span class="n">t</span><span class="w"> </span><span class="k">are</span><span class="w"> </span><span class="n">given</span><span class="p">,</span><span class="w"> </span><span class="n">whatever</span><span class="w"> </span><span class="n">comes</span><span class="w"> </span><span class="k">first</span><span class="w"> </span><span class="n">stops</span><span class="p">.</span>
+<span class="k">If</span><span class="w"> </span><span class="k">both</span><span class="w"> </span><span class="o">-</span><span class="n">w</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="o">-</span><span class="n">t</span><span class="w"> </span><span class="k">are</span><span class="w"> </span><span class="n">given</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="ow">some</span><span class="w"> </span><span class="n">animation</span><span class="o">/</span><span class="k">scroll</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="n">t</span><span class="w"> </span><span class="n">takes</span><span class="w"> </span><span class="n">precedence</span>
+<span class="n">ubuntu</span><span class="nv">@snaptesting</span><span class="err">:</span><span class="o">~</span><span class="err">$</span>
+</code></pre></div>
+
+<p>这里提到当前我们终端模拟器的缩放级别，即分辨率为：80 × 48。</p>
+<p>让我们缩小一点，并最大化 GNOME 终端窗口。</p>
+<div class="highlight"><pre><span></span><code>-g&lt;w&gt;x&lt;h&gt;  : Output pixel geometry. Default from terminal 635x428
+</code></pre></div>
+
+<p>这是一个更好的解决方案，但我几乎看不到字符，因为他们太小了。让我们调用前面的命令再次显示这辆车。</p>
+<p><img alt="图片.png-904.9kB" src="/data/attachment/album/201710/04/005431hpzmiudusl3iffse.png"></p>
+<p>你所看到的是调整后的图像（1080p）。虽然它是用彩色文本字符显示的，但看起来依旧很棒。</p>
+<p>接下来呢？<code>timg</code> 其实也可以播放 gif 动画哦！</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>wget<span class="w"> </span>https://m.popkey.co/9b7141/QbAV_f-maxage-0.gif<span class="w"> </span>-O<span class="w"> </span>JonahHillAmazed.gif$<span class="w"> </span>timg<span class="w"> </span>JonahHillAmazed.gif
+</code></pre></div>
+
+<p>你可以试着安装 <code>timg</code> 来体验 gif 动画。要是不想自己动手，可以在 <a href="https://asciinema.org/a/dezbe2gpye84e0pjndp8t0pvh">asciinema</a> 上查看相关记录 （如果视频看上去起伏不定的，请重新运行它）。</p>
+<p>谢谢阅读！</p>
+<p>via：<a href="https://blog.simos.info/how-to-create-a-snap-for-timg-with-snapcraft-on-ubuntu/">https://blog.simos.info/how-to-create-a-snap-for-timg-with-snapcraft-on-ubuntu/</a></p>
+<p>作者：<a href="https://blog.simos.info/">Mi blog lah!</a> 译者：<a href="https://github.com/Snapcrafter">Snapcrafter</a> 校对：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创编译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

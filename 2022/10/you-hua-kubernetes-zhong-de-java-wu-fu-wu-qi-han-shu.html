@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>优化 Kubernetes 中的 Java 无服务器函数</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Daniel Oh 在 Kubernetes 中运行无服务器函数时，实现更快的启动速度和更小的内存占用。 由于运行上千个应用程序 容器荚 Pod 所耗费 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2022/10/you-hua-kubernetes-zhong-de-java-wu-fu-wu-qi-han-shu.html" rel="bookmark"
+           title="Permalink to 优化 Kubernetes 中的 Java 无服务器函数">优化 Kubernetes 中的 Java 无服务器函数</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2022-10-26T15:16:34+02:00">
+                Published: Wed 26 October 2022
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Daniel Oh</p>
+<blockquote>
+<p>在 Kubernetes 中运行无服务器函数时，实现更快的启动速度和更小的内存占用。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/202210/26/151603a4a44w1a71zk8b11.jpg" title="Ship captain sailing the Kubernetes seas"></p>
+<p>由于运行上千个应用程序<ruby> 容器荚 <rt>  Pod </rt></ruby>所耗费的资源多，令它实现较少工作节点和资源占用所需成本也较高，所以在使用 <a href="https://opensource.com/article/19/6/reasons-kubernetes">Kubernetes</a> 时，快速启动和较少的内存占用是至关重要的。在 Kubernetes 平台运行容器化微服务时，内存占用是比吞吐量更重要的考量因素，这是因为：</p>
+<ul>
+<li>由于需要持续运行，所以耗费资源更多（不同于 CPU 占用）</li>
+<li>微服务令开销成本成倍增加</li>
+<li>一个单体应用程序变为若干个微服务的情况（例如 20 个微服务占用的存储空间约有 20GB）</li>
+</ul>
+<p>这些情况极大影响了无服务器函数的发展和 Java 部署模型。到目前为止，许多企业开发人员选择 Go、Python 或 Node.js 这些替代方案来解决性能瓶颈，直到出现了 <a href="https://quarkus.io/">Quarkus</a> 这种基于 kubernetes 的原生 Java 堆栈，才有所改观。本文介绍如何在使用了 Quarkus 的 kubernetes 平台上进行性能优化，以便运行无服务器函数。</p>
+<h3>容器优先的设计理念</h3>
+<p>由于 Java 生态系统中传统的框架都要进行框架的初始化，包括配置文件的处理、<code>classpath</code> 的扫描、类加载、注解的处理以及构建元模型，这些过程都是必不可少的，所以它们都比较耗费资源。如果使用了几种不同的框架，所耗费的资源也是成倍增加。</p>
+<p>Quarkus 通过“<ruby> 左移 <rt>  shifting left </rt></ruby>”，把所有的资源开销大的操作都转移到构建阶段，解决了这些 Java 性能问题。在构建阶段进行代码和框架分析、字节码转换和动态元模型生成，而且只有一次，结果是：运行时可执行文件经过高度优化，启动非常快，不需要经过那些传统的启动过程，全过程只在构建阶段执行一次。</p>
+<p><img alt="Quarkus Build phase" src="/data/attachment/album/202210/26/151634r3l3gzbp27bkke0f.png" title="Quarkus Build phase"></p>
+<p>更重要的是：Quarkus 支持构建原生可执行文件，它具有良好性能，包括快速启动和极小的<ruby> 驻留集大小 <rt>  resident set size </rt></ruby>（RSS）内存占用，跟传统的云原生 Java 栈相比，具备即时扩展的能力和高密度的内存利用。</p>
+<p><img alt="Quarkus RSS and Boot Time Metrics" src="/data/attachment/album/202210/26/151635p95d33596ilju4rd.png" title="Quarkus RSS and Boot Time Metrics"></p>
+<p>这里有个例子，展示如何使用 Quarkus 将一个 <a href="https://opensource.com/article/21/5/what-serverless-java">Java 无服务器</a> 项目构建为本地可执行文件。</p>
+<h3>1、使用 Quarkus 创建无服务器 Maven 项目</h3>
+<p>以下命令生成一个 Quarkus 项目，（例如 <code>quarkus-serverless-native</code>）以此创建一个简单的函数：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>mvn<span class="w"> </span>io.quarkus:quarkus-maven-plugin:1.13.4.Final:create<span class="w"> </span><span class="se">\</span>
+<span class="w">       </span>-DprojectGroupId<span class="o">=</span>org.acme<span class="w"> </span><span class="se">\</span>
+<span class="w">       </span>-DprojectArtifactId<span class="o">=</span>quarkus-serverless-native<span class="w"> </span><span class="se">\</span>
+<span class="w">       </span>-DclassName<span class="o">=</span><span class="s2">&quot;org.acme.getting.started.GreetingResource&quot;</span>
+</code></pre></div>
+
+<h3>2、构建一个本地可执行文件</h3>
+<p>你需要使用 GraalVM 为 Java 程序构建一个本地可执行文件。你可以选择 GraalVM 的任何发行版，例如 <a href="https://www.graalvm.org/community/">Oracle GraalVM Community Edition (CE)</a> 或 <a href="https://github.com/graalvm/mandrel">Mandrel</a>（Oracle GraalVM CE 的下游发行版）。Mandrel 是为支持 OpenJDK 11 上的 Quarkus-native 可执行文件的构建而设计的。</p>
+<p>打开 <code>pom.xml</code>，你将发现其中的 <code>native</code> 设置。你将使用它来构建本地可执行文件。</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;profiles&gt;</span>
+<span class="w">    </span><span class="nt">&lt;profile&gt;</span>
+<span class="w">        </span><span class="nt">&lt;id&gt;</span>native<span class="nt">&lt;/id&gt;</span>
+<span class="w">        </span><span class="nt">&lt;properties&gt;</span>
+<span class="w">            </span><span class="nt">&lt;quarkus.package.type&gt;</span>native<span class="nt">&lt;/quarkus.package.type&gt;</span>
+<span class="w">        </span><span class="nt">&lt;/properties&gt;</span>
+<span class="w">    </span><span class="nt">&lt;/profile&gt;</span>
+<span class="nt">&lt;/profiles&gt;</span>
+</code></pre></div>
+
+<blockquote>
+<p><strong>注意：</strong> 你可以在本地安装 GraalVM 或 Mandrel 发行版。你也可以下载 Mandrel 容器映像来构建它（像我那样），因此你还需要在本地运行一个容器引擎（例如 Docker）。</p>
+</blockquote>
+<p>假设你已经打开了容器运行时，此时需要运行一下 Maven 命令：</p>
+<p>使用 <a href="https://www.docker.com/">Docker</a> 作为容器引擎：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>./mvnw<span class="w"> </span>package<span class="w"> </span>-Pnative<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-Dquarkus.native.container-build<span class="o">=</span><span class="nb">true</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-Dquarkus.native.container-runtime<span class="o">=</span>docker
+</code></pre></div>
+
+<p>使用 <a href="https://podman.io/">Podman</a> 作为容器引擎：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>./mvnw<span class="w"> </span>package<span class="w"> </span>-Pnative<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-Dquarkus.native.container-build<span class="o">=</span><span class="nb">true</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-Dquarkus.native.container-runtime<span class="o">=</span>podman
+</code></pre></div>
+
+<p>输出信息结尾应当是 <code>BUILD SUCCESS</code>。</p>
+<p><img alt="Native Build Logs" src="/data/attachment/album/202210/26/151635iuy2m9l5zul5zu5i.png" title="Native Build Logs"></p>
+<p>不借助 JVM 直接运行本地可执行文件：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>target/quarkus-serverless-native-1.0.0-SNAPSHOT-runner
+</code></pre></div>
+
+<p>输出信息类似于：</p>
+<div class="highlight"><pre><span></span><code>__  ____  __  _____   ___  __ ____  ______
+ --/ __ \/ / / / <span class="ge">_ | / _</span> \/ //_/ / / / __/
+ -/ /_/ / /_/ / __ |/ , <span class="ge">_/ ,&lt; / /_</span>/ /\ \  
+--\___\_\____/_/ |_/_/|_/_/|_|\____/___/  
+INFO  [io.quarkus] (main) quarkus-serverless-native 1.0.0-SNAPSHOT native
+(powered by Quarkus xx.xx.xx.) Started in 0.019s. Listening on: http://0.0.0.0:8080
+INFO [io.quarkus] (main) Profile prod activated.
+INFO [io.quarkus] (main) Installed features: [cdi, kubernetes, resteasy]
+</code></pre></div>
+
+<p>简直是超音速！启动只花了 19 毫秒。你的运行时间可能稍有不同。</p>
+<p>使用 Linux 的 <code>ps</code> 工具检测一下，结果内存占用还是很低。检测的方法是：在应用程序运行期间，另外打开一个终端，运行如下命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ps<span class="w"> </span>-o<span class="w"> </span>pid,rss,command<span class="w"> </span>-p<span class="w"> </span><span class="k">$(</span>pgrep<span class="w"> </span>-f<span class="w"> </span>runner<span class="k">)</span>
+</code></pre></div>
+
+<p>输出结果类似于：</p>
+<div class="highlight"><pre><span></span><code>  PID    RSS COMMAND
+10246  11360 target/quarkus-serverless-native-1.0.0-SNAPSHOT-runner
+</code></pre></div>
+
+<p>该进程只占 11MB 内存。非常小！</p>
+<blockquote>
+<p><strong>注意:</strong> 各种应用程序（包括 Quarkus）的驻留集大小和内存占用，都因运行环境而异，并随着应用程序载入而上升。</p>
+</blockquote>
+<p>你也可以使用 REST API 访问这个函数。输出结果应该是 <code>Hello RESTEasy</code>:</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>curl<span class="w"> </span>localhost:8080/hello
+Hello<span class="w"> </span>RESTEasy
+</code></pre></div>
+
+<h3>3、把函数部署到 Knative 服务</h3>
+<p>如果你还没有创建命名空间，现在就在 <a href="https://docs.okd.io/latest/welcome/index.html">OKD</a>（OpenShift Kubernetes 发行版）<a href="https://docs.okd.io/latest/applications/projects/configuring-project-creation.html">创建一个命名空间</a>（例如 <code>quarkus-serverless-native</code>），进而把这个本地可执行文件部署为无服务器函数。然后添加 <code>quarkus-openshift</code> 扩展：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>./mvnw<span class="w"> </span>-q<span class="w"> </span>quarkus:add-extension<span class="w"> </span>-Dextensions<span class="o">=</span><span class="s2">&quot;openshift&quot;</span>
+</code></pre></div>
+
+<p>向 <code>src/main/resources/application.properties</code> 文件中添加以下内容，配置 Knative 和 Kubernetes 的相关资源：</p>
+<div class="highlight"><pre><span></span><code><span class="n">quarkus</span><span class="p">.</span><span class="n">container</span><span class="o">-</span><span class="n">image</span><span class="p">.</span><span class="n">group</span><span class="o">=</span><span class="n">quarkus</span><span class="o">-</span><span class="n">serverless</span><span class="o">-</span><span class="n">native</span>
+<span class="n">quarkus</span><span class="p">.</span><span class="n">container</span><span class="o">-</span><span class="n">image</span><span class="p">.</span><span class="n">registry</span><span class="o">=</span><span class="n">image</span><span class="o">-</span><span class="n">registry</span><span class="p">.</span><span class="n">openshift</span><span class="o">-</span><span class="n">image</span><span class="o">-</span><span class="n">registry</span><span class="p">.</span><span class="nl">svc:</span><span class="mh">5000</span>
+<span class="n">quarkus</span><span class="p">.</span><span class="n">native</span><span class="p">.</span><span class="n">container</span><span class="o">-</span><span class="n">build</span><span class="o">=</span><span class="n">true</span>
+<span class="n">quarkus</span><span class="p">.</span><span class="n">kubernetes</span><span class="o">-</span><span class="n">client</span><span class="p">.</span><span class="n">trust</span><span class="o">-</span><span class="n">certs</span><span class="o">=</span><span class="n">true</span>
+<span class="n">quarkus</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">deployment</span><span class="o">-</span><span class="n">target</span><span class="o">=</span><span class="n">knative</span>
+<span class="n">quarkus</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">deploy</span><span class="o">=</span><span class="n">true</span>
+<span class="n">quarkus</span><span class="p">.</span><span class="n">openshift</span><span class="p">.</span><span class="n">build</span><span class="o">-</span><span class="n">strategy</span><span class="o">=</span><span class="n">docker</span>
+</code></pre></div>
+
+<p>构建本地可执行文件，并把它直接部署到 OKD 集群：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>./mvnw<span class="w"> </span>clean<span class="w"> </span>package<span class="w"> </span>-Pnative
+</code></pre></div>
+
+<blockquote>
+<p><strong>注意：</strong> 提前使用 <code>oc login</code> 命令，确保登录的是正确的项目（例如 <code>quarkus-serverless-native</code>）。</p>
+</blockquote>
+<p>输出信息结尾应当是 <code>BUILD SUCCESS</code>。完成一个本地二进制文件的构建并部署为 Knative 服务需要花费几分钟。成功创建服务后，使用 <code>kubectl</code> 或 <code>oc</code> 命令工具，可以查看 Knative 服务和版本信息：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>kubectl<span class="w"> </span>get<span class="w"> </span>ksvc
+NAME<span class="w">                        </span>URL<span class="w">   </span><span class="o">[</span>...<span class="o">]</span>
+quarkus-serverless-native<span class="w">   </span>http://quarkus-serverless-native-<span class="o">[</span>...<span class="o">]</span>.SUBDOMAIN<span class="w">  </span>True
+
+$<span class="w"> </span>kubectl<span class="w"> </span>get<span class="w"> </span>rev
+NAME<span class="w">                              </span>CONFIG<span class="w"> </span>NAME<span class="w">                 </span>K8S<span class="w"> </span>SERVICE<span class="w"> </span>NAME<span class="w">                  </span>GENERATION<span class="w">   </span>READY<span class="w">   </span>REASON
+quarkus-serverless-native-00001<span class="w">   </span>quarkus-serverless-native<span class="w">   </span>quarkus-serverless-native-00001<span class="w">   </span><span class="m">1</span><span class="w">            </span>True
+</code></pre></div>
+
+<h3>4、访问本地可执行函数</h3>
+<p>运行 <code>kubectl</code> 命令，搜索无服务器函数的节点：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>kubectl<span class="w"> </span>get<span class="w"> </span>rt/quarkus-serverless-native
+</code></pre></div>
+
+<p>输出信息类似于：</p>
+<div class="highlight"><pre><span></span><code>NAME                         URL                                                                                                          READY   REASON
+quarkus-serverless-native   http://quarkus-serverless-restapi-quarkus-serverless-native.SUBDOMAIN   True
+</code></pre></div>
+
+<p>用 <code>curl</code> 命令访问上述信息中的 <code>URL</code> 字段：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>curl<span class="w"> </span>http://quarkus-serverless-restapi-quarkus-serverless-native.SUBDOMAIN/hello
+</code></pre></div>
+
+<p>过了不超过一秒钟，你也会得到跟本地操作一样的结果：</p>
+<div class="highlight"><pre><span></span><code>Hello RESTEasy
+</code></pre></div>
+
+<p>当你在 OKD 群集中访问 Quarkus 运行中的节点的日志，你会发现本地可执行文件正在以 Knative 服务的形式运行。</p>
+<p><img alt="Native Quarkus Log" src="/data/attachment/album/202210/26/151635hrov9o2fwvfwlrwl.png" title="Native Quarkus Log"></p>
+<h3>下一步呢？</h3>
+<p>你可以借助 GraalVM 发行版优化 Java 无服务器函数，从而在 Knative 中使用 Kubernetes 将它们部署为无服务器函数。Quarkus 支持在普通的微服务中使用简易配置进行性能优化。</p>
+<p>本系列的下一篇文章将指导你在不更改代码的情况下跨多个无服务器平台实现可移植函数。</p>
+<p><em>(Daniel Oh, <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>)</em></p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

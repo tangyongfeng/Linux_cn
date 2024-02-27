@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 Lua 解析配置文件</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Seth Kenlon 使用 Lua 配置持久化应用设置。 不是所有的应用都需要配置文件；对很多应用来说，在启动时变得焕然一新对它们更 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2022/11/shi-yong-lua-jie-xi-pei-zhi-wen-jian.html" rel="bookmark"
+           title="Permalink to 使用 Lua 解析配置文件">使用 Lua 解析配置文件</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2022-11-10T08:46:20+01:00">
+                Published: Thu 10 November 2022
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Seth Kenlon</p>
+<p><img alt="" src="/data/attachment/album/202211/10/084609uq6vvp1vjzqzpc9k.jpg"></p>
+<blockquote>
+<p>使用 Lua 配置持久化应用设置。</p>
+</blockquote>
+<p>不是所有的应用都需要配置文件；对很多应用来说，在启动时变得焕然一新对它们更有利。例如，简单的工具就极少需要偏好项和设置在使用过程中保持稳定不变。然而，当你编写一个复杂的应用程序时，如果能让用户设置与应用的交互方式，以及应用与系统交互的方式会很不错。这就是配置文件用来做的事情。本文将讨论一些利用 Lua 进行持久化配置的方法。</p>
+<h3>选择一种格式</h3>
+<p>关于配置文件很重要的两点是一致性和可预见性。你不会希望为了保存用户偏好项，将信息转储到文件中，然后再花几天去编码实现“逆向工程”，处理最后出现在文件里的随机信息。</p>
+<p>这里用一些常用的 <a href="https://opensource.com/article/21/6/config-files-and-their-formats">配置文件格式</a>。Lua 有一些库可以处理大多数常用的配置格式；在本文中，我会采用 INI 格式。</p>
+<h3>安装库</h3>
+<p>Lua 库的核心仓库是 <a href="https://opensource.com/article/19/11/getting-started-luarocks">Luarocks.org</a>。你可以在这个网站搜索库，或者你可以安装并使用 <code>luarocks</code> 终端命令。</p>
+<p>Linux 环境中，你可以从发行版的软件仓库中下载它，例如：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> </span>luarocks
+</code></pre></div>
+
+<p>在 macOS 上，请使用 <a href="https://opensource.com/article/20/11/macports">MacPorts</a> 或者 <a href="https://opensource.com/article/20/6/homebrew-mac">Homebrew</a>。在 Windows 上，请使用 <a href="https://opensource.com/article/20/3/chocolatey">Chocolatey</a>。</p>
+<p><code>luarocks</code> 安装后，你可以使用 <code>search</code> 子命令来搜索一个恰当的库。如果你不知道库的名字，可以通过关键词来搜索这个库，例如 <code>ini</code>、xml<code>或者</code>json<code>，这取决于你想要用这个库做什么。打个比方，你可以搜索</code>inifile`， 这个库被我用来解析 INI 格式的文本文件。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>luarocks<span class="w"> </span>search<span class="w"> </span>inifile
+Search<span class="w"> </span>results:
+inifile
+<span class="w"> </span><span class="m">1</span>.0-2<span class="w"> </span><span class="o">(</span>rockspec<span class="o">)</span><span class="w"> </span>-<span class="w"> </span>https://luarocks.org
+<span class="w"> </span><span class="m">1</span>.0-2<span class="w"> </span><span class="o">(</span>src<span class="o">)</span><span class="w"> </span>-<span class="w"> </span>https://luarocks.org
+<span class="w"> </span><span class="m">1</span>.0-1<span class="w"> </span><span class="o">(</span>rockspec<span class="o">)</span><span class="w"> </span>-<span class="w"> </span>https://luarocks.org
+<span class="w"> </span><span class="o">[</span>...<span class="o">]</span>
+</code></pre></div>
+
+<p>一个开发者容易犯的错误是在系统上安装了这个库却忘了把它和应用打包。这会给没有安装这个库的用户带来麻烦。为了防止这个问题发生，可以使用 <code>--tree</code> 选项将它安装在项目的本地文件夹中。如果你没有这个项目文件夹，那就先创建这个文件夹再安装库：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>mkdir<span class="w"> </span>demo
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>demo
+$<span class="w"> </span>luarocks<span class="w"> </span>install<span class="w"> </span>--tree<span class="o">=</span><span class="nb">local</span><span class="w"> </span>inifile
+</code></pre></div>
+
+<p><code>--tree</code> 选项指示 <code>luarocks</code> 创建一个新文件夹并在其中安装你的库，例如这个例子中的 <code>local</code> 文件夹。 使用这个简单的技巧，你可以将所有你项目要使用的依赖项直接安装到项目文件夹中。</p>
+<h3>配置代码</h3>
+<p>首先，在一个名 <code>myconfig.ini</code> 的文件中创建一些 INI 数据。</p>
+<div class="highlight"><pre><span></span><code><span class="k">[example]</span>
+<span class="na">name</span><span class="o">=</span><span class="s">Tux</span>
+<span class="na">species</span><span class="o">=</span><span class="s">penguin</span>
+<span class="na">enabled</span><span class="o">=</span><span class="s">false</span>
+
+<span class="k">[demo]</span>
+<span class="na">name</span><span class="o">=</span><span class="s">Beastie</span>
+<span class="na">species</span><span class="o">=</span><span class="s">demon</span>
+<span class="na">enabled</span><span class="o">=</span><span class="s">false</span>
+</code></pre></div>
+
+<p>将这个文件保存到你的主目录下，命名为 <code>myconfig.ini</code>, <em>不要</em> 存到项目文件夹下。你通常会希望配置文件独立于你的文件存在，这样当用户卸载你的应用时，使用应用时产生的数据可以保存在系统中。有些用户会删除不重要的配置文件，但大多数不会。最终，如果他们要重装这个应用，还会保留着所有的用户偏好项。</p>
+<p>配置文件的位置以技术来说并不重要，但每一个操作系统都有存储它们的特定或者默认的路径。在 Linux 中，这个路径由 <a href="https://www.freedesktop.org/wiki/Specifications">Freedesktop 规范</a> 指定。它规定配置文件被保存在一个名为 <code>~/.config</code> 的隐藏文件夹中。为了操作时更加清晰明确，可以在主目录下存储配置文件，以便于使用和寻找。</p>
+<p>创建第二个文件，命名为 <code>main.lua</code>，并在你喜欢的文本编辑器中打开它。</p>
+<p>首先，你必须告诉 Lua 你将想要使用的附加库放置在哪里。<code>package.path</code> 变量决定了 Lua 到哪里去寻找这些库。你可以从终端中查看 Lua 默认的包地址：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>Lua
+&gt;<span class="w"> </span>print<span class="o">(</span>package.path<span class="o">)</span>
+./?.lua<span class="p">;</span>/usr/share/lua/5.3/?.lua<span class="p">;</span>/usr/share/lua/5.3/?/init.lua<span class="p">;</span>/usr/lib64/lua/5.3/?.lua<span class="p">;</span>/usr/lib64/lua/5.3/?/init.lua
+</code></pre></div>
+
+<p>在你的 Lua 代码中，将你本地库的路径添加到 <code>package.path</code> 中：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">package</span><span class="p">.</span><span class="nx">path</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kn">package</span><span class="p">.</span><span class="nx">path</span><span class="w"> </span><span class="p">..</span><span class="w"> </span><span class="err">&#39;</span><span class="p">;</span><span class="nx">local</span><span class="o">/</span><span class="nx">share</span><span class="o">/</span><span class="nx">lua</span><span class="o">/</span><span class="m m-Double">5.3</span><span class="o">/</span><span class="p">?.</span><span class="nx">lua</span>
+</code></pre></div>
+
+<h3>使用 Lua 解析 INI 文件</h3>
+<p>当包的位置确定以后，下一件事就是引入 <code>inifile</code> 库并处理一些操作系统逻辑。即使这是一个很简单的应用，代码也需要从操作系统获取到用户主目录的路径，并建立在必要时将文件系统路径返回给操作系统的通信方式。</p>
+<div class="highlight"><pre><span></span><code><span class="kn">package</span><span class="p">.</span><span class="nx">path</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kn">package</span><span class="p">.</span><span class="nx">path</span><span class="w"> </span><span class="p">..</span><span class="w"> </span><span class="err">&#39;</span><span class="p">;</span><span class="nx">local</span><span class="o">/</span><span class="nx">share</span><span class="o">/</span><span class="nx">lua</span><span class="o">/</span><span class="m m-Double">5.3</span><span class="o">/</span><span class="p">?.</span><span class="nx">lua</span>
+<span class="nx">inifile</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">require</span><span class="p">(</span><span class="err">&#39;</span><span class="nx">inifile</span><span class="err">&#39;</span><span class="p">)</span>
+
+<span class="o">--</span><span class="w"> </span><span class="nx">find</span><span class="w"> </span><span class="nx">home</span><span class="w"> </span><span class="nx">directory</span>
+<span class="nx">home</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">os</span><span class="p">.</span><span class="nx">getenv</span><span class="p">(</span><span class="err">&#39;</span><span class="nx">HOME</span><span class="err">&#39;</span><span class="p">)</span>
+
+<span class="o">--</span><span class="w"> </span><span class="nx">detect</span><span class="w"> </span><span class="nx">path</span><span class="w"> </span><span class="nx">separator</span>
+<span class="o">--</span><span class="w"> </span><span class="nx">returns</span><span class="w"> </span><span class="sc">&#39;/&#39;</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nx">Linux</span><span class="w"> </span><span class="k">and</span><span class="w"> </span><span class="nx">Mac</span>
+<span class="o">--</span><span class="w"> </span><span class="k">and</span><span class="w"> </span><span class="err">&#39;\&#39;</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nx">Windows</span>
+<span class="nx">d</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kn">package</span><span class="p">.</span><span class="nx">config</span><span class="p">:</span><span class="nx">sub</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span>
+</code></pre></div>
+
+<p>现在你可使用 <code>inifile</code> 来从配置文件解析数据到 Lua 表中。一旦这些数据被导入进表中，你可以像查询其他的 Lua 表一样查询它。</p>
+<div class="highlight"><pre><span></span><code><span class="o">--</span><span class="w"> </span><span class="nv">parse</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="nv">INI</span><span class="w"> </span><span class="nv">file</span><span class="w"> </span><span class="nv">and</span>
+<span class="o">--</span><span class="w"> </span><span class="nv">put</span><span class="w"> </span><span class="nv">values</span><span class="w"> </span><span class="nv">into</span><span class="w"> </span><span class="nv">a</span><span class="w"> </span><span class="nv">table</span><span class="w"> </span><span class="nv">called</span><span class="w"> </span><span class="nv">conf</span>
+<span class="nv">conf</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">inifile</span>.<span class="nv">parse</span><span class="ss">(</span><span class="nv">home</span><span class="w"> </span>..<span class="w"> </span><span class="nv">d</span><span class="w"> </span>..<span class="w"> </span><span class="s1">&#39;myconfig.ini&#39;</span><span class="ss">)</span>
+
+<span class="o">--</span><span class="w"> </span><span class="nv">print</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="nv">data</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nv">review</span>
+<span class="nv">print</span><span class="ss">(</span><span class="nv">conf</span>[<span class="s1">&#39;example&#39;</span>][<span class="s1">&#39;name&#39;</span>]<span class="ss">)</span>
+<span class="nv">print</span><span class="ss">(</span><span class="nv">conf</span>[<span class="s1">&#39;example&#39;</span>][<span class="s1">&#39;species&#39;</span>]<span class="ss">)</span>
+<span class="nv">print</span><span class="ss">(</span><span class="nv">conf</span>[<span class="s1">&#39;example&#39;</span>][<span class="s1">&#39;enabled&#39;</span>]<span class="ss">)</span>
+</code></pre></div>
+
+<p>在终端中运行代码可以看见结果：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>lua<span class="w"> </span>./main.lua
+Tux
+penguin
+<span class="nb">false</span>
+</code></pre></div>
+
+<p>这看起来是正确的。试试在 <code>demo</code> 块中执行同样的操作。</p>
+<h3>使用 INI 格式存储数据</h3>
+<p>不是所有用来解析的库都会读写数据（通常被称为 _编码 和 <em>解码</em>），但是 <code>inifile</code> 会这样做。这意味着你可以使用它对配置文件进行修改。</p>
+<p>为了改变配置文件中的值，你可以对被解析的表中的变量进行设置，然后把表重写回配置文件中。</p>
+<div class="highlight"><pre><span></span><code>-- set enabled to true
+conf[&#39;example&#39;][&#39;enabled&#39;] = true
+conf[&#39;demo&#39;][&#39;enabled&#39;] = true
+
+-- save the change
+inifile.save(home .. d .. &#39;myconfig.ini&#39;, conf)
+</code></pre></div>
+
+<p>现在再来看看配置文件：</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="o">~/</span><span class="n">myconfig</span><span class="p">.</span><span class="n">ini</span>
+<span class="o">[</span><span class="n">example</span><span class="o">]</span>
+<span class="n">name</span><span class="o">=</span><span class="n">Tux</span>
+<span class="n">species</span><span class="o">=</span><span class="n">penguin</span>
+<span class="n">enabled</span><span class="o">=</span><span class="k">true</span>
+
+<span class="o">[</span><span class="n">demo</span><span class="o">]</span>
+<span class="n">name</span><span class="o">=</span><span class="n">Beastie</span>
+<span class="n">species</span><span class="o">=</span><span class="n">demon</span>
+<span class="n">enabled</span><span class="o">=</span><span class="k">true</span>
+</code></pre></div>
+
+<h3>配置文件</h3>
+<p>按照用户的设想来存储数据对程序来说是至关重要的。幸运的是，这对工程师来说是一个很常规的任务，大多数工作可能早已被完成了。只要找到一个好用的库完成开放格式下编码和解码，你就能为用户提供一致且持续的体验。</p>
+<p>以下是完整的演示代码，可供参考。</p>
+<div class="highlight"><pre><span></span><code><span class="kn">package</span><span class="p">.</span><span class="nx">path</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kn">package</span><span class="p">.</span><span class="nx">path</span><span class="w"> </span><span class="p">..</span><span class="w"> </span><span class="err">&#39;</span><span class="p">;</span><span class="nx">local</span><span class="o">/</span><span class="nx">share</span><span class="o">/</span><span class="nx">lua</span><span class="o">/</span><span class="m m-Double">5.3</span><span class="o">/</span><span class="p">?.</span><span class="nx">lua</span><span class="err">&#39;</span>
+<span class="nx">inifile</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">require</span><span class="p">(</span><span class="err">&#39;</span><span class="nx">inifile</span><span class="err">&#39;</span><span class="p">)</span>
+
+<span class="o">--</span><span class="w"> </span><span class="nx">find</span><span class="w"> </span><span class="nx">home</span><span class="w"> </span><span class="nx">directory</span>
+<span class="nx">home</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">os</span><span class="p">.</span><span class="nx">getenv</span><span class="p">(</span><span class="err">&#39;</span><span class="nx">HOME</span><span class="err">&#39;</span><span class="p">)</span>
+
+<span class="o">--</span><span class="w"> </span><span class="nx">detect</span><span class="w"> </span><span class="nx">path</span><span class="w"> </span><span class="nx">separator</span>
+<span class="o">--</span><span class="w"> </span><span class="nx">returns</span><span class="w"> </span><span class="sc">&#39;/&#39;</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nx">Linux</span><span class="w"> </span><span class="k">and</span><span class="w"> </span><span class="nx">Mac</span>
+<span class="o">--</span><span class="w"> </span><span class="k">and</span><span class="w"> </span><span class="err">&#39;\&#39;</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nx">Windows</span>
+<span class="nx">d</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kn">package</span><span class="p">.</span><span class="nx">config</span><span class="p">:</span><span class="nx">sub</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span>
+
+<span class="o">--</span><span class="w"> </span><span class="nx">parse</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">INI</span><span class="w"> </span><span class="nx">file</span><span class="w"> </span><span class="k">and</span>
+<span class="o">--</span><span class="w"> </span><span class="nx">put</span><span class="w"> </span><span class="nx">values</span><span class="w"> </span><span class="nx">into</span><span class="w"> </span><span class="nx">a</span><span class="w"> </span><span class="nx">table</span><span class="w"> </span><span class="nx">called</span><span class="w"> </span><span class="nx">conf</span>
+<span class="nx">conf</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">inifile</span><span class="p">.</span><span class="nx">parse</span><span class="p">(</span><span class="nx">home</span><span class="w"> </span><span class="p">..</span><span class="w"> </span><span class="nx">d</span><span class="w"> </span><span class="p">..</span><span class="w"> </span><span class="err">&#39;</span><span class="nx">myconfig</span><span class="p">.</span><span class="nx">ini</span><span class="err">&#39;</span><span class="p">)</span>
+
+<span class="o">--</span><span class="w"> </span><span class="nx">print</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">data</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nx">review</span>
+<span class="nx">print</span><span class="p">(</span><span class="nx">conf</span><span class="p">[</span><span class="err">&#39;</span><span class="nx">example</span><span class="err">&#39;</span><span class="p">][</span><span class="err">&#39;</span><span class="nx">name</span><span class="err">&#39;</span><span class="p">])</span>
+<span class="nx">print</span><span class="p">(</span><span class="nx">conf</span><span class="p">[</span><span class="err">&#39;</span><span class="nx">example</span><span class="err">&#39;</span><span class="p">][</span><span class="err">&#39;</span><span class="nx">species</span><span class="err">&#39;</span><span class="p">])</span>
+<span class="nx">print</span><span class="p">(</span><span class="nx">conf</span><span class="p">[</span><span class="err">&#39;</span><span class="nx">example</span><span class="err">&#39;</span><span class="p">][</span><span class="err">&#39;</span><span class="nx">enabled</span><span class="err">&#39;</span><span class="p">])</span>
+
+<span class="o">--</span><span class="w"> </span><span class="nx">enable</span><span class="w"> </span><span class="nx">Tux</span>
+<span class="nx">conf</span><span class="p">[</span><span class="err">&#39;</span><span class="nx">example</span><span class="err">&#39;</span><span class="p">][</span><span class="err">&#39;</span><span class="nx">enabled</span><span class="err">&#39;</span><span class="p">]</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kc">true</span>
+
+<span class="o">--</span><span class="w"> </span><span class="nx">save</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">change</span>
+<span class="nx">inifile</span><span class="p">.</span><span class="nx">save</span><span class="p">(</span><span class="nx">home</span><span class="w"> </span><span class="p">..</span><span class="w"> </span><span class="nx">d</span><span class="w"> </span><span class="p">..</span><span class="w"> </span><span class="err">&#39;</span><span class="nx">myconfig</span><span class="p">.</span><span class="nx">ini</span><span class="err">&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">conf</span><span class="p">)</span>
+</code></pre></div>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

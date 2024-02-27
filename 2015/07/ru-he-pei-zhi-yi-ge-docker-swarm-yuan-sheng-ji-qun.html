@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何配置一个 Docker Swarm 原生集群</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Arun Pyasi 嗨，大家好。今天我们来学一学Swarm相关的内容吧，我们将学习通过Swarm来创建Docker原生集群。Docker Swarm是用于Docker的原生集群项目，它可以将一个Docker主机池转换成单个的虚拟主机。Swarm工作于标准的Docker..." />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/07/ru-he-pei-zhi-yi-ge-docker-swarm-yuan-sheng-ji-qun.html" rel="bookmark"
+           title="Permalink to 如何配置一个 Docker Swarm 原生集群">如何配置一个 Docker Swarm 原生集群</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-07-29T14:30:00+02:00">
+                Published: Wed 29 July 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Arun Pyasi</p>
+<p>嗨，大家好。今天我们来学一学Swarm相关的内容吧，我们将学习通过Swarm来创建Docker原生集群。<a href="https://docs.docker.com/swarm/">Docker Swarm</a>是用于Docker的原生集群项目，它可以将一个Docker主机池转换成单个的虚拟主机。Swarm工作于标准的Docker API，所以任何可以和Docker守护进程通信的工具都可以使用Swarm来透明地伸缩到多个主机上。就像其它Docker项目一样，Swarm遵循“内置电池，并可拆卸”的原则（LCTT 译注：batteries included，内置电池原来是 Python 圈里面对 Python 的一种赞誉，指自给自足，无需外求的丰富环境；but removable，并可拆卸应该指的是非强制耦合）。它附带有一个开箱即用的简单的后端调度程序，而且作为初始开发套件，也为其开发了一个可插拔不同后端的API。其目标在于为一些简单的使用情况提供一个平滑的、开箱即用的体验，并且它允许切换为更强大的后端，如Mesos，以用于大规模生产环境部署。Swarm配置和使用极其简单。</p>
+<p><img alt="" src="/data/attachment/album/201507/29/142715rlz7a8o66idbk19i.png"></p>
+<p>这里给大家提供Swarm 0.2开箱的即用一些特性。</p>
+<ol>
+<li>Swarm 0.2.0大约85%与Docker引擎兼容。</li>
+<li>它支持资源管理。</li>
+<li>它具有一些带有限制和类同功能的高级调度特性。</li>
+<li>它支持多个发现后端（hubs，consul，etcd，zookeeper）</li>
+<li>它使用TLS加密方法进行安全通信和验证。</li>
+</ol>
+<p>那么，我们来看一看Swarm的一些相当简单而简用的使用步骤吧。</p>
+<h3>1. 运行Swarm的先决条件</h3>
+<p>我们必须在所有节点安装Docker 1.4.0或更高版本。虽然各个节点的IP地址不需要要公共地址，但是Swarm管理器必须可以通过网络访问各个节点。</p>
+<p>注意：Swarm当前还处于beta版本，因此功能特性等还有可能发生改变，我们不推荐你在生产环境中使用。</p>
+<h3>2. 创建Swarm集群</h3>
+<p>现在，我们将通过运行下面的命令来创建Swarm集群。各个节点都将运行一个swarm节点代理，该代理会注册、监控相关的Docker守护进程，并更新发现后端获取的节点状态。下面的命令会返回一个唯一的集群ID标记，在启动节点上的Swarm代理时会用到它。</p>
+<p>在集群管理器上运行：</p>
+<div class="highlight"><pre><span></span><code># docker run swarm create
+</code></pre></div>
+
+<p><img alt="Creating Swarm Cluster" src="/data/attachment/album/201507/29/143122edx9hgn1h5wwccw1.png"></p>
+<h3>3. 启动各个节点上的Docker守护进程</h3>
+<p>我们需要登录进我们将用来创建集群的每个节点，并在其上使用-H标记启动Docker守护进程。它会保证Swarm管理器能够通过TCP访问到各个节点上的Docker远程API。要启动Docker守护进程，我们需要在各个节点内部运行以下命令。</p>
+<div class="highlight"><pre><span></span><code># docker -H tcp://0.0.0.0:2375 -d
+</code></pre></div>
+
+<p><img alt="Starting Docker Daemon" src="/data/attachment/album/201507/29/143122o44gizcpqpiefzgy.png"></p>
+<h3>4. 添加节点</h3>
+<p>在启用Docker守护进程后，我们需要添加Swarm节点到发现服务，我们必须确保节点IP可从Swarm管理器访问到。要完成该操作，我们需要在各个节点上运行以下命令。</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="nx">docker</span><span class="w"> </span><span class="nx">run</span><span class="w"> </span><span class="o">-</span><span class="nx">d</span><span class="w"> </span><span class="nx">swarm</span><span class="w"> </span><span class="nx">join</span><span class="w"> </span><span class="o">--</span><span class="kd">addr</span><span class="p">=&lt;</span><span class="nx">node_ip</span><span class="p">&gt;:</span><span class="mi">2375</span><span class="w"> </span><span class="nx">token</span><span class="p">:</span><span class="c1">//&lt;cluster_id&gt;</span>
+</code></pre></div>
+
+<p><img alt="Adding Nodes to Cluster" src="/data/attachment/album/201507/29/143045z0z2kq0zp3ybb6p0.png"></p>
+<p><strong>注意</strong>：我们需要用步骤2中获取到的节点IP地址和集群ID替换这里的<node\_ip>和<cluster\_id>。</p>
+<h3>5. 开启Swarm管理器</h3>
+<p>现在，由于我们已经获得了连接到集群的节点，我们将启动swarm管理器。我们需要在集群管理器中运行以下命令。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> docker run -d -p &lt;swarm_port&gt;:2375 swarm manage token://&lt;cluster_id&gt;
+</code></pre></div>
+
+<p><img alt="Starting Swarm Manager" src="/data/attachment/album/201507/29/143046u4xc46hocc6zhzux.png"></p>
+<h3>6. 检查配置</h3>
+<p>一旦管理运行起来后，我们可以通过运行以下命令来检查配置。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> docker -H tcp://&lt;manager_ip:manager_port&gt; info
+</code></pre></div>
+
+<p><img alt="Accessing Swarm Clusters" src="/data/attachment/album/201507/29/143046z7oqz2778w73037w.png"></p>
+<p><strong>注意</strong>：我们需要替换<manager\_ip:manager\_port>为运行swarm管理器的主机的IP地址和端口。</p>
+<h3>7. 使用docker CLI来访问节点</h3>
+<p>在一切都像上面说得那样完美地完成后，这一部分是Docker Swarm最为重要的部分。我们可以使用Docker CLI来访问节点，并在节点上运行容器。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> docker -H tcp://&lt;manager_ip:manager_port&gt; info
+<span class="gh">#</span> docker -H tcp://&lt;manager_ip:manager_port&gt; run ...
+</code></pre></div>
+
+<h3>8. 监听集群中的节点</h3>
+<p>我们可以使用swarm list命令来获取所有运行中节点的列表。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> docker run --rm swarm list token://&lt;cluster_id&gt;
+</code></pre></div>
+
+<p><img alt="Listing Swarm Nodes" src="/data/attachment/album/201507/29/143047b3p737pjb33u35ts.png"></p>
+<h3>尾声</h3>
+<p>Swarm真的是一个有着相当不错的功能的docker，它可以用于创建和管理集群。它相当易于配置和使用，当我们在它上面使用限制器和类同器时它更为出色。高级调度程序是一个相当不错的特性，它可以应用过滤器来通过端口、标签、健康状况来排除节点，并且它使用策略来挑选最佳节点。那么，如果你有任何问题、评论、反馈，请在下面的评论框中写出来吧，好让我们知道哪些材料需要补充或改进。谢谢大家了！尽情享受吧 :-)</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

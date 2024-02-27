@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 Traefik 引导 Kubernetes 流量</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Lee Carpenter 将流量引入 Kubernetes 树莓派集群的分步指南。 在本文中，我们将部署几个简单的网站，并学习如何使用 Traefik 将来自外部世界 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li class="active"><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2020/04/shi-yong-traefik-yin-dao-kubernetes-liu-liang.html" rel="bookmark"
+           title="Permalink to 使用 Traefik 引导 Kubernetes 流量">使用 Traefik 引导 Kubernetes 流量</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2020-04-07T10:35:24+02:00">
+                Published: Tue 07 April 2020
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/shu-mei-pai">树莓派</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Lee Carpenter</p>
+<blockquote>
+<p>将流量引入 Kubernetes 树莓派集群的分步指南。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/202004/07/103035brocaxwcimcinza0.jpg"></p>
+<p>在本文中，我们将部署几个简单的网站，并学习如何使用 Traefik 将来自外部世界的流量引入到我们的集群中。之后，我们还将学习如何删除 Kubernetes 资源。让我们开始吧！</p>
+<h3>准备</h3>
+<p>要继续阅读本文，你只需要我们在上一篇文章中构建的 <a href="/article-12049-1.html">k3s 树莓派集群</a>。由于你的集群将从网络上拉取镜像，因此该集群需要能够访问互联网。</p>
+<p>出于解释目的，本文将显示一些配置文件和示例 HTML 文件。所有示例文件都可以在<a href="https://gitlab.com/carpie/ingressing_with_k3s/-/archive/master/ingressing_with_k3s-master.zip">此处</a>下载。</p>
+<h3>部署一个简单的网站</h3>
+<p>之前，我们使用 <code>kubectl</code> 进行了直接部署。但是，这不是典型的部署方法。一般情况都会使用 YAML 配置文件，这也是我们要在本文中使用的配置文件。我们将从顶部开始，并以自顶向下的方式创建该配置文件。</p>
+<h3>部署配置</h3>
+<p>首先是部署配置。配置如下所示，并在下面进行说明。我通常以 <a href="https://kubernetes.io/docs/">Kubernetes 文档</a>中的示例为起点，然后根据需要对其进行修改。例如，下面的配置是复制了<a href="https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#creating-a-deployment">部署文档</a>中的示例后修改的。</p>
+<p>创建一个文件 <code>mysite.yaml</code>，其内容如下：</p>
+<div class="highlight"><pre><span></span><code><span class="n">apiVersion</span><span class="o">:</span><span class="w"> </span><span class="n">apps</span><span class="o">/</span><span class="n">v1</span>
+<span class="n">kind</span><span class="o">:</span><span class="w"> </span><span class="n">Deployment</span>
+<span class="n">metadata</span><span class="o">:</span>
+<span class="w">  </span><span class="n">name</span><span class="o">:</span><span class="w"> </span><span class="n">mysite</span><span class="o">-</span><span class="n">nginx</span>
+<span class="w">  </span><span class="n">labels</span><span class="o">:</span>
+<span class="w">    </span><span class="n">app</span><span class="o">:</span><span class="w"> </span><span class="n">mysite</span><span class="o">-</span><span class="n">nginx</span>
+<span class="n">spec</span><span class="o">:</span>
+<span class="w">  </span><span class="n">replicas</span><span class="o">:</span><span class="w"> </span><span class="mi">1</span>
+<span class="w">  </span><span class="n">selector</span><span class="o">:</span>
+<span class="w">    </span><span class="n">matchLabels</span><span class="o">:</span>
+<span class="w">      </span><span class="n">app</span><span class="o">:</span><span class="w"> </span><span class="n">mysite</span><span class="o">-</span><span class="n">nginx</span>
+<span class="w">  </span><span class="n">template</span><span class="o">:</span>
+<span class="w">    </span><span class="n">metadata</span><span class="o">:</span>
+<span class="w">      </span><span class="n">labels</span><span class="o">:</span>
+<span class="w">        </span><span class="n">app</span><span class="o">:</span><span class="w"> </span><span class="n">mysite</span><span class="o">-</span><span class="n">nginx</span>
+<span class="w">    </span><span class="n">spec</span><span class="o">:</span>
+<span class="w">      </span><span class="n">containers</span><span class="o">:</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="o">:</span><span class="w"> </span><span class="n">nginx</span>
+<span class="w">        </span><span class="n">image</span><span class="o">:</span><span class="w"> </span><span class="n">nginx</span>
+<span class="w">        </span><span class="n">ports</span><span class="o">:</span>
+<span class="w">        </span><span class="o">-</span><span class="w"> </span><span class="n">containerPort</span><span class="o">:</span><span class="w"> </span><span class="mi">80</span>
+</code></pre></div>
+
+<p>其中大部分是样板。重要的部分，我们会将该部署命名为 <code>mysite-nginx</code>，并为其加上同名的 <code>app</code> 标签。我们指定了一个<ruby> 副本 <rt>  replica </rt></ruby>，这意味着将只创建一个 Pod。我们还指定了一个容器，我们将其命名为 <code>nginx</code>。我们将<ruby> 镜像 <rt>  image </rt></ruby>指定为 <code>nginx</code>。这意味着在部署时，k3s 将从 DockerHub 下载 <code>nginx</code> 镜像并从中创建一个 Pod。最后，我们指定了<ruby> 容器端口 <rt>  containerPort </rt></ruby>为 <code>80</code>，这只意味着在容器内部 Pod 会监听 <code>80</code> 端口。</p>
+<p>我在上面强调了“在容器内部”，因为这是一个重要的区别。由于我们是按容器配置的，因此只能在容器内部访问它，并且进一步将其限制为内部网络。这对于允许多个容器在同一容器端口上监听所是必要的。换句话说，通过这种配置，其他一些 Pod 也可以在其容器端口 80 上侦听，并且不会与此容器冲突。为了提供对该 Pod 的正式访问权限，我们需要一个<ruby> 服务 <rt>  service </rt></ruby>配置。</p>
+<h3>服务配置</h3>
+<p>在 Kubernetes 中，<ruby> 服务 <rt>  service </rt></ruby>是一种抽象。它提供了一种访问 Pod 或 Pod 集合的方法。当连接到服务时，服务会路由到单个 Pod，或者如果定义了多个 Pod 副本，会通过负载均衡路由到多个 Pod。</p>
+<p>可以在同一配置文件中指定该服务，这就是我们将在此处要做的。用 <code>---</code> 分隔配置区域，将以下内容添加到 <code>mysite.yaml</code> 中：</p>
+<div class="highlight"><pre><span></span><code><span class="n">apiVersion</span><span class="o">:</span><span class="w"> </span><span class="n">networking</span><span class="o">.</span><span class="na">k8s</span><span class="o">.</span><span class="na">io</span><span class="o">/</span><span class="n">v1beta1</span>
+<span class="n">kind</span><span class="o">:</span><span class="w"> </span><span class="n">Ingress</span>
+<span class="n">metadata</span><span class="o">:</span>
+<span class="w">  </span><span class="n">name</span><span class="o">:</span><span class="w"> </span><span class="n">mysite</span><span class="o">-</span><span class="n">nginx</span><span class="o">-</span><span class="n">ingress</span>
+<span class="w">  </span><span class="n">annotations</span><span class="o">:</span>
+<span class="w">    </span><span class="n">kubernetes</span><span class="o">.</span><span class="na">io</span><span class="o">/</span><span class="n">ingress</span><span class="o">.</span><span class="na">class</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;traefik&quot;</span>
+<span class="n">spec</span><span class="o">:</span>
+<span class="w">  </span><span class="n">rules</span><span class="o">:</span>
+<span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="n">http</span><span class="o">:</span>
+<span class="w">      </span><span class="n">paths</span><span class="o">:</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">path</span><span class="o">:</span><span class="w"> </span><span class="o">/</span>
+<span class="w">        </span><span class="n">backend</span><span class="o">:</span>
+<span class="w">          </span><span class="n">serviceName</span><span class="o">:</span><span class="w"> </span><span class="n">mysite</span><span class="o">-</span><span class="n">nginx</span><span class="o">-</span><span class="n">service</span>
+<span class="w">          </span><span class="n">servicePort</span><span class="o">:</span><span class="w"> </span><span class="mi">80</span>
+</code></pre></div>
+
+<p>在此配置中，我们将入口记录命名为 <code>mysite-nginx-ingress</code>。我们告诉 Kubernetes，我们希望 <code>traefik</code> 成为我们的入口控制器，再加上 <code>kubernetes.io/ingress.class</code> 的注解。</p>
+<p>在<ruby> 规则 <rt>  rules </rt></ruby>部分中，我们基本上是说，当 <code>http</code> 流量进入时，并且 <code>path</code> 匹配 <code>/</code>（或其下的任何内容），将其路由到由 <code>serviceName mysite-nginx-service</code> 指定的<ruby> 后端 <rt>  backend </rt></ruby>服务中，并将其路由到 <code>servicePort 80</code>。这会将传入的 HTTP 流量连接到我们之前定义的服务。</p>
+<h3>需要部署的东西</h3>
+<p>就配置而言，就是这样了。如果我们现在部署，我们将获得默认的 nginx 页面，但这不是我们想要的。让我们创建一些简单但可自定义的部署方式。创建具有以下内容的文件 <code>index.html</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;html&gt;</span>
+<span class="nt">&lt;head&gt;&lt;title&gt;</span>K3S!<span class="nt">&lt;/title&gt;</span>
+<span class="w">  </span><span class="nt">&lt;style&gt;</span>
+<span class="w">    </span>html<span class="w"> </span>{
+<span class="w">      </span>font-size:<span class="w"> </span>62.5%;
+<span class="w">    </span>}
+<span class="w">    </span>body<span class="w"> </span>{
+<span class="w">      </span>font-family:<span class="w"> </span>sans-serif;
+<span class="w">      </span>background-color:<span class="w"> </span>midnightblue;
+<span class="w">      </span>color:<span class="w"> </span>white;
+<span class="w">      </span>display:<span class="w"> </span>flex;
+<span class="w">      </span>flex-direction:<span class="w"> </span>column;
+<span class="w">      </span>justify-content:<span class="w"> </span>center;
+<span class="w">      </span>height:<span class="w"> </span>100vh;
+<span class="w">    </span>}
+<span class="w">    </span>div<span class="w"> </span>{
+<span class="w">      </span>text-align:<span class="w"> </span>center;
+<span class="w">      </span>font-size:<span class="w"> </span>8rem;
+<span class="w">      </span>text-shadow:<span class="w"> </span>3px<span class="w"> </span>3px<span class="w"> </span>4px<span class="w"> </span>dimgrey;
+<span class="w">    </span>}
+<span class="w">  </span><span class="nt">&lt;/style&gt;</span>
+<span class="nt">&lt;/head&gt;</span>
+<span class="nt">&lt;body&gt;</span>
+<span class="w">  </span><span class="nt">&lt;div&gt;</span>Hello<span class="w"> </span>from<span class="w"> </span>K3S!<span class="nt">&lt;/div&gt;</span>
+<span class="nt">&lt;/body&gt;</span>
+<span class="nt">&lt;/html&gt;</span>
+</code></pre></div>
+
+<p>我们尚未介绍 Kubernetes 中的存储机制，因此在这里我们偷懒一下，仅将该文件存储在 Kubernetes 配置映射中。这不是我们推荐的部署网站的方式，但对于我们的目的来说是可行的。运行以下命令：</p>
+<div class="highlight"><pre><span></span><code>kubectl create configmap mysite-html --from-file index.html
+</code></pre></div>
+
+<p>该命令从本地文件 <code>index.html</code> 创建名为 <code>mysite-html</code> 的<ruby> 配置映射 <rt>  configmap </rt></ruby>资源。这实际上是在 Kubernetes 资源中存储一个文件（或一组文件），我们可以在配置中调出该文件。它通常用于存储配置文件（因此而得名），我们在这里稍加滥用。在以后的文章中，我们将讨论 Kubernetes 中适当的存储解决方案。</p>
+<p>创建配置映射后，让我们将其挂载在我们的 <code>nginx</code> 容器中。我们分两个步骤进行。首先，我们需要指定一个<ruby> 卷 <rt>  volume </rt></ruby>来调出配置映射。然后我们需要将该卷挂载到 <code>nginx</code> 容器中。通过在 <code>mysite.yaml</code> 中的 <code>container</code> 后面的 <code>spec</code> 标签下添加以下内容来完成第一步：</p>
+<div class="highlight"><pre><span></span><code>      volumes:
+      - name: html-volume
+        configMap:
+          name: mysite-html
+</code></pre></div>
+
+<p>这告诉 Kubernetes 我们要定义一个名为 <code>html-volume</code> 的卷，并且该卷应包含名为 <code>html-volume</code>（我们在上一步中创建的）的配置映射的内容。</p>
+<p>接下来，在 <code>nginx</code> 容器规范中的<ruby> 端口 <rt>  ports </rt></ruby>下方，添加以下内容：</p>
+<div class="highlight"><pre><span></span><code>        volumeMounts:
+        - name: html-volume
+          mountPath: /usr/share/nginx/html
+</code></pre></div>
+
+<p>这告诉 Kubernetes，对于 <code>nginx</code> 容器，我们想在容器中的 <code>/usr/share/nginx/html</code> 路径上挂载名为 <code>html-volume</code> 的卷。 为什么要使用 <code>/usr/share/nginx/html</code>？那个位置就是 <code>nginx</code> 镜像提供 HTML 服务的地方。通过在该路径上挂载卷，我们用该卷内容替换了默认内容。</p>
+<p>作为参考，配置文件的 <code>deployment</code> 部分现在应如下所示：</p>
+<div class="highlight"><pre><span></span><code><span class="n">apiVersion</span><span class="o">:</span><span class="w"> </span><span class="n">apps</span><span class="o">/</span><span class="n">v1</span>
+<span class="n">kind</span><span class="o">:</span><span class="w"> </span><span class="n">Deployment</span>
+<span class="n">metadata</span><span class="o">:</span>
+<span class="w">  </span><span class="n">name</span><span class="o">:</span><span class="w"> </span><span class="n">mysite</span><span class="o">-</span><span class="n">nginx</span>
+<span class="w">  </span><span class="n">labels</span><span class="o">:</span>
+<span class="w">    </span><span class="n">app</span><span class="o">:</span><span class="w"> </span><span class="n">mysite</span><span class="o">-</span><span class="n">nginx</span>
+<span class="n">spec</span><span class="o">:</span>
+<span class="w">  </span><span class="n">replicas</span><span class="o">:</span><span class="w"> </span><span class="mi">1</span>
+<span class="w">  </span><span class="n">selector</span><span class="o">:</span>
+<span class="w">    </span><span class="n">matchLabels</span><span class="o">:</span>
+<span class="w">      </span><span class="n">app</span><span class="o">:</span><span class="w"> </span><span class="n">mysite</span><span class="o">-</span><span class="n">nginx</span>
+<span class="w">  </span><span class="n">template</span><span class="o">:</span>
+<span class="w">    </span><span class="n">metadata</span><span class="o">:</span>
+<span class="w">      </span><span class="n">labels</span><span class="o">:</span>
+<span class="w">        </span><span class="n">app</span><span class="o">:</span><span class="w"> </span><span class="n">mysite</span><span class="o">-</span><span class="n">nginx</span>
+<span class="w">    </span><span class="n">spec</span><span class="o">:</span>
+<span class="w">      </span><span class="n">containers</span><span class="o">:</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="o">:</span><span class="w"> </span><span class="n">nginx</span>
+<span class="w">        </span><span class="n">image</span><span class="o">:</span><span class="w"> </span><span class="n">nginx</span>
+<span class="w">        </span><span class="n">ports</span><span class="o">:</span>
+<span class="w">        </span><span class="o">-</span><span class="w"> </span><span class="n">containerPort</span><span class="o">:</span><span class="w"> </span><span class="mi">80</span>
+<span class="w">        </span><span class="n">volumeMounts</span><span class="o">:</span>
+<span class="w">        </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="o">:</span><span class="w"> </span><span class="n">html</span><span class="o">-</span><span class="n">volume</span>
+<span class="w">          </span><span class="n">mountPath</span><span class="o">:</span><span class="w"> </span><span class="sr">/usr/share/nginx/</span><span class="n">html</span>
+<span class="w">      </span><span class="n">volumes</span><span class="o">:</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="o">:</span><span class="w"> </span><span class="n">html</span><span class="o">-</span><span class="n">volume</span>
+<span class="w">        </span><span class="n">configMap</span><span class="o">:</span>
+<span class="w">          </span><span class="n">name</span><span class="o">:</span><span class="w"> </span><span class="n">mysite</span><span class="o">-</span><span class="n">html</span>
+</code></pre></div>
+
+<h3>部署它！</h3>
+<p>现在我们准备部署！ 我们可以这样做：</p>
+<div class="highlight"><pre><span></span><code>kubectl apply -f mysite.yaml
+</code></pre></div>
+
+<p>你应该看到类似于以下内容：</p>
+<div class="highlight"><pre><span></span><code>deployment.apps/mysite-nginx created
+service/mysite-nginx-service created
+ingress.networking.k8s.io/mysite-nginx-ingress created
+</code></pre></div>
+
+<p>这意味着 Kubernetes 为我们指定的三个配置分别创建了资源。使用以下方法检查 Pod 的状态：</p>
+<div class="highlight"><pre><span></span><code>kubectl get pods
+</code></pre></div>
+
+<p>如果看到状态为 <code>ContainerCreating</code>，请给它一些时间并再次运行 <code>kubectl get pods</code>。通常，第一次会花一些时间，因为 k3s 必须下载 <code>nginx</code> 镜像来创建 Pod。一段时间后，你应该看到 <code>Running</code> 的状态。</p>
+<h3>尝试一下！</h3>
+<p>Pod 运行之后，就该尝试了。打开浏览器，然后在地址栏中输入 <code>kmaster</code>。</p>
+<p><img alt="" src="/data/attachment/album/202004/07/103528otyqtxqf6vfik6ik.jpg"></p>
+<p>恭喜你！你已经在 k3s 集群上部署了一个网站！</p>
+<h3>另一个</h3>
+<p>因此，现在我们有了一个运行单个网站的整个 k3s 集群。但是我们可以有更多的网站！如果我们要在同一集群中提供另一个网站怎么办？让我们看看如何做到这一点。</p>
+<p>同样，我们需要部署一些东西。碰巧我的狗有一条她想让全世界都知道的信息，她想了好久了。因此，我专门为她制作了一些 HTML（可从示例 zip 文件中获得）。同样，我们将使用配置映射的技巧来托管这些 HTML。这次我们将把整个目录（<code>html</code> 目录）放到配置映射中，但是调用是相同的。</p>
+<div class="highlight"><pre><span></span><code>kubectl create configmap mydog-html --from-file html
+</code></pre></div>
+
+<p>现在，我们需要为此站点创建一个配置文件。它几乎与用于 <code>mysite.yaml</code> 的完全相同，因此首先将 <code>mysite.yaml</code> 复制为 <code>mydog.yaml</code>。现在将 <code>mydog.yaml</code> 修改为：</p>
+<div class="highlight"><pre><span></span><code><span class="n">apiVersion</span><span class="o">:</span><span class="w"> </span><span class="n">apps</span><span class="o">/</span><span class="n">v1</span>
+<span class="n">kind</span><span class="o">:</span><span class="w"> </span><span class="n">Deployment</span>
+<span class="n">metadata</span><span class="o">:</span>
+<span class="w">  </span><span class="n">name</span><span class="o">:</span><span class="w"> </span><span class="n">mydog</span><span class="o">-</span><span class="n">nginx</span>
+<span class="w">  </span><span class="n">labels</span><span class="o">:</span>
+<span class="w">    </span><span class="n">app</span><span class="o">:</span><span class="w"> </span><span class="n">mydog</span><span class="o">-</span><span class="n">nginx</span>
+<span class="n">spec</span><span class="o">:</span>
+<span class="w">  </span><span class="n">replicas</span><span class="o">:</span><span class="w"> </span><span class="mi">1</span>
+<span class="w">  </span><span class="n">selector</span><span class="o">:</span>
+<span class="w">    </span><span class="n">matchLabels</span><span class="o">:</span>
+<span class="w">      </span><span class="n">app</span><span class="o">:</span><span class="w"> </span><span class="n">mydog</span><span class="o">-</span><span class="n">nginx</span>
+<span class="w">  </span><span class="n">template</span><span class="o">:</span>
+<span class="w">    </span><span class="n">metadata</span><span class="o">:</span>
+<span class="w">      </span><span class="n">labels</span><span class="o">:</span>
+<span class="w">        </span><span class="n">app</span><span class="o">:</span><span class="w"> </span><span class="n">mydog</span><span class="o">-</span><span class="n">nginx</span>
+<span class="w">    </span><span class="n">spec</span><span class="o">:</span>
+<span class="w">      </span><span class="n">containers</span><span class="o">:</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="o">:</span><span class="w"> </span><span class="n">nginx</span>
+<span class="w">        </span><span class="n">image</span><span class="o">:</span><span class="w"> </span><span class="n">nginx</span>
+<span class="w">        </span><span class="n">ports</span><span class="o">:</span>
+<span class="w">        </span><span class="o">-</span><span class="w"> </span><span class="n">containerPort</span><span class="o">:</span><span class="w"> </span><span class="mi">80</span>
+<span class="w">        </span><span class="n">volumeMounts</span><span class="o">:</span>
+<span class="w">        </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="o">:</span><span class="w"> </span><span class="n">html</span><span class="o">-</span><span class="n">volume</span>
+<span class="w">          </span><span class="n">mountPath</span><span class="o">:</span><span class="w"> </span><span class="sr">/usr/share/nginx/</span><span class="n">html</span>
+<span class="w">      </span><span class="n">volumes</span><span class="o">:</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="o">:</span><span class="w"> </span><span class="n">html</span><span class="o">-</span><span class="n">volume</span>
+<span class="w">        </span><span class="n">configMap</span><span class="o">:</span>
+<span class="w">          </span><span class="n">name</span><span class="o">:</span><span class="w"> </span><span class="n">mydog</span><span class="o">-</span><span class="n">html</span>
+<span class="n">apiVersion</span><span class="o">:</span><span class="w"> </span><span class="n">networking</span><span class="o">.</span><span class="na">k8s</span><span class="o">.</span><span class="na">io</span><span class="o">/</span><span class="n">v1beta1</span>
+<span class="n">kind</span><span class="o">:</span><span class="w"> </span><span class="n">Ingress</span>
+<span class="n">metadata</span><span class="o">:</span>
+<span class="w">  </span><span class="n">name</span><span class="o">:</span><span class="w"> </span><span class="n">mydog</span><span class="o">-</span><span class="n">nginx</span><span class="o">-</span><span class="n">ingress</span>
+<span class="w">  </span><span class="n">annotations</span><span class="o">:</span>
+<span class="w">    </span><span class="n">kubernetes</span><span class="o">.</span><span class="na">io</span><span class="o">/</span><span class="n">ingress</span><span class="o">.</span><span class="na">class</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;traefik&quot;</span>
+<span class="w">    </span><span class="n">traefik</span><span class="o">.</span><span class="na">frontend</span><span class="o">.</span><span class="na">rule</span><span class="o">.</span><span class="na">type</span><span class="o">:</span><span class="w"> </span><span class="n">PathPrefixStrip</span>
+<span class="n">spec</span><span class="o">:</span>
+<span class="w">  </span><span class="n">rules</span><span class="o">:</span>
+<span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="n">http</span><span class="o">:</span>
+<span class="w">      </span><span class="n">paths</span><span class="o">:</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">path</span><span class="o">:</span><span class="w"> </span><span class="o">/</span><span class="n">mydog</span>
+<span class="w">        </span><span class="n">backend</span><span class="o">:</span>
+<span class="w">          </span><span class="n">serviceName</span><span class="o">:</span><span class="w"> </span><span class="n">mydog</span><span class="o">-</span><span class="n">nginx</span><span class="o">-</span><span class="n">service</span>
+<span class="w">          </span><span class="n">servicePort</span><span class="o">:</span><span class="w"> </span><span class="mi">80</span>
+</code></pre></div>
+
+<p>我们只需进行搜索并将 <code>mysite</code> 替换为 <code>mydog</code>即可完成大多数修改。其他两个修改在入口部分中。我们将 <code>path</code> 更改为 <code>/mydog</code>，并添加了一个注解 <code>traefik.frontend.rule.type: PathPrefixStrip</code>。</p>
+<p><code>/mydog</code> 路径的规范指示 Traefik 将以 <code>/mydog</code> 路径开头的所有传入请求路由到 <code>mydog-nginx-service</code>。任何其他路径将继续路由到 <code>mysite-nginx-service</code>。</p>
+<p>新的注解 <code>PathPrefixStrip</code> 告诉 Traefik 在将请求发送到 <code>mydog-nginx-service</code> 之前先去除前缀 <code>/mydog</code>。我们这样做是因为 <code>mydog-nginx</code> 应用程序不需要前缀。这意味着我们可以简单地通过更改入口记录中的前缀来更改挂载的服务的位置。</p>
+<p>现在我们可以像以前一样进行部署：</p>
+<div class="highlight"><pre><span></span><code>kubectl apply -f mydog.yaml
+</code></pre></div>
+
+<p>现在，我的狗的消息应该可以在 <a href="http://kmaster/mydog/">http://kmaster/mydog/</a> 上找到。</p>
+<p><img alt="" src="/data/attachment/album/202004/07/103533lxjvej94qcsebbm6.jpg"></p>
+<p>呼！消息发出去了！也许今晚我们都可以睡一觉。</p>
+<p>因此，现在，我们有了一个 k3s 集群，该集群托管了两个网站，Traefik 根据路径名决定将请求传递给哪个服务！但是，不仅限于基于路径的路由，我们也可以使用基于主机名的路由，我们将在以后的文章中进行探讨。</p>
+<p>另外，我们刚刚托管的网站是标准的未加密 HTML 网站，而如今的所有内容都使用 SSL/TLS 加密。在我们的下一篇文章中，我们将为 k3s 集群添加支持以托管 SSL/TLS HTTPS 站点！</p>
+<h3>清理</h3>
+<p>在开始之前，由于本文主要涉及的是示例站点，因此我想向你展示如何删除内容，以防万一你不希望将这些示例丢在集群中。</p>
+<p>对于大多数配置，只需使用与部署时使用的相同配置文件运行 <code>delete</code> 命令即可撤消配置。因此，让我们同时清理 <code>mysite</code> 和 <code>mydog</code>。</p>
+<div class="highlight"><pre><span></span><code>kubectl delete -f mysite.yaml
+kubectl delete -f mydog.yaml
+</code></pre></div>
+
+<p>由于我们是手动创建配置映射的，因此我们也需要手动删除它们。</p>
+<div class="highlight"><pre><span></span><code>kubectl delete configmap mysite-html
+kubectl delete configmap mydog-html
+</code></pre></div>
+
+<p>现在，如果我们执行 <code>kubectl get pods</code>，我们应该看到我们的 nginx Pod 不存在了。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>kubectl<span class="w"> </span>get<span class="w"> </span>pods
+No<span class="w"> </span>resources<span class="w"> </span>found<span class="w"> </span><span class="k">in</span><span class="w"> </span>default<span class="w"> </span>namespace.
+</code></pre></div>
+
+<p>一切都清理了。</p>
+<p>请在下面的评论中告诉我你对这个项目有什么想法。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

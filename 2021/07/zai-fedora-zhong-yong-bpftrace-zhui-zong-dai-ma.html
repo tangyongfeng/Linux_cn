@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在 Fedora 中用 bpftrace 追踪代码</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Augusto Caringi bpftrace 是一个 基于 eBPF 的新型追踪工具，在 Fedora 28 第一次引入。Brendan Gregg、Alastair Robertson 和 Matheus Marchini 在网上的一个松散的黑客团队的帮助下开 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2021/07/zai-fedora-zhong-yong-bpftrace-zhui-zong-dai-ma.html" rel="bookmark"
+           title="Permalink to 在 Fedora 中用 bpftrace 追踪代码">在 Fedora 中用 bpftrace 追踪代码</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2021-07-29T22:27:17+02:00">
+                Published: Thu 29 July 2021
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Augusto Caringi</p>
+<p><img alt="" src="/data/attachment/album/202107/29/222633wjln78my68exj7x9.jpg"></p>
+<p>bpftrace 是一个 <a href="https://github.com/iovisor/bpftrace">基于 eBPF 的新型追踪工具</a>，在 Fedora 28 第一次引入。Brendan Gregg、Alastair Robertson 和 Matheus Marchini 在网上的一个松散的黑客团队的帮助下开发了 bpftrace。它是一个允许你分析系统在幕后正在执行的操作的追踪工具，可以告诉你代码中正在被调用的函数、传递给函数的参数、函数的调用次数等。</p>
+<p>这篇文章的内容涉及了 bpftrace 的一些基础，以及它是如何工作的，请继续阅读获取更多的信息和一些有用的实例。</p>
+<h3>eBPF（<ruby> 扩展的伯克利数据包过滤器 <rt>  extended Berkeley Packet Filter </rt></ruby>）</h3>
+<p><a href="https://lwn.net/Articles/740157/">eBPF</a> 是一个微型虚拟机，更确切的说是一个位于 Linux 内核中的虚拟 CPU。eBPF 可以在内核空间以一种安全可控的方式加载和运行小型程序，使得 eBPF 的使用更加安全，即使在生产环境系统中。eBPF 虚拟机有自己的指令集架构（<a href="https://github.com/iovisor/bpf-docs/blob/master/eBPF.md">ISA</a>），类似于现代处理器架构的一个子集。通过这个 ISA，可以很容易将 eBPF 程序转化为真实硬件上的代码。内核即时将程序转化为主流处理器架构上的本地代码，从而提升性能。</p>
+<p>eBPF 虚拟机允许通过编程扩展内核，目前已经有一些内核子系统使用这一新型强大的 Linux 内核功能，比如网络、安全计算、追踪等。这些子系统的主要思想是添加 eBPF 程序到特定的代码点，从而扩展原生的内核行为。</p>
+<p>虽然 eBPF 机器语言功能强大，由于是一种底层语言，直接用于编写代码很费力，bpftrace 就是为了解决这个问题而生的。eBPF 提供了一种编写 eBPF 追踪脚本的高级语言，然后在 clang / LLVM 库的帮助下将这些脚本转化为 eBPF，最终添加到特定的代码点。</p>
+<h3>安装和快速入门</h3>
+<p>在终端 <a href="https://fedoramagazine.org/howto-use-sudo/">使用</a> <a href="https://fedoramagazine.org/howto-use-sudo/">sudo</a> 执行下面的命令安装 bpftrace：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> </span>bpftrace
+</code></pre></div>
+
+<p>使用“hello world”进行实验：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>bpftrace<span class="w"> </span>-e<span class="w"> </span><span class="s1">&#39;BEGIN { printf(&quot;hello world\n&quot;); }&#39;</span>
+</code></pre></div>
+
+<p>注意，出于特权级的需要，你必须使用 root 运行 <code>bpftrace</code>，使用 <code>-e</code> 选项指明一个程序，构建一个所谓的“单行程序”。这个例子只会打印 “hello world”，接着等待你按下 <code>Ctrl+C</code>。</p>
+<p><code>BEGIN</code> 是一个特殊的探针名，只在执行一开始生效一次；每次探针命中时，大括号 <code>{}</code> 内的操作（这个例子中只是一个 <code>printf</code>）都会执行。</p>
+<p>现在让我们转向一个更有用的例子：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>bpftrace<span class="w"> </span>-e<span class="w"> </span><span class="s1">&#39;t:syscalls:sys_enter_execve { printf(&quot;%s called %s\n&quot;, comm, str(args-&gt;filename)); }&#39;</span>
+</code></pre></div>
+
+<p>这个例子打印了父进程的名字（<code>comm</code>）和系统中正在创建的每个新进程的名称。<code>t:syscalls:sys_enter_execve</code> 是一个内核追踪点，是 <code>tracepoint:syscalls:sys_enter_execve</code> 的简写，两种形式都可以使用。下一部分会向你展示如何列出所有可用的追踪点。</p>
+<p><code>comm</code> 是一个 bpftrace 内建指令，代表进程名；<code>filename</code> 是 <code>t:syscalls:sys_enter_execve</code> 追踪点的一个字段，这些字段可以通过 <code>args</code> 内建指令访问。</p>
+<p>追踪点的所有可用字段可以通过这个命令列出：</p>
+<div class="highlight"><pre><span></span><code>bpftrace -lv &quot;t:syscalls:sys_enter_execve&quot;
+</code></pre></div>
+
+<h3>示例用法</h3>
+<h4>列出探针</h4>
+<p><code>bpftrace</code> 的一个核心概念是<ruby> 探针点 <rt>  probe point </rt></ruby>，即 eBPF 程序可以连接到的（内核或用户空间的）代码中的测量点，可以分成以下几大类：</p>
+<ul>
+<li><code>kprobe</code>——内核函数的开始处</li>
+<li><code>kretprobe</code>——内核函数的返回处</li>
+<li><code>uprobe</code>——用户级函数的开始处</li>
+<li><code>uretprobe</code>——用户级函数的返回处</li>
+<li><code>tracepoint</code>——内核静态追踪点</li>
+<li><code>usdt</code>——用户级静态追踪点</li>
+<li><code>profile</code>——基于时间的采样</li>
+<li><code>interval</code>——基于时间的输出</li>
+<li><code>software</code>——内核软件事件</li>
+<li><code>hardware</code>——处理器级事件</li>
+</ul>
+<p>所有可用的 <code>kprobe</code> / <code>kretprobe</code>、<code>tracepoints</code>、<code>software</code> 和 <code>hardware</code> 探针可以通过这个命令列出：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>bpftrace<span class="w"> </span>-l
+</code></pre></div>
+
+<p><code>uprobe</code> / <code>uretprobe</code> 和 <code>usdt</code> 是用户空间探针，专用于某个可执行文件。要使用这些探针，通过下文中的特殊语法。</p>
+<p><code>profile</code> 和 <code>interval</code> 探针以固定的时间间隔触发；固定的时间间隔不在本文的范畴内。</p>
+<h4>统计系统调用数</h4>
+<p><strong>映射</strong> 是保存计数、统计数据和柱状图的特殊 BPF 数据类型，你可以使用映射统计每个系统调用正在被调用的次数：</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">bpftrace</span><span class="w"> </span><span class="o">-</span><span class="n">e</span><span class="w"> </span><span class="s1">&#39;t:syscalls:sys_enter_* { @[probe] = count(); }&#39;</span>
+</code></pre></div>
+
+<p>一些探针类型允许使用通配符匹配多个探针，你也可以使用一个逗号隔开的列表为一个操作块指明多个连接点。上面的例子中，操作块连接到了所有名称以 <code>t:syscalls:sysenter_</code> 开头的追踪点，即所有可用的系统调用。</p>
+<p><code>bpftrace</code> 的内建函数 <code>count()</code> 统计系统调用被调用的次数；<code>@[]</code> 代表一个映射（一个关联数组）。该映射的键 <code>probe</code> 是另一个内建指令，代表完整的探针名。</p>
+<p>这个例子中，相同的操作块连接到了每个系统调用，之后每次有系统调用被调用时，映射就会被更新，映射中和系统调用对应的项就会增加。程序终止时，自动打印出所有声明的映射。</p>
+<p>下面的例子统计所有的系统调用，然后通过 <code>bpftrace</code> 过滤语法使用 PID 过滤出某个特定进程调用的系统调用：</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">bpftrace</span><span class="w"> </span><span class="o">-</span><span class="n">e</span><span class="w"> </span><span class="s1">&#39;t:syscalls:sys_enter_* / pid == 1234 / { @[probe] = count(); }&#39;</span>
+</code></pre></div>
+
+<h4>进程写的字节数</h4>
+<p>让我们使用上面的概念分析每个进程正在写的字节数：</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">bpftrace</span><span class="w"> </span><span class="o">-</span><span class="n">e</span><span class="w"> </span><span class="s1">&#39;t:syscalls:sys_exit_write /args-&gt;ret &gt; 0/ { @[comm] = sum(args-&gt;ret); }&#39;</span>
+</code></pre></div>
+
+<p><code>bpftrace</code> 连接操作块到写系统调用的返回探针（<code>t:syscalls:sys_exit_write</code>），然后使用过滤器丢掉代表错误代码的负值（<code>/arg-&gt;ret &gt; 0/</code>）。</p>
+<p>映射的键 <code>comm</code> 代表调用系统调用的进程名；内建函数 <code>sum()</code> 累计每个映射项或进程写的字节数；<code>args</code> 是一个 <code>bpftrace</code> 内建指令，用于访问追踪点的参数和返回值。如果执行成功，<code>write</code> 系统调用返回写的字节数，<code>arg-&gt;ret</code> 用于访问这个字节数。</p>
+<h4>进程的读取大小分布（柱状图）：</h4>
+<p><code>bpftrace</code> 支持创建柱状图。让我们分析一个创建进程的 <code>read</code> 大小分布的柱状图的例子：</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">bpftrace</span><span class="w"> </span><span class="o">-</span><span class="n">e</span><span class="w"> </span><span class="s1">&#39;t:syscalls:sys_exit_read { @[comm] = hist(args-&gt;ret); }&#39;</span>
+</code></pre></div>
+
+<p>柱状图是 BPF 映射，因此必须保存为一个映射（<code>@</code>），这个例子中映射键是 <code>comm</code>。</p>
+<p>这个例子使 <code>bpftrace</code> 给每个调用 <code>read</code> 系统调用的进程生成一个柱状图。要生成一个全局柱状图，直接保存 <code>hist()</code> 函数到 <code>@</code>（不使用任何键）。</p>
+<p>程序终止时，<code>bpftrace</code> 自动打印出声明的柱状图。创建柱状图的基准值是通过 <em>args-&gt;ret</em> 获取到的读取的字节数。</p>
+<h4>追踪用户空间程序</h4>
+<p>你也可以通过 <code>uprobes</code> / <code>uretprobes</code> 和 USDT（用户级静态定义的追踪）追踪用户空间程序。下一个例子使用探测用户级函数结尾处的 <code>uretprobe</code> ，获取系统中运行的每个 <code>bash</code> 发出的命令行：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>bpftrace<span class="w"> </span>-e<span class="w"> </span><span class="s1">&#39;uretprobe:/bin/bash:readline { printf(&quot;readline: \&quot;%s\&quot;\n&quot;, str(retval)); }&#39;</span>
+</code></pre></div>
+
+<p>要列出可执行文件 <code>bash</code> 的所有可用 <code>uprobes</code> / <code>uretprobes</code>， 执行这个命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>bpftrace<span class="w"> </span>-l<span class="w"> </span><span class="s2">&quot;uprobe:/bin/bash&quot;</span>
+</code></pre></div>
+
+<p><code>uprobe</code> 指向用户级函数执行的开始，<code>uretprobe</code> 指向执行的结束（返回处）；<code>readline()</code> 是 <code>/bin/bash</code> 的一个函数，返回键入的命令行；<code>retval</code> 是被探测的指令的返回值，只能在 <code>uretprobe</code> 访问。</p>
+<p>使用 <code>uprobes</code> 时，你可以用 <code>arg0..argN</code> 访问参数。需要调用 <code>str()</code> 将 <code>char *</code> 指针转化成一个字符串。</p>
+<h3>自带脚本</h3>
+<p><code>bpftrace</code> 软件包附带了许多有用的脚本，可以在 <code>/usr/share/bpftrace/tools/</code> 目录找到。</p>
+<p>这些脚本中，你可以找到：</p>
+<ul>
+<li><code>killsnoop.bt</code>——追踪 <code>kill()</code> 系统调用发出的信号</li>
+<li><code>tcpconnect.bt</code>——追踪所有的 TCP 网络连接</li>
+<li><code>pidpersec.bt</code>——统计每秒钟（通过 <code>fork</code>）创建的新进程</li>
+<li><code>opensnoop.bt</code>——追踪 <code>open()</code> 系统调用</li>
+<li><code>bfsstat.bt</code>——追踪一些 VFS 调用，按秒统计</li>
+</ul>
+<p>你可以直接使用这些脚本，比如：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>/usr/share/bpftrace/tools/killsnoop.bt
+</code></pre></div>
+
+<p>你也可以在创建新的工具时参考这些脚本。</p>
+<h3>链接</h3>
+<ul>
+<li>bpftrace 参考指南——<a href="https://github.com/iovisor/bpftrace/blob/master/docs/reference_guide.md">https://github.com/iovisor/bpftrace/blob/master/docs/reference_guide.md</a></li>
+<li>Linux 2018 <code>bpftrace</code>（DTrace 2.0）——<a href="http://www.brendangregg.com/blog/2018-10-08/dtrace-for-linux-2018.html">http://www.brendangregg.com/blog/2018-10-08/dtrace-for-linux-2018.html</a></li>
+<li>BPF：通用的内核虚拟机——<a href="https://lwn.net/Articles/599755/">https://lwn.net/Articles/599755/</a></li>
+<li>Linux Extended BPF（eBPF）Tracing Tools——<a href="http://www.brendangregg.com/ebpf.html">http://www.brendangregg.com/ebpf.html</a></li>
+<li>深入 BPF：一个阅读材料列表—— <a href="https://qmonnet.github.io/whirl-offload/2016/09/01/dive-into-bpf/">https://qmonnet.github.io/whirl-offload/2016/09/01/dive-into-bpf</a></li>
+</ul>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

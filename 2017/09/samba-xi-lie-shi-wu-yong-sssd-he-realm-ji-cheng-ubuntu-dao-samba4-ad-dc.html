@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Samba 系列（十五）：用 SSSD 和 Realm 集成 Ubuntu 到 Samba4 AD DC</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Matei Cezar 本教程将告诉你如何将 Ubuntu 桌面版机器加入到带有 SSSD 和 Realm 服务的 Samba4 活动目录域中，以在活动目录中认证用户。 要求 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/09/samba-xi-lie-shi-wu-yong-sssd-he-realm-ji-cheng-ubuntu-dao-samba4-ad-dc.html" rel="bookmark"
+           title="Permalink to Samba 系列（十五）：用 SSSD 和 Realm 集成 Ubuntu 到 Samba4 AD DC">Samba 系列（十五）：用 SSSD 和 Realm 集成 Ubuntu 到 Samba4 AD DC</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-09-09T18:14:00+02:00">
+                Published: Sat 09 September 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Matei Cezar</p>
+<p><img alt="" src="/data/attachment/album/201709/09/181412dtnflmmtymtod5py.jpg"></p>
+<p>本教程将告诉你如何将 Ubuntu 桌面版机器加入到带有 SSSD 和 Realm 服务的 Samba4 活动目录域中，以在活动目录中认证用户。</p>
+<h3>要求：</h3>
+<ol>
+<li><a href="/article-8065-1.html">在 Ubuntu 上用 Samba4 创建一个活动目录架构</a></li>
+</ol>
+<h3>第 1 步：初始配置</h3>
+<p>1、 在把 Ubuntu 加入活动目录前确保主机名被正确设置了。使用 <code>hostnamectl</code> 命令设置机器名字或者手动编辑 <code>/etc/hostname</code> 文件。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>hostnamectl<span class="w"> </span>set-hostname<span class="w"> </span>your_machine_short_hostname
+$<span class="w"> </span>cat<span class="w"> </span>/etc/hostname
+$<span class="w"> </span>hostnamectl
+</code></pre></div>
+
+<p>2、 接下来，编辑机器网络接口设置并且添加合适的 IP 设置，并将正确的 DNS IP 服务器地址指向 Samba 活动目录域控制器，如下图所示。</p>
+<p>如果你已经配置了 DHCP 服务来为局域网机器自动分配包括合适的 AD DNS IP 地址的 IP 设置，那么你可以跳过这一步。</p>
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/Configure-Network-Interface.jpg"><img alt="设置网络接口" src="/data/attachment/album/201709/09/181436ahce300hu5z5cdnc.jpg"></a></p>
+<p><em>设置网络接口</em></p>
+<p>上图中，<code>192.168.1.254</code> 和 <code>192.168.1.253</code> 代表 Samba4 域控制器的 IP 地址。</p>
+<p>3、 用 GUI（图形用户界面）或命令行重启网络服务来应用修改，并且对你的域名发起一系列 ping 请求来测试 DNS 解析如预期工作。 也用 <code>host</code> 命令来测试 DNS 解析。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>restart<span class="w"> </span>networking.service
+$<span class="w"> </span>host<span class="w"> </span>your_domain.tld
+$<span class="w"> </span>ping<span class="w"> </span>-c2<span class="w"> </span>your_domain_name
+$<span class="w"> </span>ping<span class="w"> </span>-c2<span class="w"> </span>adc1
+$<span class="w"> </span>ping<span class="w"> </span>-c2<span class="w"> </span>adc2
+</code></pre></div>
+
+<p>4、 最后, 确保机器时间和 Samba4 AD 同步。安装 <code>ntpdate</code> 包并用下列指令和 AD 同步时间。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>ntpdate
+$<span class="w"> </span>sudo<span class="w"> </span>ntpdate<span class="w"> </span>your_domain_name
+</code></pre></div>
+
+<h3>第 2 步：安装需要的包</h3>
+<p>5、 这一步将安装将 Ubuntu 加入 Samba4 活动目录域控制器所必须的软件和依赖：Realmd 和 SSSD 服务。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>adcli<span class="w"> </span>realmd<span class="w"> </span>krb5-user<span class="w"> </span>samba-common-bin<span class="w"> </span>samba-libs<span class="w"> </span>samba-dsdb-modules<span class="w"> </span>sssd<span class="w"> </span>sssd-tools<span class="w"> </span>libnss-sss<span class="w"> </span>libpam-sss<span class="w"> </span>packagekit<span class="w"> </span>policykit-1<span class="w"> </span>
+</code></pre></div>
+
+<p>6、 输入大写的默认 realm 名称，然后按下回车继续安装。</p>
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/Set-realm-name.png"><img alt="输入 Realm 名称" src="/data/attachment/album/201709/09/181438hjwwb6nruxwrkw6x.png"></a></p>
+<p><em>输入 Realm 名称</em></p>
+<p>7、 接着，创建包含以下内容的 SSSD 配置文件。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>nano<span class="w"> </span>/etc/sssd/sssd.conf
+</code></pre></div>
+
+<p>加入下面的内容到 <code>sssd.conf</code> 文件。</p>
+<div class="highlight"><pre><span></span><code><span class="k">[nss]</span>
+<span class="na">filter_groups</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">root</span>
+<span class="na">filter_users</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">root</span>
+<span class="na">reconnection_retries</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">3</span>
+<span class="k">[pam]</span>
+<span class="na">reconnection_retries</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">3</span>
+<span class="k">[sssd]</span>
+<span class="na">domains</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">tecmint.lan</span>
+<span class="na">config_file_version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">2</span>
+<span class="na">services</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">nss, pam</span>
+<span class="na">default_domain_suffix</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">TECMINT.LAN</span>
+<span class="k">[domain/tecmint.lan]</span>
+<span class="na">ad_domain</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">tecmint.lan</span>
+<span class="na">krb5_realm</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">TECMINT.LAN</span>
+<span class="na">realmd_tags</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">manages-system joined-with-samba</span>
+<span class="na">cache_credentials</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
+<span class="na">id_provider</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">ad</span>
+<span class="na">krb5_store_password_if_offline</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
+<span class="na">default_shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">/bin/bash</span>
+<span class="na">ldap_id_mapping</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
+<span class="na">use_fully_qualified_names</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
+<span class="na">fallback_homedir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">/home/%d/%u</span>
+<span class="na">access_provider</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">ad</span>
+<span class="na">auth_provider</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">ad</span>
+<span class="na">chpass_provider</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">ad</span>
+<span class="na">access_provider</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">ad</span>
+<span class="na">ldap_schema</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">ad</span>
+<span class="na">dyndns_update</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">true</span>
+<span class="na">dyndsn_refresh_interval</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">43200</span>
+<span class="na">dyndns_update_ptr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">true</span>
+<span class="na">dyndns_ttl</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">3600</span>
+</code></pre></div>
+
+<p>确保你对应地替换了下列参数的域名：</p>
+<div class="highlight"><pre><span></span><code>domains = tecmint.lan
+default_domain_suffix = TECMINT.LAN
+[domain/tecmint.lan]
+ad_domain = tecmint.lan
+krb5_realm = TECMINT.LAN
+</code></pre></div>
+
+<p>8、 接着，用下列命令给 SSSD 配置文件适当的权限：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>chmod<span class="w"> </span><span class="m">700</span><span class="w"> </span>/etc/sssd/sssd.conf
+</code></pre></div>
+
+<p>9、 现在，打开并编辑 Realmd 配置文件，输入下面这行：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>nano<span class="w"> </span>/etc/realmd.conf
+</code></pre></div>
+
+<p><code>realmd.conf</code> 文件摘录：</p>
+<div class="highlight"><pre><span></span><code><span class="k">[active-directory]</span>
+<span class="na">os-name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">Linux Ubuntu</span>
+<span class="na">os-version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">17.04</span>
+<span class="k">[service]</span>
+<span class="na">automatic-install</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">yes</span>
+<span class="k">[users]</span>
+<span class="na">default-home</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">/home/%d/%u</span>
+<span class="na">default-shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">/bin/bash</span>
+<span class="k">[tecmint.lan]</span>
+<span class="na">user-principal</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">yes</span>
+<span class="na">fully-qualified-names</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">no</span>
+</code></pre></div>
+
+<p>10、 最后需要修改的文件属于 Samba 守护进程。 打开 <code>/etc/samba/smb.conf</code> 文件编辑，然后在文件开头加入下面这块代码，在 <code>[global]</code> 之后的部分如下图所示。</p>
+<div class="highlight"><pre><span></span><code>workgroup = TECMINT
+client signing = yes
+client use spnego = yes
+kerberos method = secrets and keytab
+realm = TECMINT.LAN
+security = ads
+</code></pre></div>
+
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/Configure-Samba-Server.jpg"><img alt="配置 Samba 服务器" src="/data/attachment/album/201709/09/181440khjfh6dmhff2pdpn.jpg"></a></p>
+<p><em>配置 Samba 服务器</em></p>
+<p>确保你替换了域名值，特别是对应域名的 realm 值，并运行 <code>testparm</code> 命令检验设置文件是否包含错误。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>testparm
+</code></pre></div>
+
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/Test-Samba-Configuration.jpg"><img alt="测试 Samba 配置" src="/data/attachment/album/201709/09/181442pm7zp3ogp72ss3z2.jpg"></a></p>
+<p><em>测试 Samba 配置</em></p>
+<p>11、 在做完所有必需的修改之后，用 AD 管理员帐号验证 Kerberos 认证并用下面的命令列出票据。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>kinit<span class="w"> </span>ad_admin_user@DOMAIN.TLD
+$<span class="w"> </span>sudo<span class="w"> </span>klist
+</code></pre></div>
+
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/Check-Kerberos-Authentication.jpg"><img alt="检验 Kerberos 认证" src="/data/attachment/album/201709/09/181444h4dtt9e07zd7tno1.jpg"></a></p>
+<p><em>检验 Kerberos 认证</em></p>
+<h3>第 3 步： 加入 Ubuntu 到 Samba4 Realm</h3>
+<p>12、 键入下列命令将 Ubuntu 机器加入到 Samba4 活动目录。用有管理员权限的 AD DC 账户名字，以便绑定 realm 可以如预期般工作，并替换对应的域名值。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>realm<span class="w"> </span>discover<span class="w"> </span>-v<span class="w"> </span>DOMAIN.TLD
+$<span class="w"> </span>sudo<span class="w"> </span>realm<span class="w"> </span>list
+$<span class="w"> </span>sudo<span class="w"> </span>realm<span class="w"> </span>join<span class="w"> </span>TECMINT.LAN<span class="w"> </span>-U<span class="w"> </span>ad_admin_user<span class="w"> </span>-v
+$<span class="w"> </span>sudo<span class="w"> </span>net<span class="w"> </span>ads<span class="w"> </span>join<span class="w"> </span>-k
+</code></pre></div>
+
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/Join-Ubuntu-to-Samba4-Realm.jpg"><img alt="加入 Ubuntu 到 Samba4 Realm" src="/data/attachment/album/201709/09/181447ou8pzkdygi7pj8gd.jpg"></a></p>
+<p><em>加入 Ubuntu 到 Samba4 Realm</em></p>
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/List-Realm-Domain-Info.jpg"><img alt="列出 Realm Domain 信息" src="/data/attachment/album/201709/09/181449bfmd94dm96eor84h.jpg"></a></p>
+<p><em>列出 Realm Domain 信息</em></p>
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/Add-User-to-Realm-Domain.jpg"><img alt="加入用户到 Realm Domain" src="/data/attachment/album/201709/09/181449kowj143j4g487taj.jpg"></a></p>
+<p><em>添加用户到 Realm Domain</em></p>
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/Add-Domain-to-Realm.jpg"><img alt="表列 Realm Domain 信息" src="/data/attachment/album/201709/09/181449x3vzhe27b7vd33vh.jpg"></a></p>
+<p><em>添加 Domain 到 Realm</em></p>
+<p>13、 区域绑定好了之后，运行下面的命令确保所有域账户允许在这台机器上认证。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>realm<span class="w"> </span>permit<span class="w"> </span>-all
+</code></pre></div>
+
+<p>然后你可以使用下面举例的 <code>realm</code> 命令允许或者禁止域用户帐号或群组访问。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>realm<span class="w"> </span>deny<span class="w"> </span>-a
+$<span class="w"> </span>realm<span class="w"> </span>permit<span class="w"> </span>--groups<span class="w"> </span>‘domain.tld<span class="se">\L</span>inux<span class="w"> </span>Admins’
+$<span class="w"> </span>realm<span class="w"> </span>permit<span class="w"> </span>user@domain.lan
+$<span class="w"> </span>realm<span class="w"> </span>permit<span class="w"> </span>DOMAIN<span class="se">\\</span>User2
+</code></pre></div>
+
+<p>14、 从一个 <a href="/article-8097-1.html">安装了 RSAT 工具的</a> Windows 机器上你可以打开 AD UC 并浏览“<ruby> 电脑 <rt>  computers </rt></ruby>”容器，并检验是否有一个使用你机器名的对象帐号已经创建。</p>
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/Confirm-Domain-Added.jpg"><img alt="确保域被加入 AD DC" src="/data/attachment/album/201709/09/181449mt2kuqdbyq4k5lyq.jpg"></a></p>
+<p><em>确保域被加入 AD DC</em></p>
+<h3>第 4 步：配置 AD 账户认证</h3>
+<p>15、 为了在 Ubuntu 机器上用域账户认证，你需要用 root 权限运行 <code>pam-auth-update</code> 命令并允许所有 PAM 配置文件，包括为每个域账户在第一次注册的时候自动创建家目录的选项。</p>
+<p>按 [空格] 键检验所有配置项并点击 ok 来应用配置。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>pam-auth-update
+</code></pre></div>
+
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/PAM-Configuration.jpg"><img alt="PAM 配置" src="/data/attachment/album/201709/09/181452ih09uu3e11tu41zy.jpg"></a></p>
+<p><em>PAM 配置</em></p>
+<p>16、 在系统上手动编辑 <code>/etc/pam.d/common-account</code> 文件，下面这几行是为了给认证过的域用户自动创建家目录。</p>
+<div class="highlight"><pre><span></span><code>session    required    pam_mkhomedir.so    skel=/etc/skel/    umask=0022
+</code></pre></div>
+
+<p>17、 如果活动目录用户不能用 linux 命令行修改他们的密码，打开 <code>/etc/pam.d/common-password</code> 文件并在 <code>password</code> 行移除 <code>use_authtok</code> 语句，最后如下：</p>
+<div class="highlight"><pre><span></span><code>password       [success=1 default=ignore]      pam_winbind.so try_first_pass
+</code></pre></div>
+
+<p>18、 最后，用下面的命令重启并启用以应用 Realmd 和 SSSD 服务的修改：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>restart<span class="w"> </span>realmd<span class="w"> </span>sssd
+$<span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>realmd<span class="w"> </span>sssd
+</code></pre></div>
+
+<p>19、 为了测试 Ubuntu 机器是是否成功集成到 realm ，安装 winbind 包并运行 <code>wbinfo</code> 命令列出域账户和群组，如下所示。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>winbind
+$<span class="w"> </span>wbinfo<span class="w"> </span>-u
+$<span class="w"> </span>wbinfo<span class="w"> </span>-g
+</code></pre></div>
+
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/List-Domain-Accounts.jpg"><img alt="列出域账户" src="/data/attachment/album/201709/09/181454wnn111fux3ovonv0.jpg"></a></p>
+<p><em>列出域账户</em></p>
+<p>20、 同样，也可以针对特定的域用户或群组使用 <code>getent</code> 命令检验 Winbind nsswitch 模块。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>getent<span class="w"> </span>passwd<span class="w"> </span>your_domain_user
+$<span class="w"> </span>sudo<span class="w"> </span>getent<span class="w"> </span>group<span class="w"> </span>‘domain<span class="w"> </span>admins’
+</code></pre></div>
+
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/check-Winbind-nsswitch.jpg"><img alt="检验 Winbind Nsswitch" src="/data/attachment/album/201709/09/181456w3n6fabun2s392s1.jpg"></a></p>
+<p><em>检验 Winbind Nsswitch</em></p>
+<p>21、 你也可以用 Linux <code>id</code> 命令获取 AD 账户的信息，命令如下：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>id<span class="w"> </span>tecmint_user
+</code></pre></div>
+
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/Check-AD-User-Info.jpg"><img alt="检验 AD 用户信息" src="/data/attachment/album/201709/09/181457o40kbocfkb3bg4b9.jpg"></a></p>
+<p><em>检验 AD 用户信息</em></p>
+<p>22、 用 <code>su -</code> 后跟上域用户名参数来认证 Ubuntu 主机的一个 Samba4 AD 账户。运行 <code>id</code> 命令获取该 AD 账户的更多信息。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>su<span class="w"> </span>-<span class="w"> </span>your_ad_user
+</code></pre></div>
+
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/07/AD-User-Authentication.jpg"><img alt="AD 用户认证" src="/data/attachment/album/201709/09/181457npiti0065gijz645.jpg"></a></p>
+<p><em>AD 用户认证</em></p>
+<p>用 <code>pwd</code> 命令查看你的域用户当前工作目录，和用 <code>passwd</code> 命令修改密码。</p>
+<p>23、 在 Ubuntu 上使用有 root 权限的域账户，你需要用下面的命令添加 AD 用户名到 sudo 系统群组：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>usermod<span class="w"> </span>-aG<span class="w"> </span>sudo<span class="w"> </span>your_domain_user@domain.tld
+</code></pre></div>
+
+<p>用域账户登录 Ubuntu 并运行 <code>apt update</code> 命令来更新你的系统以检验 root 权限。</p>
+<p>24、 给一个域群组 root 权限，用 <code>visudo</code> 命令打开并编辑 <code>/etc/sudoers</code> 文件，并加入如下行：</p>
+<div class="highlight"><pre><span></span><code><span class="nf">%domain</span><span class="err">\</span><span class="w"> </span><span class="n">admins</span><span class="err">@</span><span class="n">tecmint</span><span class="p">.</span><span class="n">lan</span><span class="w">              </span><span class="n">ALL</span><span class="o">=</span><span class="p">(</span><span class="n">ALL</span><span class="o">:</span><span class="n">ALL</span><span class="p">)</span><span class="w"> </span><span class="n">ALL</span>
+</code></pre></div>
+
+<p>25、 要在 Ubuntu 桌面使用域账户认证，通过编辑 <code>/usr/share/lightdm/lightdm.conf.d/50-ubuntu.conf</code> 文件来修改 LightDM 显示管理器，增加以下两行并重启 lightdm 服务或重启机器应用修改。</p>
+<div class="highlight"><pre><span></span><code><span class="nv">greeter</span><span class="o">-</span><span class="k">show</span><span class="o">-</span><span class="nv">manual</span><span class="o">-</span><span class="nv">login</span><span class="o">=</span><span class="nv">true</span>
+<span class="nv">greeter</span><span class="o">-</span><span class="nv">hide</span><span class="o">-</span><span class="nv">users</span><span class="o">=</span><span class="nv">true</span>
+</code></pre></div>
+
+<p>域账户用“你的域用户”或“你的域用户@你的域” 格式来登录 Ubuntu 桌面。</p>
+<p>26、 为使用 Samba AD 账户的简称格式，编辑 <code>/etc/sssd/sssd.conf</code> 文件，在 <code>[sssd]</code> 块加入如下几行命令。</p>
+<div class="highlight"><pre><span></span><code>full_name_format = %1$s
+</code></pre></div>
+
+<p>并重启 SSSD 守护进程应用改变。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>restart<span class="w"> </span>sssd
+</code></pre></div>
+
+<p>你会注意到 bash 提示符会变成了没有附加域名部分的 AD 用户名。</p>
+<p>27、 万一你因为 <code>sssd.conf</code> 里的 <code>enumerate=true</code> 参数设定而不能登录，你得用下面的命令清空 sssd 缓存数据：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>rm<span class="w"> </span>/var/lib/sss/db/cache_tecmint.lan.ldb
+</code></pre></div>
+
+<p>这就是全部了！虽然这个教程主要集中于集成 Samba4 活动目录，同样的步骤也能被用于把使用 Realm 和 SSSD 服务的 Ubuntu 整合到微软 Windows 服务器活动目录。</p>
+<p>via: <a href="https://www.tecmint.com/integrate-ubuntu-to-samba4-ad-dc-with-sssd-and-realm/">https://www.tecmint.com/integrate-ubuntu-to-samba4-ad-dc-with-sssd-and-realm/</a></p>
+<p>作者：<a href="https://www.tecmint.com/author/cezarmatei/">Matei Cezar</a> 译者：<a href="https://github.com/XYenChi">XYenChi</a> 校对：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创编译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在 Fedora 命令行下玩转防火墙</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Paul W. Frields 网络防火墙，顾名思义：为了阻止不需要的网络连接而设置的防护性屏障。在与外界建立连接或是提供网络服务 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2020/04/zai-fedora-ming-ling-xing-xia-wan-zhuan-fang-huo-qiang.html" rel="bookmark"
+           title="Permalink to 在 Fedora 命令行下玩转防火墙">在 Fedora 命令行下玩转防火墙</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2020-04-12T12:30:54+02:00">
+                Published: Sun 12 April 2020
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Paul W. Frields</p>
+<p><img alt="" src="/data/attachment/album/202004/12/123040ghxuicphyhsoppch.jpg"></p>
+<p>网络防火墙，顾名思义：为了阻止不需要的网络连接而设置的防护性屏障。在与外界建立连接或是提供网络服务时常常会用到。例如，在学校或是咖啡厅里使用笔记本电脑时，你一定不想某个陌生人窥探你的电脑。</p>
+<p>每个 Fedora 系统都内置了一款防火墙。这是 Linux 内核网络功能的一部分。本文介绍如何通过 <code>firewall-cmd</code> 命令修改防火墙的配置。</p>
+<h3>网络基础</h3>
+<p>本文并不教授计算机网络的<a href="https://en.wikipedia.org/wiki/Portal:Internet">所有知识</a>，但还是会简单介绍一些网络基础。</p>
+<p>网络中的所有计算机都有一个 <em>IP 地址</em>，可以把它想象成一个邮箱地址，有了邮箱地址，邮件才知道发往何处。每台计算机还会拥有一组<em>端口</em>，端口号范围从 0 到 65535。同样的，你可以把这些端口想象成用来连接邮箱地址的连接点。</p>
+<p>通常情况下，端口会是一个标准端口号或是根据应用程序的应答要求选定的一个端口范围。例如，一台 Web 服务器通常会保留 80 端口用于 HTTP 通信，443 端口用于 HTTPS。小于 1024 的端口主要用于系统或常见用途，1024-49151 端口是已经注册的，49152 及以上端口多为临时使用（只限短时间使用）。</p>
+<p>互联网传输中最常见的两个协议，<a href="https://en.wikipedia.org/wiki/Transmission_Control_Protocol">TCP</a> 和 <a href="https://en.wikipedia.org/wiki/User_Datagram_Protocol">UDP</a>。当要传输的数据很重要，不能有丢包时，就使用 TCP 协议，如果数据包没有按顺序到达，还需要重组为正确的顺序。UDP 协议则更多用于对时间敏感的服务，为了保证时效性，有时允许丢失部分数据。</p>
+<p>系统中运行的应用，例如 Web 服务器，会保留一些端口（例如上文提到的 80 和 443）。在网络传输过程中，主机会为传输的两端建立一个链接，一端是源地址和源端口，另一端是目的地址和目的端口。</p>
+<p>网络防火墙就是基于地址、端口及其他标准的一组规则集，来对网络数据的传输进行屏蔽或阻断的。通过 <code>firewall-cmd</code> 命令，我们就可以查看或修改防火墙的工作配置。</p>
+<h3>防火墙域（zone）</h3>
+<p>为了验证防火墙是否开启，使用 <code>firewall-cmd</code> 命令，输入时要加上 <a href="https://fedoramagazine.org/howto-use-sudo/">sudo</a>。（通常，在运行了 <a href="https://en.wikipedia.org/wiki/Polkit">PolicyKit</a> 的环境中，你也可以不加 <code>sudo</code>）</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>firewall-cmd<span class="w"> </span>--state
+running
+</code></pre></div>
+
+<p>firewalld 服务支持任意数量的域。每个域都可以拥有独立的配置和防护规则。一台 Fedora 工作站的外部接口（例如 WIFI 或有线网卡）其默认域为 <code>FedoraWorkstation</code>。</p>
+<p>要看有哪些域是激活状态，可以使用 <code>-–get-active-zones</code> 选项。在本示例中，有两个网卡，有线以太网卡 <code>wlp2s0</code> 和虚拟（libvirt）桥接网卡 <code>virbr0</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>firewall-cmd<span class="w"> </span>--get-active-zones
+FedoraWorkstation
+<span class="w">  </span>interfaces:<span class="w"> </span>wlp2s0
+libvirt
+<span class="w">  </span>interfaces:<span class="w"> </span>virbr0
+</code></pre></div>
+
+<p>如果想看看默认域是什么，或是直接查询所有域：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>firewall-cmd<span class="w"> </span>--get-default-zone
+FedoraWorkstation
+$<span class="w"> </span>sudo<span class="w"> </span>firewall-cmd<span class="w"> </span>--get-zones
+FedoraServer<span class="w"> </span>FedoraWorkstation<span class="w"> </span>block<span class="w"> </span>dmz<span class="w"> </span>drop<span class="w"> </span>external<span class="w"> </span>home<span class="w"> </span>internal<span class="w"> </span>libvirt<span class="w"> </span>public<span class="w"> </span>trusted<span class="w"> </span>work
+</code></pre></div>
+
+<p>查询默认域中防火墙放行了哪些系统，使用 <code>-–list-services</code> 选项。下例给出了一个定制系统的查询结果，你可以看到与常见的结果有些不同。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>firewall-cmd<span class="w"> </span>--list-services
+dhcpv6-client<span class="w"> </span>mdns<span class="w"> </span>samba-client<span class="w"> </span>ssh
+</code></pre></div>
+
+<p>该系统对外开启了四个服务。每个服务都对应一个常见端口。例如 <code>ssh</code> 服务对应 22 端口。</p>
+<p>如果要查看当前域中防火墙还开启了哪些端口，可以使用 <code>--list-ports</code> 选项。当然，你也可以随时对其他域进行查询：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>firewall-cmd<span class="w"> </span>--list-ports<span class="w"> </span>--zone<span class="o">=</span>FedoraWorkstation
+<span class="m">1025</span>-65535/udp<span class="w"> </span><span class="m">1025</span>-65535/tcp
+</code></pre></div>
+
+<p>结果表明，从 1025 到 65535 端口（包含 UDP 和 TCP）默认都是开启的。</p>
+<h3>修改域、端口及服务</h3>
+<p>以上的配置都是预先设计好的防火墙策略。是为了确保新手用户安装的应用都能够正常访问网络。如果你确定自己心里有数，想要一个保护性更强的策略，可以将接口放入 <code>FedoraServer</code> 域，明确禁止所有端口的访问。（<strong>警告</strong>：如果你的服务器之前是联网状态，这么做可能会导致连接中断，那你就得到机房里去修改更多的配置项！）</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>firewall-cmd<span class="w"> </span>--change-interface<span class="o">=</span>&lt;ifname&gt;<span class="w"> </span>--zone<span class="o">=</span>FedoraServer
+success
+</code></pre></div>
+
+<p><strong>本文并不讨论如何制定防火墙策略，Fedora 社区里已经有很多讨论了。你大可以按照自身需要来修改配置。</strong></p>
+<p>如果你想要开放某个服务的常见端口，可以将该服务加入默认域（或使用 <code>--zone</code> 指定一个不同的域）。还可以一次性将其加入多个域。下例开放了 HTTP 和 HTTPS 的常见端口 80、443：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>firewall-cmd<span class="w"> </span>--add-service<span class="o">=</span>http<span class="w"> </span>--add-service<span class="o">=</span>https
+success
+</code></pre></div>
+
+<p>并非所有的服务都有默认端口，不过大部分都是有的。使用 <code>-–get-services</code> 选项可以查看完整列表。</p>
+<p>如果你想指定某个特定端口号，可以直接用数字和协议进行配置。（多数情况下，<code>-–add-service</code> 和 <code>-–add-port</code> 这两个选项是合在一起使用的）下例开启的是 UDP 协议的网络启动服务：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>firewall-cmd<span class="w"> </span>--add-port<span class="o">=</span><span class="m">67</span>/udp
+success
+</code></pre></div>
+
+<p><strong>重要</strong>：如果想要在系统重启或是 firewalld 服务重启后，配置仍然生效，<strong>必须</strong>在命令中加上 <code>-–permanent</code> 选项。本文中的例子只是临时修改了配置，下次遇到系统重启或是 firewalld 服务重启，这些配置就失效了。</p>
+<p>以上只是 <code>firewall-cmd</code> 和 firewalld 服务诸多功能中的一小部分。firewalld 项目的<a href="https://firewalld.org/">主页</a>还有更多信息值得你去探索和尝试。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

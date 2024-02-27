@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>用 OpenStack Designate 构建一个 DNS 即服务（DNSaaS）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Amjad Yaseen 学习如何安装和配置 Designate，这是一个 OpenStack 的多租户 DNS 即服务（DNSaaS）。 Designate 是一个多租户的 DNS 即服务，它包括一个用于域名和记 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/05/yong-openstack-designate-gou-jian-yi-ge-dns-ji-fu-wu-dnsaas.html" rel="bookmark"
+           title="Permalink to 用 OpenStack Designate 构建一个 DNS 即服务（DNSaaS）">用 OpenStack Designate 构建一个 DNS 即服务（DNSaaS）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-05-11T11:09:00+02:00">
+                Published: Sat 11 May 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Amjad Yaseen</p>
+<blockquote>
+<p>学习如何安装和配置 Designate，这是一个 OpenStack 的多租户 DNS 即服务（DNSaaS）。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/201905/11/110822rjub9wtwtwtmccet.jpg"></p>
+<p><a href="https://docs.openstack.org/designate/latest/">Designate</a> 是一个多租户的 DNS 即服务，它包括一个用于域名和记录管理的 REST API 和集成了 <a href="https://opensource.com/article/19/3/openstack-neutron">Neutron</a> 的框架，并支持 Bind9。</p>
+<p>DNSaaS 可以提供：</p>
+<ul>
+<li>一个管理区域和记录的干净利落的 REST API</li>
+<li>自动生成记录（集成 OpenStack）</li>
+<li>支持多个授权名字服务器</li>
+<li>可以托管多个项目/组织</li>
+</ul>
+<p><img alt="Designate's architecture" src="/data/attachment/album/201905/11/110945ruqt808b9bkk9tsu.png" title="Designate's architecture"></p>
+<p>这篇文章解释了如何在 CentOS 和 RHEL 上手动安装和配置 Designate 的最新版本，但是同样的配置也可以用在其它发行版上。</p>
+<h3>在 OpenStack 上安装 Designate</h3>
+<p>在我的 <a href="https://github.com/ayaseen/designate">GitHub 仓库</a>里，我已经放了 Ansible 的 bind 和 Designate 角色的示范设置。</p>
+<p>这个设置假定 bing 服务是安装 OpenStack 控制器节点之外（即使你可以在本地安装 bind）。</p>
+<p>1、在 OpenStack 控制节点上安装 Designate 和 bind 软件包：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> yum install openstack-designate-* bind bind-utils -y
+</code></pre></div>
+
+<p>2、创建 Designate 数据库和用户：</p>
+<div class="highlight"><pre><span></span><code>MariaDB [(none)]&gt; CREATE DATABASE designate CHARACTER SET utf8 COLLATE utf8_general_ci;
+
+MariaDB [(none)]&gt; GRANT ALL PRIVILEGES ON designate.* TO \
+&#39;designate&#39;@&#39;localhost&#39; IDENTIFIED BY &#39;rhlab123&#39;;
+
+MariaDB [(none)]&gt; GRANT ALL PRIVILEGES ON designate.* TO &#39;designate&#39;@&#39;%&#39; \
+IDENTIFIED BY &#39;rhlab123&#39;;
+</code></pre></div>
+
+<p>注意：bind 包必须安装在控制节点之外才能使<ruby> 远程名字服务控制 <rt>  Remote Name Daemon Control </rt></ruby>（RNDC）功能正常。</p>
+<h3>配置 bind（DNS 服务器）</h3>
+<p>1、生成 RNDC 文件：</p>
+<div class="highlight"><pre><span></span><code><span class="x">rndc-confgen -a -k designate -c /etc/rndc.key -r /dev/urandom</span>
+
+<span class="x">cat &lt;&lt;EOF&gt; etcrndc.conf</span>
+<span class="x">include &quot;/etc/rndc.key&quot;;</span>
+<span class="x">options {</span>
+<span class="x">  default-key &quot;designate&quot;;</span>
+<span class="x">  default-server </span><span class="cp">{{</span> <span class="nv">DNS_SERVER_IP</span> <span class="cp">}}</span><span class="x">;</span>
+<span class="x">  default-port 953;</span>
+<span class="x">};</span>
+<span class="x">EOF</span>
+</code></pre></div>
+
+<p>2、将下列配置添加到 <code>named.conf</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="x">include &quot;/etc/rndc.key&quot;; </span>
+<span class="x">controls {</span>
+<span class="x">  inet </span><span class="cp">{{</span> <span class="nv">DNS_SERVER_IP</span> <span class="cp">}}</span><span class="x"> allow { localhost;</span><span class="cp">{{</span> <span class="nv">CONTROLLER_SERVER_IP</span> <span class="cp">}}</span><span class="x">; } keys { &quot;designate&quot;; };</span>
+<span class="x">};</span>
+</code></pre></div>
+
+<p>在 <code>option</code> 节中，添加：</p>
+<div class="highlight"><pre><span></span><code><span class="x">options {</span>
+<span class="x">  ...</span>
+<span class="x">  allow-new-zones yes;</span>
+<span class="x">  request-ixfr no;</span>
+<span class="x">  listen-on port 53 { any; };</span>
+<span class="x">  recursion no;</span>
+<span class="x">  allow-query { 127.0.0.1; </span><span class="cp">{{</span> <span class="nv">CONTROLLER_SERVER_IP</span> <span class="cp">}}</span><span class="x">; };</span>
+<span class="x">};</span>
+</code></pre></div>
+
+<p>添加正确的权限：</p>
+<div class="highlight"><pre><span></span><code><span class="n">chown</span><span class="w"> </span><span class="n">named</span><span class="p">:</span><span class="n">named</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">rndc</span><span class="o">.</span><span class="n">key</span>
+<span class="n">chown</span><span class="w"> </span><span class="n">named</span><span class="p">:</span><span class="n">named</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">rndc</span><span class="o">.</span><span class="n">conf</span>
+<span class="n">chmod</span><span class="w"> </span><span class="mi">600</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">rndc</span><span class="o">.</span><span class="n">key</span>
+<span class="n">chown</span><span class="w"> </span><span class="o">-</span><span class="n">v</span><span class="w"> </span><span class="n">root</span><span class="p">:</span><span class="n">named</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">named</span><span class="o">.</span><span class="n">conf</span>
+<span class="n">chmod</span><span class="w"> </span><span class="n">g</span><span class="o">+</span><span class="n">w</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">named</span>
+
+<span class="c1"># systemctl restart named</span>
+<span class="c1"># setsebool named_write_master_zones 1</span>
+</code></pre></div>
+
+<p>3、把 <code>rndc.key</code> 和 <code>rndc.conf</code> 推入 OpenStack 控制节点：</p>
+<div class="highlight"><pre><span></span><code><span class="x"># scp -r /etc/rndc* </span><span class="cp">{{</span> <span class="nv">CONTROLLER_SERVER_IP</span> <span class="cp">}}</span><span class="x">:/etc/</span>
+</code></pre></div>
+
+<h3>创建 OpenStack Designate 服务和端点</h3>
+<p>输入：</p>
+<div class="highlight"><pre><span></span><code><span class="x"># openstack user create --domain default --password-prompt designate</span>
+<span class="x"># openstack role add --project services --user designate admin</span>
+<span class="x"># openstack service create --name designate --description &quot;DNS&quot; dns</span>
+
+<span class="x"># openstack endpoint create --region RegionOne dns public http://</span><span class="cp">{{</span> <span class="nv">CONTROLLER_SERVER_IP</span> <span class="cp">}}</span><span class="x">:9001/</span>
+<span class="x"># openstack endpoint create --region RegionOne dns internal http://</span><span class="cp">{{</span> <span class="nv">CONTROLLER_SERVER_IP</span> <span class="cp">}}</span><span class="x">:9001/  </span>
+<span class="x"># openstack endpoint create --region RegionOne dns admin http://</span><span class="cp">{{</span> <span class="nv">CONTROLLER_SERVER_IP</span> <span class="cp">}}</span><span class="x">:9001/</span>
+</code></pre></div>
+
+<h3>配置 Designate 服务</h3>
+<p>1、编辑 <code>/etc/designate/designate.conf</code>：</p>
+<p>在 <code>[service:api]</code> 节配置 <code>auth_strategy</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="k">[service:api]</span>
+<span class="na">listen</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">0.0.0.0:9001</span>
+<span class="na">auth_strategy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">keystone</span>
+<span class="na">api_base_uri</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">http://{{ CONTROLLER_SERVER_IP }}:9001/</span>
+<span class="na">enable_api_v2</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
+<span class="na">enabled_extensions_v2</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">quotas, reports</span>
+</code></pre></div>
+
+<p>在 <code>[keystone_authtoken]</code> 节配置下列选项：</p>
+<div class="highlight"><pre><span></span><code><span class="k">[keystone_authtoken]</span>
+<span class="na">auth_type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">password</span>
+<span class="na">username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">designate</span>
+<span class="na">password</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">rhlab123</span>
+<span class="na">project_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">service</span>
+<span class="na">project_domain_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">Default</span>
+<span class="na">user_domain_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">Default</span>
+<span class="na">www_authenticate_uri</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">http://{{ CONTROLLER_SERVER_IP }}:5000/</span>
+<span class="na">auth_url</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">http://{{ CONTROLLER_SERVER_IP }}:5000/</span><span class="w"> </span>
+</code></pre></div>
+
+<p>在 <code>[service:worker]</code> 节，启用 worker 模型：</p>
+<div class="highlight"><pre><span></span><code>enabled = True
+notify = True
+</code></pre></div>
+
+<p>在 <code>[storage:sqlalchemy]</code> 节，配置数据库访问：</p>
+<div class="highlight"><pre><span></span><code><span class="k">[storage:sqlalchemy]</span>
+<span class="na">connection</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">mysql+pymysql://designate:rhlab123@{{ CONTROLLER_SERVER_IP }}/designate</span>
+</code></pre></div>
+
+<p>填充 Designate 数据库：</p>
+<div class="highlight"><pre><span></span><code># su -s /bin/sh -c &quot;designate-manage database sync&quot; designate
+</code></pre></div>
+
+<p>2、 创建 Designate 的 <code>pools.yaml</code> 文件（包含 target 和 bind 细节）：</p>
+<p>编辑 <code>/etc/designate/pools.yaml</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="o">-</span><span class="w"> </span><span class="nx">name</span><span class="p">:</span><span class="w"> </span><span class="k">default</span>
+<span class="w">  </span><span class="err">#</span><span class="w"> </span><span class="nx">The</span><span class="w"> </span><span class="nx">name</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="nx">immutable</span><span class="p">.</span><span class="w"> </span><span class="nx">There</span><span class="w"> </span><span class="nx">will</span><span class="w"> </span><span class="nx">be</span><span class="w"> </span><span class="nx">no</span><span class="w"> </span><span class="nx">option</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">change</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">name</span><span class="w"> </span><span class="nx">after</span>
+<span class="w">  </span><span class="err">#</span><span class="w"> </span><span class="nx">creation</span><span class="w"> </span><span class="k">and</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">only</span><span class="w"> </span><span class="nx">way</span><span class="w"> </span><span class="nx">will</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">change</span><span class="w"> </span><span class="nx">it</span><span class="w"> </span><span class="nx">will</span><span class="w"> </span><span class="nx">be</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">delete</span><span class="w"> </span><span class="nx">it</span>
+<span class="w">  </span><span class="err">#</span><span class="w"> </span><span class="p">(</span><span class="k">and</span><span class="w"> </span><span class="nx">all</span><span class="w"> </span><span class="nx">zones</span><span class="w"> </span><span class="nx">associated</span><span class="w"> </span><span class="nx">with</span><span class="w"> </span><span class="nx">it</span><span class="p">)</span><span class="w"> </span><span class="k">and</span><span class="w"> </span><span class="nx">recreate</span><span class="w"> </span><span class="nx">it</span><span class="p">.</span>
+<span class="w">  </span><span class="nx">description</span><span class="p">:</span><span class="w"> </span><span class="nx">Default</span><span class="w"> </span><span class="nx">Pool</span>
+
+<span class="w">  </span><span class="nx">attributes</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span>
+
+<span class="w">  </span><span class="err">#</span><span class="w"> </span><span class="nx">List</span><span class="w"> </span><span class="nx">out</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">NS</span><span class="w"> </span><span class="nx">records</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nx">zones</span><span class="w"> </span><span class="nx">hosted</span><span class="w"> </span><span class="nx">within</span><span class="w"> </span><span class="nx">this</span><span class="w"> </span><span class="nx">pool</span>
+<span class="w">  </span><span class="err">#</span><span class="w"> </span><span class="nx">This</span><span class="w"> </span><span class="nx">should</span><span class="w"> </span><span class="nx">be</span><span class="w"> </span><span class="nx">a</span><span class="w"> </span><span class="nx">record</span><span class="w"> </span><span class="nx">that</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="nx">created</span><span class="w"> </span><span class="nx">outside</span><span class="w"> </span><span class="nx">of</span><span class="w"> </span><span class="nx">designate</span><span class="p">,</span><span class="w"> </span><span class="nx">that</span>
+<span class="w">  </span><span class="err">#</span><span class="w"> </span><span class="nx">points</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">public</span><span class="w"> </span><span class="nx">IP</span><span class="w"> </span><span class="nx">of</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">controller</span><span class="w"> </span><span class="nx">node</span><span class="p">.</span>
+<span class="w">  </span><span class="nx">ns_records</span><span class="p">:</span>
+<span class="w">    </span><span class="o">-</span><span class="w"> </span><span class="nx">hostname</span><span class="p">:</span><span class="w"> </span><span class="p">{{</span><span class="nx">Controller_FQDN</span><span class="p">}}.</span><span class="w"> </span><span class="err">#</span><span class="w"> </span><span class="nx">Thisis</span><span class="w"> </span><span class="nx">mDNS</span>
+<span class="w">      </span><span class="nx">priority</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span>
+
+<span class="w">  </span><span class="err">#</span><span class="w"> </span><span class="nx">List</span><span class="w"> </span><span class="nx">out</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">nameservers</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nx">this</span><span class="w"> </span><span class="nx">pool</span><span class="p">.</span><span class="w"> </span><span class="nx">These</span><span class="w"> </span><span class="nx">are</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">actual</span><span class="w"> </span><span class="nx">BIND</span><span class="w"> </span><span class="nx">servers</span><span class="p">.</span>
+<span class="w">  </span><span class="err">#</span><span class="w"> </span><span class="nx">We</span><span class="w"> </span><span class="nx">use</span><span class="w"> </span><span class="nx">these</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">verify</span><span class="w"> </span><span class="nx">changes</span><span class="w"> </span><span class="nx">have</span><span class="w"> </span><span class="nx">propagated</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">all</span><span class="w"> </span><span class="nx">nameservers</span><span class="p">.</span>
+<span class="w">  </span><span class="nx">nameservers</span><span class="p">:</span>
+<span class="w">    </span><span class="o">-</span><span class="w"> </span><span class="nx">host</span><span class="p">:</span><span class="w"> </span><span class="p">{{</span><span class="w"> </span><span class="nx">DNS_SERVER_IP</span><span class="w"> </span><span class="p">}}</span>
+<span class="w">      </span><span class="nx">port</span><span class="p">:</span><span class="w"> </span><span class="mi">53</span>
+
+<span class="w">  </span><span class="err">#</span><span class="w"> </span><span class="nx">List</span><span class="w"> </span><span class="nx">out</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">targets</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nx">this</span><span class="w"> </span><span class="nx">pool</span><span class="p">.</span><span class="w"> </span><span class="nx">For</span><span class="w"> </span><span class="nx">BIND</span><span class="w"> </span><span class="nx">there</span><span class="w"> </span><span class="nx">will</span><span class="w"> </span><span class="nx">be</span><span class="w"> </span><span class="nx">one</span>
+<span class="w">  </span><span class="err">#</span><span class="w"> </span><span class="nx">entry</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nx">each</span><span class="w"> </span><span class="nx">BIND</span><span class="w"> </span><span class="nx">server</span><span class="p">,</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nx">we</span><span class="w"> </span><span class="nx">have</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">run</span><span class="w"> </span><span class="nx">rndc</span><span class="w"> </span><span class="nx">command</span><span class="w"> </span><span class="nx">on</span><span class="w"> </span><span class="nx">each</span><span class="w"> </span><span class="nx">server</span>
+<span class="w">  </span><span class="nx">targets</span><span class="p">:</span>
+<span class="w">    </span><span class="o">-</span><span class="w"> </span><span class="k">type</span><span class="p">:</span><span class="w"> </span><span class="nx">bind9</span>
+<span class="w">      </span><span class="nx">description</span><span class="p">:</span><span class="w"> </span><span class="nx">BIND9</span><span class="w"> </span><span class="nx">Server</span><span class="w"> </span><span class="mi">1</span>
+
+<span class="w">      </span><span class="err">#</span><span class="w"> </span><span class="nx">List</span><span class="w"> </span><span class="nx">out</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">designate</span><span class="o">-</span><span class="nx">mdns</span><span class="w"> </span><span class="nx">servers</span><span class="w"> </span><span class="nx">from</span><span class="w"> </span><span class="nx">which</span><span class="w"> </span><span class="nx">BIND</span><span class="w"> </span><span class="nx">servers</span><span class="w"> </span><span class="nx">should</span>
+<span class="w">      </span><span class="err">#</span><span class="w"> </span><span class="nx">request</span><span class="w"> </span><span class="nx">zone</span><span class="w"> </span><span class="nx">transfers</span><span class="w"> </span><span class="p">(</span><span class="nx">AXFRs</span><span class="p">)</span><span class="w"> </span><span class="nx">from</span><span class="p">.</span>
+<span class="w">      </span><span class="err">#</span><span class="w"> </span><span class="nx">This</span><span class="w"> </span><span class="nx">should</span><span class="w"> </span><span class="nx">be</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">IP</span><span class="w"> </span><span class="nx">of</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">controller</span><span class="w"> </span><span class="nx">node</span><span class="p">.</span>
+<span class="w">      </span><span class="err">#</span><span class="w"> </span><span class="nx">If</span><span class="w"> </span><span class="nx">you</span><span class="w"> </span><span class="nx">have</span><span class="w"> </span><span class="nx">multiple</span><span class="w"> </span><span class="nx">controllers</span><span class="w"> </span><span class="nx">you</span><span class="w"> </span><span class="nx">can</span><span class="w"> </span><span class="nx">add</span><span class="w"> </span><span class="nx">multiple</span><span class="w"> </span><span class="nx">masters</span>
+<span class="w">      </span><span class="err">#</span><span class="w"> </span><span class="nx">by</span><span class="w"> </span><span class="nx">running</span><span class="w"> </span><span class="nx">designate</span><span class="o">-</span><span class="nx">mdns</span><span class="w"> </span><span class="nx">on</span><span class="w"> </span><span class="nx">them</span><span class="p">,</span><span class="w"> </span><span class="k">and</span><span class="w"> </span><span class="nx">adding</span><span class="w"> </span><span class="nx">them</span><span class="w"> </span><span class="nx">here</span><span class="p">.</span>
+<span class="w">      </span><span class="nx">masters</span><span class="p">:</span>
+<span class="w">        </span><span class="o">-</span><span class="w"> </span><span class="nx">host</span><span class="p">:</span><span class="w"> </span><span class="p">{{</span><span class="w"> </span><span class="nx">CONTROLLER_SERVER_IP</span><span class="w"> </span><span class="p">}}</span>
+<span class="w">          </span><span class="nx">port</span><span class="p">:</span><span class="w"> </span><span class="mi">5354</span>
+
+<span class="w">      </span><span class="err">#</span><span class="w"> </span><span class="nx">BIND</span><span class="w"> </span><span class="nx">Configuration</span><span class="w"> </span><span class="nx">options</span>
+<span class="w">      </span><span class="nx">options</span><span class="p">:</span>
+<span class="w">        </span><span class="nx">host</span><span class="p">:</span><span class="w"> </span><span class="p">{{</span><span class="w"> </span><span class="nx">DNS_SERVER_IP</span><span class="w"> </span><span class="p">}}</span>
+<span class="w">        </span><span class="nx">port</span><span class="p">:</span><span class="w"> </span><span class="mi">53</span>
+<span class="w">        </span><span class="nx">rndc_host</span><span class="p">:</span><span class="w"> </span><span class="p">{{</span><span class="w"> </span><span class="nx">DNS_SERVER_IP</span><span class="w"> </span><span class="p">}}</span>
+<span class="w">        </span><span class="nx">rndc_port</span><span class="p">:</span><span class="w"> </span><span class="mi">953</span>
+<span class="w">        </span><span class="nx">rndc_key_file</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="nx">etc</span><span class="o">/</span><span class="nx">rndc</span><span class="p">.</span><span class="nx">key</span>
+<span class="w">        </span><span class="nx">rndc_config_file</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="nx">etc</span><span class="o">/</span><span class="nx">rndc</span><span class="p">.</span><span class="nx">conf</span>
+</code></pre></div>
+
+<p>填充 Designate 池：</p>
+<div class="highlight"><pre><span></span><code>su -s /bin/sh -c &quot;designate-manage pool update&quot; designate
+</code></pre></div>
+
+<p>3、启动 Designate 中心和 API 服务：</p>
+<div class="highlight"><pre><span></span><code>systemctl enable --now designate-central designate-api
+</code></pre></div>
+
+<p>4、验证 Designate 服务运行：</p>
+<div class="highlight"><pre><span></span><code><span class="c"># openstack dns service list</span>
+
+<span class="nb">+--------------+--------+-------+--------------+</span>
+<span class="c">| service_name | status | stats | capabilities |</span>
+<span class="nb">+--------------+--------+-------+--------------+</span>
+<span class="c">| central      | UP     | </span><span class="nb">-</span><span class="c">     | </span><span class="nb">-</span><span class="c">            |</span>
+<span class="c">| api          | UP     | </span><span class="nb">-</span><span class="c">     | </span><span class="nb">-</span><span class="c">            |</span>
+<span class="c">| mdns         | UP     | </span><span class="nb">-</span><span class="c">     | </span><span class="nb">-</span><span class="c">            |</span>
+<span class="c">| worker       | UP     | </span><span class="nb">-</span><span class="c">     | </span><span class="nb">-</span><span class="c">            |</span>
+<span class="c">| producer     | UP     | </span><span class="nb">-</span><span class="c">     | </span><span class="nb">-</span><span class="c">            |</span>
+<span class="nb">+--------------+--------+-------+--------------+</span>
+</code></pre></div>
+
+<h3>用外部 DNS 配置 OpenStack Neutron</h3>
+<p>1、为 Designate 服务配置 iptables：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> iptables -I INPUT -p tcp -m multiport --dports 9001 -m comment --comment &quot;designate incoming&quot; -j ACCEPT
+
+<span class="gh">#</span> iptables -I INPUT -p tcp -m multiport --dports 5354 -m comment --comment &quot;Designate mdns incoming&quot; -j ACCEPT
+
+<span class="gh">#</span> iptables -I INPUT -p tcp -m multiport --dports 53 -m comment --comment &quot;bind incoming&quot; -j ACCEPT
+
+<span class="gh">#</span> iptables -I INPUT -p udp -m multiport --dports 53 -m comment --comment &quot;bind/powerdns incoming&quot; -j ACCEPT
+
+<span class="gh">#</span> iptables -I INPUT -p tcp -m multiport --dports 953 -m comment --comment &quot;rndc incoming - bind only&quot; -j ACCEPT
+
+<span class="gh">#</span> service iptables save; service iptables restart
+<span class="gh">#</span> setsebool named_write_master_zones 1
+</code></pre></div>
+
+<p>2、 编辑 <code>/etc/neutron/neutron.conf</code> 的 <code>[default]</code> 节：</p>
+<div class="highlight"><pre><span></span><code>external_dns_driver = designate
+</code></pre></div>
+
+<p>3、 在 <code>/etc/neutron/neutron.conf</code> 中添加 <code>[designate]</code> 节：</p>
+<div class="highlight"><pre><span></span><code><span class="k">[designate]</span>
+<span class="na">url</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">http://{{ CONTROLLER_SERVER_IP }}:9001/v2</span><span class="w"> </span><span class="c1">## This end point of designate</span>
+<span class="na">auth_type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">password</span>
+<span class="na">auth_url</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">http://{{ CONTROLLER_SERVER_IP }}:5000</span>
+<span class="na">username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">designate</span>
+<span class="na">password</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">rhlab123</span>
+<span class="na">project_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">services</span>
+<span class="na">project_domain_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">Default</span>
+<span class="na">user_domain_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">Default</span>
+<span class="na">allow_reverse_dns_lookup</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
+<span class="na">ipv4_ptr_zone_prefix_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">24</span>
+<span class="na">ipv6_ptr_zone_prefix_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">116</span><span class="w"> </span>
+</code></pre></div>
+
+<p>4、编辑 <code>neutron.conf</code> 的 <code>dns_domain</code>：</p>
+<div class="highlight"><pre><span></span><code>dns_domain = rhlab.dev.
+</code></pre></div>
+
+<p>重启：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> systemctl restart neutron-*
+</code></pre></div>
+
+<p>5、在 <code>/etc/neutron/plugins/ml2/ml2_conf.ini</code> 中的组成层 2（ML2）中添加 <code>dns</code>：</p>
+<div class="highlight"><pre><span></span><code>extension_drivers=port_security,qos,dns
+</code></pre></div>
+
+<p>6、在 Designate 中添加区域：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="n">openstack</span><span class="w"> </span><span class="k">zone</span><span class="w"> </span><span class="k">create</span><span class="w"> </span><span class="err">–</span><span class="n">email</span><span class="o">=</span><span class="k">admin</span><span class="nv">@rhlab</span><span class="p">.</span><span class="n">dev</span><span class="w"> </span><span class="n">rhlab</span><span class="p">.</span><span class="n">dev</span><span class="p">.</span>
+</code></pre></div>
+
+<p>在 <code>rhlab.dev</code> 区域中添加记录：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="nx">openstack</span><span class="w"> </span><span class="nx">recordset</span><span class="w"> </span><span class="nx">create</span><span class="w"> </span><span class="o">--</span><span class="nx">record</span><span class="w"> </span><span class="err">&#39;</span><span class="m m-Double">192.168.1.230</span><span class="err">&#39;</span><span class="w"> </span><span class="o">--</span><span class="k">type</span><span class="w"> </span><span class="nx">A</span><span class="w"> </span><span class="nx">rhlab</span><span class="p">.</span><span class="nx">dev</span><span class="p">.</span><span class="w"> </span><span class="nx">Test</span>
+</code></pre></div>
+
+<p>Designate 现在就安装和配置好了。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

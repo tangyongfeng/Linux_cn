@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 Python 创建你自己的 Shell（下）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Supasate Choochaisri 在上篇中，我们已经创建了一个 shell 主循环、切分了命令输入，以及通过 fork 和 exec 执行命令。在这部分，我们将会解决剩下 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2016/07/shi-yong-python-chuang-jian-ni-zi-ji-de-shellxia.html" rel="bookmark"
+           title="Permalink to 使用 Python 创建你自己的 Shell（下）">使用 Python 创建你自己的 Shell（下）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2016-07-29T10:36:00+02:00">
+                Published: Fri 29 July 2016
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Supasate Choochaisri</p>
+<p>在<a href="/article-7624-1.html">上篇</a>中，我们已经创建了一个 shell 主循环、切分了命令输入，以及通过 <code>fork</code> 和 <code>exec</code> 执行命令。在这部分，我们将会解决剩下的问题。首先，<code>cd test_dir2</code> 命令无法修改我们的当前目录。其次，我们仍无法优雅地从 shell 中退出。</p>
+<p><img alt="" src="/data/attachment/album/201607/28/114315mo436pl4wtna46wn.jpg"></p>
+<h3>步骤 4：内置命令</h3>
+<p>“<code>cd test_dir2</code> 无法修改我们的当前目录” 这句话是对的，但在某种意义上也是错的。在执行完该命令之后，我们仍然处在同一目录，从这个意义上讲，它是对的。然而，目录实际上已经被修改，只不过它是在子进程中被修改。</p>
+<p>还记得我们分叉（fork）了一个子进程，然后执行命令，执行命令的过程没有发生在父进程上。结果是我们只是改变了子进程的当前目录，而不是父进程的目录。</p>
+<p>然后子进程退出，而父进程在原封不动的目录下继续运行。</p>
+<p>因此，这类与 shell 自己相关的命令必须是内置命令。它必须在 shell 进程中执行而不是在分叉中（forking）。</p>
+<h4>cd</h4>
+<p>让我们从 <code>cd</code> 命令开始。</p>
+<p>我们首先创建一个 <code>builtins</code> 目录。每一个内置命令都会被放进这个目录中。</p>
+<div class="highlight"><pre><span></span><code>yosh_project
+|-- yosh
+   |-- builtins
+   |   |-- __init__.py
+   |   |-- cd.py
+   |-- __init__.py
+   |-- shell.py
+</code></pre></div>
+
+<p>在 <code>cd.py</code> 中，我们通过使用系统调用 <code>os.chdir</code> 实现自己的 <code>cd</code> 命令。</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">from</span> <span class="nn">yosh.constants</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="k">def</span> <span class="nf">cd</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">chdir</span><span class="p">(</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+    <span class="k">return</span> <span class="n">SHELL_STATUS_RUN</span>
+</code></pre></div>
+
+<p>注意，我们会从内置函数返回 shell 的运行状态。所以，为了能够在项目中继续使用常量，我们将它们移至 <code>yosh/constants.py</code>。</p>
+<div class="highlight"><pre><span></span><code><span class="n">yosh_project</span>
+<span class="o">|--</span><span class="w"> </span><span class="n">yosh</span>
+<span class="w">   </span><span class="o">|--</span><span class="w"> </span><span class="n">builtins</span>
+<span class="w">   </span><span class="o">|</span><span class="w">   </span><span class="o">|--</span><span class="w"> </span><span class="n">__init__</span><span class="o">.</span><span class="n">py</span>
+<span class="w">   </span><span class="o">|</span><span class="w">   </span><span class="o">|--</span><span class="w"> </span><span class="n">cd</span><span class="o">.</span><span class="n">py</span>
+<span class="w">   </span><span class="o">|--</span><span class="w"> </span><span class="n">__init__</span><span class="o">.</span><span class="n">py</span>
+<span class="w">   </span><span class="o">|--</span><span class="w"> </span><span class="n">constants</span><span class="o">.</span><span class="n">py</span>
+<span class="w">   </span><span class="o">|--</span><span class="w"> </span><span class="n">shell</span><span class="o">.</span><span class="n">py</span>
+</code></pre></div>
+
+<p>在 <code>constants.py</code> 中，我们将状态常量都放在这里。</p>
+<div class="highlight"><pre><span></span><code>SHELL_STATUS_STOP = 0
+SHELL_STATUS_RUN = 1
+</code></pre></div>
+
+<p>现在，我们的内置 <code>cd</code> 已经准备好了。让我们修改 <code>shell.py</code> 来处理这些内置函数。</p>
+<div class="highlight"><pre><span></span><code><span class="o">...</span>
+<span class="c1">### 导入常量</span>
+<span class="kn">from</span> <span class="nn">yosh.constants</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="c1">### 使用哈希映射来存储内建的函数名及其引用</span>
+<span class="n">built_in_cmds</span> <span class="o">=</span> <span class="p">{}</span>
+
+<span class="k">def</span> <span class="nf">tokenize</span><span class="p">(</span><span class="n">string</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">shlex</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">string</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">execute</span><span class="p">(</span><span class="n">cmd_tokens</span><span class="p">):</span>
+    <span class="c1">### 从元组中分拆命令名称与参数</span>
+    <span class="n">cmd_name</span> <span class="o">=</span> <span class="n">cmd_tokens</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">cmd_args</span> <span class="o">=</span> <span class="n">cmd_tokens</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+
+    <span class="c1">### 如果该命令是一个内建命令，使用参数调用该函数</span>
+    <span class="k">if</span> <span class="n">cmd_name</span> <span class="ow">in</span> <span class="n">built_in_cmds</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">built_in_cmds</span><span class="p">[</span><span class="n">cmd_name</span><span class="p">](</span><span class="n">cmd_args</span><span class="p">)</span>
+
+    <span class="o">...</span>
+</code></pre></div>
+
+<p>我们使用一个 python 字典变量 <code>built_in_cmds</code> 作为<ruby> 哈希映射 <rp>  （ </rp> <rt>  hash map </rt> <rp>  ） </rp></ruby>，以存储我们的内置函数。我们在 <code>execute</code> 函数中提取命令的名字和参数。如果该命令在我们的哈希映射中，则调用对应的内置函数。</p>
+<p>（提示：<code>built_in_cmds[cmd_name]</code> 返回能直接使用参数调用的函数引用。)</p>
+<p>我们差不多准备好使用内置的 <code>cd</code> 函数了。最后一步是将 <code>cd</code> 函数添加到 <code>built_in_cmds</code> 映射中。</p>
+<div class="highlight"><pre><span></span><code><span class="o">...</span>
+<span class="c1">### 导入所有内建函数引用</span>
+<span class="kn">from</span> <span class="nn">yosh.builtins</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="o">...</span>
+
+<span class="c1">### 注册内建函数到内建命令的哈希映射中</span>
+<span class="k">def</span> <span class="nf">register_command</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">func</span><span class="p">):</span>
+    <span class="n">built_in_cmds</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">func</span>
+
+
+<span class="c1">### 在此注册所有的内建命令</span>
+<span class="k">def</span> <span class="nf">init</span><span class="p">():</span>
+    <span class="n">register_command</span><span class="p">(</span><span class="s2">&quot;cd&quot;</span><span class="p">,</span> <span class="n">cd</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="c1">###在开始主循环之前初始化 shell</span>
+    <span class="n">init</span><span class="p">()</span>
+    <span class="n">shell_loop</span><span class="p">()</span>
+</code></pre></div>
+
+<p>我们定义了 <code>register_command</code> 函数，以添加一个内置函数到我们内置的命令哈希映射。接着，我们定义 <code>init</code> 函数并且在这里注册内置的 <code>cd</code> 函数。</p>
+<p>注意这行 <code>register_command("cd", cd)</code> 。第一个参数为命令的名字。第二个参数为一个函数引用。为了能够让第二个参数 <code>cd</code> 引用到 <code>yosh/builtins/cd.py</code> 中的 <code>cd</code> 函数引用，我们必须将以下这行代码放在 <code>yosh/builtins/__init__.py</code> 文件中。</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">yosh.builtins.cd</span> <span class="kn">import</span> <span class="o">*</span>
+</code></pre></div>
+
+<p>因此，在 <code>yosh/shell.py</code> 中，当我们从 <code>yosh.builtins</code> 导入 <code>*</code> 时，我们可以得到已经通过 <code>yosh.builtins</code> 导入的 <code>cd</code> 函数引用。</p>
+<p>我们已经准备好了代码。让我们尝试在 <code>yosh</code> 同级目录下以模块形式运行我们的 shell，<code>python -m yosh.shell</code>。</p>
+<p>现在，<code>cd</code> 命令可以正确修改我们的 shell 目录了，同时非内置命令仍然可以工作。非常好！</p>
+<h4>exit</h4>
+<p>最后一块终于来了：优雅地退出。</p>
+<p>我们需要一个可以修改 shell 状态为 <code>SHELL_STATUS_STOP</code> 的函数。这样，shell 循环可以自然地结束，shell 将到达终点而退出。</p>
+<p>和 <code>cd</code> 一样，如果我们在子进程中分叉并执行 <code>exit</code> 函数，其对父进程是不起作用的。因此，<code>exit</code> 函数需要成为一个 shell 内置函数。</p>
+<p>让我们从这开始：在 <code>builtins</code> 目录下创建一个名为 <code>exit.py</code> 的新文件。</p>
+<div class="highlight"><pre><span></span><code><span class="n">yosh_project</span>
+<span class="o">|--</span><span class="w"> </span><span class="n">yosh</span>
+<span class="w">   </span><span class="o">|--</span><span class="w"> </span><span class="n">builtins</span>
+<span class="w">   </span><span class="o">|</span><span class="w">   </span><span class="o">|--</span><span class="w"> </span><span class="n">__init__</span><span class="o">.</span><span class="n">py</span>
+<span class="w">   </span><span class="o">|</span><span class="w">   </span><span class="o">|--</span><span class="w"> </span><span class="n">cd</span><span class="o">.</span><span class="n">py</span>
+<span class="w">   </span><span class="o">|</span><span class="w">   </span><span class="o">|--</span><span class="w"> </span><span class="n">exit</span><span class="o">.</span><span class="n">py</span>
+<span class="w">   </span><span class="o">|--</span><span class="w"> </span><span class="n">__init__</span><span class="o">.</span><span class="n">py</span>
+<span class="w">   </span><span class="o">|--</span><span class="w"> </span><span class="n">constants</span><span class="o">.</span><span class="n">py</span>
+<span class="w">   </span><span class="o">|--</span><span class="w"> </span><span class="n">shell</span><span class="o">.</span><span class="n">py</span>
+</code></pre></div>
+
+<p><code>exit.py</code> 定义了一个 <code>exit</code> 函数，该函数仅仅返回一个可以退出主循环的状态。</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">yosh.constants</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="k">def</span> <span class="nf">exit</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">SHELL_STATUS_STOP</span>
+</code></pre></div>
+
+<p>然后，我们导入位于 <code>yosh/builtins/__init__.py</code> 文件的 <code>exit</code> 函数引用。</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">yosh.builtins.cd</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">yosh.builtins.exit</span> <span class="kn">import</span> <span class="o">*</span>
+</code></pre></div>
+
+<p>最后，我们在 <code>shell.py</code> 中的 <code>init()</code> 函数注册 <code>exit</code> 命令。</p>
+<div class="highlight"><pre><span></span><code><span class="p">...</span>
+
+<span class="p">###</span><span class="w"> </span><span class="err">在此注册所有的内建命令</span>
+<span class="n">def</span><span class="w"> </span><span class="n">init</span><span class="p">()</span><span class="o">:</span>
+<span class="w">    </span><span class="n">register_command</span><span class="p">(</span><span class="s">&quot;cd&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">cd</span><span class="p">)</span>
+<span class="w">    </span><span class="n">register_command</span><span class="p">(</span><span class="s">&quot;exit&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">exit</span><span class="p">)</span>
+
+<span class="p">...</span>
+</code></pre></div>
+
+<p>到此为止！</p>
+<p>尝试执行 <code>python -m yosh.shell</code>。现在你可以输入 <code>exit</code> 优雅地退出程序了。</p>
+<h3>最后的想法</h3>
+<p>我希望你能像我一样享受创建 <code>yosh</code> （<strong>y</strong>our <strong>o</strong>wn <strong>sh</strong>ell）的过程。但我的 <code>yosh</code> 版本仍处于早期阶段。我没有处理一些会使 shell 崩溃的极端状况。还有很多我没有覆盖的内置命令。为了提高性能，一些非内置命令也可以实现为内置命令（避免新进程创建时间）。同时，大量的功能还没有实现（请看 <a href="http://tldp.org/LDP/Bash-Beginners-Guide/html/x7243.html">公共特性</a> 和 <a href="http://www.tldp.org/LDP/intro-linux/html/x12249.html">不同特性</a>）。</p>
+<p>我已经在 <a href="https://github.com/supasate/yosh">https://github.com/supasate/yosh</a> 中提供了源代码。请随意 fork 和尝试。</p>
+<p>现在该是创建你真正自己拥有的 Shell 的时候了。</p>
+<p>Happy Coding!</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

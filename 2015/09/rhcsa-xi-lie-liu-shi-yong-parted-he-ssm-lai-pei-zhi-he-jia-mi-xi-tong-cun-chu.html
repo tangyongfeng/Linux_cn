@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>'RHCSA 系列（六）: 使用 Parted 和 SSM 来配置和加密系统存储'</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Gabriel Cánepa 在本篇文章中，我们将讨论在 RHEL 7 中如何使用传统的工具来设置和配置本地系统存储，并介绍系统存储管理器（也 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/09/rhcsa-xi-lie-liu-shi-yong-parted-he-ssm-lai-pei-zhi-he-jia-mi-xi-tong-cun-chu.html" rel="bookmark"
+           title="Permalink to 'RHCSA 系列（六）: 使用 Parted 和 SSM 来配置和加密系统存储'">'RHCSA 系列（六）: 使用 Parted 和 SSM 来配置和加密系统存储'</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-09-21T08:23:00+02:00">
+                Published: Mon 21 September 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Gabriel Cánepa</p>
+<p>在本篇文章中，我们将讨论在 RHEL 7 中如何使用传统的工具来设置和配置本地系统存储，并介绍系统存储管理器（也称为 SSM），它将极大地简化上面的任务。</p>
+<p><img alt="配置和加密系统存储" src="/data/attachment/album/201509/20/222535dftss9vstvvvz9hv.png"></p>
+<p><em>RHCSA: 配置和加密系统存储 – Part 6</em></p>
+<p>请注意，我们将在这篇文章中展开这个话题，但由于该话题的宽泛性，我们将在下一期中继续介绍有关它的描述和使用。</p>
+<h3>在 RHEL 7 中创建和修改分区</h3>
+<p>在 RHEL 7 中， parted 是默认的用来处理分区的程序，且它允许你：</p>
+<ul>
+<li>展示当前的分区表</li>
+<li>操纵（扩大或缩小分区的大小）现有的分区</li>
+<li>利用空余的磁盘空间或额外的物理存储设备来创建分区</li>
+</ul>
+<p>强烈建议你在试图增加一个新的分区或对一个现有分区进行更改前，你应当确保该设备上没有任何一个分区正在使用（<code>umount /dev/分区</code>），且假如你正使用设备的一部分来作为 swap 分区，在进行上面的操作期间，你需要将它禁用（<code>swapoff -v /dev/分区</code>） 。</p>
+<p>实施上面的操作的最简单的方法是使用一个安装介质例如一个 RHEL 7 的 DVD 或 USB 安装盘以急救模式启动 RHEL（<code>Troubleshooting</code> → <code>Rescue a Red Hat Enterprise Linux system</code>），然后当让你选择一个选项来挂载现有的 Linux 安装时，选择“跳过”这个选项，接着你将看到一个命令行提示符，在其中你可以像下图显示的那样开始键入与在一个未被使用的物理设备上创建一个正常的分区时所用的相同的命令。</p>
+<p><img alt="RHEL 7 急救模式" src="/data/attachment/album/201509/20/222536ga4rzdrd44clekut.png"></p>
+<p><em>RHEL 7 急救模式</em></p>
+<p>要启动 parted，只需键入：</p>
+<div class="highlight"><pre><span></span><code># parted /dev/sdb
+</code></pre></div>
+
+<p>其中 <code>/dev/sdb</code> 是你将要创建新分区所在的设备；然后键入 <code>print</code> 来显示当前设备的分区表：</p>
+<p><img alt="创建新的分区" src="/data/attachment/album/201509/20/222537fcm60znwl4ezbep0.png"></p>
+<p><em>创建新的分区</em></p>
+<p>正如你所看到的那样，在这个例子中，我们正在使用一个 5 GB 的虚拟驱动器。现在我们将要创建一个 4 GB 的主分区，然后将它格式化为 xfs 文件系统，它是 RHEL 7 中默认的文件系统。</p>
+<p>你可以从一系列的文件系统中进行选择。你将需要使用 <code>mkpart</code> 来手动地创建分区，接着和平常一样，用 <code>mkfs.类型</code> 来对分区进行格式化，因为 <code>mkpart</code> 并不支持许多现代的文件系统的到即开即用。</p>
+<p>在下面的例子中，我们将为设备设定一个标记，然后在 <code>/dev/sdb</code> 上创建一个主分区 <code>(p)</code>，它从设备的 0% 开始，并在 4000MB(4 GB) 处结束。</p>
+<p><img alt="在 Linux 中设定分区名称" src="/data/attachment/album/201509/20/222537umuaaa11qas9cams.png"></p>
+<p><em>标记分区的名称</em></p>
+<p>接下来，我们将把分区格式化为 xfs 文件系统，然后再次打印出分区表，以此来确保更改已被应用。</p>
+<div class="highlight"><pre><span></span><code># mkfs.xfs /dev/sdb1
+# parted /dev/sdb print
+</code></pre></div>
+
+<p><img alt="在 Linux 中格式化分区" src="/data/attachment/album/201509/20/222538w4y4dyy4cbu66dn4.png"></p>
+<p><em>格式化分区为 XFS 文件系统</em></p>
+<p>对于旧一点的文件系统，在 parted 中你可以使用 <code>resize</code> 命令来改变分区的大小。不幸的是，这只适用于 ext2, fat16, fat32, hfs, linux-swap, 和 reiserfs （若 libreiserfs 已被安装）。</p>
+<p>因此，改变分区大小的唯一方式是删除它然后再创建它（所以，确保你对你的数据做了完整的备份！）。毫无疑问，在 RHEL 7 中默认的分区方案是基于 LVM 的。</p>
+<p>使用 parted 来移除一个分区，可以用：</p>
+<div class="highlight"><pre><span></span><code># parted /dev/sdb print
+# parted /dev/sdb rm 1
+</code></pre></div>
+
+<p><img alt="在 Linux 中移除分区" src="/data/attachment/album/201509/20/222539sdyyp6axrx06rrjv.png"></p>
+<p><em>移除或删除分区</em></p>
+<h3>逻辑卷管理(LVM)</h3>
+<p>一旦一个磁盘被分好了分区，再去更改分区的大小就是一件困难或冒险的事了。基于这个原因，假如我们计划在我们的系统上对分区的大小进行更改，我们应当考虑使用 LVM 的可能性，而不是使用传统的分区系统。这样多个物理设备可以组成一个逻辑组，以此来存放任意数目的逻辑卷，而逻辑卷的增大或减少不会带来任何麻烦。</p>
+<p>简单来说，你会发现下面的示意图对记住 LVM 的基础架构或许有用。</p>
+<p><img alt="LVM 的基本架构" src="/data/attachment/album/201509/20/222541fqvz6iodih5u6vzv.png"></p>
+<p><em>LVM 的基本架构</em></p>
+<h4>创建物理卷，卷组和逻辑卷</h4>
+<p>遵循下面的步骤是为了使用传统的卷管理工具来设置 LVM。由于你可以通过阅读这个网站上的 LVM 系列来扩展这个话题，我将只是概要的介绍设置 LVM 的基本步骤，然后与使用 SSM 来实现相同功能做个比较。</p>
+<p><strong>注</strong>: 我们将使用整个磁盘 <code>/dev/sdb</code> 和 <code>/dev/sdc</code> 来作为物理卷（PV），但是否执行相同的操作完全取决于你。</p>
+<p><strong>1. 使用 /dev/sdb 和 /dev/sdc 中 100% 的可用磁盘空间来创建分区 <code>/dev/sdb1</code> 和 <code>/dev/sdc1</code>：</strong></p>
+<div class="highlight"><pre><span></span><code># parted /dev/sdb print
+# parted /dev/sdc print
+</code></pre></div>
+
+<p><img alt="创建新分区" src="/data/attachment/album/201509/20/222542csrwq4trr3el34ls.png"></p>
+<p><em>创建新分区</em></p>
+<p><strong>2. 分别在 /dev/sdb1 和 /dev/sdc1 上共创建 2 个物理卷。</strong></p>
+<div class="highlight"><pre><span></span><code># pvcreate /dev/sdb1
+# pvcreate /dev/sdc1
+</code></pre></div>
+
+<p><img alt="创建两个物理卷" src="/data/attachment/album/201509/20/222543h899swmaa0eawses.png"></p>
+<p><em>创建两个物理卷</em></p>
+<p>记住，你可以使用 pvdisplay /dev/sd{b,c}1 来显示有关新建的物理卷的信息。</p>
+<p><strong>3. 在上一步中创建的物理卷之上创建一个卷组（VG）：</strong></p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> vgcreate tecmint_vg /dev/sd{b,c}1
+</code></pre></div>
+
+<p><img alt="在 Linux 中创建卷组" src="/data/attachment/album/201509/20/222543t5a5ak905jvati7j.png"></p>
+<p><em>创建卷组</em></p>
+<p>记住，你可使用 vgdisplay tecmint_vg 来显示有关新建的卷组的信息。</p>
+<p><strong>4. 像下面那样，在卷组 tecmint_vg 之上创建 3 个逻辑卷（LV）：</strong></p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> lvcreate -L 3G -n vol01_docs tecmint_vg       [vol01_docs → 3 GB]
+<span class="gh">#</span> lvcreate -L 1G -n vol02_logs tecmint_vg       [vol02_logs → 1 GB]
+<span class="gh">#</span> lvcreate -l 100%FREE -n vol03_homes tecmint_vg    [vol03_homes → 6 GB]
+</code></pre></div>
+
+<p><img alt="在 LVM 中创建逻辑卷" src="/data/attachment/album/201509/20/222544d48cggn8mij969my.png"></p>
+<p><em>创建逻辑卷</em></p>
+<p>记住，你可以使用 lvdisplay tecmint<em>vg 来显示有关在 tecmint</em>vg 之上新建的逻辑卷的信息。</p>
+<p><strong>5. 格式化每个逻辑卷为 xfs 文件系统格式（假如你计划在以后将要缩小卷的大小，请别使用 xfs 文件系统格式！）：</strong></p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> mkfs.xfs /dev/tecmint_vg/vol01_docs
+<span class="gh">#</span> mkfs.xfs /dev/tecmint_vg/vol02_logs
+<span class="gh">#</span> mkfs.xfs /dev/tecmint_vg/vol03_homes
+</code></pre></div>
+
+<p><strong>6. 最后，挂载它们：</strong></p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> mount /dev/tecmint_vg/vol01_docs /mnt/docs
+<span class="gh">#</span> mount /dev/tecmint_vg/vol02_logs /mnt/logs
+<span class="gh">#</span> mount /dev/tecmint_vg/vol03_homes /mnt/homes
+</code></pre></div>
+
+<h4>移除逻辑卷，卷组和物理卷</h4>
+<p><strong>7.现在我们将进行与刚才相反的操作并移除逻辑卷、卷组和物理卷：</strong></p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> lvremove /dev/tecmint_vg/vol01_docs
+<span class="gh">#</span> lvremove /dev/tecmint_vg/vol02_logs
+<span class="gh">#</span> lvremove /dev/tecmint_vg/vol03_homes
+<span class="gh">#</span> vgremove /dev/tecmint_vg
+<span class="gh">#</span> pvremove /dev/sd{b,c}1
+</code></pre></div>
+
+<p><strong>8. 现在，让我们来安装 SSM，我们将看到如何只用一步就完成上面所有的操作！</strong></p>
+<div class="highlight"><pre><span></span><code># yum update &amp;&amp; yum install system-storage-manager
+</code></pre></div>
+
+<p>我们将和上面一样，使用相同的名称和大小：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="nx">ssm</span><span class="w"> </span><span class="nx">create</span><span class="w"> </span><span class="o">-</span><span class="nx">s</span><span class="w"> </span><span class="mi">3</span><span class="nx">G</span><span class="w"> </span><span class="o">-</span><span class="nx">n</span><span class="w"> </span><span class="nx">vol01_docs</span><span class="w"> </span><span class="o">-</span><span class="nx">p</span><span class="w"> </span><span class="nx">tecmint_vg</span><span class="w"> </span><span class="o">--</span><span class="nx">fstype</span><span class="w"> </span><span class="nx">ext4</span><span class="w"> </span><span class="o">/</span><span class="nx">mnt</span><span class="o">/</span><span class="nx">docs</span><span class="w"> </span><span class="o">/</span><span class="nx">dev</span><span class="o">/</span><span class="nx">sd</span><span class="p">{</span><span class="nx">b</span><span class="p">,</span><span class="nx">c</span><span class="p">}</span><span class="mi">1</span>
+<span class="err">#</span><span class="w"> </span><span class="nx">ssm</span><span class="w"> </span><span class="nx">create</span><span class="w"> </span><span class="o">-</span><span class="nx">s</span><span class="w"> </span><span class="mi">1</span><span class="nx">G</span><span class="w"> </span><span class="o">-</span><span class="nx">n</span><span class="w"> </span><span class="nx">vol02_logs</span><span class="w"> </span><span class="o">-</span><span class="nx">p</span><span class="w"> </span><span class="nx">tecmint_vg</span><span class="w"> </span><span class="o">--</span><span class="nx">fstype</span><span class="w"> </span><span class="nx">ext4</span><span class="w"> </span><span class="o">/</span><span class="nx">mnt</span><span class="o">/</span><span class="nx">logs</span><span class="w"> </span><span class="o">/</span><span class="nx">dev</span><span class="o">/</span><span class="nx">sd</span><span class="p">{</span><span class="nx">b</span><span class="p">,</span><span class="nx">c</span><span class="p">}</span><span class="mi">1</span>
+<span class="err">#</span><span class="w"> </span><span class="nx">ssm</span><span class="w"> </span><span class="nx">create</span><span class="w"> </span><span class="o">-</span><span class="nx">n</span><span class="w"> </span><span class="nx">vol03_homes</span><span class="w"> </span><span class="o">-</span><span class="nx">p</span><span class="w"> </span><span class="nx">tecmint_vg</span><span class="w"> </span><span class="o">--</span><span class="nx">fstype</span><span class="w"> </span><span class="nx">ext4</span><span class="w"> </span><span class="o">/</span><span class="nx">mnt</span><span class="o">/</span><span class="nx">homes</span><span class="w"> </span><span class="o">/</span><span class="nx">dev</span><span class="o">/</span><span class="nx">sd</span><span class="p">{</span><span class="nx">b</span><span class="p">,</span><span class="nx">c</span><span class="p">}</span><span class="mi">1</span>
+</code></pre></div>
+
+<p>是的! SSM 可以让你：</p>
+<ul>
+<li>初始化块设备来作为物理卷</li>
+<li>创建一个卷组</li>
+<li>创建逻辑卷</li>
+<li>格式化逻辑卷，以及</li>
+<li>只使用一个命令来挂载它们</li>
+</ul>
+<p><strong>9. 现在，我们可以使用下面的命令来展示有关物理卷、卷组或逻辑卷的信息：</strong></p>
+<div class="highlight"><pre><span></span><code># ssm list dev
+# ssm list pool
+# ssm list vol
+</code></pre></div>
+
+<p><img alt="检查有关物理卷、卷组或逻辑卷的信息" src="/data/attachment/album/201509/20/222546da31bc7eajfma367.png"></p>
+<p><em>检查有关物理卷、卷组或逻辑卷的信息</em></p>
+<p><strong>10. 正如我们知道的那样， LVM 的一个显著的特点是可以在不停机的情况下更改（增大或缩小）逻辑卷的大小：</strong></p>
+<p>假定在 vol02<em>logs 上我们用尽了空间，而 vol03</em>homes 还留有足够的空间。我们将把 vol03<em>homes 的大小调整为 4 GB，并使用剩余的空间来扩展 vol02</em>logs：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> ssm resize -s 4G /dev/tecmint_vg/vol03_homes
+</code></pre></div>
+
+<p>再次运行 <code>ssm list pool</code>，并记录 tecmint_vg 中的剩余空间的大小：</p>
+<p><img alt="查看卷的大小" src="/data/attachment/album/201509/20/222546cuavk7dkpbzld7dd.png"></p>
+<p><em>查看卷的大小</em></p>
+<p>然后执行：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> ssm resize -s+1.99 /dev/tecmint_vg/vol02_logs
+</code></pre></div>
+
+<p><strong>注</strong>: 在 <code>-s</code> 后的加号暗示特定值应该被加到当前值上。</p>
+<p><strong>11. 使用 ssm 来移除逻辑卷和卷组也更加简单，只需使用：</strong></p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> ssm remove tecmint_vg
+</code></pre></div>
+
+<p>这个命令将返回一个提示，询问你是否确认删除卷组和它所包含的逻辑卷：</p>
+<p><img alt="移除逻辑卷和卷组" src="/data/attachment/album/201509/20/222548i31xxwxwnpnveqq8.png"></p>
+<p><em>移除逻辑卷和卷组</em></p>
+<h3>管理加密的卷</h3>
+<p>SSM 也给系统管理员提供了为新的或现存的卷加密的能力。首先，你将需要安装 cryptsetup 软件包：</p>
+<div class="highlight"><pre><span></span><code># yum update &amp;&amp; yum install cryptsetup
+</code></pre></div>
+
+<p>然后写出下面的命令来创建一个加密卷，你将被要求输入一个密码来增强安全性：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="nx">ssm</span><span class="w"> </span><span class="nx">create</span><span class="w"> </span><span class="o">-</span><span class="nx">s</span><span class="w"> </span><span class="mi">3</span><span class="nx">G</span><span class="w"> </span><span class="o">-</span><span class="nx">n</span><span class="w"> </span><span class="nx">vol01_docs</span><span class="w"> </span><span class="o">-</span><span class="nx">p</span><span class="w"> </span><span class="nx">tecmint_vg</span><span class="w"> </span><span class="o">--</span><span class="nx">fstype</span><span class="w"> </span><span class="nx">ext4</span><span class="w"> </span><span class="o">--</span><span class="nx">encrypt</span><span class="w"> </span><span class="nx">luks</span><span class="w"> </span><span class="o">/</span><span class="nx">mnt</span><span class="o">/</span><span class="nx">docs</span><span class="w"> </span><span class="o">/</span><span class="nx">dev</span><span class="o">/</span><span class="nx">sd</span><span class="p">{</span><span class="nx">b</span><span class="p">,</span><span class="nx">c</span><span class="p">}</span><span class="mi">1</span>
+<span class="err">#</span><span class="w"> </span><span class="nx">ssm</span><span class="w"> </span><span class="nx">create</span><span class="w"> </span><span class="o">-</span><span class="nx">s</span><span class="w"> </span><span class="mi">1</span><span class="nx">G</span><span class="w"> </span><span class="o">-</span><span class="nx">n</span><span class="w"> </span><span class="nx">vol02_logs</span><span class="w"> </span><span class="o">-</span><span class="nx">p</span><span class="w"> </span><span class="nx">tecmint_vg</span><span class="w"> </span><span class="o">--</span><span class="nx">fstype</span><span class="w"> </span><span class="nx">ext4</span><span class="w"> </span><span class="o">--</span><span class="nx">encrypt</span><span class="w"> </span><span class="nx">luks</span><span class="w"> </span><span class="o">/</span><span class="nx">mnt</span><span class="o">/</span><span class="nx">logs</span><span class="w"> </span><span class="o">/</span><span class="nx">dev</span><span class="o">/</span><span class="nx">sd</span><span class="p">{</span><span class="nx">b</span><span class="p">,</span><span class="nx">c</span><span class="p">}</span><span class="mi">1</span>
+<span class="err">#</span><span class="w"> </span><span class="nx">ssm</span><span class="w"> </span><span class="nx">create</span><span class="w"> </span><span class="o">-</span><span class="nx">n</span><span class="w"> </span><span class="nx">vol03_homes</span><span class="w"> </span><span class="o">-</span><span class="nx">p</span><span class="w"> </span><span class="nx">tecmint_vg</span><span class="w"> </span><span class="o">--</span><span class="nx">fstype</span><span class="w"> </span><span class="nx">ext4</span><span class="w"> </span><span class="o">--</span><span class="nx">encrypt</span><span class="w"> </span><span class="nx">luks</span><span class="w"> </span><span class="o">/</span><span class="nx">mnt</span><span class="o">/</span><span class="nx">homes</span><span class="w"> </span><span class="o">/</span><span class="nx">dev</span><span class="o">/</span><span class="nx">sd</span><span class="p">{</span><span class="nx">b</span><span class="p">,</span><span class="nx">c</span><span class="p">}</span><span class="mi">1</span>
+</code></pre></div>
+
+<p>我们的下一个任务是往 /etc/fstab 中添加条目来让这些逻辑卷在启动时可用，而不是使用设备识别编号(/dev/something)。</p>
+<p>我们将使用每个逻辑卷的 UUID （使得当我们添加其他的逻辑卷或设备后，我们的设备仍然可以被唯一的标记），而我们可以使用 blkid 应用来找到它们的 UUID：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> blkid -o value UUID /dev/tecmint_vg/vol01_docs
+<span class="gh">#</span> blkid -o value UUID /dev/tecmint_vg/vol02_logs
+<span class="gh">#</span> blkid -o value UUID /dev/tecmint_vg/vol03_homes
+</code></pre></div>
+
+<p>在我们的例子中：</p>
+<p><img alt="找到逻辑卷的 UUID" src="/data/attachment/album/201509/20/222549wxmfamamqv1gaawx.png"></p>
+<p><em>找到逻辑卷的 UUID</em></p>
+<p>接着，使用下面的内容来创建 /etc/crypttab 文件(请更改 UUID 来适用于你的设置)：</p>
+<div class="highlight"><pre><span></span><code>docs UUID=ba77d113-f849-4ddf-8048-13860399fca8 none
+logs UUID=58f89c5a-f694-4443-83d6-2e83878e30e4 none
+homes UUID=92245af6-3f38-4e07-8dd8-787f4690d7ac none
+</code></pre></div>
+
+<p>然后在 /etc/fstab 中添加如下的条目。请注意到 device<em>name (/dev/mapper/device</em>name) 是出现在 /etc/crypttab 中第一列的映射标识：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> Logical volume vol01_docs:
+/dev/mapper/docs        /mnt/docs       ext4    defaults        0       2
+<span class="gh">#</span> Logical volume vol02_logs
+/dev/mapper/logs        /mnt/logs       ext4    defaults        0       2
+<span class="gh">#</span> Logical volume vol03_homes
+/dev/mapper/homes       /mnt/homes      ext4    defaults        0       2
+</code></pre></div>
+
+<p>现在重启（<code>systemctl reboot</code>），则你将被要求为每个逻辑卷输入密码。随后，你可以通过检查相应的挂载点来确保挂载操作是否成功：</p>
+<p><img alt="确保逻辑卷挂载点" src="/data/attachment/album/201509/20/222550nyirm2umiyeu4mdy.png"></p>
+<p><em>确保逻辑卷挂载点</em></p>
+<h3>总结</h3>
+<p>在这篇教程中，我们开始探索如何使用传统的卷管理工具和 SSM 来设置和配置系统存储，SSM 也在一个软件包中集成了文件系统和加密功能。这使得对于任何系统管理员来说，SSM 是一个非常有价值的工具。</p>
+<p>假如你有任何的问题或评论，请让我们知晓 – 请随意使用下面的评论框来与我们保存联系！</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

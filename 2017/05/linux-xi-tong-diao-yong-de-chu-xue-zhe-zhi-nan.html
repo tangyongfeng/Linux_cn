@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Linux 系统调用的初学者指南</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Liz Rice 在过去的几年中，我一直在做大量容器相关的工作。先前，我看到 Julien Friedman 的一个很棒的演讲，它用几行 Go 语言写了一个 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li class="active"><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/05/linux-xi-tong-diao-yong-de-chu-xue-zhe-zhi-nan.html" rel="bookmark"
+           title="Permalink to Linux 系统调用的初学者指南">Linux 系统调用的初学者指南</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-05-30T08:29:00+02:00">
+                Published: Tue 30 May 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/guan-dian">观点</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Liz Rice</p>
+<p><img alt="A beginner's guide to Linux syscalls" src="/data/attachment/album/201705/29/223115moblccxqorxlcbe3.png" title="A beginner's guide to Linux syscalls"></p>
+<p>在过去的几年中，我一直在做大量容器相关的工作。先前，我看到 <a href="https://twitter.com/doctor_julz">Julien Friedman</a> 的一个很棒的演讲，它用几行 Go 语言写了一个容器框架。这让我突然了解到容器只是一个受限的 Linux 进程中的机器。</p>
+<p>构建这个受限视图涉及到 <a href="https://golang.org/pkg/syscall/">Golang 系统调用包</a>中的很多调用。最初，我只是用到了表面的那些，但过了一段时间，我想剥下洋葱的下一层，看看这些系统调用是什么，以及它们的工作原理。我将在 OSCON 的演讲中分享我所学到的东西。</p>
+<p>顾名思义，<a href="http://man7.org/linux/man-pages/man2/syscalls.2.html">syscalls</a> 即系统调用，它们是你从用户空间请求进入 Linux 内核的方式。内核为你做一些工作，例如创建一个进程，然后再回到用户空间。</p>
+<p>有一个常见的机制使所有的系统调用转换到内核，这是由 <strong>libc</strong> 库处理的。 用户空间代码设置一些寄存器，包括其想要的系统调用的 ID 以及需要传递给系统调用的所有参数。它触发一个 “陷阱” 将控制转换到内核。</p>
+<p>这就是用户空间代码如何向内核请求的，而 Linux 也有一个伪文件系统，它允许内核将信息传递给用户空间，其内容看起来像普通的目录和文件。</p>
+<p><code>/proc</code> 目录是一个很好的例子。看看里面，你会发现有关机器上运行的进程的各种有趣的信息。在某些情况，像 <strong>cgroups</strong>（控制组）那样，用户空间可以通过写入这些伪文件系统下的文件来配置参数。</p>
+<p>当你在使用容器时，特别有趣的是，主机的 <code>/proc</code> 包含了所有有关容器化的进程的信息。这包括环境变量，它们也保存在 <code>/proc</code> 伪文件系统中，这意味着你的主机可以访问所有正在运行的容器的环境。如果你通过环境变量将诸如凭证或数据库密码这类秘密传递到容器中，则可能会产生安全性后果。</p>
+<p>许多编写常规程序的程序员可能不觉得他们经常使用系统调用。但实际上他们会经常调用，因为每天的活动比如制作文件或者更改目录都涉及 Linux 的系统调用。</p>
+<p>你不必是一位系统程序员才能享受系统调用的乐趣！</p>
+<p><em>如果你想要了解更多</em>，Liz 会在 Austin，Texas 举办的 OSCON 2017 上演讲 <a href="https://conferences.oreilly.com/oscon/oscon-tx/public/schedule/detail/56840"><em>Linux 系统调用的初学者指南</em></a>。</p>
+<p>（题图： opensource.com）</p>
+<p>via: <a href="https://opensource.com/article/17/5/beginners-guide-syscalls">https://opensource.com/article/17/5/beginners-guide-syscalls</a></p>
+<p>作者：<a href="https://opensource.com/users/lizrice">Liz Rice</a> 译者：<a href="https://github.com/geekpi">geekpi</a> 校对：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创编译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

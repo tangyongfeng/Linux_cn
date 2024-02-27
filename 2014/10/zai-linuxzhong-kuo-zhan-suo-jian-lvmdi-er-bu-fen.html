@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在Linux中扩展/缩减LVM（第二部分）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Babin Lonston 前面我们已经了解了怎样使用LVM创建弹性的磁盘存储。这里，我们将了解怎样来扩展卷组，扩展和缩减逻辑卷。在这里，我们可以缩减或者 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2014/10/zai-linuxzhong-kuo-zhan-suo-jian-lvmdi-er-bu-fen.html" rel="bookmark"
+           title="Permalink to 在Linux中扩展/缩减LVM（第二部分）">在Linux中扩展/缩减LVM（第二部分）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2014-10-09T08:26:00+02:00">
+                Published: Thu 09 October 2014
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Babin Lonston</p>
+<p>前面我们已经了解了怎样使用LVM创建弹性的磁盘存储。这里，我们将了解怎样来扩展卷组，扩展和缩减逻辑卷。在这里，我们可以缩减或者扩展逻辑卷管理（LVM）中的分区，LVM也可称之为弹性卷文件系统。</p>
+<p><img alt="" src="/data/attachment/album/201410/08/214627it4e0ylmyw96yxl9.jpg"></p>
+<h3>前置需求</h3>
+<ul>
+<li><a href="http://linux.cn/article-3965-1.html">使用LVM创建弹性磁盘存储——第一部分</a></li>
+</ul>
+<h4>什么时候我们需要缩减卷？</h4>
+<p>或许我们需要创建一个独立的分区用于其它用途，或者我们需要扩展任何空间低的分区。遇到这种情况时，使用 LVM我们可以很容易地缩减大尺寸的分区，以及扩展空间低的分区，只要按下面几个简易的步骤来即可。</p>
+<h4>我的服务器设置 —— 需求</h4>
+<ul>
+<li>操作系统 – 安装有LVM的CentOS 6.5</li>
+<li>服务器IP – 192.168.0.200</li>
+</ul>
+<h3>如何扩展卷组以及缩减逻辑卷</h3>
+<h4>扩展逻辑卷</h4>
+<p>目前，我们已经有一个PV，VG和2个LV。让我们用下面的命令来列出它们。</p>
+<div class="highlight"><pre><span></span><code># pvs
+# vgs
+# lvs
+</code></pre></div>
+
+<p><img alt="Logical Volume Extending" src="/data/attachment/album/201410/08/214630uhcx5uc2n9u5j7cg.jpg"></p>
+<p><em>逻辑卷扩展</em></p>
+<p>在物理卷和卷组中没有空闲空间可用了，所以，现在我们不能扩展逻辑卷的大小。要扩展，我们需要添加一个物理卷（<strong>PV</strong>），然后通过扩展<strong>vg</strong>来扩展卷组，这样我们就会得到足够大的空间来扩展逻辑卷大小了。所以，首先我们应该去添加一个物理卷。</p>
+<p>要添加一个新<strong>PV</strong>，我们必须使用fdisk来创建一个LVM分区。</p>
+<div class="highlight"><pre><span></span><code># fdisk -cu /dev/sda
+</code></pre></div>
+
+<ul>
+<li>选择<strong>n</strong>来创建新分区。</li>
+<li>选择<strong>p</strong>来创建主分区。</li>
+<li>选择我们需要创建的分区号。</li>
+<li>如果有其它可用磁盘，请按<strong>1</strong>。</li>
+<li>使用<strong>t</strong>来修改分区类型。</li>
+<li>输入<strong>8e</strong>来将分区类型修改为Linux LVM。</li>
+<li>使用<strong>p</strong>来打印创建的分区（这里我们没有使用该选项）。</li>
+<li>按<strong>w</strong>写入修改。</li>
+</ul>
+<p>完成后重启系统。</p>
+<p><img alt="Create LVM Partition" src="/data/attachment/album/201410/08/214631kz7224t6y4tmyucz.jpg"></p>
+<p><em>创建LVM分区</em></p>
+<p>使用fdisk列出并检查我们创建的分区。</p>
+<div class="highlight"><pre><span></span><code># fdisk -l /dev/sda
+</code></pre></div>
+
+<p><img alt="Verify LVM Partition" src="/data/attachment/album/201410/08/214633ykjvnxqly8n8vk35.jpg"></p>
+<p><em>验证LVM分区</em></p>
+<p>接下来，使用下列命令来创建新<strong>PV</strong>（物理卷）。</p>
+<div class="highlight"><pre><span></span><code># pvcreate /dev/sda1
+</code></pre></div>
+
+<p>使用下面的命令来验证pv。</p>
+<div class="highlight"><pre><span></span><code># pvs
+</code></pre></div>
+
+<p><img alt="Create Physical Volume" src="/data/attachment/album/201410/08/214635ss7yv5zz1zyiwil5.jpg"></p>
+<p><em>创建物理卷</em></p>
+<h4>扩展卷组</h4>
+<p>添加该pv到<strong>vg_tecmint</strong>卷组来扩展卷组的大小，以获取更多空间来扩展<strong>lv</strong>。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> vgextend vg_tecmint /dev/sda1
+</code></pre></div>
+
+<p>让我们检查现在正在使用的卷组的大小。</p>
+<div class="highlight"><pre><span></span><code># vgs
+</code></pre></div>
+
+<p><img alt="Extend Volume Group" src="/data/attachment/album/201410/08/214636a656wc56ytg8au6t.jpg"></p>
+<p><em>扩展卷组</em></p>
+<p>我们甚至可以看到哪个<strong>PV</strong>用于创建使用中的特定卷组。</p>
+<div class="highlight"><pre><span></span><code># pvscan
+</code></pre></div>
+
+<p><img alt="Check Volume Group" src="/data/attachment/album/201410/08/214638cit0tdu77x9qx9rd.jpg"></p>
+<p><em>检查卷组</em></p>
+<p>这里，我们可以看到卷组所处的物理卷。我们已经添加了一个pv，而且它完全空着。在扩展逻辑卷之前，让我们先看看我们所拥有的各个卷组的大小。</p>
+<p><img alt="Check All Logical Volume" src="/data/attachment/album/201410/08/214640sg44iqgee9i439xq.jpg"></p>
+<p><em>检查所有逻辑卷</em></p>
+<ul>
+<li>LogVol00用于Swap。</li>
+<li>LogVol01用于/。</li>
+<li>现在我们有16.50GB大小的空间用于/（root）。</li>
+<li>当前有4226物理扩展（PE）可用。</li>
+</ul>
+<p>现在，我们打算去扩展/分区<strong>LogVol01</strong>。在扩展后，我们可以像上面那样列出它的大小以确认。我们能可以使用GB或PE来扩展，这一点我已经在LVM第一部分解释过了，这里我使用PE来扩展。</p>
+<p>要获取可用的物理扩展大小，运行以下命令。</p>
+<div class="highlight"><pre><span></span><code># vgdisplay
+</code></pre></div>
+
+<p><img alt="Check Available Physical Size" src="/data/attachment/album/201410/08/214642t6c3oqcc63chcr6a.jpg"></p>
+<p><em>检查可用的物理扩展</em></p>
+<p>总共有<strong>4607</strong>空闲PE可用，亦即有<strong>18GB</strong>空间空间可用。因此，我们可以将我们的逻辑卷扩展到<strong>18GB</strong>这么大。让我们使用PE大小来扩展。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> lvextend -l +4607 /dev/vg_tecmint/LogVol01
+</code></pre></div>
+
+<p>使用<strong>+</strong>来添加更多空间。在扩展后，我们需要改变文件系统大小，使用以下命令。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> resize2fs /dev/vg_tecmint/LogVol01
+</code></pre></div>
+
+<p><img alt="Expand Logical Volume" src="/data/attachment/album/201410/08/214644t3xbnjn3pb87j3b7.jpg"> <em>扩展逻辑卷</em></p>
+<ul>
+<li>用来使用物理扩展扩展逻辑卷的命令。</li>
+<li>这里我们可以看到它从16.51GB扩展到了34GB。</li>
+<li>如果文件系统已被挂载并处于使用中，改变文件系统大小。</li>
+<li>要扩展逻辑卷，我们不需要卸载文件系统</li>
+</ul>
+<p>现在，让我们看看当前使用的改变大小后的逻辑卷。</p>
+<div class="highlight"><pre><span></span><code># lvdisplay
+</code></pre></div>
+
+<p><img alt="Resize Logical Volume" src="/data/attachment/album/201410/08/214646mpy1wfykpdg3133b.jpg"></p>
+<p><em>改变逻辑卷大小</em></p>
+<ul>
+<li>LogVol01用于扩展的卷 /。</li>
+<li>扩展后，从16.50GB上升到了34.50GB。</li>
+<li>C当前扩展，在扩展前有4226，我们已经添加了4607个扩展，因此现在有8833。</li>
+</ul>
+<p>现在，如果我们检查可用的vg的话，空闲PE将会是0。</p>
+<div class="highlight"><pre><span></span><code># vgdisplay
+</code></pre></div>
+
+<p>查看扩展的结果。</p>
+<div class="highlight"><pre><span></span><code># pvs
+# vgs
+# lvs
+</code></pre></div>
+
+<p><img alt="Verify Resize Partition" src="/data/attachment/album/201410/08/214648hkl5k0h2k0l9ks9k.jpg"></p>
+<p><em>验证分区大小改变</em></p>
+<ul>
+<li>添加的新物理卷。</li>
+<li>卷组vg_tecmint从17.51GB扩展到了35.50GB。</li>
+<li>逻辑卷LogVol01从16.51GB扩展到了34.50GB。</li>
+</ul>
+<p>这里，我们已经完成扩展卷组和逻辑卷的过程。让我们一起迈向逻辑卷管理中一些有趣的部分。</p>
+<h4>缩减逻辑卷（LVM）</h4>
+<p>这里，我们将了解如何缩减逻辑卷。人人都说它很危险，在缩减lvm的时候可能会导致灾难。缩减lvm在逻辑卷管理中比其它部分要来得确实有趣得多。</p>
+<ul>
+<li>在开始之前，备份好数据总是对的，这样如果出错，就不会头痛了。</li>
+<li>要缩减逻辑卷，需要小心翼翼地完成5个步骤。</li>
+<li>在扩展一个卷的时候，我们可以在该卷挂载时扩展它（在线），但对于缩减，我们必须在缩减前卸载文件系统。</li>
+</ul>
+<p>让我们来了解一下下面这5个步骤。</p>
+<ul>
+<li>卸载文件系统以便缩减。</li>
+<li>在卸载后检查文件系统。</li>
+<li>缩减文件系统。</li>
+<li>5减少当前逻辑卷大小。</li>
+<li>再检查文件系统以防出错。</li>
+<li>将文件系统再次挂载回去。</li>
+</ul>
+<p>为了演示，我已经创建了独立的卷组和逻辑卷。这里，我将缩减逻辑卷<strong>tecmint<em>reduce</em>test</strong>。现在它有18GB大小，我们需要将它缩减到<strong>10GB</strong>而不丢失数据。也就是说，我们需要从<strong>18GB</strong>中减少<strong>8GB</strong>。卷中已经有<strong>4GB</strong>被使用。</p>
+<div class="highlight"><pre><span></span><code><span class="mf">18</span><span class="n">GB</span><span class="w"> </span><span class="o">---&gt;</span><span class="w"> </span><span class="mf">10</span><span class="n">GB</span>
+</code></pre></div>
+
+<p>在缩减大小的时候，我们只需要缩减8GB，所以在缩减后它总计会有10GB。</p>
+<div class="highlight"><pre><span></span><code># lvs
+</code></pre></div>
+
+<p><img alt="Reduce Logical Volume" src="/data/attachment/album/201410/08/214649u9gs0qq0dnguuu93.jpg"></p>
+<p><em>缩减逻辑卷</em></p>
+<p>这里，我们可以看到文件系统信息。</p>
+<div class="highlight"><pre><span></span><code># df -h
+</code></pre></div>
+
+<p><img alt="Check File System Size" src="/data/attachment/album/201410/08/214651hybr3x3zvbqworwr.jpg"></p>
+<p><em>检查文件系统大小</em></p>
+<ul>
+<li>卷大小是18GB。</li>
+<li>它已经使用了3.9GB。</li>
+<li>可用空间是13GB。</li>
+</ul>
+<p>首先，卸载挂载点。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> umount -v /mnt/tecmint_reduce_test/
+</code></pre></div>
+
+<p><img alt="Unmount Parition" src="/data/attachment/album/201410/08/214652ap100j00496cugzp.jpg"></p>
+<p><em>卸载分区</em></p>
+<p>然后，使用以下命令来检查文件系统错误。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> e2fsck -ff /dev/vg_tecmint_extra/tecmint_reduce_test
+</code></pre></div>
+
+<p><img alt="Scan Parition for Errors" src="/data/attachment/album/201410/08/214654yly6fc6qq66lzl14.jpg"></p>
+<p><em>扫描分区错误</em></p>
+<p><strong>注意</strong>：必须通过所有文件系统检查的5个步骤，若未完全通过，则你的文件系统可能存在问题。</p>
+<p>接下来，缩减文件系统。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> resize2fs /dev/vg_tecmint_extra/tecmint_reduce_test 8GB
+</code></pre></div>
+
+<p><img alt="Reduce File System" src="/data/attachment/album/201410/08/214656mninglxd96nn864l.jpg"></p>
+<p><em>缩减文件系统</em></p>
+<p>使用GB来缩减逻辑卷。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> lvreduce -L -8G /dev/vg_tecmint_extra/tecmint_reduce_test
+</code></pre></div>
+
+<p><img alt="Reduce Logical Partition" src="/data/attachment/album/201410/08/214657nhp2dkjdj8jhkdud.jpg"></p>
+<p><em>缩减逻辑分区</em></p>
+<p>要使用PE来缩减逻辑卷，我们需要知道默认PE大小和卷组的总PE大小，以进行一次小小的计算来得出准确的缩减大小。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> lvdisplay vg_tecmint_extra
+</code></pre></div>
+
+<p>这里，我们需要使用bc命令来做一些小计算来获得10GB的PE大小。</p>
+<div class="highlight"><pre><span></span><code><span class="mf">1024</span><span class="n">MB</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="mf">10</span><span class="n">GB</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">10240</span><span class="n">MB</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="mf">10</span><span class="n">GB</span>
+
+<span class="mf">10240</span><span class="n">MB</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">4</span><span class="n">PE</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">2048</span><span class="n">PE</span>
+</code></pre></div>
+
+<p>按<strong>CTRL+D</strong>来退出BC。</p>
+<p><img alt="Calculate PE Size" src="/data/attachment/album/201410/08/214659jftbisvbc5srrztr.jpg"></p>
+<p><em>计算PE大小</em></p>
+<p>使用PE来缩减大小。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> lvreduce -l -2048 /dev/vg_tecmint_extra/tecmint_reduce_test
+</code></pre></div>
+
+<p><img alt="Reduce Size Using PE" src="/data/attachment/album/201410/08/214701dlerl805qehj2ai2.jpg"></p>
+<p><em>使用PE来缩减大小</em></p>
+<p>将文件系统大小调整回去。在这一步中，如果发生任何错误，这就意味着我们已经将文件系统搞乱了。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> resize2fs /dev/vg_tecmint_extra/tecmint_reduce_test
+</code></pre></div>
+
+<p><img alt="Resize File System" src="/data/attachment/album/201410/08/214702gqtzf87vr0tf3qf7.jpg"></p>
+<p>将文件系统挂载回同样的挂载点。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> mount /dev/vg_tecmint_extra/tecmint_reduce_test /mnt/tecmint_reduce_test/
+</code></pre></div>
+
+<p><img alt="Mount File System" src="/data/attachment/album/201410/08/214704wipsf3bne4ee9s63.jpg"></p>
+<p><em>挂载文件系统</em></p>
+<p>检查分区和文件的大小。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> lvdisplay vg_tecmint_extra
+</code></pre></div>
+
+<p>这里，我们可以看到最后的结果，逻辑已经被缩减到10GB。</p>
+<p><img alt="Verify Logical Volume Size" src="/data/attachment/album/201410/08/214706qwi5yptoh9b57osr.jpg"></p>
+<p>在本文中，我们已经了解了如何来扩增卷组、逻辑卷以及缩减逻辑卷。在下一部分（第三部分）中，我们将了解如何为逻辑卷做快照并将它恢复到更早的状态。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

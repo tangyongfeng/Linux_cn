@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何在 CentOS Linux 中配置 MariaDB 复制</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Bobbin Zachariah 这是一个创建数据库重复版本的过程。复制过程不仅仅是复制一个数据库，同时也包括从主节点到一个从节点的 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/05/ru-he-zai-centos-linux-zhong-pei-zhi-mariadb-fu-zhi.html" rel="bookmark"
+           title="Permalink to 如何在 CentOS Linux 中配置 MariaDB 复制">如何在 CentOS Linux 中配置 MariaDB 复制</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-05-22T13:00:00+02:00">
+                Published: Fri 22 May 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Bobbin Zachariah</p>
+<p>这是一个创建数据库重复版本的过程。复制过程不仅仅是复制一个数据库，同时也包括从主节点到一个从节点的更改同步。但这并不意味着从数据库就是和主数据库完全相同的副本，因为复制可以配置为只复制表结构、行或者列，这叫做局部复制。复制保证了特定的配置对象在不同的数据库之间保持一致。</p>
+<h3>Mariadb 复制概念</h3>
+<p><strong>备份</strong> ：复制可以用来进行数据库备份。例如，当你做了主-&gt;从复制。如果主节点数据丢失(比如硬盘损坏)，你可以从从节点中恢复你的数据库。</p>
+<p><strong>扩展</strong> ：你可以使用主-&gt;从复制作为扩展解决方案。例如，如果你有一些大的数据库以及SQL查询，使用复制你可以将这些查询分离到每个复制节点。写入操作的SQL应该只在主节点进行，而只读查询可以在从节点上进行。</p>
+<p><strong>分发解决方案</strong> ：你可以用复制来进行分发。例如，你可以将不同的销售数据分发到不同的数据库。</p>
+<p><strong>故障解决方案</strong> : 假如你建立有主节点-&gt;从节点1-&gt;从节点2-&gt;从节点3的复制结构。你可以为主节点写脚本监控，如果主节点出故障了，脚本可以快速的将从节点1切换为新的主节点，这样复制结构变成了主节点-&gt;从节点1-&gt;从节点2，你的应用可以继续工作而不会停机。</p>
+<p><img alt="" src="/data/attachment/album/201505/22/130103gzr8t9iuus1vshw1.jpg"></p>
+<h3>复制的简单图解示范</h3>
+<p><img alt="mysql 复制原理" src="/data/attachment/album/201505/22/130107jzfatvl4uclzcytt.png"></p>
+<p>开始之前，你应该知道什么是<strong>二进制日志文件</strong>以及 Ibdata1。</p>
+<p>二进制日志文件中包括关于数据库，数据和结构的所有更改的记录，以及每条语句的执行了多长时间。二进制日志文件包括一系列日志文件和一个索引文件。这意味着主要的SQL语句，例如CREATE, ALTER, INSERT, UPDATE 和 DELETE 会放到这个日志文件中；而例如SELECT这样的语句就不会被记录，它们可以被记录到普通的query.log文件中。</p>
+<p>而 <strong>Ibdata1</strong> 简单的说据是一个包括所有表和所有数据库信息的文件。</p>
+<h3>主服务器配置</h3>
+<p>首先升级服务器</p>
+<div class="highlight"><pre><span></span><code>sudo yum install update -y &amp;&amp; sudo yum install upgrade -y
+</code></pre></div>
+
+<p>我们工作在centos7 服务器上</p>
+<div class="highlight"><pre><span></span><code>sudo cat /etc/redhat-release
+
+CentOS Linux release 7.0.1406 (Core)
+</code></pre></div>
+
+<p>安装 MariaDB</p>
+<div class="highlight"><pre><span></span><code>sudo yum install mariadb-server -y
+</code></pre></div>
+
+<p>启动 MariaDB 并启用随服务器启动</p>
+<div class="highlight"><pre><span></span><code>sudo systemctl start mariadb.service
+sudo systemctl enable mariadb.service
+</code></pre></div>
+
+<p>输出如下:</p>
+<div class="highlight"><pre><span></span><code>ln -s &#39;/usr/lib/systemd/system/mariadb.service&#39; &#39;/etc/systemd/system/multi-user.target.wants/mariadb.service&#39;
+</code></pre></div>
+
+<p>检查 MariaDB 状态</p>
+<div class="highlight"><pre><span></span><code>sudo service mariadb status
+</code></pre></div>
+
+<p>或者使用</p>
+<div class="highlight"><pre><span></span><code>sudo systemctl is-active mariadb.service
+</code></pre></div>
+
+<p>输出如下:</p>
+<div class="highlight"><pre><span></span><code><span class="n">Redirecting</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">systemctl</span><span class="w"> </span><span class="n">status</span><span class="w">  </span><span class="n">mariadb</span><span class="o">.</span><span class="n">service</span>
+<span class="n">mariadb</span><span class="o">.</span><span class="n">service</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">MariaDB</span><span class="w"> </span><span class="n">database</span><span class="w"> </span><span class="n">server</span>
+<span class="n">Loaded</span><span class="p">:</span><span class="w"> </span><span class="n">loaded</span><span class="w"> </span><span class="p">(</span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">systemd</span><span class="o">/</span><span class="n">system</span><span class="o">/</span><span class="n">mariadb</span><span class="o">.</span><span class="n">service</span><span class="p">;</span><span class="w"> </span><span class="n">enabled</span><span class="p">)</span>
+</code></pre></div>
+
+<p>设置 MariaDB 密码</p>
+<div class="highlight"><pre><span></span><code>mysql -u root
+mysql&gt; use mysql;
+mysql&gt; update user set password=PASSWORD(&quot;SOME_ROOT_PASSWORD&quot;) where User=&#39;root&#39;;
+mysql&gt; flush privileges;
+mysql&gt; exit
+</code></pre></div>
+
+<p>这里 SOME_ROOT<em>_</em>PASSWORD 是你的 root 密码。 例如我用"q"作为密码，然后尝试登录：</p>
+<div class="highlight"><pre><span></span><code>sudo mysql -u root -pSOME_ROOT_PASSWORD
+</code></pre></div>
+
+<p>输出如下:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">Welcome</span><span class="w"> </span><span class="nv">to</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="nv">MariaDB</span><span class="w"> </span><span class="nv">monitor</span>.<span class="w">  </span><span class="nv">Commands</span><span class="w"> </span><span class="k">end</span><span class="w"> </span><span class="nv">with</span><span class="w"> </span><span class="c1">; or \g.</span>
+<span class="nv">Your</span><span class="w"> </span><span class="nv">MariaDB</span><span class="w"> </span><span class="nv">connection</span><span class="w"> </span><span class="nv">id</span><span class="w"> </span><span class="nv">is</span><span class="w"> </span><span class="mi">5</span>
+<span class="nv">Server</span><span class="w"> </span><span class="nv">version</span>:<span class="w"> </span><span class="mi">5</span>.<span class="mi">5</span>.<span class="mi">41</span><span class="o">-</span><span class="nv">MariaDB</span><span class="w"> </span><span class="nv">MariaDB</span><span class="w"> </span><span class="nv">Server</span>
+<span class="nv">Copyright</span><span class="w"> </span><span class="ss">(</span><span class="nv">c</span><span class="ss">)</span><span class="w"> </span><span class="mi">2000</span>,<span class="w"> </span><span class="mi">2014</span>,<span class="w"> </span><span class="nv">Oracle</span>,<span class="w"> </span><span class="nv">MariaDB</span><span class="w"> </span><span class="nv">Corporation</span><span class="w"> </span><span class="nv">Ab</span><span class="w"> </span><span class="nv">and</span><span class="w"> </span><span class="nv">others</span>.
+</code></pre></div>
+
+<p>输入 'help;' 或 '\h' 查看帮助信息。 输入 '\c' 清空当前输入语句。</p>
+<p>让我们创建包括一些数据的表的数据库</p>
+<p>创建数据库/模式</p>
+<div class="highlight"><pre><span></span><code>sudo mysql -u root -pSOME_ROOT_PASSWORD
+mysql&gt; create database test_repl;
+</code></pre></div>
+
+<p>其中:</p>
+<div class="highlight"><pre><span></span><code>test_repl - 将要被复制的模式的名字
+</code></pre></div>
+
+<p>输出:如下</p>
+<div class="highlight"><pre><span></span><code>Query OK, 1 row affected (0.00 sec)
+</code></pre></div>
+
+<p>创建 Persons 表</p>
+<div class="highlight"><pre><span></span><code><span class="n">mysql</span><span class="o">&gt;</span><span class="w"> </span><span class="n">use</span><span class="w"> </span><span class="n">test_repl</span><span class="p">;</span>
+
+<span class="n">CREATE</span><span class="w"> </span><span class="n">TABLE</span><span class="w"> </span><span class="n">Persons</span><span class="w"> </span><span class="p">(</span>
+<span class="n">PersonID</span><span class="w"> </span><span class="nb nb-Type">int</span><span class="p">,</span>
+<span class="n">LastName</span><span class="w"> </span><span class="n">varchar</span><span class="p">(</span><span class="mi">255</span><span class="p">),</span>
+<span class="n">FirstName</span><span class="w"> </span><span class="n">varchar</span><span class="p">(</span><span class="mi">255</span><span class="p">),</span>
+<span class="n">Address</span><span class="w"> </span><span class="n">varchar</span><span class="p">(</span><span class="mi">255</span><span class="p">),</span>
+<span class="n">City</span><span class="w"> </span><span class="n">varchar</span><span class="p">(</span><span class="mi">255</span><span class="p">)</span>
+<span class="p">);</span>
+</code></pre></div>
+
+<p>输出如下:</p>
+<div class="highlight"><pre><span></span><code><span class="n">mysql</span><span class="o">&gt;</span><span class="w"> </span><span class="n">MariaDB</span><span class="w"> </span><span class="o">[</span><span class="n">test_repl</span><span class="o">]&gt;</span><span class="w"> </span><span class="k">CREATE</span><span class="w"> </span><span class="nc">TABLE</span><span class="w"> </span><span class="n">Persons</span><span class="w"> </span><span class="p">(</span>
+<span class="o">-&gt;</span><span class="w"> </span><span class="n">PersonID</span><span class="w"> </span><span class="nc">int</span><span class="p">,</span>
+<span class="o">-&gt;</span><span class="w"> </span><span class="n">LastName</span><span class="w"> </span><span class="nc">varchar</span><span class="p">(</span><span class="mi">255</span><span class="p">),</span>
+<span class="o">-&gt;</span><span class="w"> </span><span class="n">FirstName</span><span class="w"> </span><span class="nc">varchar</span><span class="p">(</span><span class="mi">255</span><span class="p">),</span>
+<span class="o">-&gt;</span><span class="w"> </span><span class="n">Address</span><span class="w"> </span><span class="nc">varchar</span><span class="p">(</span><span class="mi">255</span><span class="p">),</span>
+<span class="o">-&gt;</span><span class="w"> </span><span class="n">City</span><span class="w"> </span><span class="nc">varchar</span><span class="p">(</span><span class="mi">255</span><span class="p">)</span>
+<span class="o">-&gt;</span><span class="w"> </span><span class="p">);</span>
+<span class="n">Query</span><span class="w"> </span><span class="n">OK</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="k">rows</span><span class="w"> </span><span class="n">affected</span><span class="w"> </span><span class="p">(</span><span class="mf">0.01</span><span class="w"> </span><span class="n">sec</span><span class="p">)</span>
+</code></pre></div>
+
+<p>插入一些数据</p>
+<div class="highlight"><pre><span></span><code>mysql&gt; INSERT INTO Persons VALUES (1, &quot;LastName1&quot;, &quot;FirstName1&quot;, &quot;Address1&quot;, &quot;City1&quot;);
+mysql&gt; INSERT INTO Persons VALUES (2, &quot;LastName2&quot;, &quot;FirstName2&quot;, &quot;Address2&quot;, &quot;City2&quot;);
+mysql&gt; INSERT INTO Persons VALUES (3, &quot;LastName3&quot;, &quot;FirstName3&quot;, &quot;Address3&quot;, &quot;City3&quot;);
+mysql&gt; INSERT INTO Persons VALUES (4, &quot;LastName4&quot;, &quot;FirstName4&quot;, &quot;Address4&quot;, &quot;City4&quot;);
+mysql&gt; INSERT INTO Persons VALUES (5, &quot;LastName5&quot;, &quot;FirstName5&quot;, &quot;Address5&quot;, &quot;City5&quot;);
+</code></pre></div>
+
+<p>输出如下:</p>
+<div class="highlight"><pre><span></span><code>Query OK, 5 row affected (0.00 sec)
+</code></pre></div>
+
+<p>检查数据</p>
+<div class="highlight"><pre><span></span><code>mysql&gt; select * from Persons;
+</code></pre></div>
+
+<p>输出如下:</p>
+<div class="highlight"><pre><span></span><code><span class="nb">+----------+-----------+------------+----------+-------+</span>
+<span class="c">| PersonID | LastName  | FirstName  | Address  | City  |</span>
+<span class="nb">+----------+-----------+------------+----------+-------+</span>
+<span class="c">|        1 | LastName1 | FirstName1 | Address1 | City1 |</span>
+<span class="c">|        1 | LastName1 | FirstName1 | Address1 | City1 |</span>
+<span class="c">|        2 | LastName2 | FirstName2 | Address2 | City2 |</span>
+<span class="c">|        3 | LastName3 | FirstName3 | Address3 | City3 |</span>
+<span class="c">|        4 | LastName4 | FirstName4 | Address4 | City4 |</span>
+<span class="c">|        5 | LastName5 | FirstName5 | Address5 | City5 |</span>
+<span class="nb">+----------+-----------+------------+----------+-------+</span>
+</code></pre></div>
+
+<h3>配置 MariaDB 复制</h3>
+<p>你需要在主节点服务器上编辑 my.cnf文件来启用二进制日志以及设置服务器id。我会使用vi文本编辑器，但你可以使用任何你喜欢的，例如nano，joe。</p>
+<div class="highlight"><pre><span></span><code>sudo vi /etc/my.cnf 
+</code></pre></div>
+
+<p>将下面的一些行写到[mysqld]部分。</p>
+<div class="highlight"><pre><span></span><code>log-basename=master
+log-bin
+binlog-format=row
+server_id=1
+</code></pre></div>
+
+<p>输出如下:</p>
+<p><img alt="mariadb 配置主节点" src="/data/attachment/album/201505/22/130108yld2d6hmt2iditts.png"></p>
+<p>然后重启 MariaDB:</p>
+<div class="highlight"><pre><span></span><code>sudo service mariadb restart
+</code></pre></div>
+
+<p>登录到 MariaDB 并查看二进制日志文件:</p>
+<div class="highlight"><pre><span></span><code>sudo mysql -u root -pq test_repl
+
+mysql&gt; SHOW MASTER STATUS;
+</code></pre></div>
+
+<p>输出如下:</p>
+<div class="highlight"><pre><span></span><code><span class="nb">+--------------------+----------+--------------+------------------+</span>
+<span class="c">| File               | Position | Binlog_Do_DB | Binlog_Ignore_DB |</span>
+<span class="nb">+--------------------+----------+--------------+------------------+</span>
+<span class="c">| mariadb</span><span class="nb">-</span><span class="c">bin</span><span class="nt">.</span><span class="c">000002 |     3913 |              |                  |</span>
+<span class="nb">+--------------------+----------+--------------+------------------+</span>
+</code></pre></div>
+
+<p><strong>记住</strong> : "File" 和 "Position" 的值。在从节点中你需要使用这些值</p>
+<p>创建用来复制的用户</p>
+<div class="highlight"><pre><span></span><code>mysql&gt; GRANT REPLICATION SLAVE ON <span class="gs">*.*</span> TO replication_user IDENTIFIED BY &#39;bigs3cret&#39; WITH GRANT OPTION;
+mysql&gt; flush privileges;
+</code></pre></div>
+
+<p>输出如下:</p>
+<div class="highlight"><pre><span></span><code>Query OK, 0 rows affected (0.00 sec)
+Query OK, 0 rows affected (0.00 sec)
+</code></pre></div>
+
+<p>在数据库中检查用户</p>
+<div class="highlight"><pre><span></span><code>mysql&gt; select * from mysql.user WHERE user=&quot;replication_user&quot;\G;
+</code></pre></div>
+
+<p>输出如下:</p>
+<div class="highlight"><pre><span></span><code>mysql&gt; select <span class="gs">* from mysql.user WHERE user=&quot;replication_user&quot;\G;</span>
+<span class="gs">*</span>************************** 1. row ***************************
+Host: %
+User: replication_user
+Password: *2AF30E7AEE9BF3AF584FB19653881D2D072FA49C
+Select_priv: N
+.....
+</code></pre></div>
+
+<p>从主节点创建 DB dump (将要被复制的所有数据的快照)</p>
+<div class="highlight"><pre><span></span><code>mysqldump -uroot -pSOME_ROOT_PASSWORD  test_repl &gt; full-dump.sql
+</code></pre></div>
+
+<p>其中:</p>
+<div class="highlight"><pre><span></span><code>SOME_ROOT_PASSWORD - 你设置的root用户的密码
+test_repl - 将要复制的数据库的名称;
+</code></pre></div>
+
+<p>你需要在从节点中恢复 mysql dump (full-dump.sql)。重复需要这个。</p>
+<h3>从节点配置</h3>
+<p>所有这些命令需要在从节点中进行。</p>
+<p>假设我们已经更新/升级了包括有最新的MariaDB服务器的 CentOS 7.x，而且你可以用root账号登陆到MariaDB服务器(这在这篇文章的第一部分已经介绍过)</p>
+<p>登录到Maria 数据库控制台并创建数据库</p>
+<div class="highlight"><pre><span></span><code>mysql -u root -pSOME_ROOT_PASSWORD;
+mysql&gt; create database test_repl;
+mysql&gt; exit;
+</code></pre></div>
+
+<p>在从节点恢复主节点的数据</p>
+<div class="highlight"><pre><span></span><code>mysql -u root -pSOME_ROOT_PASSWORD test_repl &lt; full-dump.sql
+</code></pre></div>
+
+<p>其中:</p>
+<p>full-dump.sql - 你在测试服务器中创建的DB Dump。</p>
+<p>登录到Maria 数据库并启用复制</p>
+<div class="highlight"><pre><span></span><code>mysql&gt; CHANGE MASTER TO
+MASTER_HOST=&#39;82.196.5.39&#39;,
+MASTER_USER=&#39;replication_user&#39;,
+MASTER_PASSWORD=&#39;bigs3cret&#39;,
+MASTER_PORT=3306,
+MASTER_LOG_FILE=&#39;mariadb-bin.000002&#39;,
+MASTER_LOG_POS=3913,
+MASTER_CONNECT_RETRY=10;
+</code></pre></div>
+
+<p><img alt="mariadb 启用复制" src="/data/attachment/album/201505/22/130108g8474sk8oiwymmnk.png"></p>
+<p>其中:</p>
+<div class="highlight"><pre><span></span><code>MASTER_HOST - 主节点服务器的IP
+MASTER_USER - 主节点服务器中的复制用户
+MASTER_PASSWORD - 复制用户密码
+MASTER_PORT - 主节点中的mysql端口
+MASTER_LOG_FILE - 主节点中的二进制日志文件名称
+MASTER_LOG_POS - 主节点中的二进制日志文件位置
+</code></pre></div>
+
+<p>开启从节点模式</p>
+<div class="highlight"><pre><span></span><code>mysql&gt; slave start;
+</code></pre></div>
+
+<p>输出如下:</p>
+<div class="highlight"><pre><span></span><code>Query OK, 0 rows affected (0.00 sec)
+</code></pre></div>
+
+<p>检查从节点状态</p>
+<div class="highlight"><pre><span></span><code><span class="nv">mysql</span><span class="o">&gt;</span><span class="w"> </span><span class="k">show</span><span class="w"> </span><span class="nv">slave</span><span class="w"> </span><span class="nv">status</span>\<span class="nv">G</span><span class="c1">;</span>
+</code></pre></div>
+
+<p>输出如下:</p>
+<div class="highlight"><pre><span></span><code>*************************** 1. row ***************************
+Slave_IO_State: Waiting for master to send event
+Master_Host: 82.196.5.39
+Master_User: replication_user
+Master_Port: 3306
+Connect_Retry: 10
+Master_Log_File: mariadb-bin.000002
+Read_Master_Log_Pos: 4175
+Relay_Log_File: mariadb-relay-bin.000002
+Relay_Log_Pos: 793
+Relay_Master_Log_File: mariadb-bin.000002
+Slave_IO_Running: Yes
+Slave_SQL_Running: Yes
+Replicate_Do_DB:
+Replicate_Ignore_DB:
+Replicate_Do_Table:
+Replicate_Ignore_Table:
+Replicate_Wild_Do_Table:
+Replicate_Wild_Ignore_Table:
+Last_Errno: 0
+Last_Error:
+Skip_Counter: 0
+Exec_Master_Log_Pos: 4175
+Relay_Log_Space: 1089
+Until_Condition: None
+Until_Log_File:
+Until_Log_Pos: 0
+Master_SSL_Allowed: No
+Master_SSL_CA_File:
+Master_SSL_CA_Path:
+Master_SSL_Cert:
+Master_SSL_Cipher:
+Master_SSL_Key:
+Seconds_Behind_Master: 0
+Master_SSL_Verify_Server_Cert: No
+Last_IO_Errno: 0
+Last_IO_Error:
+Last_SQL_Errno: 0
+Last_SQL_Error:
+Replicate_Ignore_Server_Ids:
+Master_Server_Id: 1
+1 row in set (0.00 sec)
+</code></pre></div>
+
+<p>到这里所有步骤都应该没问题，也不应该出现错误。</p>
+<h3>测试复制</h3>
+<p>在主节点服务器中添加一些条目到数据库</p>
+<div class="highlight"><pre><span></span><code>mysql -u root -pSOME_ROOT_PASSWORD test_repl
+
+mysql&gt; INSERT INTO Persons VALUES (6, &quot;LastName6&quot;, &quot;FirstName6&quot;, &quot;Address6&quot;, &quot;City6&quot;);
+mysql&gt; INSERT INTO Persons VALUES (7, &quot;LastName7&quot;, &quot;FirstName7&quot;, &quot;Address7&quot;, &quot;City7&quot;);
+mysql&gt; INSERT INTO Persons VALUES (8, &quot;LastName8&quot;, &quot;FirstName8&quot;, &quot;Address8&quot;, &quot;City8&quot;);
+</code></pre></div>
+
+<p>到从节点服务器中查看复制数据</p>
+<div class="highlight"><pre><span></span><code><span class="c">mysql </span><span class="nb">-</span><span class="c">u root </span><span class="nb">-</span><span class="c">pSOME_ROOT_PASSWORD test_repl</span>
+
+<span class="c">mysql</span><span class="nv">&gt;</span><span class="c"> select * from Persons;</span>
+
+<span class="nb">+----------+-----------+------------+----------+-------+</span>
+<span class="c">| PersonID | LastName  | FirstName  | Address  | City  |</span>
+<span class="nb">+----------+-----------+------------+----------+-------+</span>
+<span class="nt">...................</span>
+<span class="c">|        6 | LastName6 | FirstName6 | Address6 | City6 |</span>
+<span class="c">|        7 | LastName7 | FirstName7 | Address7 | City7 |</span>
+<span class="c">|        8 | LastName8 | FirstName8 | Address8 | City8 |</span>
+<span class="nb">+----------+-----------+------------+----------+-------+</span>
+</code></pre></div>
+
+<p>你可以看到数据已经被复制到从节点。这意味着复制能正常工作。希望你能喜欢这篇文章。如果你有任何问题请告诉我们。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

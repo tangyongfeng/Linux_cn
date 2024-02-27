@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>为 Nginx 配置 ModSecurity 网络应用防火墙</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Roman Gherta 网络应用防火墙（WAF）是一种在应用层监控网络流量的应用程序。 OSI（开放系统互联） 是最常被网络相关讨论引用的网 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2023/12/wei-nginx-pei-zhi-modsecurity-wang-luo-ying-yong-fang-huo-qiang.html" rel="bookmark"
+           title="Permalink to 为 Nginx 配置 ModSecurity 网络应用防火墙">为 Nginx 配置 ModSecurity 网络应用防火墙</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2023-12-16T09:25:48+01:00">
+                Published: Sat 16 December 2023
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Roman Gherta</p>
+<p><img alt="" src="/data/attachment/album/202312/16/092516o1kqhzphvhh4h1hl.jpg"></p>
+<blockquote>
+<p>网络应用防火墙（WAF）是一种在应用层监控网络流量的应用程序。</p>
+</blockquote>
+<p><a href="https://osi-model.com/">OSI（开放系统互联）</a> 是最常被网络相关讨论引用的网络流量框架之一。当数据包通过第 6 层（表示层）移动到第 7 层（应用层）时，它会进行解密或解码操作。这些操作可能会因异常解码和解释而产生漏洞，而这些漏洞可能被利用来打破标准应用上下文。注入就是这种漏洞的一种类型，而且因为传统的 <a href="https://en.wikipedia.org/wiki/Intrusion_detection_system">IDS/IPS</a> 设备无法应对这些威胁，所以其长时间以来一直是人们特别关注的问题。</p>
+<h3>ModSecurity 简介</h3>
+<p><a href="https://github.com/SpiderLabs/ModSecurity">ModSecurity</a> 本质上就是 <ruby> 网络应用防火墙 <rt>  web application firewall </rt></ruby>（WAF）引擎。它与 Apache、IIS 和 Nginx 兼容，并由第三方公司维护。该防火墙会将一份规则列表与由 Web 服务器/代理提供的 HTTP 头流进行交叉引用。目前这个仓库已经被简化，只包含主要的 LibModSecurity 库。你可以直接在自己的服务器实现中调用这个库，或通过特定编程语言的封装进行调用。</p>
+<p>其母公司的支持计划于 2024 年 7 月 1 日结束，之后这个项目将由开源社区维护。</p>
+<h3>安装 Nginx 连接器</h3>
+<p><a href="https://github.com/SpiderLabs/ModSecurity-nginx">Nginx 连接器</a> 是一个 Nginx 动态模块，可以通过 Fedora 包 <code>nginx-mod-modsecurity</code> 进行安装。它依赖于 <code>libmodsecurity.so</code>，所以在这个使用场景中，这个包本身就是防火墙。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">user@fedora ~</span><span class="o">]</span><span class="err">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">dnf</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="o">-</span><span class="n">y</span><span class="w"> </span><span class="n">nginx</span><span class="w"> </span><span class="n">nginx</span><span class="o">-</span><span class="k">mod</span><span class="o">-</span><span class="n">modsecurity</span>
+<span class="o">[</span><span class="n">user@fedora ~</span><span class="o">]</span><span class="err">$</span><span class="w"> </span><span class="n">rpm</span><span class="w"> </span><span class="o">-</span><span class="n">qR</span><span class="w"> </span><span class="n">nginx</span><span class="o">-</span><span class="k">mod</span><span class="o">-</span><span class="n">modsecurity</span>
+<span class="n">config</span><span class="p">(</span><span class="n">nginx</span><span class="o">-</span><span class="k">mod</span><span class="o">-</span><span class="n">modsecurity</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">1.0.3</span><span class="o">-</span><span class="mf">3.</span><span class="n">fc38</span>
+<span class="n">libc</span><span class="p">.</span><span class="n">so</span><span class="mf">.6</span><span class="p">(</span><span class="n">GLIBC_2</span><span class="mf">.4</span><span class="p">)(</span><span class="mi">64</span><span class="nc">bit</span><span class="p">)</span>
+<span class="n">libmodsecurity</span><span class="p">.</span><span class="n">so</span><span class="mf">.3</span><span class="p">()(</span><span class="mi">64</span><span class="nc">bit</span><span class="p">)</span>
+<span class="n">nginx</span><span class="p">(</span><span class="n">abi</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">1.24.0</span>
+<span class="n">nginx</span><span class="o">-</span><span class="n">filesystem</span>
+<span class="p">...</span>
+</code></pre></div>
+
+<p>安装完成后，你会见到连接器在 <code>/etc/nginx</code> 中添加了一些重要的文件。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">user@fedora ~</span><span class="o">]</span><span class="err">$</span><span class="w"> </span><span class="n">rpm</span><span class="w"> </span><span class="o">-</span><span class="n">ql</span><span class="w"> </span><span class="n">nginx</span><span class="o">-</span><span class="k">mod</span><span class="o">-</span><span class="n">modsecurity</span>
+<span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span><span class="n">modsecurity</span><span class="p">.</span><span class="n">conf</span><span class="w">                   </span><span class="err">#</span><span class="w"> </span><span class="n">waf</span><span class="w"> </span><span class="n">配置</span>
+<span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span><span class="n">nginx</span><span class="p">.</span><span class="n">conf</span><span class="p">.</span><span class="n">modsecurity</span><span class="w">             </span><span class="err">#</span><span class="w"> </span><span class="n">nginx</span><span class="w"> </span><span class="n">示例配置</span>
+<span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">lib64</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span><span class="n">modules</span><span class="o">/</span><span class="n">ngx_http_modsecurity_module</span><span class="p">.</span><span class="n">so</span>
+<span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">share</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span><span class="n">modules</span><span class="o">/</span><span class="k">mod</span><span class="o">-</span><span class="n">modsecurity</span><span class="p">.</span><span class="n">conf</span>
+<span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">share</span><span class="o">/</span><span class="n">doc</span><span class="o">/</span><span class="n">nginx</span><span class="o">-</span><span class="k">mod</span><span class="o">-</span><span class="n">modsecurity</span><span class="o">/</span><span class="n">README</span><span class="p">.</span><span class="n">md</span>
+<span class="p">...</span>
+</code></pre></div>
+
+<p>通过提供一些额外的配置指令，连接器对 Nginx 进行了扩展。下面的部分将演示 <code>nginx.conf.modsecurity</code> 文件中一些示例指令。指令的完整列表可以在 <code>README.md</code> 文件或项目的 GitHub 页面找到。</p>
+<h3>启动网络应用防火墙</h3>
+<p><code>nginx.conf.modsecurity</code> 是我们将要运行的 Nginx 配置。解开如下所示的 <em>modsecurity</em> 行注释：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">user@fedora ~</span><span class="o">]</span><span class="err">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">sed</span><span class="w"> </span><span class="o">-</span><span class="n">i</span><span class="w"> </span><span class="s1">&#39;s/#modsec/modsec/g&#39;</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span><span class="n">nginx</span><span class="p">.</span><span class="n">conf</span><span class="p">.</span><span class="n">modsecurity</span>
+<span class="o">[</span><span class="n">user@fedora ~</span><span class="o">]</span><span class="err">$</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="o">-</span><span class="n">C2</span><span class="w"> </span><span class="n">modsecurity</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span><span class="n">nginx</span><span class="p">.</span><span class="n">conf</span><span class="p">.</span><span class="n">modsecurity</span>
+<span class="w">        </span><span class="err">#</span><span class="w"> </span><span class="n">如有需要</span><span class="err">，</span><span class="n">启用</span><span class="w"> </span><span class="n">ModSecurity</span><span class="w"> </span><span class="n">WAF</span>
+<span class="w">        </span><span class="n">modsecurity</span><span class="w"> </span><span class="k">on</span><span class="p">;</span>
+<span class="w">        </span><span class="err">#</span><span class="w"> </span><span class="n">如有需要</span><span class="err">，</span><span class="n">加载</span><span class="w"> </span><span class="n">ModSecurity</span><span class="w"> </span><span class="n">CRS</span>
+<span class="w">        </span><span class="n">modsecurity_rules_file</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span><span class="n">modsecurity</span><span class="p">.</span><span class="n">conf</span><span class="p">;</span>
+</code></pre></div>
+
+<p>在 shell 中启动服务器并查看日志，确保在 <code>modsecurity.conf</code> 加载了七个默认规则。</p>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="n">user</span><span class="err">@</span><span class="n">fedora</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">nginx</span><span class="w"> </span><span class="o">-</span><span class="n">c</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span><span class="n">nginx</span><span class="o">.</span><span class="n">conf</span><span class="o">.</span><span class="n">modsecurity</span>
+<span class="p">[</span><span class="n">user</span><span class="err">@</span><span class="n">fedora</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="o">$</span><span class="w"> </span><span class="n">head</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span><span class="n">error</span><span class="o">.</span><span class="n">log</span>
+<span class="mi">2023</span><span class="o">/</span><span class="mi">10</span><span class="o">/</span><span class="mi">21</span><span class="w"> </span><span class="mi">23</span><span class="p">:</span><span class="mi">55</span><span class="p">:</span><span class="mi">09</span><span class="w"> </span><span class="p">[</span><span class="n">notice</span><span class="p">]</span><span class="w"> </span><span class="mi">46218</span><span class="c1">#46218: ModSecurity-nginx v1.0.3 (rules loaded inline/local/remote: 0/7/0)</span>
+<span class="mi">2023</span><span class="o">/</span><span class="mi">10</span><span class="o">/</span><span class="mi">21</span><span class="w"> </span><span class="mi">23</span><span class="p">:</span><span class="mi">55</span><span class="p">:</span><span class="mi">09</span><span class="w"> </span><span class="p">[</span><span class="n">notice</span><span class="p">]</span><span class="w"> </span><span class="mi">46218</span><span class="c1">#46218: using the &quot;epoll&quot; event method</span>
+<span class="mi">2023</span><span class="o">/</span><span class="mi">10</span><span class="o">/</span><span class="mi">21</span><span class="w"> </span><span class="mi">23</span><span class="p">:</span><span class="mi">55</span><span class="p">:</span><span class="mi">09</span><span class="w"> </span><span class="p">[</span><span class="n">notice</span><span class="p">]</span><span class="w"> </span><span class="mi">46218</span><span class="c1">#46218: nginx/1.24.0</span>
+<span class="mi">2023</span><span class="o">/</span><span class="mi">10</span><span class="o">/</span><span class="mi">21</span><span class="w"> </span><span class="mi">23</span><span class="p">:</span><span class="mi">55</span><span class="p">:</span><span class="mi">09</span><span class="w"> </span><span class="p">[</span><span class="n">notice</span><span class="p">]</span><span class="w"> </span><span class="mi">46218</span><span class="c1">#46218: OS: Linux 6.5.7-200.fc38.x86_64</span>
+</code></pre></div>
+
+<p>通过发送一些不符合 <code>Content-Type</code> 头格式的数据来测试默认规则。</p>
+<div class="highlight"><pre><span></span><code>[user@fedora<span class="w"> </span>~]$<span class="w"> </span>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost<span class="w"> </span>-H<span class="w"> </span>&quot;Content-Type:<span class="w"> </span>application/json&quot;<span class="w"> </span>--data<span class="w"> </span>&quot;<span class="nt">&lt;xml&gt;&lt;/xml&gt;</span>&quot;
+[user@fedora<span class="w"> </span>~]$<span class="w"> </span>tail<span class="w"> </span>/var/log/modsec_audit.log
+...
+---rH5bFain---H--
+ModSecurity:<span class="w"> </span>Warning.<span class="w"> </span>Matched<span class="w"> </span>&quot;Operator<span class="w"> </span>`Eq&#39;<span class="w"> </span>with<span class="w"> </span>parameter<span class="w"> </span>`0&#39;<span class="w"> </span>against<span class="w"> </span>variable<span class="w"> </span>`REQBODY_ERROR&#39;<span class="w"> </span>(Value:<span class="w"> </span>`1&#39;<span class="w"> </span>)<span class="w"> </span>[file<span class="w"> </span>&quot;/etc/nginx/modsecurity.conf&quot;]<span class="w"> </span>[line<span class="w"> </span>&quot;75&quot;]<span class="w"> </span>[id<span class="w"> </span>&quot;200002&quot;]<span class="w"> </span>[rev<span class="w"> </span>&quot;&quot;]<span class="w"> </span>[msg<span class="w"> </span>&quot;Failed<span class="w"> </span>to<span class="w"> </span>parse<span class="w"> </span>request<span class="w"> </span>body.&quot;]<span class="w"> </span>[data<span class="w"> </span>&quot;JSON<span class="w"> </span>parsing<span class="w"> </span>error:<span class="w"> </span>lexical<span class="w"> </span>error:<span class="w"> </span>invalid<span class="w"> </span>char<span class="w"> </span>in<span class="w"> </span>json<span class="w"> </span>text.\n&quot;]<span class="w"> </span>[severity<span class="w"> </span>&quot;2&quot;]<span class="w"> </span>[ver<span class="w"> </span>&quot;&quot;]<span class="w"> </span>[maturity<span class="w"> </span>&quot;0&quot;]<span class="w"> </span>[accuracy<span class="w"> </span>&quot;0&quot;]<span class="w"> </span>[hostname<span class="w"> </span>&quot;10.0.2.100&quot;]<span class="w"> </span>[uri<span class="w"> </span>&quot;/&quot;]<span class="w"> </span>[unique_id<span class="w"> </span>&quot;169795900388.487044&quot;]<span class="w"> </span>[ref<span class="w"> </span>&quot;v121,1&quot;]
+</code></pre></div>
+
+<h3>用 OWASP 核心规则集扩展你的网络应用防火墙</h3>
+<p>默认的 Nginx 连接器带有七条规则。OWASP <a href="https://github.com/coreruleset/coreruleset/tree/v3.3.5/rules">Core Rule Set v3.3.5</a> 则更为详尽，涵盖了许多场景。</p>
+<p>复制并提取规则的存档。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">user@fedora ~</span><span class="o">]</span><span class="err">$</span><span class="w"> </span><span class="n">curl</span><span class="w"> </span><span class="o">-</span><span class="n">fSL</span><span class="w"> </span><span class="nl">https</span><span class="p">:</span><span class="o">//</span><span class="n">github</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">coreruleset</span><span class="o">/</span><span class="n">coreruleset</span><span class="o">/</span><span class="n">archive</span><span class="o">/</span><span class="n">refs</span><span class="o">/</span><span class="n">tags</span><span class="o">/</span><span class="n">v3</span><span class="mf">.3.5</span><span class="p">.</span><span class="n">tar</span><span class="p">.</span><span class="n">gz</span><span class="w"> </span><span class="o">--</span><span class="k">output</span><span class="w"> </span><span class="o">/</span><span class="n">tmp</span><span class="o">/</span><span class="n">v3</span><span class="mf">.3.5</span><span class="p">.</span><span class="n">tar</span><span class="p">.</span><span class="n">gz</span>
+<span class="o">[</span><span class="n">user@fedora ~</span><span class="o">]</span><span class="err">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">tar</span><span class="w"> </span><span class="o">-</span><span class="n">C</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">nginx</span><span class="w"> </span><span class="o">-</span><span class="n">xvf</span><span class="w"> </span><span class="o">/</span><span class="n">tmp</span><span class="o">/</span><span class="n">v3</span><span class="mf">.3.5</span><span class="p">.</span><span class="n">tar</span><span class="p">.</span><span class="n">gz</span>
+<span class="o">[</span><span class="n">user@fedora ~</span><span class="o">]</span><span class="err">$</span><span class="w"> </span><span class="n">tree</span><span class="w"> </span><span class="o">-</span><span class="n">L</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span>
+<span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">conf</span><span class="p">.</span><span class="n">d</span>
+<span class="err">├──</span><span class="w"> </span><span class="k">default</span><span class="p">.</span><span class="n">d</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">modsecurity</span><span class="p">.</span><span class="n">conf</span><span class="w">          </span><span class="err">#</span><span class="w"> </span><span class="n">waf</span><span class="w"> </span><span class="n">配置</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">nginx</span><span class="p">.</span><span class="n">conf</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">nginx</span><span class="p">.</span><span class="n">conf</span><span class="p">.</span><span class="n">modsecurity</span><span class="w">    </span><span class="err">#</span><span class="w"> </span><span class="n">nginx</span><span class="w"> </span><span class="n">启用</span><span class="w"> </span><span class="n">waf</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">coreruleset</span><span class="o">-</span><span class="mf">3.3.5</span>
+<span class="err">├</span><span class="w">   </span><span class="err">├──</span><span class="w"> </span><span class="n">rules</span><span class="w">                 </span><span class="err">#</span><span class="w"> </span><span class="n">规则目录</span>
+<span class="err">├</span><span class="w">       </span><span class="p">...</span>
+<span class="err">├</span><span class="w">   </span><span class="p">...</span>
+</code></pre></div>
+
+<p>现在，你在 Nginx 配置文件夹中有了一个包含所有当前 OWASP 规则的 <code>rules</code> 目录。接下来，让 Nginx 知道这些规则。以下操作指南来源于 OWASP <a href="https://github.com/coreruleset/coreruleset/blob/v3.3.5/INSTALL">INSTALL</a> 文件。</p>
+<p>创建一个 <code>crs.conf</code> 文件，并在全局网络应用防火墙配置文件（ <code>modsecurity.conf</code> ）中包含所有相关的配置文件。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">user@fedora ~</span><span class="o">]</span><span class="err">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">cp</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span><span class="n">coreruleset</span><span class="o">-</span><span class="mf">3.3.5</span><span class="o">/</span><span class="n">crs</span><span class="o">-</span><span class="n">setup</span><span class="p">.</span><span class="n">conf</span><span class="p">.</span><span class="n">example</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span><span class="n">coreruleset</span><span class="o">-</span><span class="mf">3.3.5</span><span class="o">/</span><span class="n">crs</span><span class="p">.</span><span class="n">conf</span>
+<span class="o">[</span><span class="n">user@fedora ~</span><span class="o">]</span><span class="err">$</span><span class="w"> </span><span class="n">echo</span><span class="w"> </span><span class="o">-</span><span class="n">e</span><span class="w"> </span><span class="ss">&quot;\nInclude /etc/nginx/coreruleset-3.3.5/crs.conf&quot;</span><span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">tee</span><span class="w"> </span><span class="o">-</span><span class="n">a</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span><span class="n">modsecurity</span><span class="p">.</span><span class="n">conf</span>
+<span class="o">[</span><span class="n">user@fedora ~</span><span class="o">]</span><span class="err">$</span><span class="w"> </span><span class="n">echo</span><span class="w"> </span><span class="o">-</span><span class="n">e</span><span class="w"> </span><span class="ss">&quot;\nInclude /etc/nginx/coreruleset-3.3.5/rules/*.conf&quot;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">tee</span><span class="w"> </span><span class="o">-</span><span class="n">a</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span><span class="n">modsecurity</span><span class="p">.</span><span class="n">conf</span>
+<span class="o">[</span><span class="n">user@fedora ~</span><span class="o">]</span><span class="err">$</span><span class="w"> </span><span class="n">tail</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span><span class="n">modsecurity</span><span class="p">.</span><span class="n">conf</span>
+<span class="k">Include</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span><span class="n">coreruleset</span><span class="o">-</span><span class="mf">3.3.5</span><span class="o">/</span><span class="n">crs</span><span class="p">.</span><span class="n">conf</span>
+<span class="k">Include</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span><span class="n">coreruleset</span><span class="o">-</span><span class="mf">3.3.5</span><span class="o">/</span><span class="n">rules</span><span class="cm">/*.conf</span>
+</code></pre></div>
+
+<p>根据文档，包含这些文件的顺序很重要。上面的 <code>tee</code> 的命令将新的 <code>Include</code> 行放在了 <code>modsecurity.conf</code> 文件的末尾。现在，用这个新配置重启 Nginx。</p>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="n">user</span><span class="err">@</span><span class="n">fedora</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">nginx</span><span class="w"> </span><span class="o">-</span><span class="n">s</span><span class="w"> </span><span class="n">stop</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">nginx</span><span class="w"> </span><span class="o">-</span><span class="n">c</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span><span class="n">nginx</span><span class="o">.</span><span class="n">conf</span><span class="o">.</span><span class="n">modsecurity</span>
+<span class="p">[</span><span class="n">user</span><span class="err">@</span><span class="n">fedora</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="o">$</span><span class="w"> </span><span class="n">tail</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span><span class="n">error</span><span class="o">.</span><span class="n">log</span>
+<span class="mi">2023</span><span class="o">/</span><span class="mi">10</span><span class="o">/</span><span class="mi">22</span><span class="w"> </span><span class="mi">10</span><span class="p">:</span><span class="mi">53</span><span class="p">:</span><span class="mi">23</span><span class="w"> </span><span class="p">[</span><span class="n">notice</span><span class="p">]</span><span class="w"> </span><span class="mi">202</span><span class="c1">#202: exit</span>
+<span class="mi">2023</span><span class="o">/</span><span class="mi">10</span><span class="o">/</span><span class="mi">22</span><span class="w"> </span><span class="mi">10</span><span class="p">:</span><span class="mi">53</span><span class="p">:</span><span class="mi">50</span><span class="w"> </span><span class="p">[</span><span class="n">notice</span><span class="p">]</span><span class="w"> </span><span class="mi">230</span><span class="c1">#230: ModSecurity-nginx v1.0.3 (rules loaded inline/local/remote: 0/921/0)</span>
+<span class="mi">2023</span><span class="o">/</span><span class="mi">10</span><span class="o">/</span><span class="mi">22</span><span class="w"> </span><span class="mi">10</span><span class="p">:</span><span class="mi">53</span><span class="p">:</span><span class="mi">50</span><span class="w"> </span><span class="p">[</span><span class="n">notice</span><span class="p">]</span><span class="w"> </span><span class="mi">230</span><span class="c1">#230: using the &quot;epoll&quot; event method</span>
+<span class="mi">2023</span><span class="o">/</span><span class="mi">10</span><span class="o">/</span><span class="mi">22</span><span class="w"> </span><span class="mi">10</span><span class="p">:</span><span class="mi">53</span><span class="p">:</span><span class="mi">50</span><span class="w"> </span><span class="p">[</span><span class="n">notice</span><span class="p">]</span><span class="w"> </span><span class="mi">230</span><span class="c1">#230: nginx/1.24.0</span>
+<span class="mi">2023</span><span class="o">/</span><span class="mi">10</span><span class="o">/</span><span class="mi">22</span><span class="w"> </span><span class="mi">10</span><span class="p">:</span><span class="mi">53</span><span class="p">:</span><span class="mi">50</span><span class="w"> </span><span class="p">[</span><span class="n">notice</span><span class="p">]</span><span class="w"> </span><span class="mi">230</span><span class="c1">#230: OS: Linux 6.5.7-200.fc38.x86_64</span>
+<span class="mi">2023</span><span class="o">/</span><span class="mi">10</span><span class="o">/</span><span class="mi">22</span><span class="w"> </span><span class="mi">10</span><span class="p">:</span><span class="mi">53</span><span class="p">:</span><span class="mi">50</span><span class="w"> </span><span class="p">[</span><span class="n">notice</span><span class="p">]</span><span class="w"> </span><span class="mi">230</span><span class="c1">#230: getrlimit(RLIMIT_NOFILE): 524288:524288</span>
+<span class="mi">2023</span><span class="o">/</span><span class="mi">10</span><span class="o">/</span><span class="mi">22</span><span class="w"> </span><span class="mi">10</span><span class="p">:</span><span class="mi">53</span><span class="p">:</span><span class="mi">50</span><span class="w"> </span><span class="p">[</span><span class="n">notice</span><span class="p">]</span><span class="w"> </span><span class="mi">231</span><span class="c1">#231: start worker processes</span>
+</code></pre></div>
+
+<p>注意，Nginx 成功加载了 921 条规则。还需要做一些测试来确保规则实际上是被网络应用防火墙检查过的。这里再次引用 <code>INSTALL</code> 文件中的 “Testing the Installation” 片段。</p>
+<div class="highlight"><pre><span></span><code>[user@fedora<span class="w"> </span>~]$<span class="w"> </span>curl<span class="w"> </span>&#39;http://localhost/?param=&#39;&#39;&gt;<span class="nt">&lt;script&gt;</span>alert(1);<span class="nt">&lt;/script&gt;</span>&#39;
+[user@fedora<span class="w"> </span>~]$<span class="w"> </span>tail<span class="w"> </span>/var/log/modsec_audit.log
+...
+---8NSpdnLe---H--
+ModSecurity:<span class="w"> </span>Warning.<span class="w"> </span>detected<span class="w"> </span>XSS<span class="w"> </span>using<span class="w"> </span>libinjection.<span class="w"> </span>[file<span class="w"> </span>&quot;/etc/nginx/coreruleset-3.3.5/rules/REQUEST-941-APPLICATION-ATTACK-XSS.conf&quot;]<span class="w"> </span>[line<span class="w"> </span>&quot;38&quot;]<span class="w"> </span>[id<span class="w"> </span>&quot;941100&quot;]<span class="w"> </span>[rev<span class="w"> </span>&quot;&quot;]<span class="w"> </span>[msg<span class="w"> </span>&quot;XSS<span class="w"> </span>Attack<span class="w"> </span>Detected<span class="w"> </span>via<span class="w"> </span>libinjection&quot;]<span class="w"> </span>[data<span class="w"> </span>&quot;Matched<span class="w"> </span>Data:<span class="w"> </span>XSS<span class="w"> </span>data<span class="w"> </span>found<span class="w"> </span>within<span class="w"> </span>ARGS:param:<span class="w"> </span>&gt;<span class="nt">&lt;script&gt;</span>alert(1);<span class="nt">&lt;/script&gt;</span>&quot;]<span class="w"> </span>[severity<span class="w"> </span>&quot;2&quot;]<span class="w"> </span>[ver<span class="w"> </span>&quot;OWASP_CRS/3.3.5&quot;]
+...
+</code></pre></div>
+
+<h3>结论</h3>
+<p>本文演示了如何为 Nginx 服务器配置网络应用防火墙。这个部署使用了标准规则和 OWASP Core Rule Set v3.3.5。演示的防火墙在<strong>检测模式</strong>中运行并记录不寻常的行为。将防火墙运行在<strong>防御模式</strong>要对 <code>modsecurity.conf</code> 进行更多改动。请参考 <a href="https://github.com/SpiderLabs/ModSecurity/wiki/Reference-Manual-(v3.x)">ModSecurity Reference Manual v3.x</a> 获取如何启用防御模式和更多信息。</p>
+<p>祝你好运。</p>
+<p><em>（题图：DA/7ec85bc4-b209-4fc6-9275-8f7d1430f6ca）</em></p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

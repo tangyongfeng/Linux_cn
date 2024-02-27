@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Linux有问必答：如何使用tcpdump来捕获TCP SYN，ACK和FIN包</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: '' 问题：我想要监控TCP连接活动（如，建立连接的三次握手，以及断开连接的四次握手）。要完成此事，我只需要捕获TCP控制包，如SYN，ACK或FIN标记相关的包。我怎样使用 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2014/10/linuxyou-wen-bi-da-ru-he-shi-yong-tcpdumplai-bu-huo-tcp-synackhe-finbao.html" rel="bookmark"
+           title="Permalink to Linux有问必答：如何使用tcpdump来捕获TCP SYN，ACK和FIN包">Linux有问必答：如何使用tcpdump来捕获TCP SYN，ACK和FIN包</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2014-10-08T07:26:00+02:00">
+                Published: Wed 08 October 2014
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: ''</p>
+<blockquote>
+<p><strong>问题</strong>：我想要监控TCP连接活动（如，建立连接的三次握手，以及断开连接的四次握手）。要完成此事，我只需要捕获TCP控制包，如SYN，ACK或FIN标记相关的包。我怎样使用tcpdump来仅仅捕获TCP SYN，ACK和/或FYN包？</p>
+</blockquote>
+<p>作为业界标准的捕获工具，tcpdump提供了强大而又灵活的包过滤功能。作为tcpdump基础的libpcap包捕获引擎支持标准的包过滤规则，如基于5重包头的过滤（如基于源/目的IP地址/端口和IP协议类型）。</p>
+<p><img alt="" src="/data/attachment/album/201410/07/212916cdad5az4b150pwsp.jpg"></p>
+<p>tcpdump/libpcap的包过滤规则也支持更多通用分组表达式，在这些表达式中，包中的任意字节范围都可以使用关系或二进制操作符进行检查。对于字节范围表达，你可以使用以下格式：</p>
+<div class="highlight"><pre><span></span><code><span class="n">proto</span><span class="w"> </span><span class="p">[</span><span class="w"> </span><span class="n">expr</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">size</span><span class="w"> </span><span class="p">]</span>
+</code></pre></div>
+
+<p>“proto”可以是熟知的协议之一（如ip，arp，tcp，udp，icmp，ipv6），“expr”表示与指定的协议头开头相关的字节偏移量。有我们熟知的直接偏移量如tcpflags，也有取值常量如tcp-syn，tcp-ack或者tcp-fin。“size”是可选的，表示从字节偏移量开始检查的字节数量。</p>
+<p>使用这种格式，你可以像下面这样过滤TCP SYN，ACK或FIN包。</p>
+<p>只捕获TCP SYN包：</p>
+<div class="highlight"><pre><span></span><code><span class="w"> </span><span class="err">#</span><span class="w"> </span><span class="n">tcpdump</span><span class="w"> </span><span class="o">-</span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="n">interface</span><span class="o">&gt;</span><span class="w"> </span><span class="ss">&quot;tcp[tcpflags] &amp; (tcp-syn) != 0&quot;</span><span class="w"> </span>
+</code></pre></div>
+
+<p>只捕获TCP ACK包：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="n">tcpdump</span><span class="w"> </span><span class="o">-</span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="n">interface</span><span class="o">&gt;</span><span class="w"> </span><span class="ss">&quot;tcp[tcpflags] &amp; (tcp-ack) != 0&quot;</span>
+</code></pre></div>
+
+<p>只捕获TCP FIN包：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="n">tcpdump</span><span class="w"> </span><span class="o">-</span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="n">interface</span><span class="o">&gt;</span><span class="w"> </span><span class="ss">&quot;tcp[tcpflags] &amp; (tcp-fin) != 0&quot;</span>
+</code></pre></div>
+
+<p>之捕获TCP SYN或ACK包：</p>
+<div class="highlight"><pre><span></span><code><span class="w"> </span><span class="err">#</span><span class="w"> </span><span class="n">tcpdump</span><span class="w"> </span><span class="o">-</span><span class="n">r</span><span class="w"> </span><span class="o">&lt;</span><span class="n">interface</span><span class="o">&gt;</span><span class="w"> </span><span class="ss">&quot;tcp[tcpflags] &amp; (tcp-syn|tcp-ack) != 0&quot;</span><span class="w"> </span>
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/201410/07/212920y6h9az3libaatz1b.jpg"></p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

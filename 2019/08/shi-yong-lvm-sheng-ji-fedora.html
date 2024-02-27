@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 LVM 升级 Fedora</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Stuart D Gathman 大多数用户发现使用标准流程升级从一个 Fedora 版本升级到下一个很简单。但是，Fedora 升级也不可避免地会遇到许多 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/08/shi-yong-lvm-sheng-ji-fedora.html" rel="bookmark"
+           title="Permalink to 使用 LVM 升级 Fedora">使用 LVM 升级 Fedora</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-08-20T09:57:06+02:00">
+                Published: Tue 20 August 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Stuart D Gathman</p>
+<p><img alt="" src="/data/attachment/album/201908/20/095709br7vxgnnq52ummv8.jpg"></p>
+<p>大多数用户发现使用标准流程升级<a href="https://fedoramagazine.org/upgrading-fedora-27-fedora-28/">从一个 Fedora 版本升级到下一个</a>很简单。但是，Fedora 升级也不可避免地会遇到许多特殊情况。本文介绍了使用 DNF 和逻辑卷管理（LVM）进行升级的一种方法，以便在出现问题时保留可引导备份。这个例子是将 Fedora 26 系统升级到 Fedora 28。</p>
+<p>此处展示的过程比标准升级过程更复杂。在使用此过程之前，你应该充分掌握 LVM 的工作原理。如果没有适当的技能和细心，你可能会丢失数据和/或被迫重新安装系统！如果你不知道自己在做什么，那么<strong>强烈建议</strong>你坚持只使用得到支持的升级方法。</p>
+<h3>准备系统</h3>
+<p>在开始之前，请确保你的现有系统已完全更新。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>dnf<span class="w"> </span>update
+$<span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>reboot<span class="w"> </span><span class="c1"># 或采用 GUI 方式</span>
+</code></pre></div>
+
+<p>检查你的根文件系统是否是通过 LVM 挂载的。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>df<span class="w"> </span>/
+Filesystem<span class="w">              </span>1K-blocks<span class="w">   </span>Used<span class="w">        </span>Available<span class="w">   </span>Use%<span class="w">    </span>Mounted<span class="w"> </span>on
+/dev/mapper/vg_sdg-f26<span class="w">  </span><span class="m">20511312</span><span class="w">    </span><span class="m">14879816</span><span class="w">    </span><span class="m">4566536</span><span class="w">     </span><span class="m">77</span>%<span class="w">     </span>/
+
+$<span class="w"> </span>sudo<span class="w"> </span>lvs
+LV<span class="w">        </span>VG<span class="w">            </span>Attr<span class="w">        </span>LSize<span class="w"> </span>Pool<span class="w"> </span>Origin<span class="w"> </span>Data%<span class="w"> </span>Meta%<span class="w"> </span>Move<span class="w"> </span>Log<span class="w"> </span>Cpy%Sync<span class="w"> </span>Convert
+f22<span class="w">       </span>vg_sdg<span class="w">        </span>-wi-ao----<span class="w">  </span><span class="m">15</span>.00g
+f24_64<span class="w">    </span>vg_sdg<span class="w">        </span>-wi-ao----<span class="w">  </span><span class="m">20</span>.00g
+f26<span class="w">       </span>vg_sdg<span class="w">        </span>-wi-ao----<span class="w">  </span><span class="m">20</span>.00g
+home<span class="w">      </span>vg_sdg<span class="w">        </span>-wi-ao----<span class="w"> </span><span class="m">100</span>.00g
+mockcache<span class="w"> </span>vg_sdg<span class="w">        </span>-wi-ao----<span class="w">  </span><span class="m">10</span>.00g
+swap<span class="w">      </span>vg_sdg<span class="w">        </span>-wi-ao----<span class="w">   </span><span class="m">4</span>.00g
+<span class="nb">test</span><span class="w">      </span>vg_sdg<span class="w">        </span>-wi-a-----<span class="w">   </span><span class="m">1</span>.00g
+vg_vm<span class="w">     </span>vg_sdg<span class="w">        </span>-wi-ao----<span class="w">  </span><span class="m">20</span>.00g
+</code></pre></div>
+
+<p>如果你在安装 Fedora 时使用了默认值，你可能会发现根文件系统挂载在名为 <code>root</code> 的逻辑卷（LV）上。卷组（VG）的名称可能会有所不同。看看根卷的总大小。在该示例中，根文件系统名为 <code>f26</code>，大小为 <code>20G</code>。</p>
+<p>接下来，确保 LVM 中有足够的可用空间。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>vgs
+VG<span class="w">      </span><span class="c1">#PV #LV #SN Attr    VSize   VFree</span>
+vg_sdg<span class="w">  </span><span class="m">1</span><span class="w">   </span><span class="m">8</span><span class="w">   </span><span class="m">0</span><span class="w">   </span>wz--n-<span class="w">  </span><span class="m">232</span>.39g<span class="w"> </span><span class="m">42</span>.39g
+</code></pre></div>
+
+<p>该系统有足够的可用空间，可以为升级后的 Fedora 28 的根卷分配 20G 的逻辑卷。如果你使用的是默认安装，则你的 LVM 中将没有可用空间。对 LVM 的一般性管理超出了本文的范围，但这里有一些情形下可能采取的方法：</p>
+<p>1、<code>/home</code> 在自己的逻辑卷，而且 <code>/home</code> 中有大量空闲空间。</p>
+<p>你可以从图形界面中注销并切换到文本控制台，以 <code>root</code> 用户身份登录。然后你可以卸载 <code>/home</code>，并使用 <code>lvreduce -r</code> 调整大小并重新分配 <code>/home</code> 逻辑卷。你也可以从<ruby> 现场镜像 <rt>  Live image </rt></ruby>启动（以便不使用 <code>/home</code>）并使用 gparted GUI 实用程序进行分区调整。</p>
+<p>2、大多数 LVM 空间被分配给根卷，该文件系统中有大量可用空间。</p>
+<p>你可以从现场镜像启动并使用 gparted GUI 实用程序来减少根卷的大小。此时也可以考虑将 <code>/home</code> 移动到另外的文件系统，但这超出了本文的范围。</p>
+<p>3、大多数文件系统已满，但你有个已经不再需要逻辑卷。</p>
+<p>你可以删除不需要的逻辑卷，释放卷组中的空间以进行此操作。</p>
+<h3>创建备份</h3>
+<p>首先，为升级后的系统分配新的逻辑卷。确保为系统的卷组（VG）使用正确的名称。在这个例子中它是 <code>vg_sdg</code>。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>lvcreate<span class="w"> </span>-L20G<span class="w"> </span>-n<span class="w"> </span>f28<span class="w"> </span>vg_sdg
+Logical<span class="w"> </span>volume<span class="w"> </span><span class="s2">&quot;f28&quot;</span><span class="w"> </span>created.
+</code></pre></div>
+
+<p>接下来，创建当前根文件系统的快照。此示例创建名为 <code>f26_s</code> 的快照卷。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sync
+$<span class="w"> </span>sudo<span class="w"> </span>lvcreate<span class="w"> </span>-s<span class="w"> </span>-L1G<span class="w"> </span>-n<span class="w"> </span>f26_s<span class="w"> </span>vg_sdg/f26
+Using<span class="w"> </span>default<span class="w"> </span>stripesize<span class="w"> </span><span class="m">64</span>.00<span class="w"> </span>KiB.
+Logical<span class="w"> </span>volume<span class="w"> </span><span class="s2">&quot;f26_s&quot;</span><span class="w"> </span>created.
+</code></pre></div>
+
+<p>现在可以将快照复制到新逻辑卷。当你替换自己的卷名时，<strong>请确保目标正确</strong>。如果不小心，就会不可撤销地删除了数据。此外，请确保你从根卷的快照复制，<strong>而不是</strong>从你的现在的根卷。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>dd<span class="w"> </span><span class="k">if</span><span class="o">=</span>/dev/vg_sdg/f26_s<span class="w"> </span><span class="nv">of</span><span class="o">=</span>/dev/vg_sdg/f28<span class="w"> </span><span class="nv">bs</span><span class="o">=</span>256k
+<span class="m">81920</span>+0<span class="w"> </span>records<span class="w"> </span><span class="k">in</span>
+<span class="m">81920</span>+0<span class="w"> </span>records<span class="w"> </span>out
+<span class="m">21474836480</span><span class="w"> </span>bytes<span class="w"> </span><span class="o">(</span><span class="m">21</span><span class="w"> </span>GB,<span class="w"> </span><span class="m">20</span><span class="w"> </span>GiB<span class="o">)</span><span class="w"> </span>copied,<span class="w"> </span><span class="m">149</span>.179<span class="w"> </span>s,<span class="w"> </span><span class="m">144</span><span class="w"> </span>MB/s
+</code></pre></div>
+
+<p>给新文件系统一个唯一的 UUID。这不是绝对必要的，但 UUID 应该是唯一的，因此这避免了未来的混淆。以下是在 ext4 根文件系统上的方法：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>e2fsck<span class="w"> </span>-f<span class="w"> </span>/dev/vg_sdg/f28
+$<span class="w"> </span>sudo<span class="w"> </span>tune2fs<span class="w"> </span>-U<span class="w"> </span>random<span class="w"> </span>/dev/vg_sdg/f28
+</code></pre></div>
+
+<p>然后删除不再需要的快照卷：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>lvremove<span class="w"> </span>vg_sdg/f26_s
+Do<span class="w"> </span>you<span class="w"> </span>really<span class="w"> </span>want<span class="w"> </span>to<span class="w"> </span>remove<span class="w"> </span>active<span class="w"> </span>logical<span class="w"> </span>volume<span class="w"> </span>vg_sdg/f26_s?<span class="w"> </span><span class="o">[</span>y/n<span class="o">]</span>:<span class="w"> </span>y
+Logical<span class="w"> </span>volume<span class="w"> </span><span class="s2">&quot;f26_s&quot;</span><span class="w"> </span>successfully<span class="w"> </span>removed
+</code></pre></div>
+
+<p>如果你单独挂载了 <code>/home</code>，你可能希望在此处制作 <code>/home</code> 的快照。有时，升级的应用程序会进行与旧版 Fedora 版本不兼容的更改。如果需要，编辑<strong>旧</strong>根文件系统上的 <code>/etc/fstab</code> 文件以在 <code>/home</code> 上挂载快照。请记住，当快照已满时，它将消失！另外，你可能还希望给 <code>/home</code> 做个正常备份。</p>
+<h3>配置以使用新的根</h3>
+<p>首先，安装新的逻辑卷并备份现有的 GRUB 设置：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>mkdir<span class="w"> </span>/mnt/f28
+$<span class="w"> </span>sudo<span class="w"> </span>mount<span class="w"> </span>/dev/vg_sdg/f28<span class="w"> </span>/mnt/f28
+$<span class="w"> </span>sudo<span class="w"> </span>mkdir<span class="w"> </span>/mnt/f28/f26
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>/boot/grub2
+$<span class="w"> </span>sudo<span class="w"> </span>cp<span class="w"> </span>-p<span class="w"> </span>grub.cfg<span class="w"> </span>grub.cfg.old
+</code></pre></div>
+
+<p>编辑 <code>grub.conf</code> 并在第一个菜单项 <code>menuentry</code> 之前添加这些，除非你已经有了：</p>
+<div class="highlight"><pre><span></span><code>menuentry &#39;Old boot menu&#39; {
+  configfile /grub2/grub.cfg.old
+}
+</code></pre></div>
+
+<p>编辑 <code>grub.conf</code> 并更改默认菜单项以激活并挂载新的根文件系统。改变这一行：</p>
+<div class="highlight"><pre><span></span><code>linux16 /vmlinuz-4.16.11-100.fc26.x86_64 root=/dev/mapper/vg_sdg-f26 ro rd.lvm.lv=vg_sdg/f26 rd.lvm.lv=vg_sdg/swap rhgb quiet LANG=en_US.UTF-8
+</code></pre></div>
+
+<p>如你看到的这样。请记住使用你系统上的正确的卷组和逻辑卷条目名称！</p>
+<div class="highlight"><pre><span></span><code>linux16 /vmlinuz-4.16.11-100.fc26.x86_64 root=/dev/mapper/vg_sdg-f28 ro rd.lvm.lv=vg_sdg/f28 rd.lvm.lv=vg_sdg/swap rhgb quiet LANG=en_US.UTF-8
+</code></pre></div>
+
+<p>编辑 <code>/mnt/f28/etc/default/grub</code> 并改变在启动时激活的默认的根卷：</p>
+<div class="highlight"><pre><span></span><code>GRUB_CMDLINE_LINUX=&quot;rd.lvm.lv=vg_sdg/f28 rd.lvm.lv=vg_sdg/swap rhgb quiet&quot;
+</code></pre></div>
+
+<p>编辑 <code>/mnt/f28/etc/fstab</code>，将挂载的根文件系统从旧的逻辑卷：</p>
+<div class="highlight"><pre><span></span><code>/dev/mapper/vg_sdg-f26 / ext4 defaults 1 1
+</code></pre></div>
+
+<p>改为新的：</p>
+<div class="highlight"><pre><span></span><code>/dev/mapper/vg_sdg-f28 / ext4 defaults 1 1
+</code></pre></div>
+
+<p>然后，出于参考的用途，只读挂载旧的根卷：</p>
+<div class="highlight"><pre><span></span><code>/dev/mapper/vg_sdg-f26 /f26 ext4 ro,nodev,noexec 0 0
+</code></pre></div>
+
+<p>如果你的根文件系统是通过 UUID 挂载的，你需要改变这个方式。如果你的根文件系统是 ext4 你可以这样做：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>e2label<span class="w"> </span>/dev/vg_sdg/f28<span class="w"> </span>F28
+</code></pre></div>
+
+<p>现在编辑 <code>/mnt/f28/etc/fstab</code> 使用该卷标。改变该根文件系统的挂载行，像这样：</p>
+<div class="highlight"><pre><span></span><code>LABEL=F28 / ext4 defaults 1 1
+</code></pre></div>
+
+<h3>重启与升级</h3>
+<p>重新启动，你的系统将使用新的根文件系统。它仍然是 Fedora 26，但是是带有新的逻辑卷名称的副本，并可以进行 <code>dnf</code> 系统升级！如果出现任何问题，请使用旧引导菜单引导回到你的工作系统，此过程可避免触及旧系统。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>reboot<span class="w"> </span><span class="c1"># or GUI equivalent</span>
+...
+$<span class="w"> </span>df<span class="w"> </span>/<span class="w"> </span>/f26
+Filesystem<span class="w"> </span>1K-blocks<span class="w"> </span>Used<span class="w"> </span>Available<span class="w"> </span>Use%<span class="w"> </span>Mounted<span class="w"> </span>on
+/dev/mapper/vg_sdg-f28<span class="w"> </span><span class="m">20511312</span><span class="w"> </span><span class="m">14903196</span><span class="w"> </span><span class="m">4543156</span><span class="w"> </span><span class="m">77</span>%<span class="w"> </span>/
+/dev/mapper/vg_sdg-f26<span class="w"> </span><span class="m">20511312</span><span class="w"> </span><span class="m">14866412</span><span class="w"> </span><span class="m">4579940</span><span class="w"> </span><span class="m">77</span>%<span class="w"> </span>/f26
+</code></pre></div>
+
+<p>你可能希望验证使用旧的引导菜单确实可以让你回到挂载在旧的根文件系统上的根。</p>
+<p>现在按照<a href="https://fedoraproject.org/wiki/DNF_system_upgrade">此维基页面</a>中的说明进行操作。如果系统升级出现任何问题，你还会有一个可以重启回去的工作系统。</p>
+<h3>进一步的考虑</h3>
+<p>创建新的逻辑卷并将根卷的快照复制到其中的步骤可以使用通用脚本自动完成。它只需要新的逻辑卷的名称，因为现有根的大小和设备很容易确定。例如，可以输入以下命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>copyfs<span class="w"> </span>/<span class="w"> </span>f28
+</code></pre></div>
+
+<p>提供挂载点以进行复制可以更清楚地了解发生了什么，并且复制其他挂载点（例如 <code>/home</code>）可能很有用。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

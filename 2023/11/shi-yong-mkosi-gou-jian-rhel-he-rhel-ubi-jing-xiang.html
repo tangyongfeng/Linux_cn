@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 mkosi 构建 RHEL 和 RHEL UBI 镜像</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Zbigniew Jędrzejewski-szmek mkosi 是一个轻量级工具，用于从发行版软件包构建镜像。本文介绍如何使用 mkosi 从 RHEL 和 RHEL 通用基础镜像 Universal Base Image （UBI）的软 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2023/11/shi-yong-mkosi-gou-jian-rhel-he-rhel-ubi-jing-xiang.html" rel="bookmark"
+           title="Permalink to 使用 mkosi 构建 RHEL 和 RHEL UBI 镜像">使用 mkosi 构建 RHEL 和 RHEL UBI 镜像</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2023-11-27T23:22:00+01:00">
+                Published: Mon 27 November 2023
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Zbigniew Jędrzejewski-szmek</p>
+<p><img alt="" src="/data/attachment/album/202311/27/232213c9y5jt85t7vj8men.png"></p>
+<p>mkosi 是一个轻量级工具，用于从发行版软件包构建镜像。本文介绍如何使用 mkosi 从 RHEL 和 RHEL <ruby> <a href="https://uapi-group.org/specifications/specs/discoverable_disk_image/">  通用基础镜像 </a> <rt>  Universal Base Image </rt></ruby>（UBI）的软件包构建镜像。RHEL UBI 是 RHEL 的一个子集，可以在没有订阅的情况下免费使用。</p>
+<h3>mkosi 特性</h3>
+<p>mkosi 支持一些输出格式，但最重要的是 <ruby> <a href="https://uapi-group.org/specifications/specs/discoverable_disk_image/">  可发现磁盘镜像 </a> <rt>  Discoverable Disk Images </rt></ruby>（DDI）。同一个 DDI 可用于引导容器、或运行在虚拟机、抑或是复制到 U 盘以引导真实物理机，然后从 U 盘复制到磁盘以引导系统。该镜像具有标准化的布局和描述其用途的元数据。</p>
+<p>mkosi 依赖其他工具来完成大部分工作：使用 <code>systemd-repart</code> 在磁盘镜像上创建分区，使用 <code>mkfs.btrfs</code> / <code>mkfs.ext4</code> / <code>mkfs.xfs</code> 等创建文件系统，并使用 <code>dnf</code> / <code>apt</code> / <code>pacman</code> / <code>zypper</code> 下载和解压包。</p>
+<p>mkosi 支持一系列发行版：Debian 和 Ubuntu、Arch Linux、openSUSE，当然还包括 Fedora、CentOS Stream 及其衍生版本，以及最近的 RHEL UBI 和 RHEL 。由于实际的“重活”是由其他工具完成的，mkosi 可以进行交叉构建。这意味着可以使用一个发行版构建各种其他发行版的镜像。唯一的要求是主机上安装了相应的工具。Fedora 有原生的 <code>apt</code>、<code>pacman</code> 和 <code>zypper</code>，因此它为使用 mkosi 构建任何其他发行版提供了良好的基础。</p>
+<p>它还有一些有趣的功能：镜像可以由非特权用户创建，或者在没有设备文件的容器中创建，特别是没有对回环设备的访问权限。它还可以在没有特权的情况下将这些镜像启动为虚拟机（使用 <code>qemu</code>）。</p>
+<p>配置是声明性的，非常容易创建。使用 <code>systemd-repart</code> 创建磁盘分区，并使用 <code>repart.d</code> 配置文件定义应该如何完成此操作。</p>
+<p>有关更多详细信息，请参见 Daan DeMeyer 在 All Systems Go 大会上的两个演讲：《<a href="https://media.ccc.de/v/all-systems-go-2023-191-systemd-repart-building-discoverable-disk-images">systemd-repart: Building Discoverable Disk Images</a>》 和 《<a href="https://media.ccc.de/v/all-systems-go-2023-190-mkosi-building-bespoke-operating-system-images">mkosi: Building Bespoke Operating System Images</a>》。</p>
+<h3>项目目标</h3>
+<p>mkosi 的一个目标是允许对软件项目进行针对不同发行版的测试。它将为一个发行版创建一个镜像（使用该发行版的软件包），然后将软件项目编译并安装到该镜像中，插入不属于软件包的额外文件。但是，首个阶段，即从软件包创建镜像的过程，本身就是有用的。这是我们将首先展示的内容。</p>
+<p>我们 <sup class="footnote-ref"> <a href="#fn1" id="fnref1">  [1] </a></sup> 最近添加了对 RHEL 和 RHEL UBI 的支持。让我们从 RHEL UBI 开始，利用发行版软件包创建镜像。</p>
+<p>请注意，下面的示例要求 mkosi 19，而且不适用于更早的版本。</p>
+<h3>带有 Shell 的基本 RHEL UBI 镜像</h3>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>mkosi.cache
+$<span class="w"> </span>mkosi<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-d<span class="w"> </span>rhel-ubi<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-t<span class="w"> </span>directory<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-p<span class="w"> </span>bash,coreutils,util-linux,systemd,rpm<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--autologin
+</code></pre></div>
+
+<p>上面的命令指定了发行版 <code>rhel-ubi</code>，输出格式 <code>directory</code>，并请求安装软件包 <code>bash</code>、<code>coreutils</code>、…、<code>rpm</code>。<code>rpm</code> 通常不需要放到镜像内部，但在这里用于内省会很有用。我们还启用了以 root 用户自动登录。</p>
+<p>在启动构建之前，我们创建了缓存目录 <code>mkosi.cache</code>。当存在缓存目录时，mkosi 会自动使用它来持久化下载的 RPM 包。这将使相同软件包集合的后续调用速度更快。</p>
+<p>然后，我们可以使用 <code>systemd-nspawn</code> 将此镜像作为容器启动：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>mkosi<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-d<span class="w"> </span>rhel-ubi<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-t<span class="w"> </span>directory<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>boot
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="n">systemd</span><span class="w"> </span><span class="mi">252</span><span class="o">-</span><span class="mf">14.</span><span class="n">el9_2</span><span class="mf">.3</span><span class="w"> </span><span class="n">running</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="k">system</span><span class="w"> </span><span class="n">mode</span><span class="w"> </span><span class="p">(</span><span class="o">+</span><span class="n">PAM</span><span class="w"> </span><span class="o">+</span><span class="n">AUDIT</span><span class="w"> </span><span class="o">+</span><span class="n">SELINUX</span><span class="w"> </span><span class="o">-</span><span class="n">APPARMOR</span><span class="w"> </span><span class="o">+</span><span class="n">IMA</span><span class="w"> </span><span class="o">+</span><span class="n">SMACK</span><span class="w"> </span><span class="o">+</span><span class="n">SECCOMP</span><span class="w"> </span><span class="o">+</span><span class="n">GCRYPT</span><span class="w"> </span><span class="o">+</span><span class="n">GNUTLS</span><span class="w"> </span><span class="o">+</span><span class="n">OPENSSL</span><span class="w"> </span><span class="o">+</span><span class="n">ACL</span><span class="w"> </span><span class="o">+</span><span class="n">BLKID</span><span class="w"> </span><span class="o">+</span><span class="n">CURL</span><span class="w"> </span><span class="o">+</span><span class="n">ELFUTILS</span><span class="w"> </span><span class="o">-</span><span class="n">FIDO2</span><span class="w"> </span><span class="o">+</span><span class="n">IDN2</span><span class="w"> </span><span class="o">-</span><span class="n">IDN</span><span class="w"> </span><span class="o">-</span><span class="n">IPTC</span><span class="w"> </span><span class="o">+</span><span class="n">KMOD</span><span class="w"> </span><span class="o">+</span><span class="n">LIBCRYPTSETUP</span><span class="w"> </span><span class="o">+</span><span class="n">LIBFDISK</span><span class="w"> </span><span class="o">+</span><span class="n">PCRE2</span><span class="w"> </span><span class="o">-</span><span class="n">PWQUALITY</span><span class="w"> </span><span class="o">+</span><span class="n">P11KIT</span><span class="w"> </span><span class="o">-</span><span class="n">QRENCODE</span><span class="w"> </span><span class="o">+</span><span class="n">TPM2</span><span class="w"> </span><span class="o">+</span><span class="n">BZIP2</span><span class="w"> </span><span class="o">+</span><span class="n">LZ4</span><span class="w"> </span><span class="o">+</span><span class="n">XZ</span><span class="w"> </span><span class="o">+</span><span class="n">ZLIB</span><span class="w"> </span><span class="o">+</span><span class="n">ZSTD</span><span class="w"> </span><span class="o">-</span><span class="n">BPF_FRAMEWORK</span><span class="w"> </span><span class="o">+</span><span class="n">XKBCOMMON</span><span class="w"> </span><span class="o">+</span><span class="n">UTMP</span><span class="w"> </span><span class="o">+</span><span class="n">SYSVINIT</span><span class="w"> </span><span class="k">default</span><span class="o">-</span><span class="n">hierarchy</span><span class="o">=</span><span class="n">unified</span><span class="p">)</span>
+<span class="n">Detected</span><span class="w"> </span><span class="n">virtualization</span><span class="w"> </span><span class="n">systemd</span><span class="o">-</span><span class="n">nspawn</span><span class="p">.</span>
+<span class="n">Detected</span><span class="w"> </span><span class="n">architecture</span><span class="w"> </span><span class="n">x86</span><span class="o">-</span><span class="mf">64.</span>
+<span class="n">Detected</span><span class="w"> </span><span class="k">first</span><span class="w"> </span><span class="n">boot</span><span class="p">.</span>
+
+<span class="n">Red</span><span class="w"> </span><span class="n">Hat</span><span class="w"> </span><span class="n">Enterprise</span><span class="w"> </span><span class="n">Linux</span><span class="w"> </span><span class="mf">9.2</span><span class="w"> </span><span class="p">(</span><span class="n">Plow</span><span class="p">)</span>
+<span class="p">...</span>
+<span class="o">[</span><span class="n"> OK </span><span class="o">]</span><span class="w"> </span><span class="n">Created</span><span class="w"> </span><span class="n">slice</span><span class="w"> </span><span class="n">Slice</span><span class="w"> </span><span class="o">/</span><span class="k">system</span><span class="o">/</span><span class="n">getty</span><span class="p">.</span>
+<span class="o">[</span><span class="n"> OK </span><span class="o">]</span><span class="w"> </span><span class="n">Created</span><span class="w"> </span><span class="n">slice</span><span class="w"> </span><span class="n">Slice</span><span class="w"> </span><span class="o">/</span><span class="k">system</span><span class="o">/</span><span class="n">modprobe</span><span class="p">.</span>
+<span class="o">[</span><span class="n"> OK </span><span class="o">]</span><span class="w"> </span><span class="n">Created</span><span class="w"> </span><span class="n">slice</span><span class="w"> </span><span class="k">User</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="k">Session</span><span class="w"> </span><span class="n">Slice</span><span class="p">.</span>
+<span class="p">...</span>
+<span class="o">[</span><span class="n"> OK </span><span class="o">]</span><span class="w"> </span><span class="n">Started</span><span class="w"> </span><span class="k">User</span><span class="w"> </span><span class="n">Login</span><span class="w"> </span><span class="n">Management</span><span class="p">.</span>
+<span class="o">[</span><span class="n"> OK </span><span class="o">]</span><span class="w"> </span><span class="n">Reached</span><span class="w"> </span><span class="n">target</span><span class="w"> </span><span class="n">Multi</span><span class="o">-</span><span class="k">User</span><span class="w"> </span><span class="k">System</span><span class="p">.</span>
+
+<span class="n">Red</span><span class="w"> </span><span class="n">Hat</span><span class="w"> </span><span class="n">Enterprise</span><span class="w"> </span><span class="n">Linux</span><span class="w"> </span><span class="mf">9.2</span><span class="w"> </span><span class="p">(</span><span class="n">Plow</span><span class="p">)</span>
+<span class="n">Kernel</span><span class="w"> </span><span class="mf">6.5.6</span><span class="o">-</span><span class="mf">300.</span><span class="n">fc39</span><span class="p">.</span><span class="n">x86_64</span><span class="w"> </span><span class="k">on</span><span class="w"> </span><span class="n">an</span><span class="w"> </span><span class="n">x86_64</span>
+
+<span class="nc">image</span><span class="w"> </span><span class="nl">login</span><span class="p">:</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="p">(</span><span class="n">automatic</span><span class="w"> </span><span class="n">login</span><span class="p">)</span>
+
+<span class="o">[</span><span class="n">root@image ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">rpm</span><span class="w"> </span><span class="o">-</span><span class="n">q</span><span class="w"> </span><span class="n">rpm</span><span class="w"> </span><span class="n">systemd</span>
+<span class="n">rpm</span><span class="o">-</span><span class="mf">4.16.1.3</span><span class="o">-</span><span class="mf">22.</span><span class="n">el9</span><span class="p">.</span><span class="n">x86_64</span>
+<span class="n">systemd</span><span class="o">-</span><span class="mi">252</span><span class="o">-</span><span class="mf">14.</span><span class="n">el9_2</span><span class="mf">.3</span><span class="p">.</span><span class="n">x86_64</span>
+</code></pre></div>
+
+<p>正如前面提到的，此镜像可以用于启动虚拟机。但在此设置下，这是不可能的 —— 我们的镜像没有内核。事实上，RHEL UBI 根本不提供内核，因此我们无法使用它进行引导（无论是在虚拟机上还是在裸机上）。</p>
+<h3>创建镜像</h3>
+<p>我一开始说是要创建镜像，但到目前为止我们只有一个目录。让我们开始实际创建一个镜像：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>mkosi<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-d<span class="w"> </span>rhel-ubi<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-t<span class="w"> </span>disk<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-p<span class="w"> </span>bash,coreutils,util-linux,systemd,rpm<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--autologin
+</code></pre></div>
+
+<p>这将生成 <code>image.raw</code>，一个带有 GPT 分区表和单个根分区（用于本机架构）的磁盘镜像。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>systemd-dissect<span class="w"> </span>image.raw
+Name:<span class="w"> </span>image.raw
+Size:<span class="w"> </span><span class="m">301</span>.0M
+Sec.<span class="w"> </span>Size:<span class="w"> </span><span class="m">512</span>
+Arch.:<span class="w"> </span>x86-64
+
+Image<span class="w"> </span>UUID:<span class="w"> </span>dcbd6499-409e-4b62-b251-e0dd15e446d5
+OS<span class="w"> </span>Release:<span class="w"> </span><span class="nv">NAME</span><span class="o">=</span>Red<span class="w"> </span>Hat<span class="w"> </span>Enterprise<span class="w"> </span>Linux
+<span class="nv">VERSION</span><span class="o">=</span><span class="m">9</span>.2<span class="w"> </span><span class="o">(</span>Plow<span class="o">)</span>
+<span class="nv">ID</span><span class="o">=</span>rhel
+<span class="nv">ID_LIKE</span><span class="o">=</span>fedora
+<span class="nv">VERSION_ID</span><span class="o">=</span><span class="m">9</span>.2
+<span class="nv">PLATFORM_ID</span><span class="o">=</span>platform:el9
+<span class="nv">PRETTY_NAME</span><span class="o">=</span>Red<span class="w"> </span>Hat<span class="w"> </span>Enterprise<span class="w"> </span>Linux<span class="w"> </span><span class="m">9</span>.2<span class="w"> </span><span class="o">(</span>Plow<span class="o">)</span>
+<span class="nv">ANSI_COLOR</span><span class="o">=</span><span class="m">0</span><span class="p">;</span><span class="m">31</span>
+<span class="nv">LOGO</span><span class="o">=</span>fedora-logo-icon
+<span class="nv">CPE_NAME</span><span class="o">=</span>cpe:/o:redhat:enterprise_linux:9::baseos
+<span class="nv">HOME_URL</span><span class="o">=</span>https://www.redhat.com/
+<span class="nv">DOCUMENTATION_URL</span><span class="o">=</span>https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/9
+<span class="nv">BUG_REPORT_URL</span><span class="o">=</span>https://bugzilla.redhat.com/
+<span class="nv">REDHAT_BUGZILLA_PRODUCT</span><span class="o">=</span>Red<span class="w"> </span>Hat<span class="w"> </span>Enterprise<span class="w"> </span>Linux<span class="w"> </span><span class="m">9</span>
+<span class="nv">REDHAT_BUGZILLA_PRODUCT_VERSION</span><span class="o">=</span><span class="m">9</span>.2
+<span class="nv">REDHAT_SUPPORT_PRODUCT</span><span class="o">=</span>Red<span class="w"> </span>Hat<span class="w"> </span>Enterprise<span class="w"> </span>Linux
+<span class="nv">REDHAT_SUPPORT_PRODUCT_VERSION</span><span class="o">=</span><span class="m">9</span>.2
+
+Use<span class="w"> </span>As:<span class="w"> </span>✗<span class="w"> </span>bootable<span class="w"> </span>system<span class="w"> </span><span class="k">for</span><span class="w"> </span>UEFI
+<span class="w">        </span>✓<span class="w"> </span>bootable<span class="w"> </span>system<span class="w"> </span><span class="k">for</span><span class="w"> </span>container
+<span class="w">        </span>✗<span class="w"> </span>portable<span class="w"> </span>service
+<span class="w">        </span>✗<span class="w"> </span>initrd
+<span class="w">        </span>✗<span class="w"> </span>sysext<span class="w"> </span>extension<span class="w"> </span><span class="k">for</span><span class="w"> </span>system
+<span class="w">        </span>✗<span class="w"> </span>sysext<span class="w"> </span>extension<span class="w"> </span><span class="k">for</span><span class="w"> </span>initrd
+<span class="w">        </span>✗<span class="w"> </span>sysext<span class="w"> </span>extension<span class="w"> </span><span class="k">for</span><span class="w"> </span>portable<span class="w"> </span>service
+
+RW<span class="w"> </span>DESIGNATOR<span class="w"> </span>PARTITION<span class="w"> </span>UUID<span class="w"> </span>PARTITION<span class="w"> </span>LABEL<span class="w"> </span>FSTYPE<span class="w"> </span>ARCHITECTURE<span class="w"> </span>VERITY<span class="w"> </span>GROWFS<span class="w"> </span>NODE<span class="w"> </span>PARTNO
+rw<span class="w"> </span>root<span class="w"> </span>1236e211-4729-4561-a6fc-9ef8f18b828f<span class="w"> </span>root-x86-64<span class="w"> </span>xfs<span class="w"> </span>x86-64<span class="w"> </span>no<span class="w"> </span>yes<span class="w"> </span>/dev/loop0p1<span class="w"> </span><span class="m">1</span>
+</code></pre></div>
+
+<p>好的，我们现在有一个镜像，镜像中包含了一些来自 RHEL UBI 软件包的内容。我们如何在其上加点我们自己的东西呢？</p>
+<h3>使用自己的文件扩展镜像</h3>
+<p>有几种方法可以扩展镜像，包括从头开始编译某些东西。但在那之前，让我们做一些更简单的事情，将一个现成的文件系统注入到镜像中：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>mkosi.extra/srv/www/content
+$<span class="w"> </span>cat<span class="w"> </span>&gt;mkosi.extra/srv/www/content/index.html<span class="w"> </span><span class="err">&lt;&lt;</span>&#39;EOF&#39;
+<span class="nt">&lt;h1&gt;</span>Hello,<span class="w"> </span>World!<span class="nt">&lt;/h1&gt;</span>
+EOF
+</code></pre></div>
+
+<p>现在，该镜像将包含 <code>/srv/www/content/index.html</code>。</p>
+<p>这种方法用于注入额外的配置或简单的程序。</p>
+<h3>从源代码构建</h3>
+<p>现在让我们过一遍完整流程，从源代码构建一些东西。例如，一个简单的 Meson 项目，有一个单独的 C 文件：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cat<span class="w"> </span>&gt;hello.c<span class="w"> </span><span class="s">&lt;&lt;&#39;EOF&#39;</span>
+<span class="s">#include &lt;stdio.h&gt;</span>
+
+<span class="s">int main(int argc, char **argv) {</span>
+<span class="s">    char buf[1024];</span>
+
+<span class="s">    FILE *f = fopen(&quot;/srv/www/content/index.html&quot;, &quot;re&quot;);</span>
+<span class="s">    size_t n = fread(buf, 1, sizeof buf, f);</span>
+
+<span class="s">    fwrite(buf, 1, n, stdout);</span>
+<span class="s">    fclose(f);</span>
+<span class="s">    return 0;</span>
+<span class="s">}</span>
+<span class="s">EOF</span>
+
+$<span class="w"> </span>cat<span class="w"> </span>&gt;meson.build<span class="w"> </span><span class="s">&lt;&lt;&#39;EOF&#39;</span>
+<span class="s">project(&#39;hello&#39;, &#39;c&#39;)</span>
+<span class="s">executable(&#39;hello&#39;, &#39;hello.c&#39;,</span>
+<span class="s">            install: true)</span>
+<span class="s">EOF</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cat<span class="w"> </span>&gt;mkosi.build<span class="w"> </span><span class="s">&lt;&lt;&#39;EOF&#39;</span>
+<span class="s">set -ex</span>
+
+<span class="s">mkosi-as-caller rm -rf &quot;$BUILDDIR/build&quot;</span>
+<span class="s">mkosi-as-caller meson setup &quot;$BUILDDIR/build&quot; &quot;$SRCDIR&quot;</span>
+<span class="s">mkosi-as-caller meson compile -C &quot;$BUILDDIR/build&quot;</span>
+<span class="s">meson install -C &quot;$BUILDDIR/build&quot; --no-rebuild</span>
+<span class="s">EOF</span>
+$<span class="w"> </span>chmod<span class="w"> </span>+x<span class="w"> </span>mkosi.build
+</code></pre></div>
+
+<p>总结一下：我们有一些源代码（<code>hello.c</code>），一个构建系统配置文件（<code>meson.build</code>），以及一个由 mkosi 调用的胶水脚本（<code>mkosi.build</code>）。对于实际的项目，也会有相同的元素，只是更加复杂。</p>
+<p>这个脚本需要一些解释。mkosi 在创建镜像时使用用户命名空间。这允许包管理器（例如 <code>dnf</code>）安装由不同用户拥有的文件，即使它是由一个普通非特权用户调用的。我们使用 <code>mkosi-as-caller</code> 切换回调用者以进行编译。这样，在 <code>$BUILDDIR</code> 下编译期间创建的文件将由调用者拥有。</p>
+<p>现在让我们使用我们的程序构建镜像。与之前的调用相比，我们需要额外的软件包：<code>meson</code>、<code>gcc</code>。由于我们现在有了构建脚本，mkosi 将执行两个构建阶段：首先创建一个构建镜像，并在其中调用构建脚本，将安装产物存储在一个临时目录中，然后构建最终镜像，并将安装产物注入其中。（mkosi 设置 <code>$DESTDIR</code>，<code>meson install</code> 自动使用 <code>$DESTDIR</code>，因此并不需要我们明确指定。）</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>mkosi<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-d<span class="w"> </span>rhel-ubi<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-t<span class="w"> </span>disk<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-p<span class="w"> </span>bash,coreutils,util-linux,systemd,rpm<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--autologin<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--build-package<span class="o">=</span>meson,gcc<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--build-dir<span class="o">=</span>mkosi.builddir<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--build-script<span class="o">=</span>mkosi.build<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-f
+</code></pre></div>
+
+<p>此时，我们有了带有自定义载荷的镜像 <code>image.raw</code>。我们可以启动我们新创建的可执行文件作为 shell 命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>mkosi<span class="w"> </span>-d<span class="w"> </span>rhel-ubi<span class="w"> </span>-t<span class="w"> </span>directory<span class="w"> </span>shell<span class="w"> </span>hello
+<span class="nt">&lt;h1&gt;</span>Hello,<span class="w"> </span>World!<span class="nt">&lt;/h1&gt;</span>
+</code></pre></div>
+
+<h3>获取 RHEL 的开发者订阅</h3>
+<p>RHEL UBI 主要用作容器构建的基础层。它提供了有限的软件包（约 1500 个）。现在让我们切换到完整的 RHEL 安装。</p>
+<p>获取 RHEL 的最简单方法是使用 <a href="https://developers.redhat.com/articles/faqs-no-cost-red-hat-enterprise-linux">开发者许可证</a>。它提供了权限注册 16 个运行 RHEL 的物理或虚拟节点，并提供自助式支持。</p>
+<p>首先，<a href="https://developers.redhat.com/register">创建一个账户</a>。然后，转到 <a href="https://access.redhat.com/management">管理页面</a> 并确保启用了“用于 Red Hat 订阅管理的简化内容访问”。接下来，<a href="https://access.redhat.com/management/activation_keys/new">创建一个新的激活密钥</a>，选择 “Red Hat 个人开发者订阅”。记下显示的组织 ID。在下面，我们将使用密钥名称和组织 ID 分别表示为 <code>$KEY_NAME</code> 和 <code>$ORGANIZATION_ID</code>。</p>
+<p>现在，我们准备使用 RHEL 内容：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> </span>subscription-manager
+$<span class="w"> </span>sudo<span class="w"> </span>subscription-manager<span class="w"> </span>register<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--org<span class="w"> </span><span class="nv">$ORGANIZATION_ID</span><span class="w"> </span>--activationkey<span class="w"> </span><span class="nv">$KEY_NAME</span>
+</code></pre></div>
+
+<h3>使用 RHEL 构建镜像</h3>
+<p>在之前的示例中，我们通过参数开关指定了所有配置。这对于快速开发很友好，但可能在情况复杂时变得难以处理。RHEL 是一个严肃的发行版，所以让我们改为使用配置文件：</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="o">&gt;</span><span class="n">mkosi</span><span class="p">.</span><span class="n">conf</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="s1">&#39;EOF&#39;</span>
+<span class="o">[</span><span class="n">Output</span><span class="o">]</span>
+<span class="nf">Format</span><span class="o">=</span><span class="n">directory</span>
+<span class="k">Output</span><span class="o">=</span><span class="n">rhel</span><span class="o">-</span><span class="n">directory</span>
+
+<span class="o">[</span><span class="n">Distribution</span><span class="o">]</span>
+<span class="n">Distribution</span><span class="o">=</span><span class="n">rhel</span>
+
+<span class="o">[</span><span class="n">Content</span><span class="o">]</span>
+<span class="n">Packages</span><span class="o">=</span>
+<span class="n">bash</span>
+<span class="n">coreutils</span>
+<span class="n">util</span><span class="o">-</span><span class="n">linux</span>
+<span class="n">systemd</span>
+<span class="n">systemd</span><span class="o">-</span><span class="n">boot</span>
+<span class="n">systemd</span><span class="o">-</span><span class="n">udev</span>
+<span class="n">kernel</span><span class="o">-</span><span class="n">core</span>
+
+<span class="n">Bootable</span><span class="o">=</span><span class="n">yes</span>
+<span class="n">Bootloader</span><span class="o">=</span><span class="n">uki</span>
+<span class="n">Autologin</span><span class="o">=</span><span class="n">yes</span>
+<span class="n">WithDocs</span><span class="o">=</span><span class="k">no</span>
+<span class="n">EOF</span>
+</code></pre></div>
+
+<p>首先，让我们检查一下一切是否正常：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>mkosi<span class="w"> </span>summary
+</code></pre></div>
+
+<p>现在让我们构建镜像（呃，或者说，目录）：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>mkosi<span class="w"> </span>build
+$<span class="w"> </span>mkosi<span class="w"> </span>qemu
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="n">Welcome</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">Red</span><span class="w"> </span><span class="n">Hat</span><span class="w"> </span><span class="n">Enterprise</span><span class="w"> </span><span class="n">Linux</span><span class="w"> </span><span class="mf">9.2</span><span class="w"> </span><span class="p">(</span><span class="n">Plow</span><span class="p">)</span><span class="err">!</span>
+
+<span class="o">[</span><span class="n"> OK </span><span class="o">]</span><span class="w"> </span><span class="n">Created</span><span class="w"> </span><span class="n">slice</span><span class="w"> </span><span class="n">Slice</span><span class="w"> </span><span class="o">/</span><span class="k">system</span><span class="o">/</span><span class="n">modprobe</span><span class="p">.</span>
+<span class="o">[</span><span class="n"> OK </span><span class="o">]</span><span class="w"> </span><span class="n">Reached</span><span class="w"> </span><span class="n">target</span><span class="w"> </span><span class="n">Initrd</span><span class="w"> </span><span class="n">Root</span><span class="w"> </span><span class="n">Device</span><span class="p">.</span>
+<span class="o">[</span><span class="n"> OK </span><span class="o">]</span><span class="w"> </span><span class="n">Reached</span><span class="w"> </span><span class="n">target</span><span class="w"> </span><span class="n">Initrd</span><span class="w"> </span><span class="o">/</span><span class="n">usr</span><span class="w"> </span><span class="k">File</span><span class="w"> </span><span class="k">System</span><span class="p">.</span>
+<span class="o">[</span><span class="n"> OK </span><span class="o">]</span><span class="w"> </span><span class="n">Reached</span><span class="w"> </span><span class="n">target</span><span class="w"> </span><span class="k">Local</span><span class="w"> </span><span class="n">Integrity</span><span class="w"> </span><span class="n">Protected</span><span class="w"> </span><span class="n">Volumes</span><span class="p">.</span>
+<span class="o">[</span><span class="n"> OK </span><span class="o">]</span><span class="w"> </span><span class="n">Reached</span><span class="w"> </span><span class="n">target</span><span class="w"> </span><span class="k">Local</span><span class="w"> </span><span class="k">File</span><span class="w"> </span><span class="n">Systems</span><span class="p">.</span>
+<span class="o">[</span><span class="n"> OK </span><span class="o">]</span><span class="w"> </span><span class="n">Reached</span><span class="w"> </span><span class="n">target</span><span class="w"> </span><span class="k">Path</span><span class="w"> </span><span class="n">Units</span><span class="p">.</span>
+<span class="o">[</span><span class="n"> OK </span><span class="o">]</span><span class="w"> </span><span class="n">Reached</span><span class="w"> </span><span class="n">target</span><span class="w"> </span><span class="n">Remote</span><span class="w"> </span><span class="n">Encrypted</span><span class="w"> </span><span class="n">Volumes</span><span class="p">.</span>
+<span class="o">[</span><span class="n"> OK </span><span class="o">]</span><span class="w"> </span><span class="n">Reached</span><span class="w"> </span><span class="n">target</span><span class="w"> </span><span class="n">Remote</span><span class="w"> </span><span class="n">Verity</span><span class="w"> </span><span class="n">Protected</span><span class="w"> </span><span class="n">Volumes</span><span class="p">.</span>
+<span class="o">[</span><span class="n"> OK </span><span class="o">]</span><span class="w"> </span><span class="n">Reached</span><span class="w"> </span><span class="n">target</span><span class="w"> </span><span class="n">Slice</span><span class="w"> </span><span class="n">Units</span><span class="p">.</span>
+<span class="o">[</span><span class="n"> OK </span><span class="o">]</span><span class="w"> </span><span class="n">Reached</span><span class="w"> </span><span class="n">target</span><span class="w"> </span><span class="n">Swaps</span><span class="p">.</span>
+<span class="p">...</span>
+<span class="o">[</span><span class="n"> OK </span><span class="o">]</span><span class="w"> </span><span class="n">Listening</span><span class="w"> </span><span class="k">on</span><span class="w"> </span><span class="n">Journal</span><span class="w"> </span><span class="n">Socket</span><span class="p">.</span>
+<span class="o">[</span><span class="n"> OK </span><span class="o">]</span><span class="w"> </span><span class="n">Listening</span><span class="w"> </span><span class="k">on</span><span class="w"> </span><span class="n">udev</span><span class="w"> </span><span class="n">Control</span><span class="w"> </span><span class="n">Socket</span><span class="p">.</span>
+<span class="o">[</span><span class="n"> OK </span><span class="o">]</span><span class="w"> </span><span class="n">Listening</span><span class="w"> </span><span class="k">on</span><span class="w"> </span><span class="n">udev</span><span class="w"> </span><span class="n">Kernel</span><span class="w"> </span><span class="n">Socket</span><span class="p">.</span>
+<span class="p">...</span>
+<span class="n">Red</span><span class="w"> </span><span class="n">Hat</span><span class="w"> </span><span class="n">Enterprise</span><span class="w"> </span><span class="n">Linux</span><span class="w"> </span><span class="mf">9.2</span><span class="w"> </span><span class="p">(</span><span class="n">Plow</span><span class="p">)</span>
+<span class="n">Kernel</span><span class="w"> </span><span class="mf">5.14.0</span><span class="o">-</span><span class="mf">284.30.1</span><span class="p">.</span><span class="n">el9_2</span><span class="p">.</span><span class="n">x86_64</span><span class="w"> </span><span class="k">on</span><span class="w"> </span><span class="n">an</span><span class="w"> </span><span class="n">x86_64</span>
+
+<span class="n">localhost</span><span class="w"> </span><span class="nl">login</span><span class="p">:</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="p">(</span><span class="n">automatic</span><span class="w"> </span><span class="n">login</span><span class="p">)</span>
+<span class="o">[</span><span class="n">root@localhost ~</span><span class="o">]</span><span class="err">#</span>
+</code></pre></div>
+
+<p>很好，我们将“镜像”构建为一个带有文件系统树的目录，并在虚拟机中引导了它。</p>
+<p>在引导的虚拟机中，<code>findmnt /</code> 显示根文件系统是 virtiofs。这是一个虚拟文件系统，将主机的目录暴露给客户机。我们其实也可以构建一个更传统的镜像，其中包含文件系统和文件内的分区表，但“目录 + virtiofs” 对于开发来说更快且更友好。</p>
+<p>我们刚刚引导的镜像未注册。要允许从镜像“内部”下载更新，我们必须将 <code>yum</code> 、<code>subscription-manager</code> 和 <code>NetworkManager</code> 添加到软件包列表，并在下载任何更新之前以与上述相同的方式调用 <code>subscription-manager</code>。在这之后，我们在基本仓库中就有大约 4500 个软件包可用，并且还有一些包含更多专业软件包的额外仓库。</p>
+<h3>最后</h3>
+<p>今天就是这些了。如果您有问题，可以在 Matrix 上找到我们，地址为 <a href="https://matrix.to/#/#mkosi:matrix.org">#mkosi:matrix.org</a>，或者在 <a href="https://lists.freedesktop.org/mailman/listinfo/systemd-devel">systemd 邮件列表</a> 上找到我们。</p>
+<p><em>（题图：MJ/a6e60316-ed03-4e23-b8b4-22332a0f5bfa）</em></p>
+<p>via: <a href="https://fedoramagazine.org/create-images-directly-from-rhel-and-rhel-ubi-package-using-mkosi/">https://fedoramagazine.org/create-images-directly-from-rhel-and-rhel-ubi-package-using-mkosi/</a></p>
+<p>作者：<a href="https://fedoramagazine.org/author/zbyszek/">Zbigniew Jędrzejewski-Szmek</a> 选题：<a href="https://github.com/lujun9972">lujun9972</a> 译者：<a href="https://github.com/GlassFoxowo-Dev">GlassFoxowo</a> 校对：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创编译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

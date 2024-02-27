@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Linux DNS 查询剖析（第一部分）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Zwischenzugs 我经常与虚拟机集群打交道（文1、文2、文3、文4、文5、文6），因此最终花费了大量时间试图掌握 DNS 查询的工作原理。遇 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/08/linux-dns-cha-xun-pou-xi-di-yi-bu-fen.html" rel="bookmark"
+           title="Permalink to Linux DNS 查询剖析（第一部分）">Linux DNS 查询剖析（第一部分）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-08-22T23:05:00+02:00">
+                Published: Wed 22 August 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Zwischenzugs</p>
+<p><img alt="" src="/data/attachment/album/201808/22/230531lp6bml26u2mybkm2.jpeg"></p>
+<p>我经常与虚拟机集群打交道（<a href="https://zwischenzugs.com/2017/10/31/a-complete-chef-infrastructure-on-your-laptop/">文1</a>、<a href="https://zwischenzugs.com/2017/03/04/a-complete-openshift-cluster-on-vagrant-step-by-step/">文2</a>、<a href="https://zwischenzugs.com/2017/03/04/migrating-an-openshift-etcd-cluster/">文3</a>、<a href="https://zwischenzugs.com/2017/03/04/1-minute-multi-node-vm-setup/">文4</a>、<a href="https://zwischenzugs.com/2017/03/18/clustered-vm-testing-how-to/">文5</a>、<a href="https://zwischenzugs.com/2017/10/27/ten-things-i-wish-id-known-before-using-vagrant/">文6</a>），因此最终花费了大量时间试图掌握 <a href="https://zwischenzugs.com/2017/10/21/openshift-3-6-dns-in-pictures/">DNS 查询</a>的工作原理。遇到问题时，我只是不求甚解的使用 StackOverflow 上的“解决方案”，而不知道它们为什么有时工作，有时不工作。</p>
+<p>最终我对此感到了厌倦，决定一并找出所有问题的原因。我没有在网上找到完整的指南，我问过一些同事，他们不知所以然（或许是问题太具体了）。</p>
+<p>既然如此，我开始自己写这样的手册。</p>
+<p>结果发现，“Linux 执行一次 DNS 查询”这句话的背后有相当多的工作。</p>
+<p><img alt="linux-dns-0" src="/data/attachment/album/201808/22/230542jiehaag6i7ahz7x1.png"></p>
+<p><em>“究竟有多难呢？”</em></p>
+<p><strong>本系列文章试图将 Linux 主机上程序获取（域名对应的） IP 地址的过程及期间涉及的组件进行分块剖析。</strong>如果不理解这些块的协同工作方式，调试解决 <code>dnsmasq</code>、<code>vagrant landrush</code> 和 <code>resolvconf</code> 等相关的问题会让人感到眼花缭乱。</p>
+<p>同时这也是一份有价值的说明，指出原本很简单的东西是如何随着时间的推移变得相当复杂。在弄清楚 DNS 查询的原理的过程中，我了解了大量不同的技术及其发展历程。</p>
+<p>我甚至编写了一些<a href="https://github.com/ianmiell/shutit-linux-dns/blob/master/linux_dns.py">自动化脚本</a>，可以让我在虚拟机中进行实验。欢迎读者参与贡献或勘误。</p>
+<p><strong>请注意，本系列主题并不是“DNS 工作原理”</strong>，而是与查询 Linux 主机配置的真实 DNS 服务器（这里假设查询了一台 DNS 服务器，但后面你会看到有时并不需要）相关的内容，以及如何确定使用哪个查询结果，或者如何使用其它方式确定 IP 地址。</p>
+<h3>1) 其实并没有名为“DNS 查询”的系统调用</h3>
+<p><img alt="linux-dns-1" src="/data/attachment/album/201808/22/230543z1johjwkjhf1llk2.png"></p>
+<p><em>工作方式并非如此</em></p>
+<p><strong>首先要了解的一点是，Linux 上并没有一个单独的方法可以完成 DNS 查询工作</strong>；没有一个有这样的明确接口的核心<ruby> 系统调用 <rt>  system call </rt></ruby>。</p>
+<p>不过，有一个标准 C 库函数调用 <a href="http://man7.org/linux/man-pages/man3/getaddrinfo.3.html"><code>getaddrinfo</code></a>，不少程序使用了该调用；但不是所有程序或应用都使用该调用！</p>
+<p>让我们看一下两个简单的标准程序：<code>ping</code> 和 <code>host</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="n">root</span><span class="nv">@linuxdns1</span><span class="err">:</span><span class="o">~</span><span class="err">#</span><span class="w"> </span><span class="n">ping</span><span class="w"> </span><span class="o">-</span><span class="n">c1</span><span class="w"> </span><span class="n">bbc</span><span class="p">.</span><span class="n">co</span><span class="p">.</span><span class="n">uk</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">head</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span>
+<span class="n">PING</span><span class="w"> </span><span class="n">bbc</span><span class="p">.</span><span class="n">co</span><span class="p">.</span><span class="n">uk</span><span class="w"> </span><span class="p">(</span><span class="mf">151.101.192.81</span><span class="p">)</span><span class="w"> </span><span class="mi">56</span><span class="p">(</span><span class="mi">84</span><span class="p">)</span><span class="w"> </span><span class="n">bytes</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="k">data</span><span class="p">.</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="nx">root</span><span class="err">@</span><span class="nx">linuxdns1</span><span class="p">:</span><span class="o">~</span><span class="err">#</span><span class="w"> </span><span class="nx">host</span><span class="w"> </span><span class="nx">bbc</span><span class="p">.</span><span class="nx">co</span><span class="p">.</span><span class="nx">uk</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nx">head</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span>
+<span class="nx">bbc</span><span class="p">.</span><span class="nx">co</span><span class="p">.</span><span class="nx">uk</span><span class="w"> </span><span class="nx">has</span><span class="w"> </span><span class="nx">address</span><span class="w"> </span><span class="m m-Double">151.101.192.81</span>
+</code></pre></div>
+
+<p>对于同一个域名，两个程序得到的 IP 地址是相同的；那么它们是使用同样的方法得到结果的吧？</p>
+<p>事实并非如此。</p>
+<p>下面文件给出了我主机上 <code>ping</code> 对应的 DNS 相关的系统调用：</p>
+<div class="highlight"><pre><span></span><code><span class="n">root</span><span class="nv">@linuxdns1</span><span class="err">:</span><span class="o">~</span><span class="err">#</span><span class="w"> </span><span class="n">strace</span><span class="w"> </span><span class="o">-</span><span class="n">e</span><span class="w"> </span><span class="n">trace</span><span class="o">=</span><span class="k">open</span><span class="w"> </span><span class="o">-</span><span class="n">f</span><span class="w"> </span><span class="n">ping</span><span class="w"> </span><span class="o">-</span><span class="n">c1</span><span class="w"> </span><span class="n">google</span><span class="p">.</span><span class="n">com</span>
+<span class="k">open</span><span class="p">(</span><span class="ss">&quot;/etc/ld.so.cache&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">O_RDONLY</span><span class="o">|</span><span class="n">O_CLOEXEC</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span>
+<span class="k">open</span><span class="p">(</span><span class="ss">&quot;/lib/x86_64-linux-gnu/libcap.so.2&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">O_RDONLY</span><span class="o">|</span><span class="n">O_CLOEXEC</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span>
+<span class="k">open</span><span class="p">(</span><span class="ss">&quot;/lib/x86_64-linux-gnu/libc.so.6&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">O_RDONLY</span><span class="o">|</span><span class="n">O_CLOEXEC</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span>
+<span class="k">open</span><span class="p">(</span><span class="ss">&quot;/etc/resolv.conf&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">O_RDONLY</span><span class="o">|</span><span class="n">O_CLOEXEC</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">4</span>
+<span class="k">open</span><span class="p">(</span><span class="ss">&quot;/etc/resolv.conf&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">O_RDONLY</span><span class="o">|</span><span class="n">O_CLOEXEC</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">4</span>
+<span class="k">open</span><span class="p">(</span><span class="ss">&quot;/etc/nsswitch.conf&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">O_RDONLY</span><span class="o">|</span><span class="n">O_CLOEXEC</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">4</span>
+<span class="k">open</span><span class="p">(</span><span class="ss">&quot;/etc/ld.so.cache&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">O_RDONLY</span><span class="o">|</span><span class="n">O_CLOEXEC</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">4</span>
+<span class="k">open</span><span class="p">(</span><span class="ss">&quot;/lib/x86_64-linux-gnu/libnss_files.so.2&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">O_RDONLY</span><span class="o">|</span><span class="n">O_CLOEXEC</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">4</span>
+<span class="k">open</span><span class="p">(</span><span class="ss">&quot;/etc/host.conf&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">O_RDONLY</span><span class="o">|</span><span class="n">O_CLOEXEC</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">4</span>
+<span class="k">open</span><span class="p">(</span><span class="ss">&quot;/etc/hosts&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">O_RDONLY</span><span class="o">|</span><span class="n">O_CLOEXEC</span><span class="p">)</span><span class="o">&amp;</span><span class="n">nbsp</span><span class="p">;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">4</span>
+<span class="k">open</span><span class="p">(</span><span class="ss">&quot;/etc/ld.so.cache&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">O_RDONLY</span><span class="o">|</span><span class="n">O_CLOEXEC</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">4</span>
+<span class="k">open</span><span class="p">(</span><span class="ss">&quot;/lib/x86_64-linux-gnu/libnss_dns.so.2&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">O_RDONLY</span><span class="o">|</span><span class="n">O_CLOEXEC</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">4</span>
+<span class="k">open</span><span class="p">(</span><span class="ss">&quot;/lib/x86_64-linux-gnu/libresolv.so.2&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">O_RDONLY</span><span class="o">|</span><span class="n">O_CLOEXEC</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">4</span>
+<span class="n">PING</span><span class="w"> </span><span class="n">google</span><span class="p">.</span><span class="n">com</span><span class="w"> </span><span class="p">(</span><span class="mf">216.58.204.46</span><span class="p">)</span><span class="w"> </span><span class="mi">56</span><span class="p">(</span><span class="mi">84</span><span class="p">)</span><span class="w"> </span><span class="n">bytes</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="k">data</span><span class="p">.</span>
+<span class="k">open</span><span class="p">(</span><span class="ss">&quot;/etc/hosts&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">O_RDONLY</span><span class="o">|</span><span class="n">O_CLOEXEC</span><span class="p">)</span><span class="o">&amp;</span><span class="n">nbsp</span><span class="p">;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">4</span>
+<span class="mi">64</span><span class="w"> </span><span class="n">bytes</span><span class="w"> </span><span class="k">from</span><span class="w"> </span><span class="n">lhr25s12</span><span class="o">-</span><span class="ow">in</span><span class="o">-</span><span class="n">f14</span><span class="mf">.1e100</span><span class="p">.</span><span class="n">net</span><span class="w"> </span><span class="p">(</span><span class="mf">216.58.204.46</span><span class="p">)</span><span class="err">:</span><span class="w"> </span><span class="n">icmp_seq</span><span class="o">=</span><span class="mi">1</span><span class="w"> </span><span class="n">ttl</span><span class="o">=</span><span class="mi">63</span><span class="w"> </span><span class="nc">time</span><span class="o">=</span><span class="mf">13.0</span><span class="w"> </span><span class="n">ms</span>
+<span class="o">[</span><span class="n">...</span><span class="o">]</span>
+</code></pre></div>
+
+<p>下面是 <code>host</code> 对应的系统调用:</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>strace<span class="w"> </span>-e<span class="w"> </span><span class="nv">trace</span><span class="o">=</span>open<span class="w"> </span>-f<span class="w"> </span>host<span class="w"> </span>google.com
+<span class="o">[</span>...<span class="o">]</span>
+<span class="o">[</span>pid<span class="w">  </span><span class="m">9869</span><span class="o">]</span><span class="w"> </span>open<span class="o">(</span><span class="s2">&quot;/usr/share/locale/en_US.UTF-8/LC_MESSAGES/libdst.cat&quot;</span>,<span class="w"> </span>O_RDONLY<span class="o">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>-1<span class="w"> </span>ENOENT<span class="w"> </span><span class="o">(</span>No<span class="w"> </span>such<span class="w"> </span>file<span class="w"> </span>or<span class="w"> </span>directory<span class="o">)</span>
+<span class="o">[</span>pid<span class="w">  </span><span class="m">9869</span><span class="o">]</span><span class="w"> </span>open<span class="o">(</span><span class="s2">&quot;/usr/share/locale/en/libdst.cat&quot;</span>,<span class="w"> </span>O_RDONLY<span class="o">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>-1<span class="w"> </span>ENOENT<span class="w"> </span><span class="o">(</span>No<span class="w"> </span>such<span class="w"> </span>file<span class="w"> </span>or<span class="w"> </span>directory<span class="o">)</span>
+<span class="o">[</span>pid<span class="w">  </span><span class="m">9869</span><span class="o">]</span><span class="w"> </span>open<span class="o">(</span><span class="s2">&quot;/usr/share/locale/en/LC_MESSAGES/libdst.cat&quot;</span>,<span class="w"> </span>O_RDONLY<span class="o">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>-1<span class="w"> </span>ENOENT<span class="w"> </span><span class="o">(</span>No<span class="w"> </span>such<span class="w"> </span>file<span class="w"> </span>or<span class="w"> </span>directory<span class="o">)</span>
+<span class="o">[</span>pid<span class="w">  </span><span class="m">9869</span><span class="o">]</span><span class="w"> </span>open<span class="o">(</span><span class="s2">&quot;/usr/lib/ssl/openssl.cnf&quot;</span>,<span class="w"> </span>O_RDONLY<span class="o">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">6</span>
+<span class="o">[</span>pid<span class="w">  </span><span class="m">9869</span><span class="o">]</span><span class="w"> </span>open<span class="o">(</span><span class="s2">&quot;/usr/lib/x86_64-linux-gnu/openssl-1.0.0/engines/libgost.so&quot;</span>,<span class="w"> </span>O_RDONLY<span class="p">|</span>O_CLOEXEC<span class="o">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">6</span><span class="o">[</span>pid<span class="w">  </span><span class="m">9869</span><span class="o">]</span><span class="w"> </span>open<span class="o">(</span><span class="s2">&quot;/etc/resolv.conf&quot;</span>,<span class="w"> </span>O_RDONLY<span class="o">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">6</span>
+google.com<span class="w"> </span>has<span class="w"> </span>address<span class="w"> </span><span class="m">216</span>.58.204.46
+<span class="o">[</span>...<span class="o">]</span>
+</code></pre></div>
+
+<p>可以看出 <code>ping</code> 打开了 <code>nsswitch.conf</code> 文件，但 <code>host</code> 没有；但两个程序都打开了 <code>/etc/resolv.conf</code> 文件。</p>
+<p>下面我们依次查看这两个 <code>.conf</code> 扩展名的文件。</p>
+<h3>2) NSSwitch 与 <code>/etc/nsswitch.conf</code></h3>
+<p>我们已经确认应用可以自主决定选用哪个 DNS 服务器。很多应用（例如 <code>ping</code>）通过配置文件 <code>/etc/nsswitch.conf</code> （根据具体实现<sup id="fnref1"> <a href="#fn1" rel="footnote">  1 </a></sup> ）参考 NSSwitch 完成选择。</p>
+<p>NSSwitch 不仅用于 DNS 查询，例如，还用于密码与用户信息查询。</p>
+<p>NSSwitch 最初是 Solaris OS 的一部分，可以让应用无需硬编码查询所需的文件或服务，而是在其它集中式的、无需应用开发人员管理的配置文件中找到。</p>
+<p>下面是我的 <code>nsswitch.conf</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="n">passwd</span><span class="o">:</span><span class="w">         </span><span class="n">compat</span>
+<span class="n">group</span><span class="o">:</span><span class="w">          </span><span class="n">compat</span>
+<span class="n">shadow</span><span class="o">:</span><span class="w">         </span><span class="n">compat</span>
+<span class="n">gshadow</span><span class="o">:</span><span class="w">        </span><span class="n">files</span>
+<span class="n">hosts</span><span class="o">:</span><span class="w"> </span><span class="n">files</span><span class="w"> </span><span class="n">dns</span><span class="w"> </span><span class="n">myhostname</span>
+<span class="n">networks</span><span class="o">:</span><span class="w">       </span><span class="n">files</span>
+<span class="n">protocols</span><span class="o">:</span><span class="w">      </span><span class="n">db</span><span class="w"> </span><span class="n">files</span>
+<span class="n">services</span><span class="o">:</span><span class="w">       </span><span class="n">db</span><span class="w"> </span><span class="n">files</span>
+<span class="n">ethers</span><span class="o">:</span><span class="w">         </span><span class="n">db</span><span class="w"> </span><span class="n">files</span>
+<span class="n">rpc</span><span class="o">:</span><span class="w">            </span><span class="n">db</span><span class="w"> </span><span class="n">files</span>
+<span class="n">netgroup</span><span class="o">:</span><span class="w">       </span><span class="n">nis</span>
+</code></pre></div>
+
+<p>我们需要关注的是 <code>hosts</code> 行。我们知道 <code>ping</code> 用到 <code>nsswitch.conf</code> 文件，那么我们修改这个文件（的 <code>hosts</code> 行），看看能够如何影响 <code>ping</code>。</p>
+<h4>修改 <code>nsswitch.conf</code>， <code>hosts</code> 行仅保留 <code>files</code></h4>
+<p>如果你修改 <code>nsswitch.conf</code>，将 <code>hosts</code> 行仅保留 <code>files</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="n">hosts</span><span class="o">:</span><span class="w"> </span><span class="n">files</span>
+</code></pre></div>
+
+<p>此时， <code>ping</code> 无法获取 google.com 对应的 IP 地址：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ping<span class="w"> </span>-c1<span class="w"> </span>google.com
+ping:<span class="w"> </span>unknown<span class="w"> </span>host<span class="w"> </span>google.com
+</code></pre></div>
+
+<p>但 <code>localhost</code> 的解析不受影响：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ping<span class="w"> </span>-c1<span class="w"> </span>localhost
+PING<span class="w"> </span>localhost<span class="w"> </span><span class="o">(</span><span class="m">127</span>.0.0.1<span class="o">)</span><span class="w"> </span><span class="m">56</span><span class="o">(</span><span class="m">84</span><span class="o">)</span><span class="w"> </span>bytes<span class="w"> </span>of<span class="w"> </span>data.
+<span class="m">64</span><span class="w"> </span>bytes<span class="w"> </span>from<span class="w"> </span>localhost<span class="w"> </span><span class="o">(</span><span class="m">127</span>.0.0.1<span class="o">)</span>:<span class="w"> </span><span class="nv">icmp_seq</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="nv">ttl</span><span class="o">=</span><span class="m">64</span><span class="w"> </span><span class="nv">time</span><span class="o">=</span><span class="m">0</span>.039<span class="w"> </span>ms
+</code></pre></div>
+
+<p>此外，<code>host</code> 命令正常返回：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>host<span class="w"> </span>google.com
+google.com<span class="w"> </span>has<span class="w"> </span>address<span class="w"> </span><span class="m">216</span>.58.206.110
+</code></pre></div>
+
+<p>毕竟如我们之前看到的那样，<code>host</code> 不受 <code>nsswitch.conf</code> 影响。</p>
+<h4>修改 <code>nsswitch.conf</code>， <code>hosts</code> 行仅保留 <code>dns</code></h4>
+<p>如果你修改 <code>nsswitch.conf</code>，将 <code>hosts</code> 行仅保留 <code>dns</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="n">hosts</span><span class="o">:</span><span class="w"> </span><span class="n">dns</span>
+</code></pre></div>
+
+<p>此时，google.com 的解析恢复正常：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ping<span class="w"> </span>-c1<span class="w"> </span>google.com
+PING<span class="w"> </span>google.com<span class="w"> </span><span class="o">(</span><span class="m">216</span>.58.198.174<span class="o">)</span><span class="w"> </span><span class="m">56</span><span class="o">(</span><span class="m">84</span><span class="o">)</span><span class="w"> </span>bytes<span class="w"> </span>of<span class="w"> </span>data.
+<span class="m">64</span><span class="w"> </span>bytes<span class="w"> </span>from<span class="w"> </span>lhr25s10-in-f174.1e100.net<span class="w"> </span><span class="o">(</span><span class="m">216</span>.58.198.174<span class="o">)</span>:<span class="w"> </span><span class="nv">icmp_seq</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="nv">ttl</span><span class="o">=</span><span class="m">63</span><span class="w"> </span><span class="nv">time</span><span class="o">=</span><span class="m">8</span>.01<span class="w"> </span>ms
+</code></pre></div>
+
+<p>但 <code>localhost</code> 无法解析：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ping<span class="w"> </span>-c1<span class="w"> </span>localhost
+ping:<span class="w"> </span>unknown<span class="w"> </span>host<span class="w"> </span>localhost
+</code></pre></div>
+
+<p>下图给出默认 NSSwitch 中 <code>hosts</code> 行对应的查询逻辑：</p>
+<p><img alt="linux-dns-2 (1)" src="/data/attachment/album/201808/22/230543rct0pohwow6ppgjo.png"></p>
+<p><em>我的 <code>hosts:</code> 配置是 <code>nsswitch.conf</code> 给出的默认值</em></p>
+<h3>3) <code>/etc/resolv.conf</code></h3>
+<p>我们已经知道 <code>host</code> 和 <code>ping</code> 都使用 <code>/etc/resolv.conf</code> 文件。</p>
+<p>下面给出我主机的 <code>/etc/resolv.conf</code> 文件内容：</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span><span class="nv">Dynamic</span><span class="w"> </span><span class="nv">resolv</span>.<span class="nv">conf</span><span class="ss">(</span><span class="mi">5</span><span class="ss">)</span><span class="w"> </span><span class="nv">file</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nv">glibc</span><span class="w"> </span><span class="nv">resolver</span><span class="ss">(</span><span class="mi">3</span><span class="ss">)</span><span class="w"> </span><span class="nv">generated</span><span class="w"> </span><span class="nv">by</span><span class="w"> </span><span class="nv">resolvconf</span><span class="ss">(</span><span class="mi">8</span><span class="ss">)</span>
+#<span class="w">     </span><span class="k">DO</span><span class="w"> </span><span class="nv">NOT</span><span class="w"> </span><span class="nv">EDIT</span><span class="w"> </span><span class="nv">THIS</span><span class="w"> </span><span class="nv">FILE</span><span class="w"> </span><span class="nv">BY</span><span class="w"> </span><span class="nv">HAND</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="nv">YOUR</span><span class="w"> </span><span class="nv">CHANGES</span><span class="w"> </span><span class="nv">WILL</span><span class="w"> </span><span class="nv">BE</span><span class="w"> </span><span class="nv">OVERWRITTEN</span>
+<span class="nv">nameserver</span><span class="w"> </span><span class="mi">10</span>.<span class="mi">0</span>.<span class="mi">2</span>.<span class="mi">3</span>
+</code></pre></div>
+
+<p>先忽略前两行，后面我们会回过头来看这部分（它们很重要，但你还需要一些知识储备）。</p>
+<p>其中 <code>nameserver</code> 行指定了查询用到的 DNS 服务器。</p>
+<p>如果将该行注释掉：</p>
+<div class="highlight"><pre><span></span><code>#nameserver 10.0.2.3
+</code></pre></div>
+
+<p>再次运行：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ping<span class="w"> </span>-c1<span class="w"> </span>google.com
+ping:<span class="w"> </span>unknown<span class="w"> </span>host<span class="w"> </span>google.com
+</code></pre></div>
+
+<p>解析失败了，这是因为没有可用的名字服务器 <sup id="fnref2"> <a href="#fn2" rel="footnote">  2 </a></sup>。</p>
+<p>该文件中还可以使用其它选项。例如，你可以在 <code>resolv.conf</code> 文件中增加如下行：</p>
+<div class="highlight"><pre><span></span><code>search com
+</code></pre></div>
+
+<p>然后执行 <code>ping google</code> （不写 <code>.com</code>）</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ping<span class="w"> </span>google
+PING<span class="w"> </span>google.com<span class="w"> </span><span class="o">(</span><span class="m">216</span>.58.204.14<span class="o">)</span><span class="w"> </span><span class="m">56</span><span class="o">(</span><span class="m">84</span><span class="o">)</span><span class="w"> </span>bytes<span class="w"> </span>of<span class="w"> </span>data.
+</code></pre></div>
+
+<p>程序会自动为你尝试 <code>.com</code> 域。</p>
+<h3>第一部分总结</h3>
+<p>第一部分到此结束，下一部分我们会了解 <code>resolv.conf</code> 文件是如何创建和更新的。</p>
+<p>下面总结第一部分涵盖的内容：</p>
+<ul>
+<li>操作系统中并不存在“DNS 查询”这个系统调用</li>
+<li>不同程序可能采用不同的策略获取名字对应的 IP 地址<ul>
+<li>例如, <code>ping</code> 使用 <code>nsswitch</code>，后者进而使用（或可以使用） <code>/etc/hosts</code>、<code>/etc/resolv.conf</code> 以及主机名得到解析结果</li>
+</ul>
+</li>
+<li><code>/etc/resolv.conf</code> 用于决定：<ul>
+<li>查询什么地址（LCTT 译注：这里可能指 <code>search</code> 带来的影响）</li>
+<li>使用什么 DNS 服务器执行查询</li>
+</ul>
+</li>
+</ul>
+<p>如果你曾认为 DNS 查询很复杂，请跟随这个系列学习吧。</p>
+<p>via: <a href="https://zwischenzugs.com/2018/06/08/anatomy-of-a-linux-dns-lookup-part-i/">https://zwischenzugs.com/2018/06/08/anatomy-of-a-linux-dns-lookup-part-i/</a></p>
+<p>作者：<a href="https://zwischenzugs.com/">ZWISCHENZUGS</a> 译者：<a href="https://github.com/pinewall">pinewall</a> 校对：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创编译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

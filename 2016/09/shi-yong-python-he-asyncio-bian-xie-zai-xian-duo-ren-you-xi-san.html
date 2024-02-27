@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 Python 和 Asyncio 编写在线多人游戏（三）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Kyrylo Subbotin 在这个系列中，我们基于多人游戏 贪吃蛇 来制作一个异步的 Python 程序。上一篇文章聚焦于编写游戏循环上，而本系列 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2016/09/shi-yong-python-he-asyncio-bian-xie-zai-xian-duo-ren-you-xi-san.html" rel="bookmark"
+           title="Permalink to 使用 Python 和 Asyncio 编写在线多人游戏（三）">使用 Python 和 Asyncio 编写在线多人游戏（三）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2016-09-20T15:25:00+02:00">
+                Published: Tue 20 September 2016
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Kyrylo Subbotin</p>
+<p><img alt="" src="/data/attachment/album/201609/20/152441d6zf0gfh0kivkfym.jpg"></p>
+<blockquote>
+<p>在这个系列中，我们基于多人游戏 <a href="http://snakepit-game.com/">贪吃蛇</a> 来制作一个异步的 Python 程序。上一篇文章聚焦于<a href="/article-7784-1.html">编写游戏循环</a>上，而本系列第 1 部分则涵盖了如何<a href="/article-7767-1.html">异步化</a>。</p>
+</blockquote>
+<ul>
+<li>代码戳<a href="https://github.com/7WebPages/snakepit-game">这里</a></li>
+</ul>
+<p><a href="https://github.com/7WebPages/snakepit-game"><img alt="" src="/data/attachment/album/201609/20/152543iw8yqfmyzw0ze90b.gif"></a></p>
+<h3>4、制作一个完整的游戏</h3>
+<p><img alt="" src="/data/attachment/album/201609/20/152546h2rxum7diizxymdi.gif"></p>
+<h4>4.1 工程概览</h4>
+<p>在此部分，我们将回顾一个完整在线游戏的设计。这是一个经典的贪吃蛇游戏，增加了多玩家支持。你可以自己在 （<a href="http://snakepit-game.com">http://snakepit-game.com</a>） 亲自试玩。源码在 GitHub 的这个<a href="https://github.com/7WebPages/snakepit-game">仓库</a>。游戏包括下列文件：</p>
+<ul>
+<li><a href="https://github.com/7WebPages/snakepit-game/blob/master/server.py">server.py</a> - 处理主游戏循环和连接。</li>
+<li><a href="https://github.com/7WebPages/snakepit-game/blob/master/game.py">game.py</a> - 主要的 <code>Game</code> 类。实现游戏的逻辑和游戏的大部分通信协议。</li>
+<li><a href="https://github.com/7WebPages/snakepit-game/blob/master/player.py">player.py</a> - <code>Player</code> 类，包括每一个独立玩家的数据和蛇的展现。这个类负责获取玩家的输入并相应地移动蛇。</li>
+<li><a href="https://github.com/7WebPages/snakepit-game/blob/master/datatypes.py">datatypes.py</a> - 基本数据结构。</li>
+<li><a href="https://github.com/7WebPages/snakepit-game/blob/master/settings.py">settings.py</a> - 游戏设置，在注释中有相关的说明。</li>
+<li><a href="https://github.com/7WebPages/snakepit-game/blob/master/index.html">index.html</a> - 客户端所有的 html 和 javascript代码都放在一个文件中。</li>
+</ul>
+<h4>4.2 游戏循环内窥</h4>
+<p>多人的贪吃蛇游戏是个用于学习十分好的例子，因为它简单。所有的蛇在每个帧中移动到一个位置，而且帧以非常低的频率进行变化，这样就可以让你就观察到游戏引擎到底是如何工作的。因为速度慢，对于玩家的按键不会立马响应。按键先是记录下来，然后在一个游戏循环迭代的最后计算下一帧时使用。</p>
+<blockquote>
+<p>现代的动作游戏帧频率更高，而且通常服务端和客户端的帧频率是不相等的。客户端的帧频率通常依赖于客户端的硬件性能，而服务端的帧频率则是固定的。一个客户端可能根据一个游戏“嘀嗒”的数据渲染多个帧。这样就可以创建平滑的动画，这个受限于客户端的性能。在这个例子中，服务端不仅传输物体的当前位置，也要传输它们的移动方向、速度和加速度。客户端的帧频率称之为 FPS（<ruby> 每秒帧数 <rp>  （ </rp> <rt>  frames per second </rt> <rp>  ） </rp></ruby>），服务端的帧频率称之为 TPS（<ruby> 每秒滴答数 <rp>  （ </rp> <rt>  ticks per second </rt> <rp>  ） </rp></ruby>）。在这个贪吃蛇游戏的例子中，二者的值是相等的，在客户端显示的一帧是在服务端的一个“嘀嗒”内计算出来的。</p>
+</blockquote>
+<p>我们使用类似文本模式的游戏区域，事实上是 html 表格中的一个字符宽的小格。游戏中的所有对象都是通过表格中的不同颜色字符来表示。大部分时候，客户端将按键的码发送至服务端，然后每个“滴答”更新游戏区域。服务端一次更新包括需要更新字符的坐标和颜色。所以我们将所有游戏逻辑放置在服务端，只将需要渲染的数据发送给客户端。此外，我们通过替换通过网络发送的数据来减少游戏被破解的概率。</p>
+<h4>4.3 它是如何运行的？</h4>
+<p>这个游戏中的服务端出于简化的目的，它和例子 3.2 类似。但是我们用一个所有服务端都可访问的 <code>Game</code> 对象来代替之前保存了所有已连接 websocket 的全局列表。一个 <code>Game</code> 实例包括一个表示连接到此游戏的玩家的 <code>Player</code> 对象的列表（在 <code>self._players</code> 属性里面），以及他们的个人数据和 websocket 对象。将所有游戏相关的数据存储在一个 <code>Game</code> 对象中，会方便我们增加多个游戏房间这个功能——如果我们要增加这个功能的话。这样，我们维护多个 <code>Game</code> 对象，每个游戏开始时创建一个。</p>
+<p>客户端和服务端的所有交互都是通过编码成 json 的消息来完成。来自客户端的消息仅包含玩家所按下键码对应的编号。其它来自客户端消息使用如下格式：</p>
+<div class="highlight"><pre><span></span><code>[command, arg1, arg2, ... argN ]
+</code></pre></div>
+
+<p>来自服务端的消息以列表的形式发送，因为通常一次要发送多个消息 （大多数情况下是渲染的数据）：</p>
+<div class="highlight"><pre><span></span><code>[[command, arg1, arg2, ... argN ], ... ]
+</code></pre></div>
+
+<p>在每次游戏循环迭代的最后会计算下一帧，并且将数据发送给所有的客户端。当然，每次不是发送完整的帧，而是发送两帧之间的变化列表。</p>
+<p>注意玩家连接上服务端后不是立马加入游戏。连接开始时是<ruby> 观望者 <rp>  （ </rp> <rt>  spectator </rt> <rp>  ） </rp></ruby>模式，玩家可以观察其它玩家如何玩游戏。如果游戏已经开始或者上一个游戏会话已经在屏幕上显示 “game over” （游戏结束），用户此时可以按下 “Join”（参与），来加入一个已经存在的游戏，或者如果游戏没有运行（没有其它玩家）则创建一个新的游戏。后一种情况下，游戏区域在开始前会被先清空。</p>
+<p>游戏区域存储在 <code>Game._field</code> 这个属性中，它是由嵌套列表组成的二维数组，用于内部存储游戏区域的状态。数组中的每一个元素表示区域中的一个小格，最终小格会被渲染成 html 表格的格子。它有一个 <code>Char</code> 的类型，是一个 <code>namedtuple</code> ，包括一个字符和颜色。在所有连接的客户端之间保证游戏区域的同步很重要，所以所有游戏区域的更新都必须依据发送到客户端的相应的信息。这是通过 <code>Game.apply_render()</code> 来实现的。它接受一个 <code>Draw</code> 对象的列表，其用于内部更新游戏区域和发送渲染消息给客户端。</p>
+<blockquote>
+<p>我们使用 <code>namedtuple</code> 不仅因为它表示简单数据结构很方便，也因为用它生成 json 格式的消息时相对于 <code>dict</code> 更省空间。如果你在一个真实的游戏循环中需要发送复杂的数据结构，建议先将它们序列化成一个简单的、更短的格式，甚至打包成二进制格式（例如 bson，而不是 json），以减少网络传输。</p>
+</blockquote>
+<p><code>Player</code> 对象包括用 <code>deque</code> 对象表示的蛇。这种数据类型和 <code>list</code> 相似，但是在两端增加和删除元素时效率更高，用它来表示蛇很理想。它的主要方法是 <code>Player.render_move()</code>，它返回移动玩家的蛇至下一个位置的渲染数据。一般来说它在新的位置渲染蛇的头部，移除上一帧中表示蛇的尾巴的元素。如果蛇吃了一个数字变长了，在相应的多个帧中尾巴是不需要移动的。蛇的渲染数据在主类的 <code>Game.next_frame()</code> 中使用，该方法中实现所有的游戏逻辑。这个方法渲染所有蛇的移动，检查每一个蛇前面的障碍物，而且生成数字和“石头”。每一个“嘀嗒”，<code>game_loop()</code> 都会直接调用它来生成下一帧。</p>
+<p>如果蛇头前面有障碍物，在 <code>Game.next_frame()</code> 中会调用 <code>Game.game_over()</code>。它后通知所有的客户端那个蛇死掉了 （会调用 <code>player.render_game_over()</code> 方法将其变成石头），然后更新表中的分数排行榜。<code>Player</code> 对象的 <code>alive</code> 标记被置为 <code>False</code>，当渲染下一帧时，这个玩家会被跳过，除非他重新加入游戏。当没有蛇存活时，游戏区域会显示 “game over” （游戏结束）。而且，主游戏循环会停止，设置 <code>game.running</code> 标记为 <code>False</code>。当某个玩家下次按下 “Join” （加入）时，游戏区域会被清空。</p>
+<p>在渲染游戏的每个下一帧时也会产生数字和石头，它们是由随机值决定的。产生数字或者石头的概率可以在 <code>settings.py</code> 中修改成其它值。注意数字的产生是针对游戏区域每一个活的蛇的，所以蛇越多，产生的数字就越多，这样它们都有足够的食物来吃掉。</p>
+<h4>4.4 网络协议</h4>
+<p>从客户端发送消息的列表：</p>
+<table>
+<thead>
+<tr>
+<th>命令</th>
+<th>参数</th>
+<th>描述</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>new_player</td>
+<td>[name]</td>
+<td>设置玩家的昵称</td>
+</tr>
+<tr>
+<td>join</td>
+<td></td>
+<td>玩家加入游戏</td>
+</tr>
+</tbody>
+</table>
+<p>从服务端发送消息的列表：</p>
+<table>
+<thead>
+<tr>
+<th>命令</th>
+<th>参数</th>
+<th>描述</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>handshake</td>
+<td>[id]</td>
+<td>给一个玩家指定 ID</td>
+</tr>
+<tr>
+<td>world</td>
+<td>[[(char, color), ...], ...]</td>
+<td>初始化游戏区域（世界地图）</td>
+</tr>
+<tr>
+<td>reset_world</td>
+<td></td>
+<td>清除实际地图，替换所有字符为空格</td>
+</tr>
+<tr>
+<td>render</td>
+<td>[x, y, char, color]</td>
+<td>在某个位置显示字符</td>
+</tr>
+<tr>
+<td>p_joined</td>
+<td>[id, name, color, score]</td>
+<td>新玩家加入游戏</td>
+</tr>
+<tr>
+<td>p_gameover</td>
+<td>[id]</td>
+<td>某个玩家游戏结束</td>
+</tr>
+<tr>
+<td>p_score</td>
+<td>[id, score]</td>
+<td>给某个玩家计分</td>
+</tr>
+<tr>
+<td>top_scores</td>
+<td>[[name, score, color], ...]</td>
+<td>更新排行榜</td>
+</tr>
+</tbody>
+</table>
+<p>典型的消息交换顺序：</p>
+<table>
+<thead>
+<tr>
+<th>客户端 -&gt; 服务端</th>
+<th>服务端 -&gt; 客户端</th>
+<th>服务端 -&gt; 所有客户端</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>new_player</td>
+<td></td>
+<td></td>
+<td>名字传递给服务端</td>
+</tr>
+<tr>
+<td></td>
+<td>handshake</td>
+<td></td>
+<td>指定 ID</td>
+</tr>
+<tr>
+<td></td>
+<td>world</td>
+<td></td>
+<td>初始化传递的世界地图</td>
+</tr>
+<tr>
+<td></td>
+<td>top_scores</td>
+<td></td>
+<td>收到传递的排行榜</td>
+</tr>
+<tr>
+<td>join</td>
+<td></td>
+<td></td>
+<td>玩家按下“Join”，游戏循环开始</td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td>reset_world</td>
+<td>命令客户端清除游戏区域</td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td>render, render, ...</td>
+<td>第一个游戏“滴答”，渲染第一帧</td>
+</tr>
+<tr>
+<td>(key code)</td>
+<td></td>
+<td></td>
+<td>玩家按下一个键</td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td>render, render, ...</td>
+<td>渲染第二帧</td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td>p_score</td>
+<td>蛇吃掉了一个数字</td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td>render, render, ...</td>
+<td>渲染第三帧</td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td></td>
+<td>... 重复若干帧 ...</td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td>p_gameover</td>
+<td>试着吃掉障碍物时蛇死掉了</td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td>top_scores</td>
+<td>更新排行榜（如果需要更新的话）</td>
+</tr>
+</tbody>
+</table>
+<h3>5. 总结</h3>
+<p>说实话，我十分享受 Python 最新的异步特性。新的语法做了改善，所以异步代码很容易阅读。可以明显看出哪些调用是非阻塞的，什么时候发生 greenthread 的切换。所以现在我可以宣称 Python 是异步编程的好工具。</p>
+<p>SnakePit 在 7WebPages 团队中非常受欢迎。如果你在公司想休息一下，不要忘记给我们在 <a href="https://twitter.com/7WebPages">Twitter</a> 或者 <a href="https://www.facebook.com/7WebPages/">Facebook</a> 留下反馈。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

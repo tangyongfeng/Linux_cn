@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>探秘“栈”之旅（II）：结语、金丝雀和缓冲区溢出</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Gustavo Duarte 上一周我们讲解了 栈是如何工作的 以及在函数的 序言 prologue 上栈帧是如何被构建的。今天，我们来看一下它的相反的 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/06/tan-mi-zhan-zhi-lu-iijie-yu-jin-si-que-he-huan-chong-qu-yi-chu.html" rel="bookmark"
+           title="Permalink to 探秘“栈”之旅（II）：结语、金丝雀和缓冲区溢出">探秘“栈”之旅（II）：结语、金丝雀和缓冲区溢出</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-06-09T23:26:39+02:00">
+                Published: Sat 09 June 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Gustavo Duarte</p>
+<p><img alt="" src="/data/attachment/album/201806/09/232719ca6qhnmdan1qp34s.jpg"></p>
+<p>上一周我们讲解了 <a href="/article-9645-1.html">栈是如何工作的</a> 以及在函数的<ruby> 序言 <rt>  prologue </rt></ruby>上栈帧是如何被构建的。今天，我们来看一下它的相反的过程，在函数<ruby> 结语 <rt>  epilogue </rt></ruby>中栈帧是如何被销毁的。重新回到我们的 <code>add.c</code> 上：</p>
+<div class="highlight"><pre><span></span><code><span class="nv">int</span><span class="w"> </span><span class="nv">add</span><span class="ss">(</span><span class="nv">int</span><span class="w"> </span><span class="nv">a</span>,<span class="w"> </span><span class="nv">int</span><span class="w"> </span><span class="nv">b</span><span class="ss">)</span>
+{
+<span class="w">        </span><span class="nv">int</span><span class="w"> </span><span class="nb">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">a</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nv">b</span><span class="c1">;</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nb">result</span><span class="c1">;</span>
+}
+
+<span class="nv">int</span><span class="w"> </span><span class="nv">main</span><span class="ss">(</span><span class="nv">int</span><span class="w"> </span><span class="nv">argc</span><span class="ss">)</span>
+{
+<span class="w">        </span><span class="nv">int</span><span class="w"> </span><span class="nv">answer</span><span class="c1">;</span>
+<span class="w">        </span><span class="nv">answer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">add</span><span class="ss">(</span><span class="mi">40</span>,<span class="w"> </span><span class="mi">2</span><span class="ss">)</span><span class="c1">;</span>
+}
+</code></pre></div>
+
+<p><em>简单的一个做加法的程序 - add.c</em></p>
+<p>在运行到第 4 行时，在把 <code>a + b</code> 值赋给 <code>result</code> 后，这时发生了什么：</p>
+<p><img alt="" src="/data/attachment/album/201806/09/232722cyw4wls3q4lnyw3l.png"></p>
+<p>第一个指令是有些多余而且有点傻的，因为我们知道 <code>eax</code> 已经等于 <code>result</code> 了，但这就是关闭优化时得到的结果。<code>leave</code> 指令接着运行，这一小段做了两个任务：重置 <code>esp</code> 并将它指向到当前栈帧开始的地方，另一个是恢复在 <code>ebp</code> 中保存的值。这两个操作在逻辑上是独立的，因此，在图中将它们分开来说，但是，如果你使用一个调试器去跟踪，你就会发现它们都是自动发生的。</p>
+<p>在 <code>leave</code> 运行后，恢复了前一个栈帧。<code>add</code> 调用唯一留下的东西就是在栈顶部的返回地址。它包含了运行完 <code>add</code> 之后在 <code>main</code> 中必须运行的指令的地址。<code>ret</code> 指令用来处理它：它弹出返回地址到 <code>eip</code> 寄存器（LCTT 译注：32 位的指令寄存器），这个寄存器指向下一个要执行的指令。现在程序将返回到 <code>main</code> ，主要部分如下：</p>
+<p><img alt="" src="/data/attachment/album/201806/09/232724xp1d2y2pdp820yy0.png"></p>
+<p><code>main</code> 从 <code>add</code> 中拷贝返回值到本地变量 <code>answer</code>，然后，运行它自己的<ruby> 结语 <rt>  epilogue </rt></ruby>，这一点和其它的函数是一样的。在 <code>main</code> 中唯一的怪异之处是，保存在 <code>ebp</code> 中的是 <code>null</code> 值，因为它是我们的代码中的第一个栈帧。最后一步执行的是，返回到 C 运行时库（<code>libc</code>），它将退回到操作系统中。这里为需要的人提供了一个 <a href="https://manybutfinite.com/img/stack/returnSequence.png">完整的返回顺序</a> 的图。</p>
+<p>现在，你已经理解了栈是如何运作的，所以我们现在可以来看一下，一直以来最臭名昭著的黑客行为：利用缓冲区溢出。这是一个有漏洞的程序：</p>
+<div class="highlight"><pre><span></span><code>void doRead()
+{
+        char buffer[28];
+        gets(buffer);
+}
+
+int main(int argc)
+{
+        doRead();
+}
+</code></pre></div>
+
+<p><em>有漏洞的程序 - buffer.c</em></p>
+<p>上面的代码中使用了 <a href="http://linux.die.net/man/3/gets">gets</a> 从标准输入中去读取内容。<code>gets</code> 持续读取直到一个新行或者文件结束。下图是读取一个字符串之后栈的示意图：</p>
+<p><img alt="" src="/data/attachment/album/201806/09/232725t7a98yyvlc29vch2.png"></p>
+<p>在这里存在的问题是，<code>gets</code> 并不知道缓冲区（<code>buffer</code>）大小：它毫无查觉地持续读取输入内容，并将读取的内容填入到缓冲区那边的栈，清除保存在 <code>ebp</code> 中的值、返回地址，下面的其它内容也是如此。对于利用这种行为，攻击者制作一个精密的载荷并将它“喂”给程序。在这个时候，栈应该是下图所示的样子，然后去调用 <code>gets</code>：</p>
+<p><img alt="" src="/data/attachment/album/201806/09/232726y03y33iac3y09zbe.png"></p>
+<p>基本的思路是提供一个恶意的汇编代码去运行，通过覆写栈上的返回地址指向到那个代码。这有点像病毒侵入一个细胞，颠覆它，然后引入一些 RNA 去达到它的目的。</p>
+<p>和病毒一样，挖掘者的载荷有许多特别的功能。它以几个 <code>nop</code> 指令开始，以提升成功利用的可能性。这是因为返回的地址是一个绝对的地址，需要猜测，而攻击者并不知道保存它的代码的栈的准确位置。但是，只要它们进入一个 <code>nop</code>，这个漏洞利用就成功了：处理器将运行 <code>nop</code> 指令，直到命中它希望去运行的指令。</p>
+<p><code>exec /bin/sh</code> 表示运行一个 shell 的原始汇编指令（假设漏洞是在一个网络程序中，因此，这个漏洞可能提供一个访问系统的 shell）。将一个命令或用户输入以原始汇编指令的方式嵌入到一个程序中的思路是很可怕的，但是，那只是让安全研究如此有趣且“脑洞大开”的一部分而已。对于防范这个怪异的 <code>get</code>，给你提供一个思路，有时候，在有漏洞的程序上，让它的输入转换为小写或者大写，将迫使攻击者写的汇编指令的完整字节不属于小写或者大写的 ascii 字母的范围内。</p>
+<p>最后，攻击者重复猜测几次返回地址，这将再次提升他们的胜算。以 4 字节为界进行多次重复，它们就会更好地覆写栈上的原始返回地址。</p>
+<p>幸亏，现代操作系统有了 <a href="http://paulmakowski.wordpress.com/2011/01/25/smashing-the-stack-in-2011/">防止缓冲区溢出</a> 的一系列保护措施，包括不可执行的栈和<ruby> 栈内金丝雀 <rt>  stack canary </rt></ruby>。这个 “<ruby> 金丝雀 <rt>  canary </rt></ruby>” 名字来自 <ruby> <a href="http://en.wiktionary.org/wiki/canary_in_a_coal_mine">  煤矿中的金丝雀 </a> <rt>  canary in a coal mine </rt></ruby> 中的表述（LCTT 译注：指在过去煤矿工人下井时会带一只金丝雀，因为金丝雀对煤矿中的瓦斯气体非常敏感，如果进入煤矿后，金丝雀死亡，说明瓦斯超标，矿工会立即撤出煤矿。金丝雀做为煤矿中瓦斯预警器来使用），这是对计算机科学词汇的补充，用 Steve McConnell 的话解释如下：</p>
+<blockquote>
+<p>计算机科学拥有比其它任何领域都丰富多彩的语言，在其它的领域中你进入一个无菌室，小心地将温度控制在 68°F，然后，能找到病毒、特洛伊木马、蠕虫、臭虫（bug）、炸弹（逻辑炸弹）、崩溃、爆发（口水战）、扭曲的变性者（双绞线转换头），以及致命错误吗？</p>
+<p>—— Steve McConnell 《代码大全 2》</p>
+</blockquote>
+<p>不管怎么说，这里所谓的“栈金丝雀”应该看起来是这个样子的：</p>
+<p><img alt="" src="/data/attachment/album/201806/09/232727p59zm51hgrh4w9mw.png"></p>
+<p>金丝雀是通过汇编来实现的。例如，由于 GCC 的 <a href="http://gcc.gnu.org/onlinedocs/gcc-4.2.3/gcc/Optimize-Options.html">栈保护器</a> 选项的原因使金丝雀能被用于任何可能有漏洞的函数上。函数序言加载一个魔法值到金丝雀的位置，并且在函数结语时确保这个值完好无损。如果这个值发生了变化，那就表示发生了一个缓冲区溢出（或者 bug），这时，程序通过 <a href="http://refspecs.linux-foundation.org/LSB_4.0.0/LSB-Core-generic/LSB-Core-generic/libc---stack-chk-fail-1.html"><code>__stack_chk_fail</code></a> 被终止运行。由于金丝雀处于栈的关键位置上，它使得栈缓冲区溢出的漏洞挖掘变得非常困难。</p>
+<p>深入栈的探秘之旅结束了。我并不想过于深入。下一周我将深入递归、尾调用以及其它相关内容。或许要用到谷歌的 V8 引擎。作为函数的序言和结语的讨论的结束，我引述了美国国家档案馆纪念雕像上的一句名言：（<ruby> 凡是过去 皆为序章 <rt>  what is past is prologue </rt></ruby>）。</p>
+<p><img alt="" src="/data/attachment/album/201806/09/232728d7xxwoskh9kaksvs.jpg"></p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

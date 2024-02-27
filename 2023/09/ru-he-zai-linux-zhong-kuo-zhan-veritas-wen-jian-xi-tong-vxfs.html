@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何在 Linux 中扩展 Veritas 文件系统（VxFS）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Jayabal Thiyagarajan 扩展 VxFX 文件系统是 Linux/Unix 管理员的一项日常任务，可以通过以下文章中描述的几个步骤在线完成此任务： 在此，磁盘 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2023/09/ru-he-zai-linux-zhong-kuo-zhan-veritas-wen-jian-xi-tong-vxfs.html" rel="bookmark"
+           title="Permalink to 如何在 Linux 中扩展 Veritas 文件系统（VxFS）">如何在 Linux 中扩展 Veritas 文件系统（VxFS）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2023-09-17T09:52:25+02:00">
+                Published: Sun 17 September 2023
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Jayabal Thiyagarajan</p>
+<p><img alt="" src="/data/attachment/album/202309/17/095154jxqizcscc3xjuzrl.jpg"></p>
+<p>扩展 VxFX 文件系统是 Linux/Unix 管理员的一项日常任务，可以通过以下文章中描述的几个步骤在线完成此任务：</p>
+<p>在此，磁盘组没有足够的可用空间，因此我们将在现有磁盘组（DG）中添加新磁盘，然后调整其大小。</p>
+<p><strong>相关文章：</strong></p>
+<ul>
+<li><strong><a href="https://www.2daygeek.com/create-vxvm-volume-vxfs-filesystem-linux/">如何在 Linux 中创建 VxVM 卷和文件系统</a></strong></li>
+<li><strong><a href="https://www.2daygeek.com/create-veritas-shared-vxfs-file-system-linux/">如何在 Linux 上创建共享 VxFS 文件系统</a></strong></li>
+</ul>
+<h3>步骤 1：识别文件系统</h3>
+<p>使用 <a href="https://www.2daygeek.com/linux-check-disk-space-usage-df-command/">df 命令</a> 检查要增加/扩展的文件系统，并记下以下输出中的磁盘组（DG）和卷名称，稍后在运行 <code>vxdg</code> 和 <code>vxresize</code> 命令时将使用这些名称。</p>
+<div class="highlight"><pre><span></span><code># df -hP /data
+
+Filesystem                  Size  Used Avail Use% Mounted on
+/dev/vx/dsk/testdg/testvol  9.0G  8.4G 0.6G  95%  /data
+</code></pre></div>
+
+<p>根据上面的输出，VxFS 文件系统大小为 9.0 GB，我们希望额外扩展 5 GB 并发布此活动，VxFS 大小将为 14 GB。</p>
+<p>在本例中，DG 名称为 <code>testdg</code>，卷名称为 <code>testvol</code>。</p>
+<h3>步骤 2：获取新磁盘/LUN</h3>
+<p>新磁盘必须由存储团队映射到主机，这可能需要 CR 批准，因此提出 CR 并向相关团队添加必要的任务，并且还包括此活动的回滚计划。</p>
+<h3>步骤 3：扫描磁盘/LUN</h3>
+<p>存储团队将新 LUN 映射到主机后，获取 LUN id 并将其保存。</p>
+<p>使用以下命令扫描 LUN 以在操作系统级别发现它们。</p>
+<div class="highlight"><pre><span></span><code>for disk_scan in <span class="sb">`ls /sys/class/scsi_host`</span>; do 
+    echo &quot;Scanning $disk_scan…Completed&quot;
+    echo &quot;- - -&quot; &gt; /sys/class/scsi_host/$disk_scan/scan
+done
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="n">Scanning</span><span class="w"> </span><span class="n">host0</span><span class="p">...</span><span class="n">Completed</span>
+<span class="n">Scanning</span><span class="w"> </span><span class="n">host1</span><span class="p">...</span><span class="n">Completed</span>
+<span class="p">.</span>
+<span class="p">.</span>
+<span class="n">Scanning</span><span class="w"> </span><span class="k">host</span><span class="o">[</span><span class="n">N</span><span class="o">]</span><span class="p">...</span><span class="n">Completed</span>
+</code></pre></div>
+
+<p>扫描完成后，使用以下命令查看是否在操作系统级别找到给定的 LUN。</p>
+<div class="highlight"><pre><span></span><code><span class="n">lsscsi</span><span class="w"> </span><span class="c1">--scsi | grep -i [Last_Five_Digit_of_LUN]</span>
+</code></pre></div>
+
+<h3>步骤 4：在 VxVM 中查找磁盘</h3>
+<p>默认情况下，所有可用磁盘对 Veritas 卷管理器（VxVM）都是可见的，可以使用 <code>vxdisk</code> 命令列出这些磁盘，如下所示。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> vxdisk -e list
+
+DEVICE       TYPE           DISK        GROUP        STATUS               OS_NATIVE_NAME   ATTR
+emc_01       auto:cdsdisk   disk1       testdg       online               sdd              -
+emc_02       auto:cdsdisk   disk2       testdg       online               sde              -
+emc_03       auto:none      -           -            online invalid       sdf              -
+sda          auto:LVM       -           -            LVM                  sda              -
+sdb          auto:LVM       -           -            LVM                  sdb              -
+</code></pre></div>
+
+<p>磁盘 <code>sdf</code> 的状态显示为 <code>Online invalid</code> 表示该磁盘不受 VxVM 控制。但是，请使用 <code>smartctl</code> 命令仔细检查 LUN id，以确保你选择了正确的磁盘。</p>
+<div class="highlight"><pre><span></span><code><span class="n">smartctl</span><span class="w"> </span><span class="o">-</span><span class="n">a</span><span class="w"> </span><span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="n">sd</span><span class="o">[</span><span class="n">x</span><span class="o">]|</span><span class="n">grep</span><span class="w"> </span><span class="o">-</span><span class="n">i</span><span class="w"> </span><span class="n">unit</span>
+</code></pre></div>
+
+<p>如果磁盘未填充到 VxVM，请执行以下命令扫描操作系统设备树中的磁盘设备。</p>
+<div class="highlight"><pre><span></span><code>vxdisk scandisks
+</code></pre></div>
+
+<h3>步骤 5：在 VxVM 中初始化磁盘</h3>
+<p>当磁盘在<strong>步骤 4</strong> 中对 VxVM 可见，那么使用 <code>vxdisksetup</code> 命令初始化磁盘，如下所示：</p>
+<div class="highlight"><pre><span></span><code>vxdisksetup -i sdf
+</code></pre></div>
+
+<p>上面的命令将磁盘 <code>sdf</code> 带到 Veritas 卷管理器（VxVM），并且磁盘状态现在更改为 <code>online</code>。</p>
+<p><img alt="" src="/data/attachment/album/202309/17/095225ffh9ss4encczrejz.jpg"></p>
+<h3>步骤 6：将磁盘添加到 VxVM 中的磁盘组（DG）</h3>
+<p><code>vxdg</code> 命令对磁盘组执行各种管理操作。在此示例中，我们将使用它向现有磁盘组（DG）添加新磁盘。</p>
+<div class="highlight"><pre><span></span><code><span class="n">vxdg</span><span class="w"> </span><span class="o">-</span><span class="n">g</span><span class="w"> </span><span class="o">[</span><span class="n">DG_Name</span><span class="o">]</span><span class="w"> </span><span class="n">adddisk</span><span class="w"> </span><span class="o">[</span><span class="n">Any_Name_to_Disk_as_per_Your_Wish=Device_Name</span><span class="o">]</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code>vxdg -g testdg adddisk disk3=emc_03
+</code></pre></div>
+
+<p>运行上述命令后，磁盘名称为 <code>disk3</code> 且磁盘组名称为 <code>testdg</code> 已针对 <code>emc_03</code> 设备进行更新 如下所示：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> vxdisk -e list
+
+DEVICE       TYPE           DISK        GROUP        STATUS               OS_NATIVE_NAME   ATTR
+emc_01       auto:cdsdisk   disk1       testdg       online               sdd              -
+emc_02       auto:cdsdisk   disk2       testdg       online               sde              -
+emc_03       auto:none      disk3       testdg       online               sdf              -
+sda          auto:LVM       -           -            LVM                  sda              -
+sdb          auto:LVM       -           -            LVM                  sdb              -
+</code></pre></div>
+
+<h3>步骤 7：检查磁盘组（DG）中的可用空间</h3>
+<p>要确定连接卷有多少可用空间，请运行：</p>
+<div class="highlight"><pre><span></span><code>vxassist -g testdg maxsize
+</code></pre></div>
+
+<h3>步骤 8：扩展 VxVM 卷和 VxFS 文件系统</h3>
+<p>我们为此活动添加了 5GB LUN，因此额外扩展了 VxVM 卷和 VxFS 文件系统 <code>5GB</code>，如下所示：</p>
+<div class="highlight"><pre><span></span><code><span class="n">vxresize</span><span class="w"> </span><span class="o">-</span><span class="n">b</span><span class="w"> </span><span class="o">-</span><span class="n">g</span><span class="w"> </span><span class="o">[</span><span class="n">DG_Name</span><span class="o">]</span><span class="w"> </span><span class="o">[</span><span class="n">Volume_Name</span><span class="o">]</span><span class="w"> </span><span class="o">+[</span><span class="n">Size_to_be_Increased</span><span class="o">]</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code>vxresize -b -g testdg testvol +5g
+</code></pre></div>
+
+<p>这里：</p>
+<ul>
+<li><code>vxresize</code>：命令</li>
+<li><code>-b</code>：在后台执行调整大小操作（可选）。</li>
+<li><code>-g</code>：将命令的操作限制为给定磁盘组，由磁盘组 ID 或磁盘组名称指定。</li>
+<li><code>testdg</code>：我们的磁盘组（DG）名称</li>
+<li><code>test</code>vol`：我们的卷名称</li>
+<li><code>+5g</code>：此卷将额外增加 5GB。</li>
+</ul>
+<h3>步骤 9：检查扩展 VxFS 文件系统</h3>
+<p>最后，使用 <code>df</code> 命令检查 <code>/data</code> 的扩展 VxFS：</p>
+<div class="highlight"><pre><span></span><code># df -hP /data
+
+Filesystem                  Size  Used Avail Use% Mounted on
+/dev/vx/dsk/testdg/testvol  14G   8.4G 5.6G  68%  /data
+</code></pre></div>
+
+<h3>总结</h3>
+<p>在本教程中，我们向你展示了如何向现有磁盘组（DG）添加新磁盘，以及如何通过几个简单步骤在 Linux 中扩展 VxVM 卷和 VxFS 文件系统。</p>
+<p>如果你有任何问题或反馈，请随时在下面发表评论。</p>
+<p><em>（题图：MJ/3fe4fdb7-99da-4b8f-a818-0ae232e6fbcc）</em></p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

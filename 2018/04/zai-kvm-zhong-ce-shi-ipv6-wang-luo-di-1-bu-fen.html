@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在 KVM 中测试 IPv6 网络（第 1 部分）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Carla Schroder 在这个两篇的系列当中，我们将学习关于 IPv6 私有地址的知识，以及如何在 KVM 中配置测试网络。 要理解 IPv6 地址是如何 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/04/zai-kvm-zhong-ce-shi-ipv6-wang-luo-di-1-bu-fen.html" rel="bookmark"
+           title="Permalink to 在 KVM 中测试 IPv6 网络（第 1 部分）">在 KVM 中测试 IPv6 网络（第 1 部分）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-04-30T20:07:30+02:00">
+                Published: Mon 30 April 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Carla Schroder</p>
+<blockquote>
+<p>在这个两篇的系列当中，我们将学习关于 IPv6 私有地址的知识，以及如何在 KVM 中配置测试网络。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/201804/30/200734dupx99rb9bx2b922.png"></p>
+<p>要理解 IPv6 地址是如何工作的，没有比亲自动手去实践更好的方法了，在 KVM 中配置一个小的测试实验室非常容易 —— 也很有趣。这个系列的文章共有两个部分，我们将学习关于 IPv6 私有地址的知识，以及如何在 KVM 中配置测试网络。</p>
+<h3>QEMU/KVM/虚拟机管理器</h3>
+<p>我们先来了解什么是 KVM。在这里，我将使用 KVM 来表示 QEMU、KVM、以及虚拟机管理器的一个组合，虚拟机管理器在 Linux 发行版中一般都内置了。简单解释就是，QEMU 模拟硬件，而 KVM 是一个内核模块，它在你的 CPU 上创建一个 “访客领地”，并去管理它们对内存和 CPU 的访问。虚拟机管理器是一个涵盖虚拟化和管理程序的图形工具。</p>
+<p>但是你不能被图形界面下 “点击” 操作的方式 “缠住” ，因为，它们也有命令行工具可以使用 —— 比如 <code>virsh</code> 和 <code>virt-install</code>。</p>
+<p>如果你在使用 KVM 方面没有什么经验，你可以从 <a href="https://www.linux.com/learn/intro-to-linux/2017/5/creating-virtual-machines-kvm-part-1">在 KVM 中创建虚拟机：第 1 部分</a> 和 <a href="https://www.linux.com/learn/intro-to-linux/2017/5/creating-virtual-machines-kvm-part-2-networking">在 KVM 中创建虚拟机：第 2 部分 - 网络</a> 开始学起。</p>
+<h3>IPv6 唯一本地地址</h3>
+<p>在 KVM 中配置 IPv6 网络与配置 IPv4 网络很类似。它们的主要不同在于这些怪异的长地址。<a href="https://www.linux.com/learn/intro-to-linux/2017/10/calculating-ipv6-subnets-linux">上一次</a>，我们讨论了 IPv6 地址的不同类型。其中有一个 IPv6 单播地址类，<code>fc00::/7</code>（详细情况请查阅 <a href="https://tools.ietf.org/html/rfc4193">RFC 4193</a>），它类似于 IPv4 中的私有地址 —— <code>10.0.0.0/8</code>、<code>172.16.0.0/12</code>、和 <code>192.168.0.0/16</code>。</p>
+<p>下图解释了这个唯一本地地址空间的结构。前 48 位定义了前缀和全局 ID，随后的 16 位是子网，剩余的 64 位是接口 ID：</p>
+<div class="highlight"><pre><span></span><code><span class="c">| 7 bits |1|  40 bits   |  16 bits  |          64 bits           |</span>
+<span class="nb">+--------+-+------------+-----------+----------------------------+</span>
+<span class="c">| Prefix |L| Global ID  | Subnet ID |        Interface ID        |</span>
+<span class="nb">+--------+-+------------+-----------+----------------------------+</span>
+</code></pre></div>
+
+<p>下面是另外一种表示方法，它可能更有助于你理解这些地址是如何管理的：</p>
+<div class="highlight"><pre><span></span><code><span class="c">| Prefix |  Global ID   |  Subnet ID  |   Interface ID       |</span>
+<span class="nb">+--------+--------------+-------------+----------------------+</span>
+<span class="c">|   fd   | 00:0000:0000 |    0000     | 0000:0000:0000:0000  |</span>
+<span class="nb">+--------+--------------+-------------+----------------------+</span>
+</code></pre></div>
+
+<p><code>fc00::/7</code> 共分成两个 <code>/8</code> 地址块，<code>fc00::/8</code> 和 <code>fd00::/8</code>。<code>fc00::/8</code> 是为以后使用保留的。因此，唯一本地地址通常都是以 <code>fd</code> 开头的，而剩余部分是由你使用的。<code>L</code> 位，也就是第八位，它总是设置为 <code>1</code>，这样它可以表示为 <code>fd00::/8</code>。设置为 <code>0</code> 时，它就表示为 <code>fc00::/8</code>。你可以使用 <code>subnetcalc</code> 来看到这些东西：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>subnetcalc<span class="w"> </span>fd00::/8<span class="w"> </span>-n
+<span class="nv">Address</span><span class="w">  </span><span class="o">=</span><span class="w"> </span>fd00::
+<span class="w">            </span><span class="nv">fd00</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">11111101</span><span class="w"> </span><span class="m">00000000</span>
+
+$<span class="w"> </span>subnetcalc<span class="w"> </span>fc00::/8<span class="w"> </span>-n
+<span class="nv">Address</span><span class="w">  </span><span class="o">=</span><span class="w"> </span>fc00::
+<span class="w">            </span><span class="nv">fc00</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">11111100</span><span class="w"> </span><span class="m">00000000</span>
+</code></pre></div>
+
+<p>RFC 4193 要求地址必须随机产生。你可以用你选择的任何方法来造出个地址，只要它们以 <code>fd</code> 打头就可以，因为 IPv6 范围非常大，它不会因为地址耗尽而无法使用。当然，最佳实践还是按 RFC 的要求来做。地址不能按顺序分配或者使用众所周知的数字。RFC 4193 包含一个构建伪随机地址生成器的算法，或者你可以找到各种在线生成器。</p>
+<p>唯一本地地址不像全局单播地址（它由你的因特网服务提供商分配）那样进行中心化管理，即使如此，发生地址冲突的可能性也是非常低的。当你需要去合并一些本地网络或者想去在不相关的私有网络之间路由时，这是一个非常好的优势。</p>
+<p>在同一个子网中，你可以混用唯一本地地址和全局单播地址。唯一本地地址是可路由的，并且它并不会因此要求对路由器做任何调整。但是，你应该在你的边界路由器和防火墙上配置为不允许它们离开你的网络，除非是在不同位置的两个私有网络之间。</p>
+<p>RFC4193 建议，不要混用全局单播地址的 AAAA 和 PTR 记录，因为虽然它们重复的机率非常低，但是并不能保证它们就是独一无二的。就像我们使用的 IPv4 地址一样，要保持你本地的私有名称服务和公共名称服务的独立。将本地名称服务使用的 Dnsmasq 和公共名称服务使用的 BIND 组合起来，是一个在 IPv4 网络上经过实战检验的可靠组合，这个组合也同样适用于 IPv6 网络。</p>
+<h3>伪随机地址生成器</h3>
+<p>在线地址生成器的一个示例是 <a href="https://www.ultratools.com/tools/rangeGenerator">本地 IPv6 地址生成器</a>。你可以在线找到许多这样很酷的工具。你可以使用它来为你创建一个新地址，或者使用它在你的现有全局 ID 下为你创建子网。</p>
+<p>下周我们将讲解如何在 KVM 中配置这些 IPv6 的地址，并现场测试它们。</p>
+<p>通过来自 Linux 基金会和 edX 的免费在线课程 <a href="https://training.linuxfoundation.org/linux-courses/system-administration-training/introduction-to-linux">“Linux 入门”</a> 学习更多的 Linux 知识。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

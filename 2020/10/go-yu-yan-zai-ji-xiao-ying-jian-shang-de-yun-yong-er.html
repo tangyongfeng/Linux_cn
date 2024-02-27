@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Go 语言在极小硬件上的运用（二）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Michał Derkacz 在本文的 第一部分 的结尾，我承诺要写关于接口的内容。我不想在这里写有关接口或完整或简短的讲义。相反，我将 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2020/10/go-yu-yan-zai-ji-xiao-ying-jian-shang-de-yun-yong-er.html" rel="bookmark"
+           title="Permalink to Go 语言在极小硬件上的运用（二）">Go 语言在极小硬件上的运用（二）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2020-10-24T09:01:41+02:00">
+                Published: Sat 24 October 2020
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Michał Derkacz</p>
+<p><img alt="" src="/data/attachment/album/202010/24/090026to9c9sweyrw9ww37.png"></p>
+<p>在本文的 <a href="/article-11383-1.html">第一部分</a> 的结尾，我承诺要写关于接口的内容。我不想在这里写有关接口或完整或简短的讲义。相反，我将展示一个简单的示例，来说明如何定义和使用接口，以及如何利用无处不在的 <code>io.Writer</code> 接口。还有一些关于<ruby> 反射 <rt>  reflection </rt></ruby>和<ruby> 半主机 <rt>  semihosting </rt></ruby>的内容。</p>
+<p><img alt="STM32F030F4P6" src="/data/attachment/album/202010/24/090147a1kqxkhkqzxv8mzj.jpg">]</p>
+<p>接口是 Go 语言的重要组成部分。如果你想了解更多有关它们的信息，我建议你阅读《<a href="https://golang.org/doc/effective_go.html#interfaces">高效的 Go 编程</a>》 和 <a href="https://research.swtch.com/interfaces">Russ Cox 的文章</a>。</p>
+<h3>并发 Blinky – 回顾</h3>
+<p>当你阅读前面示例的代码时，你可能会注意到一中打开或关闭 LED 的反直觉方式。 <code>Set</code> 方法用于关闭 LED，<code>Clear</code> 方法用于打开 LED。这是由于在 <ruby> 漏极开路配置 <rt>  open-drain configuration </rt></ruby> 下驱动了 LED。我们可以做些什么来减少代码的混乱？让我们用 <code>On</code> 和 <code>Off</code> 方法来定义 <code>LED</code> 类型：</p>
+<div class="highlight"><pre><span></span><code><span class="n">type</span><span class="w"> </span><span class="n">LED</span><span class="w"> </span><span class="n">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">pin</span><span class="w"> </span><span class="n">gpio</span><span class="o">.</span><span class="n">Pin</span>
+<span class="p">}</span>
+
+<span class="k">func</span><span class="w"> </span><span class="p">(</span><span class="n">led</span><span class="w"> </span><span class="n">LED</span><span class="p">)</span><span class="w"> </span><span class="n">On</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">led</span><span class="o">.</span><span class="n">pin</span><span class="o">.</span><span class="n">Clear</span><span class="p">()</span>
+<span class="p">}</span>
+
+<span class="k">func</span><span class="w"> </span><span class="p">(</span><span class="n">led</span><span class="w"> </span><span class="n">LED</span><span class="p">)</span><span class="w"> </span><span class="n">Off</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">led</span><span class="o">.</span><span class="n">pin</span><span class="o">.</span><span class="n">Set</span><span class="p">()</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>现在我们可以简单地调用 <code>led.On()</code> 和 <code>led.Off()</code>，这不会再引起任何疑惑了。</p>
+<p>在前面的所有示例中，我都尝试使用相同的 <ruby> 漏极开路配置 <rt>  open-drain configuration </rt></ruby>来避免代码复杂化。但是在最后一个示例中，对于我来说，将第三个 LED 连接到 GND 和 PA3 引脚之间并将 PA3 配置为<ruby> 推挽模式 <rt>  push-pull mode </rt></ruby>会更容易。下一个示例将使用以此方式连接的 LED。</p>
+<p>但是我们的新 <code>LED</code> 类型不支持推挽配置，实际上，我们应该将其称为 <code>OpenDrainLED</code>，并定义另一个类型 <code>PushPullLED</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="n">type</span><span class="w"> </span><span class="n">PushPullLED</span><span class="w"> </span><span class="n">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">pin</span><span class="w"> </span><span class="n">gpio</span><span class="o">.</span><span class="n">Pin</span>
+<span class="p">}</span>
+
+<span class="k">func</span><span class="w"> </span><span class="p">(</span><span class="n">led</span><span class="w"> </span><span class="n">PushPullLED</span><span class="p">)</span><span class="w"> </span><span class="n">On</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">led</span><span class="o">.</span><span class="n">pin</span><span class="o">.</span><span class="n">Set</span><span class="p">()</span>
+<span class="p">}</span>
+
+<span class="k">func</span><span class="w"> </span><span class="p">(</span><span class="n">led</span><span class="w"> </span><span class="n">PushPullLED</span><span class="p">)</span><span class="w"> </span><span class="n">Off</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">led</span><span class="o">.</span><span class="n">pin</span><span class="o">.</span><span class="n">Clear</span><span class="p">()</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>请注意，这两种类型都具有相同的方法，它们的工作方式也相同。如果在 LED 上运行的代码可以同时使用这两种类型，而不必注意当前使用的是哪种类型，那就太好了。 接口类型可以提供帮助：</p>
+<div class="highlight"><pre><span></span><code><span class="n">package</span> <span class="n">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s2">&quot;delay&quot;</span>
+
+    <span class="s2">&quot;stm32/hal/gpio&quot;</span>
+    <span class="s2">&quot;stm32/hal/system&quot;</span>
+    <span class="s2">&quot;stm32/hal/system/timer/systick&quot;</span>
+<span class="p">)</span>
+
+<span class="nb">type</span> <span class="n">LED</span> <span class="n">interface</span> <span class="p">{</span>
+    <span class="n">On</span><span class="p">()</span>
+    <span class="n">Off</span><span class="p">()</span>
+<span class="p">}</span>
+
+<span class="nb">type</span> <span class="n">PushPullLED</span> <span class="n">struct</span><span class="p">{</span> <span class="n">pin</span> <span class="n">gpio</span><span class="o">.</span><span class="n">Pin</span> <span class="p">}</span>
+
+<span class="n">func</span> <span class="p">(</span><span class="n">led</span> <span class="n">PushPullLED</span><span class="p">)</span> <span class="n">On</span><span class="p">()</span>  <span class="p">{</span>
+    <span class="n">led</span><span class="o">.</span><span class="n">pin</span><span class="o">.</span><span class="n">Set</span><span class="p">()</span>
+<span class="p">}</span>
+
+<span class="n">func</span> <span class="p">(</span><span class="n">led</span> <span class="n">PushPullLED</span><span class="p">)</span> <span class="n">Off</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">led</span><span class="o">.</span><span class="n">pin</span><span class="o">.</span><span class="n">Clear</span><span class="p">()</span>
+<span class="p">}</span>
+
+<span class="n">func</span> <span class="n">MakePushPullLED</span><span class="p">(</span><span class="n">pin</span> <span class="n">gpio</span><span class="o">.</span><span class="n">Pin</span><span class="p">)</span> <span class="n">PushPullLED</span> <span class="p">{</span>
+    <span class="n">pin</span><span class="o">.</span><span class="n">Setup</span><span class="p">(</span><span class="o">&amp;</span><span class="n">gpio</span><span class="o">.</span><span class="n">Config</span><span class="p">{</span><span class="n">Mode</span><span class="p">:</span> <span class="n">gpio</span><span class="o">.</span><span class="n">Out</span><span class="p">,</span> <span class="n">Driver</span><span class="p">:</span> <span class="n">gpio</span><span class="o">.</span><span class="n">PushPull</span><span class="p">})</span>
+    <span class="k">return</span> <span class="n">PushPullLED</span><span class="p">{</span><span class="n">pin</span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="nb">type</span> <span class="n">OpenDrainLED</span> <span class="n">struct</span><span class="p">{</span> <span class="n">pin</span> <span class="n">gpio</span><span class="o">.</span><span class="n">Pin</span> <span class="p">}</span>
+
+<span class="n">func</span> <span class="p">(</span><span class="n">led</span> <span class="n">OpenDrainLED</span><span class="p">)</span> <span class="n">On</span><span class="p">()</span>  <span class="p">{</span>
+    <span class="n">led</span><span class="o">.</span><span class="n">pin</span><span class="o">.</span><span class="n">Clear</span><span class="p">()</span>
+<span class="p">}</span>
+
+<span class="n">func</span> <span class="p">(</span><span class="n">led</span> <span class="n">OpenDrainLED</span><span class="p">)</span> <span class="n">Off</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">led</span><span class="o">.</span><span class="n">pin</span><span class="o">.</span><span class="n">Set</span><span class="p">()</span>
+<span class="p">}</span>
+
+<span class="n">func</span> <span class="n">MakeOpenDrainLED</span><span class="p">(</span><span class="n">pin</span> <span class="n">gpio</span><span class="o">.</span><span class="n">Pin</span><span class="p">)</span> <span class="n">OpenDrainLED</span> <span class="p">{</span>
+    <span class="n">pin</span><span class="o">.</span><span class="n">Setup</span><span class="p">(</span><span class="o">&amp;</span><span class="n">gpio</span><span class="o">.</span><span class="n">Config</span><span class="p">{</span><span class="n">Mode</span><span class="p">:</span> <span class="n">gpio</span><span class="o">.</span><span class="n">Out</span><span class="p">,</span> <span class="n">Driver</span><span class="p">:</span> <span class="n">gpio</span><span class="o">.</span><span class="n">OpenDrain</span><span class="p">})</span>
+    <span class="k">return</span> <span class="n">OpenDrainLED</span><span class="p">{</span><span class="n">pin</span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="n">var</span> <span class="n">led1</span><span class="p">,</span> <span class="n">led2</span> <span class="n">LED</span>
+
+<span class="n">func</span> <span class="n">init</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">system</span><span class="o">.</span><span class="n">SetupPLL</span><span class="p">(</span><span class="mi">8</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">48</span><span class="o">/</span><span class="mi">8</span><span class="p">)</span>
+    <span class="n">systick</span><span class="o">.</span><span class="n">Setup</span><span class="p">(</span><span class="mf">2e6</span><span class="p">)</span>
+
+    <span class="n">gpio</span><span class="o">.</span><span class="n">A</span><span class="o">.</span><span class="n">EnableClock</span><span class="p">(</span><span class="n">false</span><span class="p">)</span>
+    <span class="n">led1</span> <span class="o">=</span> <span class="n">MakeOpenDrainLED</span><span class="p">(</span><span class="n">gpio</span><span class="o">.</span><span class="n">A</span><span class="o">.</span><span class="n">Pin</span><span class="p">(</span><span class="mi">4</span><span class="p">))</span>
+    <span class="n">led2</span> <span class="o">=</span> <span class="n">MakePushPullLED</span><span class="p">(</span><span class="n">gpio</span><span class="o">.</span><span class="n">A</span><span class="o">.</span><span class="n">Pin</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+<span class="p">}</span>
+
+<span class="n">func</span> <span class="n">blinky</span><span class="p">(</span><span class="n">led</span> <span class="n">LED</span><span class="p">,</span> <span class="n">period</span> <span class="nb">int</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">for</span> <span class="p">{</span>
+        <span class="n">led</span><span class="o">.</span><span class="n">On</span><span class="p">()</span>
+        <span class="n">delay</span><span class="o">.</span><span class="n">Millisec</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span>
+        <span class="n">led</span><span class="o">.</span><span class="n">Off</span><span class="p">()</span>
+        <span class="n">delay</span><span class="o">.</span><span class="n">Millisec</span><span class="p">(</span><span class="n">period</span> <span class="o">-</span> <span class="mi">100</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="n">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">go</span> <span class="n">blinky</span><span class="p">(</span><span class="n">led1</span><span class="p">,</span> <span class="mi">500</span><span class="p">)</span>
+    <span class="n">blinky</span><span class="p">(</span><span class="n">led2</span><span class="p">,</span> <span class="mi">1000</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>我们定义了 <code>LED</code> 接口，它有两个方法： <code>On</code> 和 <code>Off</code>。 <code>PushPullLED</code> 和 <code>OpenDrainLED</code> 类型代表两种驱动 LED 的方式。我们还定义了两个用作构造函数的 <code>Make*LED</code> 函数。这两种类型都实现了 <code>LED</code> 接口，因此可以将这些类型的值赋给 <code>LED</code> 类型的变量：</p>
+<div class="highlight"><pre><span></span><code>led1 = MakeOpenDrainLED(gpio.A.Pin(4))
+led2 = MakePushPullLED(gpio.A.Pin(3))
+</code></pre></div>
+
+<p>在这种情况下，<ruby> 可赋值性 <rt>  assignability </rt></ruby>在编译时检查。赋值后，<code>led1</code> 变量包含一个 <code>OpenDrainLED{gpio.A.Pin(4)}</code>，以及一个指向 <code>OpenDrainLED</code> 类型的方法集的指针。 <code>led1.On()</code> 调用大致对应于以下 C 代码：</p>
+<div class="highlight"><pre><span></span><code><span class="n">led1</span><span class="p">.</span><span class="n">methods</span><span class="o">-&gt;</span><span class="n">On</span><span class="p">(</span><span class="n">led1</span><span class="p">.</span><span class="n">value</span><span class="p">)</span>
+</code></pre></div>
+
+<p>如你所见，如果仅考虑函数调用的开销，这是相当廉价的抽象。</p>
+<p>但是，对接口的任何赋值都会导致包含有关已赋值类型的大量信息。对于由许多其他类型组成的复杂类型，可能会有很多信息：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>egc
+$<span class="w"> </span>arm-none-eabi-size<span class="w"> </span>cortexm0.elf
+<span class="w">   </span>text<span class="w">    </span>data<span class="w">     </span>bss<span class="w">     </span>dec<span class="w">     </span>hex<span class="w"> </span>filename
+<span class="w">  </span><span class="m">10356</span><span class="w">     </span><span class="m">196</span><span class="w">     </span><span class="m">212</span><span class="w">   </span><span class="m">10764</span><span class="w">    </span>2a0c<span class="w"> </span>cortexm0.elf
+</code></pre></div>
+
+<p>如果我们不使用 <a href="https://blog.golang.org/laws-of-reflection">反射</a>，可以通过避免包含类型和结构字段的名称来节省一些字节：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>egc<span class="w"> </span>-nf<span class="w"> </span>-nt
+$<span class="w"> </span>arm-none-eabi-size<span class="w"> </span>cortexm0.elf
+<span class="w">   </span>text<span class="w">    </span>data<span class="w">     </span>bss<span class="w">     </span>dec<span class="w">     </span>hex<span class="w"> </span>filename
+<span class="w">  </span><span class="m">10312</span><span class="w">     </span><span class="m">196</span><span class="w">     </span><span class="m">212</span><span class="w">   </span><span class="m">10720</span><span class="w">    </span>29e0<span class="w"> </span>cortexm0.elf
+</code></pre></div>
+
+<p>生成的二进制文件仍然包含一些有关类型的必要信息和关于所有导出方法（带有名称）的完整信息。在运行时，主要是当你将存储在接口变量中的一个值赋值给任何其他变量时，需要此信息来检查可赋值性。</p>
+<p>我们还可以通过重新编译所导入的包来删除它们的类型和字段名称：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span><span class="nv">$HOME</span>/emgo
+$<span class="w"> </span>./clean.sh
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span><span class="nv">$HOME</span>/firstemgo
+$<span class="w"> </span>egc<span class="w"> </span>-nf<span class="w"> </span>-nt
+$<span class="w"> </span>arm-none-eabi-size<span class="w"> </span>cortexm0.elf
+<span class="w">   </span>text<span class="w">    </span>data<span class="w">     </span>bss<span class="w">     </span>dec<span class="w">     </span>hex<span class="w"> </span>filename
+<span class="w">  </span><span class="m">10272</span><span class="w">     </span><span class="m">196</span><span class="w">     </span><span class="m">212</span><span class="w">   </span><span class="m">10680</span><span class="w">    </span>29b8<span class="w"> </span>cortexm0.elf
+</code></pre></div>
+
+<p>让我们加载这个程序，看看它是否按预期工作。这一次我们将使用 <a href="https://github.com/texane/stlink">st-flash</a> 命令：</p>
+<div class="highlight"><pre><span></span><code><span class="o">$</span><span class="w"> </span><span class="n">arm</span><span class="o">-</span><span class="n">none</span><span class="o">-</span><span class="n">eabi</span><span class="o">-</span><span class="n">objcopy</span><span class="w"> </span><span class="o">-</span><span class="n">O</span><span class="w"> </span><span class="n">binary</span><span class="w"> </span><span class="n">cortexm0</span><span class="o">.</span><span class="n">elf</span><span class="w"> </span><span class="n">cortexm0</span><span class="o">.</span><span class="n">bin</span>
+<span class="o">$</span><span class="w"> </span><span class="n">st</span><span class="o">-</span><span class="n">flash</span><span class="w"> </span><span class="n">write</span><span class="w"> </span><span class="n">cortexm0</span><span class="o">.</span><span class="n">bin</span><span class="w"> </span><span class="mh">0x8000000</span>
+<span class="n">st</span><span class="o">-</span><span class="n">flash</span><span class="w"> </span><span class="mf">1.4</span><span class="o">.</span><span class="mi">0</span><span class="o">-</span><span class="mi">33</span><span class="o">-</span><span class="n">gd76e3c7</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">04</span><span class="o">-</span><span class="mi">10</span><span class="n">T22</span><span class="p">:</span><span class="mi">04</span><span class="p">:</span><span class="mi">34</span><span class="w"> </span><span class="n">INFO</span><span class="w"> </span><span class="n">usb</span><span class="o">.</span><span class="n">c</span><span class="p">:</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="n">exit_dfu_mode</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">04</span><span class="o">-</span><span class="mi">10</span><span class="n">T22</span><span class="p">:</span><span class="mi">04</span><span class="p">:</span><span class="mi">34</span><span class="w"> </span><span class="n">INFO</span><span class="w"> </span><span class="n">common</span><span class="o">.</span><span class="n">c</span><span class="p">:</span><span class="w"> </span><span class="n">Loading</span><span class="w"> </span><span class="n">device</span><span class="w"> </span><span class="n">parameters</span><span class="o">....</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">04</span><span class="o">-</span><span class="mi">10</span><span class="n">T22</span><span class="p">:</span><span class="mi">04</span><span class="p">:</span><span class="mi">34</span><span class="w"> </span><span class="n">INFO</span><span class="w"> </span><span class="n">common</span><span class="o">.</span><span class="n">c</span><span class="p">:</span><span class="w"> </span><span class="n">Device</span><span class="w"> </span><span class="n">connected</span><span class="w"> </span><span class="k">is</span><span class="p">:</span><span class="w"> </span><span class="n">F0</span><span class="w"> </span><span class="n">small</span><span class="w"> </span><span class="n">device</span><span class="p">,</span><span class="w"> </span><span class="n">id</span><span class="w"> </span><span class="mh">0x10006444</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">04</span><span class="o">-</span><span class="mi">10</span><span class="n">T22</span><span class="p">:</span><span class="mi">04</span><span class="p">:</span><span class="mi">34</span><span class="w"> </span><span class="n">INFO</span><span class="w"> </span><span class="n">common</span><span class="o">.</span><span class="n">c</span><span class="p">:</span><span class="w"> </span><span class="n">SRAM</span><span class="w"> </span><span class="n">size</span><span class="p">:</span><span class="w"> </span><span class="mh">0x1000</span><span class="w"> </span><span class="n">bytes</span><span class="w"> </span><span class="p">(</span><span class="mi">4</span><span class="w"> </span><span class="n">KiB</span><span class="p">),</span><span class="w"> </span><span class="n">Flash</span><span class="p">:</span><span class="w"> </span><span class="mh">0x4000</span><span class="w"> </span><span class="n">bytes</span><span class="w"> </span><span class="p">(</span><span class="mi">16</span><span class="w"> </span><span class="n">KiB</span><span class="p">)</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">pages</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="mi">1024</span><span class="w"> </span><span class="n">bytes</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">04</span><span class="o">-</span><span class="mi">10</span><span class="n">T22</span><span class="p">:</span><span class="mi">04</span><span class="p">:</span><span class="mi">34</span><span class="w"> </span><span class="n">INFO</span><span class="w"> </span><span class="n">common</span><span class="o">.</span><span class="n">c</span><span class="p">:</span><span class="w"> </span><span class="n">Attempting</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">write</span><span class="w"> </span><span class="mi">10468</span><span class="w"> </span><span class="p">(</span><span class="mh">0x28e4</span><span class="p">)</span><span class="w"> </span><span class="n">bytes</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">stm32</span><span class="w"> </span><span class="n">address</span><span class="p">:</span><span class="w"> </span><span class="mi">134217728</span><span class="w"> </span><span class="p">(</span><span class="mh">0x8000000</span><span class="p">)</span>
+<span class="n">Flash</span><span class="w"> </span><span class="n">page</span><span class="w"> </span><span class="n">at</span><span class="w"> </span><span class="n">addr</span><span class="p">:</span><span class="w"> </span><span class="mh">0x08002800</span><span class="w"> </span><span class="n">erased</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">04</span><span class="o">-</span><span class="mi">10</span><span class="n">T22</span><span class="p">:</span><span class="mi">04</span><span class="p">:</span><span class="mi">34</span><span class="w"> </span><span class="n">INFO</span><span class="w"> </span><span class="n">common</span><span class="o">.</span><span class="n">c</span><span class="p">:</span><span class="w"> </span><span class="n">Finished</span><span class="w"> </span><span class="n">erasing</span><span class="w"> </span><span class="mi">11</span><span class="w"> </span><span class="n">pages</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="mi">1024</span><span class="w"> </span><span class="p">(</span><span class="mh">0x400</span><span class="p">)</span><span class="w"> </span><span class="n">bytes</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">04</span><span class="o">-</span><span class="mi">10</span><span class="n">T22</span><span class="p">:</span><span class="mi">04</span><span class="p">:</span><span class="mi">34</span><span class="w"> </span><span class="n">INFO</span><span class="w"> </span><span class="n">common</span><span class="o">.</span><span class="n">c</span><span class="p">:</span><span class="w"> </span><span class="n">Starting</span><span class="w"> </span><span class="n">Flash</span><span class="w"> </span><span class="n">write</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">VL</span><span class="o">/</span><span class="n">F0</span><span class="o">/</span><span class="n">F3</span><span class="o">/</span><span class="n">F1_XL</span><span class="w"> </span><span class="n">core</span><span class="w"> </span><span class="n">id</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">04</span><span class="o">-</span><span class="mi">10</span><span class="n">T22</span><span class="p">:</span><span class="mi">04</span><span class="p">:</span><span class="mi">34</span><span class="w"> </span><span class="n">INFO</span><span class="w"> </span><span class="n">flash_loader</span><span class="o">.</span><span class="n">c</span><span class="p">:</span><span class="w"> </span><span class="n">Successfully</span><span class="w"> </span><span class="n">loaded</span><span class="w"> </span><span class="n">flash</span><span class="w"> </span><span class="n">loader</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">sram</span>
+<span class="w"> </span><span class="mi">11</span><span class="o">/</span><span class="mi">11</span><span class="w"> </span><span class="n">pages</span><span class="w"> </span><span class="n">written</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">04</span><span class="o">-</span><span class="mi">10</span><span class="n">T22</span><span class="p">:</span><span class="mi">04</span><span class="p">:</span><span class="mi">35</span><span class="w"> </span><span class="n">INFO</span><span class="w"> </span><span class="n">common</span><span class="o">.</span><span class="n">c</span><span class="p">:</span><span class="w"> </span><span class="n">Starting</span><span class="w"> </span><span class="n">verification</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="n">write</span><span class="w"> </span><span class="n">complete</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">04</span><span class="o">-</span><span class="mi">10</span><span class="n">T22</span><span class="p">:</span><span class="mi">04</span><span class="p">:</span><span class="mi">35</span><span class="w"> </span><span class="n">INFO</span><span class="w"> </span><span class="n">common</span><span class="o">.</span><span class="n">c</span><span class="p">:</span><span class="w"> </span><span class="n">Flash</span><span class="w"> </span><span class="n">written</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">verified</span><span class="o">!</span><span class="w"> </span><span class="n">jolly</span><span class="w"> </span><span class="n">good</span><span class="o">!</span>
+</code></pre></div>
+
+<p>我没有将 NRST 信号连接到编程器，因此无法使用 <code>-reset</code> 选项，必须按下复位按钮才能运行程序。</p>
+<p><img alt="Interfaces" src="/data/attachment/album/202010/24/090341dhi6yarzti080yh3.png"></p>
+<p>看来，<code>st-flash</code> 与此板配合使用有点不可靠（通常需要复位 ST-LINK 加密狗）。此外，当前版本不会通过 SWD 发出复位命令（仅使用 NRST 信号）。软件复位是不现实的，但是它通常是有效的，缺少它会将会带来不便。对于<ruby> 板卡程序员 <rt>  board-programmer </rt></ruby> 来说 OpenOCD 工作得更好。</p>
+<h3>UART</h3>
+<p>UART（<ruby> 通用异步收发传输器 <rt>  Universal Aynchronous Receiver-Transmitter </rt></ruby>）仍然是当今微控制器最重要的外设之一。它的优点是以下属性的独特组合：</p>
+<ul>
+<li>相对较高的速度，</li>
+<li>仅两条信号线（在 <ruby> 半双工 <rt>  half-duplex </rt></ruby> 通信的情况下甚至一条），</li>
+<li>角色对称，</li>
+<li>关于新数据的 <ruby> 同步带内信令 <rt>  synchronous in-band signaling </rt></ruby>（起始位），</li>
+<li>在传输 <ruby> 字 <rt>  words </rt></ruby> 内的精确计时。</li>
+</ul>
+<p>这使得最初用于传输由 7-9 位的字组成的异步消息的 UART，也被用于有效地实现各种其他物理协议，例如被 <a href="http://www.world-semi.com/solution/list-4-1.html">WS28xx LEDs</a> 或 <a href="https://en.wikipedia.org/wiki/1-Wire">1-wire</a> 设备使用的协议。</p>
+<p>但是，我们将以其通常的角色使用 UART：从程序中打印文本消息。</p>
+<div class="highlight"><pre><span></span><code><span class="n">package</span> <span class="n">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s2">&quot;io&quot;</span>
+    <span class="s2">&quot;rtos&quot;</span>
+
+    <span class="s2">&quot;stm32/hal/dma&quot;</span>
+    <span class="s2">&quot;stm32/hal/gpio&quot;</span>
+    <span class="s2">&quot;stm32/hal/irq&quot;</span>
+    <span class="s2">&quot;stm32/hal/system&quot;</span>
+    <span class="s2">&quot;stm32/hal/system/timer/systick&quot;</span>
+    <span class="s2">&quot;stm32/hal/usart&quot;</span>
+<span class="p">)</span>
+
+<span class="n">var</span> <span class="n">tts</span> <span class="o">*</span><span class="n">usart</span><span class="o">.</span><span class="n">Driver</span>
+
+<span class="n">func</span> <span class="n">init</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">system</span><span class="o">.</span><span class="n">SetupPLL</span><span class="p">(</span><span class="mi">8</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">48</span><span class="o">/</span><span class="mi">8</span><span class="p">)</span>
+    <span class="n">systick</span><span class="o">.</span><span class="n">Setup</span><span class="p">(</span><span class="mf">2e6</span><span class="p">)</span>
+
+    <span class="n">gpio</span><span class="o">.</span><span class="n">A</span><span class="o">.</span><span class="n">EnableClock</span><span class="p">(</span><span class="n">true</span><span class="p">)</span>
+    <span class="n">tx</span> <span class="o">:=</span> <span class="n">gpio</span><span class="o">.</span><span class="n">A</span><span class="o">.</span><span class="n">Pin</span><span class="p">(</span><span class="mi">9</span><span class="p">)</span>
+
+    <span class="n">tx</span><span class="o">.</span><span class="n">Setup</span><span class="p">(</span><span class="o">&amp;</span><span class="n">gpio</span><span class="o">.</span><span class="n">Config</span><span class="p">{</span><span class="n">Mode</span><span class="p">:</span> <span class="n">gpio</span><span class="o">.</span><span class="n">Alt</span><span class="p">})</span>
+    <span class="n">tx</span><span class="o">.</span><span class="n">SetAltFunc</span><span class="p">(</span><span class="n">gpio</span><span class="o">.</span><span class="n">USART1_AF1</span><span class="p">)</span>
+    <span class="n">d</span> <span class="o">:=</span> <span class="n">dma</span><span class="o">.</span><span class="n">DMA1</span>
+    <span class="n">d</span><span class="o">.</span><span class="n">EnableClock</span><span class="p">(</span><span class="n">true</span><span class="p">)</span>
+    <span class="n">tts</span> <span class="o">=</span> <span class="n">usart</span><span class="o">.</span><span class="n">NewDriver</span><span class="p">(</span><span class="n">usart</span><span class="o">.</span><span class="n">USART1</span><span class="p">,</span> <span class="n">d</span><span class="o">.</span><span class="n">Channel</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="n">nil</span><span class="p">,</span> <span class="n">nil</span><span class="p">)</span>
+    <span class="n">tts</span><span class="o">.</span><span class="n">Periph</span><span class="p">()</span><span class="o">.</span><span class="n">EnableClock</span><span class="p">(</span><span class="n">true</span><span class="p">)</span>
+    <span class="n">tts</span><span class="o">.</span><span class="n">Periph</span><span class="p">()</span><span class="o">.</span><span class="n">SetBaudRate</span><span class="p">(</span><span class="mi">115200</span><span class="p">)</span>
+    <span class="n">tts</span><span class="o">.</span><span class="n">Periph</span><span class="p">()</span><span class="o">.</span><span class="n">Enable</span><span class="p">()</span>
+    <span class="n">tts</span><span class="o">.</span><span class="n">EnableTx</span><span class="p">()</span>
+
+    <span class="n">rtos</span><span class="o">.</span><span class="n">IRQ</span><span class="p">(</span><span class="n">irq</span><span class="o">.</span><span class="n">USART1</span><span class="p">)</span><span class="o">.</span><span class="n">Enable</span><span class="p">()</span>
+    <span class="n">rtos</span><span class="o">.</span><span class="n">IRQ</span><span class="p">(</span><span class="n">irq</span><span class="o">.</span><span class="n">DMA1_Channel2_3</span><span class="p">)</span><span class="o">.</span><span class="n">Enable</span><span class="p">()</span>
+<span class="p">}</span>
+
+<span class="n">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">io</span><span class="o">.</span><span class="n">WriteString</span><span class="p">(</span><span class="n">tts</span><span class="p">,</span> <span class="s2">&quot;Hello, World!</span><span class="se">\r\n</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="n">func</span> <span class="n">ttsISR</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">tts</span><span class="o">.</span><span class="n">ISR</span><span class="p">()</span>
+<span class="p">}</span>
+
+<span class="n">func</span> <span class="n">ttsDMAISR</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">tts</span><span class="o">.</span><span class="n">TxDMAISR</span><span class="p">()</span>
+<span class="p">}</span>
+
+<span class="o">//</span><span class="n">c</span><span class="p">:</span><span class="n">__attribute__</span><span class="p">((</span><span class="n">section</span><span class="p">(</span><span class="s2">&quot;.ISRs&quot;</span><span class="p">)))</span>
+<span class="n">var</span> <span class="n">ISRs</span> <span class="o">=</span> <span class="p">[</span><span class="o">...</span><span class="p">]</span><span class="n">func</span><span class="p">(){</span>
+    <span class="n">irq</span><span class="o">.</span><span class="n">USART1</span><span class="p">:</span>          <span class="n">ttsISR</span><span class="p">,</span>
+    <span class="n">irq</span><span class="o">.</span><span class="n">DMA1_Channel2_3</span><span class="p">:</span> <span class="n">ttsDMAISR</span><span class="p">,</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>你会发现此代码可能有些复杂，但目前 STM32 HAL 中没有更简单的 UART 驱动程序（在某些情况下，简单的轮询驱动程序可能会很有用）。 <code>usart.Driver</code> 是使用 DMA 和中断来减轻 CPU 负担的高效驱动程序。</p>
+<p>STM32 USART 外设提供传统的 UART 及其同步版本。要将其用作输出，我们必须将其 Tx 信号连接到正确的 GPIO 引脚：</p>
+<div class="highlight"><pre><span></span><code>tx.Setup(&amp;gpio.Config{Mode: gpio.Alt})
+tx.SetAltFunc(gpio.USART1_AF1)
+</code></pre></div>
+
+<p>在 Tx-only 模式下配置 <code>usart.Driver</code> （rxdma 和 rxbuf 设置为 nil）：</p>
+<div class="highlight"><pre><span></span><code>tts = usart.NewDriver(usart.USART1, d.Channel(2, 0), nil, nil)
+</code></pre></div>
+
+<p>我们使用它的 <code>WriteString</code> 方法来打印这句名言。让我们清理所有内容并编译该程序：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span><span class="nv">$HOME</span>/emgo
+$<span class="w"> </span>./clean.sh
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span><span class="nv">$HOME</span>/firstemgo
+$<span class="w"> </span>egc
+$<span class="w"> </span>arm-none-eabi-size<span class="w"> </span>cortexm0.elf
+<span class="w">  </span>text<span class="w">       </span>data<span class="w">        </span>bss<span class="w">        </span>dec<span class="w">        </span>hex<span class="w">    </span>filename
+<span class="w">  </span><span class="m">12728</span><span class="w">        </span><span class="m">236</span><span class="w">        </span><span class="m">176</span><span class="w">      </span><span class="m">13140</span><span class="w">       </span><span class="m">3354</span><span class="w">    </span>cortexm0.elf
+</code></pre></div>
+
+<p>要查看某些内容，你需要在 PC 中使用 UART 外设。</p>
+<p><strong>请勿使用 RS232 端口或 USB 转 RS232 转换器！</strong></p>
+<p>STM32 系列使用 3.3V 逻辑，但是 RS232 可以产生 -15 V ~ +15 V 的电压，这可能会损坏你的 MCU。你需要使用 3.3V 逻辑的 USB 转 UART 转换器。流行的转换器基于 FT232 或 CP2102 芯片。</p>
+<p><img alt="UART" src="/data/attachment/album/202010/24/090348naad2gau0aus2d2i.jpg"></p>
+<p>你还需要一些终端仿真程序（我更喜欢 <a href="https://github.com/npat-efault/picocom">picocom</a>）。刷新新图像，运行终端仿真器，然后按几次复位按钮：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>openocd<span class="w"> </span>-d0<span class="w"> </span>-f<span class="w"> </span>interface/stlink.cfg<span class="w"> </span>-f<span class="w"> </span>target/stm32f0x.cfg<span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;init; program cortexm0.elf; reset run; exit&#39;</span>
+Open<span class="w"> </span>On-Chip<span class="w"> </span>Debugger<span class="w"> </span><span class="m">0</span>.10.0+dev-00319-g8f1f912a<span class="w"> </span><span class="o">(</span><span class="m">2018</span>-03-07-19:20<span class="o">)</span>
+Licensed<span class="w"> </span>under<span class="w"> </span>GNU<span class="w"> </span>GPL<span class="w"> </span>v2
+For<span class="w"> </span>bug<span class="w"> </span>reports,<span class="w"> </span><span class="nb">read</span>
+<span class="w">        </span>http://openocd.org/doc/doxygen/bugs.html
+debug_level:<span class="w"> </span><span class="m">0</span>
+adapter<span class="w"> </span>speed:<span class="w"> </span><span class="m">1000</span><span class="w"> </span>kHz
+adapter_nsrst_delay:<span class="w"> </span><span class="m">100</span>
+none<span class="w"> </span>separate
+adapter<span class="w"> </span>speed:<span class="w"> </span><span class="m">950</span><span class="w"> </span>kHz
+target<span class="w"> </span>halted<span class="w"> </span>due<span class="w"> </span>to<span class="w"> </span>debug-request,<span class="w"> </span>current<span class="w"> </span>mode:<span class="w"> </span>Thread
+xPSR:<span class="w"> </span>0xc1000000<span class="w"> </span>pc:<span class="w"> </span>0x080016f4<span class="w"> </span>msp:<span class="w"> </span>0x20000a20
+adapter<span class="w"> </span>speed:<span class="w"> </span><span class="m">4000</span><span class="w"> </span>kHz
+**<span class="w"> </span>Programming<span class="w"> </span>Started<span class="w"> </span>**
+auto<span class="w"> </span>erase<span class="w"> </span>enabled
+target<span class="w"> </span>halted<span class="w"> </span>due<span class="w"> </span>to<span class="w"> </span>breakpoint,<span class="w"> </span>current<span class="w"> </span>mode:<span class="w"> </span>Thread
+xPSR:<span class="w"> </span>0x61000000<span class="w"> </span>pc:<span class="w"> </span>0x2000003a<span class="w"> </span>msp:<span class="w"> </span>0x20000a20
+wrote<span class="w"> </span><span class="m">13312</span><span class="w"> </span>bytes<span class="w"> </span>from<span class="w"> </span>file<span class="w"> </span>cortexm0.elf<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="m">1</span>.020185s<span class="w"> </span><span class="o">(</span><span class="m">12</span>.743<span class="w"> </span>KiB/s<span class="o">)</span>
+**<span class="w"> </span>Programming<span class="w"> </span>Finished<span class="w"> </span>**
+adapter<span class="w"> </span>speed:<span class="w"> </span><span class="m">950</span><span class="w"> </span>kHz
+$
+$<span class="w"> </span>picocom<span class="w"> </span>-b<span class="w"> </span><span class="m">115200</span><span class="w"> </span>/dev/ttyUSB0
+picocom<span class="w"> </span>v3.1
+
+port<span class="w"> </span>is<span class="w">        </span>:<span class="w"> </span>/dev/ttyUSB0
+flowcontrol<span class="w">    </span>:<span class="w"> </span>none
+baudrate<span class="w"> </span>is<span class="w">    </span>:<span class="w"> </span><span class="m">115200</span>
+parity<span class="w"> </span>is<span class="w">      </span>:<span class="w"> </span>none
+databits<span class="w"> </span>are<span class="w">   </span>:<span class="w"> </span><span class="m">8</span>
+stopbits<span class="w"> </span>are<span class="w">   </span>:<span class="w"> </span><span class="m">1</span>
+escape<span class="w"> </span>is<span class="w">      </span>:<span class="w"> </span>C-a
+<span class="nb">local</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span>is<span class="w">  </span>:<span class="w"> </span>no
+noinit<span class="w"> </span>is<span class="w">      </span>:<span class="w"> </span>no
+noreset<span class="w"> </span>is<span class="w">     </span>:<span class="w"> </span>no
+hangup<span class="w"> </span>is<span class="w">      </span>:<span class="w"> </span>no
+nolock<span class="w"> </span>is<span class="w">      </span>:<span class="w"> </span>no
+send_cmd<span class="w"> </span>is<span class="w">    </span>:<span class="w"> </span>sz<span class="w"> </span>-vv
+receive_cmd<span class="w"> </span>is<span class="w"> </span>:<span class="w"> </span>rz<span class="w"> </span>-vv<span class="w"> </span>-E
+imap<span class="w"> </span>is<span class="w">        </span>:
+omap<span class="w"> </span>is<span class="w">        </span>:
+emap<span class="w"> </span>is<span class="w">        </span>:<span class="w"> </span>crcrlf,delbs,
+logfile<span class="w"> </span>is<span class="w">     </span>:<span class="w"> </span>none
+initstring<span class="w">     </span>:<span class="w"> </span>none
+exit_after<span class="w"> </span>is<span class="w">  </span>:<span class="w"> </span>not<span class="w"> </span><span class="nb">set</span>
+<span class="nb">exit</span><span class="w"> </span>is<span class="w">        </span>:<span class="w"> </span>no
+
+Type<span class="w"> </span><span class="o">[</span>C-a<span class="o">]</span><span class="w"> </span><span class="o">[</span>C-h<span class="o">]</span><span class="w"> </span>to<span class="w"> </span>see<span class="w"> </span>available<span class="w"> </span>commands
+Terminal<span class="w"> </span>ready
+Hello,<span class="w"> </span>World!
+Hello,<span class="w"> </span>World!
+Hello,<span class="w"> </span>World!
+</code></pre></div>
+
+<p>每次按下复位按钮都会产生新的 “Hello，World！”行。一切都在按预期进行。</p>
+<p>要查看此 MCU 的 <ruby> 双向 <rt>  bi-directional </rt></ruby> UART 代码，请查看 <a href="https://github.com/ziutek/emgo/blob/master/egpath/src/stm32/examples/f030-demo-board/usart/main.go">此示例</a>。</p>
+<h3>io.Writer 接口</h3>
+<p><code>io.Writer</code> 接口可能是 Go 中第二种最常用的接口类型，仅次于 <code>error</code> 接口。其定义如下所示：</p>
+<div class="highlight"><pre><span></span><code><span class="k">type</span><span class="w"> </span><span class="nx">Writer</span><span class="w"> </span><span class="kd">interface</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">Write</span><span class="p">(</span><span class="nx">p</span><span class="w"> </span><span class="p">[]</span><span class="nx">byte</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nx">n</span><span class="w"> </span><span class="nx">int</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="nx">error</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><code>usart.Driver</code> 实现了 <code>io.Writer</code>，因此我们可以替换：</p>
+<div class="highlight"><pre><span></span><code>tts.WriteString(&quot;Hello, World!\r\n&quot;)
+</code></pre></div>
+
+<p>为</p>
+<div class="highlight"><pre><span></span><code>io.WriteString(tts, &quot;Hello, World!\r\n&quot;)
+</code></pre></div>
+
+<p>此外，你需要将 <code>io</code> 包添加到 <code>import</code> 部分。</p>
+<p><code>io.WriteString</code> 函数的声明如下所示：</p>
+<div class="highlight"><pre><span></span><code><span class="k">func</span><span class="w"> </span><span class="n">WriteString</span><span class="p">(</span><span class="n">w</span><span class="w"> </span><span class="n">Writer</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="n">string</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="n">n</span><span class="w"> </span><span class="nb nb-Type">int</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="n">error</span><span class="p">)</span>
+</code></pre></div>
+
+<p>如你所见，<code>io.WriteString</code> 允许使用实现了 <code>io.Writer</code> 接口的任何类型来编写字符串。在内部，它检查基础类型是否具有 <code>WriteString</code> 方法，并使用该方法代替 <code>Write</code>（如果可用）。</p>
+<p>让我们编译修改后的程序：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>egc
+$<span class="w"> </span>arm-none-eabi-size<span class="w"> </span>cortexm0.elf
+<span class="w">   </span>text<span class="w">    </span>data<span class="w">     </span>bss<span class="w">     </span>dec<span class="w">     </span>hex<span class="w"> </span>filename
+<span class="w">  </span><span class="m">15456</span><span class="w">     </span><span class="m">320</span><span class="w">     </span><span class="m">248</span><span class="w">   </span><span class="m">16024</span><span class="w">    </span>3e98<span class="w"> </span>cortexm0.elf
+</code></pre></div>
+
+<p>如你所见，<code>io.WriteString</code> 导致二进制文件的大小显着增加：15776-12964 = 2812 字节。 Flash 上没有太多空间了。是什么引起了这么大规模的增长？</p>
+<p>使用这个命令：</p>
+<div class="highlight"><pre><span></span><code>arm-none-eabi-nm --print-size --size-sort --radix=d cortexm0.elf
+</code></pre></div>
+
+<p>我们可以打印两种情况下按其大小排序的所有符号。通过过滤和分析获得的数据（<code>awk</code>，<code>diff</code>），我们可以找到大约 80 个新符号。最大的十个如下所示：</p>
+<div class="highlight"><pre><span></span><code><span class="o">&gt;</span><span class="w"> </span><span class="mi">00000062</span><span class="w"> </span><span class="nv">T</span><span class="w"> </span><span class="nv">stm32</span><span class="p">$</span><span class="nv">hal</span><span class="p">$</span><span class="nv">usart</span><span class="p">$</span><span class="nv">Driver</span><span class="p">$</span><span class="nv">DisableRx</span>
+<span class="o">&gt;</span><span class="w"> </span><span class="mi">00000072</span><span class="w"> </span><span class="nv">T</span><span class="w"> </span><span class="nv">stm32</span><span class="p">$</span><span class="nv">hal</span><span class="p">$</span><span class="nv">usart</span><span class="p">$</span><span class="nv">Driver</span><span class="p">$</span><span class="nv">RxDMAISR</span>
+<span class="o">&gt;</span><span class="w"> </span><span class="mi">00000076</span><span class="w"> </span><span class="nv">T</span><span class="w"> </span><span class="nv">internal</span><span class="p">$</span><span class="nv">Type</span><span class="p">$</span><span class="nv">Implements</span>
+<span class="o">&gt;</span><span class="w"> </span><span class="mi">00000080</span><span class="w"> </span><span class="nv">T</span><span class="w"> </span><span class="nv">stm32</span><span class="p">$</span><span class="nv">hal</span><span class="p">$</span><span class="nv">usart</span><span class="p">$</span><span class="nv">Driver</span><span class="p">$</span><span class="nv">EnableRx</span>
+<span class="o">&gt;</span><span class="w"> </span><span class="mi">00000084</span><span class="w"> </span><span class="nv">t</span><span class="w"> </span><span class="nv">errors</span><span class="p">$</span><span class="nv">New</span>
+<span class="o">&gt;</span><span class="w"> </span><span class="mi">00000096</span><span class="w"> </span><span class="nv">R</span><span class="w"> </span><span class="p">$</span><span class="mi">8</span><span class="p">$</span><span class="nv">stm32</span><span class="p">$</span><span class="nv">hal</span><span class="p">$</span><span class="nv">usart</span><span class="p">$</span><span class="nv">Driver</span><span class="p">$$</span>
+<span class="o">&gt;</span><span class="w"> </span><span class="mi">00000100</span><span class="w"> </span><span class="nv">T</span><span class="w"> </span><span class="nv">stm32</span><span class="p">$</span><span class="nv">hal</span><span class="p">$</span><span class="nv">usart</span><span class="p">$</span><span class="nv">Error</span><span class="p">$</span><span class="nv">Error</span>
+<span class="o">&gt;</span><span class="w"> </span><span class="mi">00000360</span><span class="w"> </span><span class="nv">T</span><span class="w"> </span><span class="nv">io</span><span class="p">$</span><span class="nv">WriteString</span>
+<span class="o">&gt;</span><span class="w"> </span><span class="mi">00000660</span><span class="w"> </span><span class="nv">T</span><span class="w"> </span><span class="nv">stm32</span><span class="p">$</span><span class="nv">hal</span><span class="p">$</span><span class="nv">usart</span><span class="p">$</span><span class="nv">Driver</span><span class="p">$</span><span class="nv">Read</span>
+</code></pre></div>
+
+<p>因此，即使我们不使用 <code>usart.Driver.Read</code> 方法，但它被编译进来了，与 <code>DisableRx</code>、<code>RxDMAISR</code>、<code>EnableRx</code> 以及上面未提及的其他方法一样。不幸的是，如果你为接口赋值了一些内容，就需要它的完整方法集（包含所有依赖项）。对于使用大多数方法的大型程序来说，这不是问题。但是对于我们这种极简的情况而言，这是一个巨大的负担。</p>
+<p>我们已经接近 MCU 的极限，但让我们尝试打印一些数字（你需要在 <code>import</code> 部分中用 <code>strconv</code> 替换 <code>io</code> 包）：</p>
+<div class="highlight"><pre><span></span><code><span class="k">func</span><span class="w"> </span><span class="n">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">a</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="mi">12</span>
+<span class="w">    </span><span class="n">b</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="o">-</span><span class="mi">123</span>
+
+<span class="w">    </span><span class="n">tts</span><span class="o">.</span><span class="n">WriteString</span><span class="p">(</span><span class="s2">&quot;a = &quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">strconv</span><span class="o">.</span><span class="n">WriteInt</span><span class="p">(</span><span class="n">tts</span><span class="p">,</span><span class="w"> </span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span>
+<span class="w">    </span><span class="n">tts</span><span class="o">.</span><span class="n">WriteString</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\r\n</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">tts</span><span class="o">.</span><span class="n">WriteString</span><span class="p">(</span><span class="s2">&quot;b = &quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">strconv</span><span class="o">.</span><span class="n">WriteInt</span><span class="p">(</span><span class="n">tts</span><span class="p">,</span><span class="w"> </span><span class="n">b</span><span class="p">,</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span>
+<span class="w">    </span><span class="n">tts</span><span class="o">.</span><span class="n">WriteString</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\r\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="w">    </span><span class="n">tts</span><span class="o">.</span><span class="n">WriteString</span><span class="p">(</span><span class="s2">&quot;hex(a) = &quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">strconv</span><span class="o">.</span><span class="n">WriteInt</span><span class="p">(</span><span class="n">tts</span><span class="p">,</span><span class="w"> </span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="mi">16</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span>
+<span class="w">    </span><span class="n">tts</span><span class="o">.</span><span class="n">WriteString</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\r\n</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">tts</span><span class="o">.</span><span class="n">WriteString</span><span class="p">(</span><span class="s2">&quot;hex(b) = &quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">strconv</span><span class="o">.</span><span class="n">WriteInt</span><span class="p">(</span><span class="n">tts</span><span class="p">,</span><span class="w"> </span><span class="n">b</span><span class="p">,</span><span class="w"> </span><span class="mi">16</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span>
+<span class="w">    </span><span class="n">tts</span><span class="o">.</span><span class="n">WriteString</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\r\n</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>与使用 <code>io.WriteString</code> 函数的情况一样，<code>strconv.WriteInt</code> 的第一个参数的类型为 <code>io.Writer</code>。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>egc
+/usr/local/arm/bin/arm-none-eabi-ld:<span class="w"> </span>/home/michal/firstemgo/cortexm0.elf<span class="w"> </span>section<span class="w"> </span><span class="sb">`</span>.rodata<span class="s1">&#39; will not fit in region `Flash&#39;</span>
+/usr/local/arm/bin/arm-none-eabi-ld:<span class="w"> </span>region<span class="w"> </span><span class="sb">`</span>Flash<span class="err">&#39;</span><span class="w"> </span>overflowed<span class="w"> </span>by<span class="w"> </span><span class="m">692</span><span class="w"> </span>bytes
+<span class="nb">exit</span><span class="w"> </span>status<span class="w"> </span><span class="m">1</span>
+</code></pre></div>
+
+<p>这一次我们的空间超出的不多。让我们试着精简一下有关类型的信息：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span><span class="nv">$HOME</span>/emgo
+$<span class="w"> </span>./clean.sh
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span><span class="nv">$HOME</span>/firstemgo
+$<span class="w"> </span>egc<span class="w"> </span>-nf<span class="w"> </span>-nt
+$<span class="w"> </span>arm-none-eabi-size<span class="w"> </span>cortexm0.elf
+<span class="w">   </span>text<span class="w">    </span>data<span class="w">     </span>bss<span class="w">     </span>dec<span class="w">     </span>hex<span class="w"> </span>filename
+<span class="w">  </span><span class="m">15876</span><span class="w">     </span><span class="m">316</span><span class="w">     </span><span class="m">320</span><span class="w">   </span><span class="m">16512</span><span class="w">    </span><span class="m">4080</span><span class="w"> </span>cortexm0.elf
+</code></pre></div>
+
+<p>很接近，但很合适。让我们加载并运行此代码：</p>
+<div class="highlight"><pre><span></span><code>a = 12
+b = -123
+hex(a) = c
+hex(b) = -7b
+</code></pre></div>
+
+<p>Emgo 中的 <code>strconv</code> 包与 Go 中的原型有很大的不同。它旨在直接用于写入格式化的数字，并且在许多情况下可以替换沉重的 <code>fmt</code> 包。 这就是为什么函数名称以 <code>Write</code> 而不是 <code>Format</code> 开头，并具有额外的两个参数的原因。 以下是其用法示例：</p>
+<div class="highlight"><pre><span></span><code><span class="k">func</span><span class="w"> </span><span class="n">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">b</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="o">-</span><span class="mi">123</span>
+<span class="w">    </span><span class="n">strconv</span><span class="o">.</span><span class="n">WriteInt</span><span class="p">(</span><span class="n">tts</span><span class="p">,</span><span class="w"> </span><span class="n">b</span><span class="p">,</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span>
+<span class="w">    </span><span class="n">tts</span><span class="o">.</span><span class="n">WriteString</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\r\n</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">strconv</span><span class="o">.</span><span class="n">WriteInt</span><span class="p">(</span><span class="n">tts</span><span class="p">,</span><span class="w"> </span><span class="n">b</span><span class="p">,</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="mi">6</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39; &#39;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">tts</span><span class="o">.</span><span class="n">WriteString</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\r\n</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">strconv</span><span class="o">.</span><span class="n">WriteInt</span><span class="p">(</span><span class="n">tts</span><span class="p">,</span><span class="w"> </span><span class="n">b</span><span class="p">,</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="mi">6</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;0&#39;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">tts</span><span class="o">.</span><span class="n">WriteString</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\r\n</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">strconv</span><span class="o">.</span><span class="n">WriteInt</span><span class="p">(</span><span class="n">tts</span><span class="p">,</span><span class="w"> </span><span class="n">b</span><span class="p">,</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="mi">6</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;.&#39;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">tts</span><span class="o">.</span><span class="n">WriteString</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\r\n</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">strconv</span><span class="o">.</span><span class="n">WriteInt</span><span class="p">(</span><span class="n">tts</span><span class="p">,</span><span class="w"> </span><span class="n">b</span><span class="p">,</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">6</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39; &#39;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">tts</span><span class="o">.</span><span class="n">WriteString</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\r\n</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">strconv</span><span class="o">.</span><span class="n">WriteInt</span><span class="p">(</span><span class="n">tts</span><span class="p">,</span><span class="w"> </span><span class="n">b</span><span class="p">,</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">6</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;0&#39;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">tts</span><span class="o">.</span><span class="n">WriteString</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\r\n</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">strconv</span><span class="o">.</span><span class="n">WriteInt</span><span class="p">(</span><span class="n">tts</span><span class="p">,</span><span class="w"> </span><span class="n">b</span><span class="p">,</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">6</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;.&#39;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">tts</span><span class="o">.</span><span class="n">WriteString</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\r\n</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>下面是它的输出：</p>
+<div class="highlight"><pre><span></span><code>-123
+  -123
+-00123
+..-123
+-123
+-123
+-123..
+</code></pre></div>
+
+<h3>Unix 流 和 <ruby> 莫尔斯电码 <rt>  Morse code </rt></ruby></h3>
+<p>由于大多数写入的函数都使用 <code>io.Writer</code> 而不是具体类型（例如 C 中的 <code>FILE</code> ），因此我们获得了类似于 Unix <ruby> 流 <rt>  stream </rt></ruby> 的功能。在 Unix 中，我们可以轻松地组合简单的命令来执行更大的任务。例如，我们可以通过以下方式将文本写入文件：</p>
+<div class="highlight"><pre><span></span><code>echo &quot;Hello, World!&quot; &gt; file.txt
+</code></pre></div>
+
+<p><code>&gt;</code> 操作符将前面命令的输出流写入文件。还有 <code>|</code> 操作符，用于连接相邻命令的输出流和输入流。</p>
+<p>多亏了流，我们可以轻松地转换/过滤任何命令的输出。例如，要将所有字母转换为大写，我们可以通过 <code>tr</code> 命令过滤 <code>echo</code> 的输出：</p>
+<div class="highlight"><pre><span></span><code>echo &quot;Hello, World!&quot; | tr a-z A-Z &gt; file.txt
+</code></pre></div>
+
+<p>为了显示 <code>io.Writer</code> 和 Unix 流之间的类比，让我们编写以下代码：</p>
+<div class="highlight"><pre><span></span><code>io.WriteString(tts, &quot;Hello, World!\r\n&quot;)
+</code></pre></div>
+
+<p>采用以下伪 unix 形式：</p>
+<div class="highlight"><pre><span></span><code>io.WriteString &quot;Hello, World!&quot; | usart.Driver usart.USART1
+</code></pre></div>
+
+<p>下一个示例将显示如何执行此操作：</p>
+<div class="highlight"><pre><span></span><code>io.WriteString &quot;Hello, World!&quot; | MorseWriter | usart.Driver usart.USART1
+</code></pre></div>
+
+<p>让我们来创建一个简单的编码器，它使用莫尔斯电码对写入的文本进行编码：</p>
+<div class="highlight"><pre><span></span><code><span class="n">type</span><span class="w"> </span><span class="n">MorseWriter</span><span class="w"> </span><span class="n">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">W</span><span class="w"> </span><span class="n">io</span><span class="o">.</span><span class="n">Writer</span>
+<span class="p">}</span>
+
+<span class="k">func</span><span class="w"> </span><span class="p">(</span><span class="n">w</span><span class="w"> </span><span class="o">*</span><span class="n">MorseWriter</span><span class="p">)</span><span class="w"> </span><span class="n">Write</span><span class="p">(</span><span class="n">s</span><span class="w"> </span><span class="p">[]</span><span class="n">byte</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nb nb-Type">int</span><span class="p">,</span><span class="w"> </span><span class="n">error</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">var</span><span class="w"> </span><span class="n">buf</span><span class="w"> </span><span class="p">[</span><span class="mi">8</span><span class="p">]</span><span class="n">byte</span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="n">n</span><span class="p">,</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="nb">range</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">switch</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">case</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">:</span>
+<span class="w">            </span><span class="n">c</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39; &#39;</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">Replace</span><span class="w"> </span><span class="n">new</span><span class="w"> </span><span class="n">lines</span><span class="w"> </span><span class="n">with</span><span class="w"> </span><span class="n">spaces</span><span class="o">.</span>
+<span class="w">        </span><span class="n">case</span><span class="w"> </span><span class="s1">&#39;a&#39;</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="s1">&#39;z&#39;</span><span class="p">:</span>
+<span class="w">            </span><span class="n">c</span><span class="w"> </span><span class="o">-=</span><span class="w"> </span><span class="s1">&#39;a&#39;</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="s1">&#39;A&#39;</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">Convert</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">upper</span><span class="w"> </span><span class="n">case</span><span class="o">.</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="s1">&#39; &#39;</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="s1">&#39;Z&#39;</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="k">continue</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">outside</span><span class="w"> </span><span class="n">ASCII</span><span class="w"> </span><span class="p">[</span><span class="s1">&#39; &#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;Z&#39;</span><span class="p">]</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="k">var</span><span class="w"> </span><span class="n">symbol</span><span class="w"> </span><span class="n">morseSymbol</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s1">&#39; &#39;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">symbol</span><span class="o">.</span><span class="n">length</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span>
+<span class="w">            </span><span class="n">buf</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39; &#39;</span>
+<span class="w">        </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">symbol</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">morseSymbols</span><span class="p">[</span><span class="n">c</span><span class="o">-</span><span class="s1">&#39;!&#39;</span><span class="p">]</span>
+<span class="w">            </span><span class="k">for</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">uint</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">uint</span><span class="p">(</span><span class="n">symbol</span><span class="o">.</span><span class="n">length</span><span class="p">);</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">symbol</span><span class="o">.</span><span class="n">code</span><span class="o">&gt;&gt;</span><span class="n">i</span><span class="p">)</span><span class="o">&amp;</span><span class="mi">1</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                    </span><span class="n">buf</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;-&#39;</span>
+<span class="w">                </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                    </span><span class="n">buf</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;.&#39;</span>
+<span class="w">                </span><span class="p">}</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="n">buf</span><span class="p">[</span><span class="n">symbol</span><span class="o">.</span><span class="n">length</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39; &#39;</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="n">_</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">w</span><span class="o">.</span><span class="n">W</span><span class="o">.</span><span class="n">Write</span><span class="p">(</span><span class="n">buf</span><span class="p">[:</span><span class="n">symbol</span><span class="o">.</span><span class="n">length</span><span class="o">+</span><span class="mi">1</span><span class="p">]);</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="k">return</span><span class="w"> </span><span class="n">n</span><span class="p">,</span><span class="w"> </span><span class="n">err</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">len</span><span class="p">(</span><span class="n">s</span><span class="p">),</span><span class="w"> </span><span class="n">nil</span>
+<span class="p">}</span>
+
+<span class="n">type</span><span class="w"> </span><span class="n">morseSymbol</span><span class="w"> </span><span class="n">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">code</span><span class="p">,</span><span class="w"> </span><span class="n">length</span><span class="w"> </span><span class="n">byte</span>
+<span class="p">}</span>
+
+<span class="o">//</span><span class="n">emgo</span><span class="p">:</span><span class="k">const</span>
+<span class="k">var</span><span class="w"> </span><span class="n">morseSymbols</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="o">...</span><span class="p">]</span><span class="n">morseSymbol</span><span class="p">{</span>
+<span class="w">    </span><span class="p">{</span><span class="mi">1</span><span class="o">&lt;&lt;</span><span class="mi">0</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="mi">1</span><span class="o">&lt;&lt;</span><span class="mi">1</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="mi">1</span><span class="o">&lt;&lt;</span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="p">},</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="o">!</span><span class="w"> </span><span class="o">---.</span>
+<span class="w">    </span><span class="p">{</span><span class="mi">1</span><span class="o">&lt;&lt;</span><span class="mi">1</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="mi">1</span><span class="o">&lt;&lt;</span><span class="mi">4</span><span class="p">,</span><span class="w"> </span><span class="mi">6</span><span class="p">},</span><span class="w">        </span><span class="o">//</span><span class="w"> </span><span class="s2">&quot; .-..-.</span>
+<span class="w">    </span><span class="p">{},</span><span class="w">                      </span><span class="o">//</span><span class="w"> </span><span class="c1">#</span>
+<span class="w">    </span><span class="p">{</span><span class="mi">1</span><span class="o">&lt;&lt;</span><span class="mi">3</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="mi">1</span><span class="o">&lt;&lt;</span><span class="mi">6</span><span class="p">,</span><span class="w"> </span><span class="mi">7</span><span class="p">},</span><span class="w">        </span><span class="o">//</span><span class="w"> </span><span class="o">$</span><span class="w"> </span><span class="o">...-..-</span>
+
+<span class="w">    </span><span class="o">//</span><span class="w"> </span><span class="n">Some</span><span class="w"> </span><span class="n">code</span><span class="w"> </span><span class="n">omitted</span><span class="o">...</span>
+
+<span class="w">    </span><span class="p">{</span><span class="mi">1</span><span class="o">&lt;&lt;</span><span class="mi">0</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="mi">1</span><span class="o">&lt;&lt;</span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="p">},</span><span class="w">        </span><span class="o">//</span><span class="w"> </span><span class="n">X</span><span class="w"> </span><span class="o">-..-</span>
+<span class="w">    </span><span class="p">{</span><span class="mi">1</span><span class="o">&lt;&lt;</span><span class="mi">0</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="mi">1</span><span class="o">&lt;&lt;</span><span class="mi">2</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="mi">1</span><span class="o">&lt;&lt;</span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="p">},</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">Y</span><span class="w"> </span><span class="o">-.--</span>
+<span class="w">    </span><span class="p">{</span><span class="mi">1</span><span class="o">&lt;&lt;</span><span class="mi">0</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="mi">1</span><span class="o">&lt;&lt;</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="p">},</span><span class="w">        </span><span class="o">//</span><span class="w"> </span><span class="n">Z</span><span class="w"> </span><span class="o">--..</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>你可以在 <a href="https://github.com/ziutek/emgo/blob/master/egpath/src/stm32/examples/f030-demo-board/morseuart/main.go">这里</a> 找到完整的 <code>morseSymbols</code> 数组。 <code>//emgo:const</code> 指令确保 <code>morseSymbols</code> 数组不会被复制到 RAM 中。</p>
+<p>现在我们可以通过两种方式打印句子：</p>
+<div class="highlight"><pre><span></span><code><span class="k">func</span><span class="w"> </span><span class="n">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">s</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;Hello, World!</span><span class="se">\r\n</span><span class="s2">&quot;</span>
+<span class="w">    </span><span class="n">mw</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="o">&amp;</span><span class="n">MorseWriter</span><span class="p">{</span><span class="n">tts</span><span class="p">}</span>
+
+<span class="w">    </span><span class="n">io</span><span class="o">.</span><span class="n">WriteString</span><span class="p">(</span><span class="n">tts</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="p">)</span>
+<span class="w">    </span><span class="n">io</span><span class="o">.</span><span class="n">WriteString</span><span class="p">(</span><span class="n">mw</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>我们使用指向 <code>MorseWriter</code> <code>&amp;MorseWriter{tts}</code> 的指针而不是简单的 <code>MorseWriter{tts}</code> 值，因为 <code>MorseWriter</code> 太大，不适合接口变量。</p>
+<p>与 Go 不同，Emgo 不会为存储在接口变量中的值动态分配内存。接口类型的大小受限制，相当于三个指针（适合 <code>slice</code> ）或两个 <code>float64</code>（适合 <code>complex128</code>）的大小，以较大者为准。它可以直接存储所有基本类型和小型 “结构体/数组” 的值，但是对于较大的值，你必须使用指针。</p>
+<p>让我们编译此代码并查看其输出：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>egc
+$<span class="w"> </span>arm-none-eabi-size<span class="w"> </span>cortexm0.elf
+<span class="w">   </span>text<span class="w">    </span>data<span class="w">     </span>bss<span class="w">     </span>dec<span class="w">     </span>hex<span class="w"> </span>filename
+<span class="w">  </span><span class="m">15152</span><span class="w">     </span><span class="m">324</span><span class="w">     </span><span class="m">248</span><span class="w">   </span><span class="m">15724</span><span class="w">    </span>3d6c<span class="w"> </span>cortexm0.elf
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code>Hello, World!
+.... . .-.. .-.. --- --..--   .-- --- .-. .-.. -.. ---.
+</code></pre></div>
+
+<h3>终极闪烁</h3>
+<p>Blinky 是等效于 “Hello，World！” 程序的硬件。一旦有了摩尔斯编码器，我们就可以轻松地将两者结合起来以获得终极闪烁程序：</p>
+<div class="highlight"><pre><span></span><code><span class="n">package</span> <span class="n">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s2">&quot;delay&quot;</span>
+    <span class="s2">&quot;io&quot;</span>
+
+    <span class="s2">&quot;stm32/hal/gpio&quot;</span>
+    <span class="s2">&quot;stm32/hal/system&quot;</span>
+    <span class="s2">&quot;stm32/hal/system/timer/systick&quot;</span>
+<span class="p">)</span>
+
+<span class="n">var</span> <span class="n">led</span> <span class="n">gpio</span><span class="o">.</span><span class="n">Pin</span>
+
+<span class="n">func</span> <span class="n">init</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">system</span><span class="o">.</span><span class="n">SetupPLL</span><span class="p">(</span><span class="mi">8</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">48</span><span class="o">/</span><span class="mi">8</span><span class="p">)</span>
+    <span class="n">systick</span><span class="o">.</span><span class="n">Setup</span><span class="p">(</span><span class="mf">2e6</span><span class="p">)</span>
+
+    <span class="n">gpio</span><span class="o">.</span><span class="n">A</span><span class="o">.</span><span class="n">EnableClock</span><span class="p">(</span><span class="n">false</span><span class="p">)</span>
+    <span class="n">led</span> <span class="o">=</span> <span class="n">gpio</span><span class="o">.</span><span class="n">A</span><span class="o">.</span><span class="n">Pin</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+
+    <span class="n">cfg</span> <span class="o">:=</span> <span class="n">gpio</span><span class="o">.</span><span class="n">Config</span><span class="p">{</span><span class="n">Mode</span><span class="p">:</span> <span class="n">gpio</span><span class="o">.</span><span class="n">Out</span><span class="p">,</span> <span class="n">Driver</span><span class="p">:</span> <span class="n">gpio</span><span class="o">.</span><span class="n">OpenDrain</span><span class="p">,</span> <span class="n">Speed</span><span class="p">:</span> <span class="n">gpio</span><span class="o">.</span><span class="n">Low</span><span class="p">}</span>
+    <span class="n">led</span><span class="o">.</span><span class="n">Setup</span><span class="p">(</span><span class="o">&amp;</span><span class="n">cfg</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="nb">type</span> <span class="n">Telegraph</span> <span class="n">struct</span> <span class="p">{</span>
+    <span class="n">Pin</span>   <span class="n">gpio</span><span class="o">.</span><span class="n">Pin</span>
+    <span class="n">Dotms</span> <span class="nb">int</span> <span class="o">//</span> <span class="n">Dot</span> <span class="n">length</span> <span class="p">[</span><span class="n">ms</span><span class="p">]</span>
+<span class="p">}</span>
+
+<span class="n">func</span> <span class="p">(</span><span class="n">t</span> <span class="n">Telegraph</span><span class="p">)</span> <span class="n">Write</span><span class="p">(</span><span class="n">s</span> <span class="p">[]</span><span class="n">byte</span><span class="p">)</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="n">error</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">c</span> <span class="o">:=</span> <span class="nb">range</span> <span class="n">s</span> <span class="p">{</span>
+        <span class="n">switch</span> <span class="n">c</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="s1">&#39;.&#39;</span><span class="p">:</span>
+            <span class="n">t</span><span class="o">.</span><span class="n">Pin</span><span class="o">.</span><span class="n">Clear</span><span class="p">()</span>
+            <span class="n">delay</span><span class="o">.</span><span class="n">Millisec</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">Dotms</span><span class="p">)</span>
+            <span class="n">t</span><span class="o">.</span><span class="n">Pin</span><span class="o">.</span><span class="n">Set</span><span class="p">()</span>
+            <span class="n">delay</span><span class="o">.</span><span class="n">Millisec</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">Dotms</span><span class="p">)</span>
+        <span class="k">case</span> <span class="s1">&#39;-&#39;</span><span class="p">:</span>
+            <span class="n">t</span><span class="o">.</span><span class="n">Pin</span><span class="o">.</span><span class="n">Clear</span><span class="p">()</span>
+            <span class="n">delay</span><span class="o">.</span><span class="n">Millisec</span><span class="p">(</span><span class="mi">3</span> <span class="o">*</span> <span class="n">t</span><span class="o">.</span><span class="n">Dotms</span><span class="p">)</span>
+            <span class="n">t</span><span class="o">.</span><span class="n">Pin</span><span class="o">.</span><span class="n">Set</span><span class="p">()</span>
+            <span class="n">delay</span><span class="o">.</span><span class="n">Millisec</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">Dotms</span><span class="p">)</span>
+        <span class="k">case</span> <span class="s1">&#39; &#39;</span><span class="p">:</span>
+            <span class="n">delay</span><span class="o">.</span><span class="n">Millisec</span><span class="p">(</span><span class="mi">3</span> <span class="o">*</span> <span class="n">t</span><span class="o">.</span><span class="n">Dotms</span><span class="p">)</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">s</span><span class="p">),</span> <span class="n">nil</span>
+<span class="p">}</span>
+
+<span class="n">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">telegraph</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="n">MorseWriter</span><span class="p">{</span><span class="n">Telegraph</span><span class="p">{</span><span class="n">led</span><span class="p">,</span> <span class="mi">100</span><span class="p">}}</span>
+    <span class="k">for</span> <span class="p">{</span>
+        <span class="n">io</span><span class="o">.</span><span class="n">WriteString</span><span class="p">(</span><span class="n">telegraph</span><span class="p">,</span> <span class="s2">&quot;Hello, World! &quot;</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="o">//</span> <span class="n">Some</span> <span class="n">code</span> <span class="n">omitted</span><span class="o">...</span>
+</code></pre></div>
+
+<p>在上面的示例中，我省略了 <code>MorseWriter</code> 类型的定义，因为它已在前面展示过。完整版可通过 <a href="https://github.com/ziutek/emgo/blob/master/egpath/src/stm32/examples/f030-demo-board/morseled/main.go">这里</a> 获取。让我们编译它并运行：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>egc
+$<span class="w"> </span>arm-none-eabi-size<span class="w"> </span>cortexm0.elf
+<span class="w">   </span>text<span class="w">    </span>data<span class="w">     </span>bss<span class="w">     </span>dec<span class="w">     </span>hex<span class="w"> </span>filename
+<span class="w">  </span><span class="m">11772</span><span class="w">     </span><span class="m">244</span><span class="w">     </span><span class="m">244</span><span class="w">   </span><span class="m">12260</span><span class="w">    </span>2fe4<span class="w"> </span>cortexm0.elf
+</code></pre></div>
+
+<p><img alt="Ultimate Blinky" src="/data/attachment/album/202010/24/090600wtuujx9zeweuxxid.png"></p>
+<h3>反射</h3>
+<p>是的，Emgo 支持 <a href="https://blog.golang.org/laws-of-reflection">反射</a>。<code>reflect</code> 包尚未完成，但是已完成的部分足以实现 <code>fmt.Print</code> 函数族了。来看看我们可以在小型 MCU 上做什么。</p>
+<p>为了减少内存使用，我们将使用 <ruby> <a href="http://infocenter.arm.com/help/topic/com.arm.doc.dui0471g/Bgbjjgij.html">  半主机 </a> <rt>  semihosting </rt></ruby> 作为标准输出。为了方便起见，我们还编写了简单的 <code>println</code> 函数，它在某种程度上类似于 <code>fmt.Println</code>。</p>
+<div class="highlight"><pre><span></span><code><span class="n">package</span> <span class="n">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s2">&quot;debug/semihosting&quot;</span>
+    <span class="s2">&quot;reflect&quot;</span>
+    <span class="s2">&quot;strconv&quot;</span>
+
+    <span class="s2">&quot;stm32/hal/system&quot;</span>
+    <span class="s2">&quot;stm32/hal/system/timer/systick&quot;</span>
+<span class="p">)</span>
+
+<span class="n">var</span> <span class="n">stdout</span> <span class="n">semihosting</span><span class="o">.</span><span class="n">File</span>
+
+<span class="n">func</span> <span class="n">init</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">system</span><span class="o">.</span><span class="n">SetupPLL</span><span class="p">(</span><span class="mi">8</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">48</span><span class="o">/</span><span class="mi">8</span><span class="p">)</span>
+    <span class="n">systick</span><span class="o">.</span><span class="n">Setup</span><span class="p">(</span><span class="mf">2e6</span><span class="p">)</span>
+
+    <span class="n">var</span> <span class="n">err</span> <span class="n">error</span>
+    <span class="n">stdout</span><span class="p">,</span> <span class="n">err</span> <span class="o">=</span> <span class="n">semihosting</span><span class="o">.</span><span class="n">OpenFile</span><span class="p">(</span><span class="s2">&quot;:tt&quot;</span><span class="p">,</span> <span class="n">semihosting</span><span class="o">.</span><span class="n">W</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">err</span> <span class="o">!=</span> <span class="n">nil</span> <span class="p">{</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="nb">type</span> <span class="n">stringer</span> <span class="n">interface</span> <span class="p">{</span>
+    <span class="n">String</span><span class="p">()</span> <span class="n">string</span>
+<span class="p">}</span>
+
+<span class="n">func</span> <span class="n">println</span><span class="p">(</span><span class="n">args</span> <span class="o">...</span><span class="n">interface</span><span class="p">{})</span> <span class="p">{</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">a</span> <span class="o">:=</span> <span class="nb">range</span> <span class="n">args</span> <span class="p">{</span>
+        <span class="k">if</span> <span class="n">i</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="p">{</span>
+            <span class="n">stdout</span><span class="o">.</span><span class="n">WriteString</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">)</span>
+        <span class="p">}</span>
+        <span class="n">switch</span> <span class="n">v</span> <span class="o">:=</span> <span class="n">a</span><span class="o">.</span><span class="p">(</span><span class="nb">type</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="n">string</span><span class="p">:</span>
+            <span class="n">stdout</span><span class="o">.</span><span class="n">WriteString</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
+        <span class="k">case</span> <span class="nb">int</span><span class="p">:</span>
+            <span class="n">strconv</span><span class="o">.</span><span class="n">WriteInt</span><span class="p">(</span><span class="n">stdout</span><span class="p">,</span> <span class="n">v</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="k">case</span> <span class="nb">bool</span><span class="p">:</span>
+            <span class="n">strconv</span><span class="o">.</span><span class="n">WriteBool</span><span class="p">(</span><span class="n">stdout</span><span class="p">,</span> <span class="n">v</span><span class="p">,</span> <span class="s1">&#39;t&#39;</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="k">case</span> <span class="n">stringer</span><span class="p">:</span>
+            <span class="n">stdout</span><span class="o">.</span><span class="n">WriteString</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">String</span><span class="p">())</span>
+        <span class="n">default</span><span class="p">:</span>
+            <span class="n">stdout</span><span class="o">.</span><span class="n">WriteString</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%u</span><span class="s2">nknown&quot;</span><span class="p">)</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+    <span class="n">stdout</span><span class="o">.</span><span class="n">WriteString</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\r\n</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="nb">type</span> <span class="n">S</span> <span class="n">struct</span> <span class="p">{</span>
+    <span class="n">A</span> <span class="nb">int</span>
+    <span class="n">B</span> <span class="nb">bool</span>
+<span class="p">}</span>
+
+<span class="n">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">p</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="n">S</span><span class="p">{</span><span class="o">-</span><span class="mi">123</span><span class="p">,</span> <span class="n">true</span><span class="p">}</span>
+
+    <span class="n">v</span> <span class="o">:=</span> <span class="n">reflect</span><span class="o">.</span><span class="n">ValueOf</span><span class="p">(</span><span class="n">p</span><span class="p">)</span>
+
+    <span class="n">println</span><span class="p">(</span><span class="s2">&quot;kind(p) =&quot;</span><span class="p">,</span> <span class="n">v</span><span class="o">.</span><span class="n">Kind</span><span class="p">())</span>
+    <span class="n">println</span><span class="p">(</span><span class="s2">&quot;kind(*p) =&quot;</span><span class="p">,</span> <span class="n">v</span><span class="o">.</span><span class="n">Elem</span><span class="p">()</span><span class="o">.</span><span class="n">Kind</span><span class="p">())</span>
+    <span class="n">println</span><span class="p">(</span><span class="s2">&quot;type(*p) =&quot;</span><span class="p">,</span> <span class="n">v</span><span class="o">.</span><span class="n">Elem</span><span class="p">()</span><span class="o">.</span><span class="n">Type</span><span class="p">())</span>
+
+    <span class="n">v</span> <span class="o">=</span> <span class="n">v</span><span class="o">.</span><span class="n">Elem</span><span class="p">()</span>
+
+    <span class="n">println</span><span class="p">(</span><span class="s2">&quot;*p = {&quot;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">v</span><span class="o">.</span><span class="n">NumField</span><span class="p">();</span> <span class="n">i</span><span class="o">++</span> <span class="p">{</span>
+        <span class="n">ft</span> <span class="o">:=</span> <span class="n">v</span><span class="o">.</span><span class="n">Type</span><span class="p">()</span><span class="o">.</span><span class="n">Field</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+        <span class="n">fv</span> <span class="o">:=</span> <span class="n">v</span><span class="o">.</span><span class="n">Field</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+        <span class="n">println</span><span class="p">(</span><span class="s2">&quot;  &quot;</span><span class="p">,</span> <span class="n">ft</span><span class="o">.</span><span class="n">Name</span><span class="p">(),</span> <span class="s2">&quot;:&quot;</span><span class="p">,</span> <span class="n">fv</span><span class="o">.</span><span class="n">Interface</span><span class="p">())</span>
+    <span class="p">}</span>
+    <span class="n">println</span><span class="p">(</span><span class="s2">&quot;}&quot;</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><code>semihosting.OpenFile</code> 函数允许在主机端打开/创建文件。特殊路径 <code>:tt</code> 对应于主机的标准输出。</p>
+<p><code>println</code> 函数接受任意数量的参数，每个参数的类型都是任意的：</p>
+<div class="highlight"><pre><span></span><code><span class="k">func</span><span class="w"> </span><span class="n">println</span><span class="p">(</span><span class="n">args</span><span class="w"> </span><span class="o">...</span><span class="n">interface</span><span class="p">{})</span>
+</code></pre></div>
+
+<p>可能是因为任何类型都实现了空接口 <code>interface{}</code>。 <code>println</code> 使用 <a href="https://golang.org/doc/effective_go.html#type_switch">类型开关</a> 打印字符串，整数和布尔值：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">switch</span><span class="w"> </span><span class="nx">v</span><span class="w"> </span><span class="p">:=</span><span class="w"> </span><span class="nx">a</span><span class="p">.(</span><span class="k">type</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="k">case</span><span class="w"> </span><span class="kt">string</span><span class="p">:</span>
+<span class="w">    </span><span class="nx">stdout</span><span class="p">.</span><span class="nx">WriteString</span><span class="p">(</span><span class="nx">v</span><span class="p">)</span>
+<span class="k">case</span><span class="w"> </span><span class="nx">int</span><span class="p">:</span>
+<span class="w">    </span><span class="nx">strconv</span><span class="p">.</span><span class="nx">WriteInt</span><span class="p">(</span><span class="nx">stdout</span><span class="p">,</span><span class="w"> </span><span class="nx">v</span><span class="p">,</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span>
+<span class="k">case</span><span class="w"> </span><span class="kt">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="nx">strconv</span><span class="p">.</span><span class="nx">WriteBool</span><span class="p">(</span><span class="nx">stdout</span><span class="p">,</span><span class="w"> </span><span class="nx">v</span><span class="p">,</span><span class="w"> </span><span class="sc">&#39;t&#39;</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span>
+<span class="k">case</span><span class="w"> </span><span class="nx">stringer</span><span class="p">:</span>
+<span class="w">    </span><span class="nx">stdout</span><span class="p">.</span><span class="nx">WriteString</span><span class="p">(</span><span class="nx">v</span><span class="p">.</span><span class="nx">String</span><span class="p">())</span>
+<span class="k">default</span><span class="p">:</span>
+<span class="w">    </span><span class="nx">stdout</span><span class="p">.</span><span class="nx">WriteString</span><span class="p">(</span><span class="s">&quot;%unknown&quot;</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>此外，它还支持任何实现了 <code>stringer</code> 接口的类型，即任何具有 <code>String()</code> 方法的类型。在任何 <code>case</code> 子句中，<code>v</code> 变量具有正确的类型，与 <code>case</code> 关键字后列出的类型相同。</p>
+<p><code>reflect.ValueOf(p)</code> 函数通过允许以编程的方式分析其类型和内容的形式返回 <code>p</code>。如你所见，我们甚至可以使用 <code>v.Elem()</code> 取消引用指针，并打印所有结构体及其名称。</p>
+<p>让我们尝试编译这段代码。现在让我们看看如果编译时没有类型和字段名，会有什么结果：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>egc<span class="w"> </span>-nt<span class="w"> </span>-nf
+$<span class="w"> </span>arm-none-eabi-size<span class="w"> </span>cortexm0.elf
+<span class="w">   </span>text<span class="w">    </span>data<span class="w">     </span>bss<span class="w">     </span>dec<span class="w">     </span>hex<span class="w"> </span>filename
+<span class="w">  </span><span class="m">16028</span><span class="w">     </span><span class="m">216</span><span class="w">     </span><span class="m">312</span><span class="w">   </span><span class="m">16556</span><span class="w">    </span>40ac<span class="w"> </span>cortexm0.elf
+</code></pre></div>
+
+<p>闪存上只剩下 140 个可用字节。让我们使用启用了半主机的 OpenOCD 加载它：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>openocd<span class="w"> </span>-d0<span class="w"> </span>-f<span class="w"> </span>interface/stlink.cfg<span class="w"> </span>-f<span class="w"> </span>target/stm32f0x.cfg<span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;init; program cortexm0.elf; arm semihosting enable; reset run&#39;</span>
+Open<span class="w"> </span>On-Chip<span class="w"> </span>Debugger<span class="w"> </span><span class="m">0</span>.10.0+dev-00319-g8f1f912a<span class="w"> </span><span class="o">(</span><span class="m">2018</span>-03-07-19:20<span class="o">)</span>
+Licensed<span class="w"> </span>under<span class="w"> </span>GNU<span class="w"> </span>GPL<span class="w"> </span>v2
+For<span class="w"> </span>bug<span class="w"> </span>reports,<span class="w"> </span><span class="nb">read</span>
+<span class="w">        </span>http://openocd.org/doc/doxygen/bugs.html
+debug_level:<span class="w"> </span><span class="m">0</span>
+adapter<span class="w"> </span>speed:<span class="w"> </span><span class="m">1000</span><span class="w"> </span>kHz
+adapter_nsrst_delay:<span class="w"> </span><span class="m">100</span>
+none<span class="w"> </span>separate
+adapter<span class="w"> </span>speed:<span class="w"> </span><span class="m">950</span><span class="w"> </span>kHz
+target<span class="w"> </span>halted<span class="w"> </span>due<span class="w"> </span>to<span class="w"> </span>debug-request,<span class="w"> </span>current<span class="w"> </span>mode:<span class="w"> </span>Thread
+xPSR:<span class="w"> </span>0xc1000000<span class="w"> </span>pc:<span class="w"> </span>0x08002338<span class="w"> </span>msp:<span class="w"> </span>0x20000a20
+adapter<span class="w"> </span>speed:<span class="w"> </span><span class="m">4000</span><span class="w"> </span>kHz
+**<span class="w"> </span>Programming<span class="w"> </span>Started<span class="w"> </span>**
+auto<span class="w"> </span>erase<span class="w"> </span>enabled
+target<span class="w"> </span>halted<span class="w"> </span>due<span class="w"> </span>to<span class="w"> </span>breakpoint,<span class="w"> </span>current<span class="w"> </span>mode:<span class="w"> </span>Thread
+xPSR:<span class="w"> </span>0x61000000<span class="w"> </span>pc:<span class="w"> </span>0x2000003a<span class="w"> </span>msp:<span class="w"> </span>0x20000a20
+wrote<span class="w"> </span><span class="m">16384</span><span class="w"> </span>bytes<span class="w"> </span>from<span class="w"> </span>file<span class="w"> </span>cortexm0.elf<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="m">0</span>.700133s<span class="w"> </span><span class="o">(</span><span class="m">22</span>.853<span class="w"> </span>KiB/s<span class="o">)</span>
+**<span class="w"> </span>Programming<span class="w"> </span>Finished<span class="w"> </span>**
+semihosting<span class="w"> </span>is<span class="w"> </span>enabled
+adapter<span class="w"> </span>speed:<span class="w"> </span><span class="m">950</span><span class="w"> </span>kHz
+kind<span class="o">(</span>p<span class="o">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>ptr
+kind<span class="o">(</span>*p<span class="o">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>struct
+type<span class="o">(</span>*p<span class="o">)</span><span class="w"> </span><span class="o">=</span>
+*p<span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">{</span>
+<span class="w">   </span>X.<span class="w"> </span>:<span class="w"> </span>-123
+<span class="w">   </span>X.<span class="w"> </span>:<span class="w"> </span><span class="nb">true</span>
+<span class="o">}</span>
+</code></pre></div>
+
+<p>如果你实际运行此代码，则会注意到半主机运行缓慢，尤其是在逐字节写入时（缓冲很有用）。</p>
+<p>如你所见，<code>*p</code> 没有类型名称，并且所有结构字段都具有相同的 <code>X.</code> 名称。让我们再次编译该程序，这次不带 <code>-nt -nf</code> 选项：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>egc
+$<span class="w"> </span>arm-none-eabi-size<span class="w"> </span>cortexm0.elf
+<span class="w">   </span>text<span class="w">    </span>data<span class="w">     </span>bss<span class="w">     </span>dec<span class="w">     </span>hex<span class="w"> </span>filename
+<span class="w">  </span><span class="m">16052</span><span class="w">     </span><span class="m">216</span><span class="w">     </span><span class="m">312</span><span class="w">   </span><span class="m">16580</span><span class="w">    </span>40c4<span class="w"> </span>cortexm0.elf
+</code></pre></div>
+
+<p>现在已经包括了类型和字段名称，但仅在 ~~<em>main.go</em> 文件中~~ <code>main</code> 包中定义了它们。该程序的输出如下所示：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">kind</span><span class="p">(</span><span class="nx">p</span><span class="p">)</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">ptr</span>
+<span class="nx">kind</span><span class="p">(</span><span class="o">*</span><span class="nx">p</span><span class="p">)</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">struct</span>
+<span class="k">type</span><span class="p">(</span><span class="o">*</span><span class="nx">p</span><span class="p">)</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">S</span>
+<span class="o">*</span><span class="nx">p</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">   </span><span class="nx">A</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="o">-</span><span class="mi">123</span>
+<span class="w">   </span><span class="nx">B</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>反射是任何易于使用的序列化库的关键部分，而像 <a href="https://en.wikipedia.org/wiki/JSON">JSON</a> 这样的序列化 ~~算法~~ 在<ruby> 物联网 <rt>  IoT </rt></ruby>时代也越来越重要。</p>
+<p>这些就是我完成的本文的第二部分。我认为有机会进行第三部分，更具娱乐性的部分，在那里我们将各种有趣的设备连接到这块板上。如果这块板装不下，我们就换一块大一点的。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何在 Fedora 上建立一个 TFTP 服务器</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Curt Warfield TFTP 即 简单文本传输协议 Trivial File Transfer Protocol ，允许用户通过 UDP 协议在系统之间传输文件。默认情况下，协议使用的是 UDP 的 69 号 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/09/ru-he-zai-fedora-shang-jian-li-yi-ge-tftp-fu-wu-qi.html" rel="bookmark"
+           title="Permalink to 如何在 Fedora 上建立一个 TFTP 服务器">如何在 Fedora 上建立一个 TFTP 服务器</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-09-22T11:14:41+02:00">
+                Published: Sun 22 September 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Curt Warfield</p>
+<p><img alt="" src="/data/attachment/album/201909/22/111433ar23l5gp2igsz2d3.jpg"></p>
+<p>TFTP 即<ruby> 简单文本传输协议 <rt>  Trivial File Transfer Protocol </rt></ruby>，允许用户通过 <a href="https://en.wikipedia.org/wiki/User_Datagram_Protocol">UDP</a> 协议在系统之间传输文件。默认情况下，协议使用的是 UDP 的 69 号端口。TFTP 协议广泛用于无盘设备的远程启动。因此，在你的本地网络建立一个 TFTP 服务器，这样你就可以对 <a href="https://docs.fedoraproject.org/en-US/fedora/f30/install-guide/advanced/Network_based_Installations/">安装好的 Fedora</a> 和其他无盘设备做一些操作，这将非常有趣。</p>
+<p>TFTP 仅仅能够从远端系统读取数据或者向远端系统写入数据，而没有列出远端服务器上文件的能力。它也没提供用户身份验证。由于安全隐患和缺乏高级功能，TFTP 通常仅用于局域网内部（LAN）。</p>
+<h3>安装 TFTP 服务器</h3>
+<p>首先你要做的事就是安装 TFTP 客户端和 TFTP 服务器：</p>
+<div class="highlight"><pre><span></span><code>dnf install tftp-server tftp -y
+</code></pre></div>
+
+<p>上述的这条命令会在 <code>/usr/lib/systemd/system</code> 目录下为 <a href="https://fedoramagazine.org/systemd-getting-a-grip-on-units/">systemd</a> 创建 <code>tftp.service</code> 和 <code>tftp.socket</code> 文件。</p>
+<div class="highlight"><pre><span></span><code>/usr/lib/systemd/system/tftp.service
+/usr/lib/systemd/system/tftp.socket
+</code></pre></div>
+
+<p>接下来，将这两个文件复制到 <code>/etc/systemd/system</code> 目录下，并重新命名。</p>
+<div class="highlight"><pre><span></span><code>cp /usr/lib/systemd/system/tftp.service /etc/systemd/system/tftp-server.service
+cp /usr/lib/systemd/system/tftp.socket /etc/systemd/system/tftp-server.socket
+</code></pre></div>
+
+<h3>修改文件</h3>
+<p>当你把这些文件复制和重命名后，你就可以去添加一些额外的参数，下面是 <code>tftp-server.service</code> 刚开始的样子：</p>
+<div class="highlight"><pre><span></span><code><span class="k">[Unit]</span>
+<span class="na">Description</span><span class="o">=</span><span class="s">Tftp Server</span>
+<span class="na">Requires</span><span class="o">=</span><span class="s">tftp.socket</span>
+<span class="na">Documentation</span><span class="o">=</span><span class="s">man:in.tftpd</span>
+
+<span class="k">[Service]</span>
+<span class="na">ExecStart</span><span class="o">=</span><span class="s">/usr/sbin/in.tftpd -s /var/lib/tftpboot</span>
+<span class="na">StandardInput</span><span class="o">=</span><span class="s">socket</span>
+
+<span class="k">[Install]</span>
+<span class="na">Also</span><span class="o">=</span><span class="s">tftp.socket</span>
+</code></pre></div>
+
+<p>在 <code>[Unit]</code> 部分添加如下内容：</p>
+<div class="highlight"><pre><span></span><code>Requires=tftp-server.socket
+</code></pre></div>
+
+<p>修改 <code>[ExecStart]</code> 行：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ExecStart</span><span class="o">=/</span><span class="n">usr</span><span class="o">/</span><span class="n">sbin</span><span class="o">/</span><span class="ow">in</span><span class="o">.</span><span class="n">tftpd</span><span class="w"> </span><span class="o">-</span><span class="n">c</span><span class="w"> </span><span class="o">-</span><span class="n">p</span><span class="w"> </span><span class="o">-</span><span class="n">s</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">tftpboot</span>
+</code></pre></div>
+
+<p>下面是这些选项的意思：</p>
+<ul>
+<li><code>-c</code> 选项允许创建新的文件</li>
+<li><code>-p</code> 选项用于指明在正常系统提供的权限检查之上没有其他额外的权限检查</li>
+<li><code>-s</code> 建议使用该选项以确保安全性以及与某些引导 ROM 的兼容性，这些引导 ROM 在其请求中不容易包含目录名。</li>
+</ul>
+<p>默认的上传和下载位置位于 <code>/var/lib/tftpboot</code>。</p>
+<p>下一步，修改 <code>[Install]</code> 部分的内容</p>
+<div class="highlight"><pre><span></span><code><span class="k">[Install]</span>
+<span class="na">WantedBy</span><span class="o">=</span><span class="s">multi-user.target</span>
+<span class="na">Also</span><span class="o">=</span><span class="s">tftp-server.socket</span>
+</code></pre></div>
+
+<p>不要忘记保存你的修改。</p>
+<p>下面是 <code>/etc/systemd/system/tftp-server.service</code> 文件的完整内容：</p>
+<div class="highlight"><pre><span></span><code><span class="k">[Unit]</span>
+<span class="na">Description</span><span class="o">=</span><span class="s">Tftp Server</span>
+<span class="na">Requires</span><span class="o">=</span><span class="s">tftp-server.socket</span>
+<span class="na">Documentation</span><span class="o">=</span><span class="s">man:in.tftpd</span>
+
+<span class="k">[Service]</span>
+<span class="na">ExecStart</span><span class="o">=</span><span class="s">/usr/sbin/in.tftpd -c -p -s /var/lib/tftpboot</span>
+<span class="na">StandardInput</span><span class="o">=</span><span class="s">socket</span>
+
+<span class="k">[Install]</span>
+<span class="na">WantedBy</span><span class="o">=</span><span class="s">multi-user.target</span>
+<span class="na">Also</span><span class="o">=</span><span class="s">tftp-server.socket</span>
+</code></pre></div>
+
+<h3>启动 TFTP 服务器</h3>
+<p>重新启动 systemd 守护进程：</p>
+<div class="highlight"><pre><span></span><code><span class="n">systemctl</span><span class="w"> </span><span class="n">daemon</span><span class="o">-</span><span class="n">reload</span>
+</code></pre></div>
+
+<p>启动服务器：</p>
+<div class="highlight"><pre><span></span><code>systemctl enable --now tftp-server
+</code></pre></div>
+
+<p>要更改 TFTP 服务器允许上传和下载的权限，请使用此命令。注意 TFTP 是一种固有的不安全协议，因此不建议你在与其他人共享的网络上这样做。</p>
+<div class="highlight"><pre><span></span><code><span class="n">chmod</span><span class="w"> </span><span class="mi">777</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">tftpboot</span>
+</code></pre></div>
+
+<p>配置防火墙让 TFTP 能够使用：</p>
+<div class="highlight"><pre><span></span><code><span class="n">firewall</span><span class="o">-</span><span class="n">cmd</span><span class="w"> </span><span class="o">--</span><span class="n">add</span><span class="o">-</span><span class="n">service</span><span class="o">=</span><span class="n">tftp</span><span class="w"> </span><span class="o">--</span><span class="n">perm</span>
+<span class="n">firewall</span><span class="o">-</span><span class="n">cmd</span><span class="w"> </span><span class="o">--</span><span class="n">reload</span>
+</code></pre></div>
+
+<h3>客户端配置</h3>
+<p>安装 TFTP 客户端</p>
+<div class="highlight"><pre><span></span><code>yum install tftp -y
+</code></pre></div>
+
+<p>运行 <code>tftp</code> 命令连接服务器。下面是一个启用详细信息选项的例子：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">client@thinclient:~ </span><span class="o">]</span><span class="err">$</span><span class="w"> </span><span class="n">tftp</span><span class="w"> </span><span class="mf">192.168.1.164</span>
+<span class="n">tftp</span><span class="o">&gt;</span><span class="w"> </span><span class="n">verbose</span>
+<span class="n">Verbose</span><span class="w"> </span><span class="n">mode</span><span class="w"> </span><span class="k">on</span><span class="p">.</span>
+<span class="n">tftp</span><span class="o">&gt;</span><span class="w"> </span><span class="k">get</span><span class="w"> </span><span class="n">server</span><span class="p">.</span><span class="n">logs</span>
+<span class="n">getting</span><span class="w"> </span><span class="k">from</span><span class="w"> </span><span class="mf">192.168.1.164</span><span class="err">:</span><span class="n">server</span><span class="p">.</span><span class="n">logs</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">server</span><span class="p">.</span><span class="n">logs</span><span class="w"> </span><span class="o">[</span><span class="n">netascii</span><span class="o">]</span>
+<span class="n">Received</span><span class="w"> </span><span class="mi">7</span><span class="w"> </span><span class="n">bytes</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="n">seconds</span><span class="w"> </span><span class="o">[</span><span class="n">inf bits/sec</span><span class="o">]</span>
+<span class="n">tftp</span><span class="o">&gt;</span><span class="w"> </span><span class="n">quit</span>
+<span class="o">[</span><span class="n">client@thinclient:~ </span><span class="o">]</span><span class="err">$</span>
+</code></pre></div>
+
+<p>记住，因为 TFTP 没有列出服务器上文件的能力，因此，在你使用 <code>get</code> 命令之前需要知道文件的具体名称。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

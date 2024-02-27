@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在 Linux 下使用 RAID（五）：安装 RAID 6（条带化双分布式奇偶校验）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Babin Lonston RAID 6 是 RAID 5 的升级版，它有两个分布式奇偶校验，即使两个磁盘发生故障后依然有容错能力。在两个磁盘同时发生 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/08/zai-linux-xia-shi-yong-raidwu-an-zhuang-raid-6tiao-dai-hua-shuang-fen-bu-shi-qi-ou-xiao-yan.html" rel="bookmark"
+           title="Permalink to 在 Linux 下使用 RAID（五）：安装 RAID 6（条带化双分布式奇偶校验）">在 Linux 下使用 RAID（五）：安装 RAID 6（条带化双分布式奇偶校验）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-08-31T15:50:00+02:00">
+                Published: Mon 31 August 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Babin Lonston</p>
+<p>RAID 6 是 RAID 5 的升级版，它有两个分布式奇偶校验，即使两个磁盘发生故障后依然有容错能力。在两个磁盘同时发生故障时，系统的关键任务仍然能运行。它与 RAID 5 相似，但性能更健壮，因为它多用了一个磁盘来进行奇偶校验。</p>
+<p>在之前的文章中，我们已经在 RAID 5 看了分布式奇偶校验，但在本文中，我们将看到的是 RAID 6 双分布式奇偶校验。不要期望比其他 RAID 有更好的性能，除非你也安装了一个专用的 RAID 控制器。在 RAID 6 中，即使我们失去了2个磁盘，我们仍可以通过更换磁盘，从校验中构建数据，然后取回数据。</p>
+<p><img alt="Setup RAID 6 in CentOS" src="/data/attachment/album/201508/31/155102zhhhwnlh2u6lhlnl.jpg"></p>
+<p><em>在 Linux 中安装 RAID 6</em></p>
+<p>要建立一个 RAID 6，一组最少需要4个磁盘。RAID 6 甚至在有些组中会有更多磁盘，这样将多个硬盘捆在一起，当读取数据时，它会同时从所有磁盘读取，所以读取速度会更快，当写数据时，因为它要将数据写在条带化的多个磁盘上，所以性能会较差。</p>
+<p>现在，很多人都在讨论为什么我们需要使用 RAID 6，它的性能和其他 RAID 相比并不太好。提出这个问题首先需要知道的是，如果需要高容错性就选择 RAID 6。在每一个用于数据库的高可用性要求较高的环境中，他们需要 RAID 6 因为数据库是最重要，无论花费多少都需要保护其安全，它在视频流环境中也是非常有用的。</p>
+<h4>RAID 6 的的优点和缺点</h4>
+<ul>
+<li>性能不错。</li>
+<li>RAID 6 比较昂贵，因为它要求两个独立的磁盘用于奇偶校验功能。</li>
+<li>将失去两个磁盘的容量来保存奇偶校验信息（双奇偶校验）。</li>
+<li>即使两个磁盘损坏，数据也不会丢失。我们可以在更换损坏的磁盘后从校验中重建数据。</li>
+<li>读性能比 RAID 5 更好，因为它从多个磁盘读取，但对于没有专用的 RAID 控制器的设备写性能将非常差。</li>
+</ul>
+<h4>要求</h4>
+<p>要创建一个 RAID 6 最少需要4个磁盘。你也可以添加更多的磁盘，但你必须有专用的 RAID 控制器。使用软件 RAID 我们在 RAID 6 中不会得到更好的性能，所以我们需要一个物理 RAID 控制器。</p>
+<p>如果你新接触 RAID 设置，我们建议先看完以下 RAID 文章。</p>
+<ul>
+<li><a href="/article-6085-1.html">介绍 RAID 的级别和概念</a></li>
+<li><a href="/article-6087-1.html">使用 mdadm 工具创建软件 RAID 0 （条带化）</a></li>
+<li><a href="/article-6093-1.html">用两块磁盘创建 RAID 1（镜像）</a></li>
+<li><a href="/article-6102-1.html">创建 RAID 5（条带化与分布式奇偶校验）</a></li>
+</ul>
+<h4>我的服务器设置</h4>
+<div class="highlight"><pre><span></span><code><span class="err">操作系统</span><span class="w"> </span><span class="o">:</span><span class="w">  </span><span class="n">CentOS</span><span class="w"> </span><span class="mf">6.5</span><span class="w"> </span><span class="n">Final</span>
+<span class="n">IP</span><span class="w"> </span><span class="err">地址</span><span class="w">    </span><span class="o">:</span><span class="w">  </span><span class="mf">192.168</span><span class="o">.</span><span class="mf">0.228</span>
+<span class="err">主机名</span><span class="w">    </span><span class="o">:</span><span class="w">  </span><span class="n">rd6</span><span class="o">.</span><span class="na">tecmintlocal</span><span class="o">.</span><span class="na">com</span>
+<span class="err">磁盘</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="o">[</span><span class="mi">20</span><span class="n">GB</span><span class="o">]</span><span class="w">  </span><span class="o">:</span><span class="w">  </span><span class="sr">/dev/s</span><span class="n">db</span>
+<span class="err">磁盘</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="o">[</span><span class="mi">20</span><span class="n">GB</span><span class="o">]</span><span class="w">  </span><span class="o">:</span><span class="w">  </span><span class="sr">/dev/s</span><span class="n">dc</span>
+<span class="err">磁盘</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="o">[</span><span class="mi">20</span><span class="n">GB</span><span class="o">]</span><span class="w">  </span><span class="o">:</span><span class="w">  </span><span class="sr">/dev/s</span><span class="n">dd</span>
+<span class="err">磁盘</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="o">[</span><span class="mi">20</span><span class="n">GB</span><span class="o">]</span><span class="w">  </span><span class="o">:</span><span class="w">  </span><span class="sr">/dev/s</span><span class="n">de</span>
+</code></pre></div>
+
+<p>这是9篇系列教程的第5部分，在这里我们将看到如何在 Linux 系统或者服务器上使用四个 20GB 的磁盘（名为 /dev/sdb、 /dev/sdc、 /dev/sdd 和 /dev/sde）创建和设置软件 RAID 6 （条带化双分布式奇偶校验）。</p>
+<h3>第1步：安装 mdadm 工具，并检查磁盘</h3>
+<p>1、 如果你按照我们最进的两篇 RAID 文章（第2篇和第3篇），我们已经展示了如何安装<code>mdadm</code>工具。如果你直接看的这篇文章，我们先来解释下在 Linux 系统中如何使用<code>mdadm</code>工具来创建和管理 RAID，首先根据你的 Linux 发行版使用以下命令来安装。</p>
+<div class="highlight"><pre><span></span><code># yum install mdadm     [在 RedHat 系统]
+# apt-get install mdadm     [在 Debain 系统]
+</code></pre></div>
+
+<p>2、 安装该工具后，然后来验证所需的四个磁盘，我们将会使用下面的<code>fdisk</code>命令来检查用于创建 RAID 的磁盘。</p>
+<div class="highlight"><pre><span></span><code># fdisk -l | grep sd
+</code></pre></div>
+
+<p><img alt="Check Hard Disk in Linux" src="/data/attachment/album/201508/31/155104nggs3s38fbqufq6o.png"></p>
+<p><em>在 Linux 中检查磁盘</em></p>
+<p>3、 在创建 RAID 磁盘前，先检查下我们的磁盘是否创建过 RAID 分区。</p>
+<div class="highlight"><pre><span></span><code># mdadm -E /dev/sd[b-e]
+# mdadm --examine /dev/sdb /dev/sdc /dev/sdd /dev/sde # 或
+</code></pre></div>
+
+<p><img alt="Check Raid on Disk" src="/data/attachment/album/201508/31/155109xail6i1omli2211b.png"></p>
+<p><em>在磁盘上检查 RAID 分区</em></p>
+<p><strong>注意</strong>: 在上面的图片中，没有检测到任何 super-block 或者说在四个磁盘上没有 RAID 存在。现在我们开始创建 RAID 6。</p>
+<h3>第2步：为 RAID 6 创建磁盘分区</h3>
+<p>4、 现在在 <code>/dev/sdb</code>, <code>/dev/sdc</code>, <code>/dev/sdd</code> 和 <code>/dev/sde</code>上为 RAID 创建分区，使用下面的 fdisk 命令。在这里，我们将展示如何在 sdb 磁盘创建分区，同样的步骤也适用于其他分区。</p>
+<p><strong>创建 /dev/sdb 分区</strong></p>
+<div class="highlight"><pre><span></span><code># fdisk /dev/sdb
+</code></pre></div>
+
+<p>请按照说明进行操作，如下图所示创建分区。</p>
+<ul>
+<li>按 <code>n</code>创建新的分区。</li>
+<li>然后按 <code>P</code> 选择主分区。</li>
+<li>接下来选择分区号为1。</li>
+<li>只需按两次回车键选择默认值即可。</li>
+<li>然后，按 <code>P</code> 来打印创建好的分区。</li>
+<li>按 <code>L</code>，列出所有可用的类型。</li>
+<li>按 <code>t</code> 去修改分区。</li>
+<li>键入 <code>fd</code> 设置为 Linux 的 RAID 类型，然后按回车确认。</li>
+<li>然后再次使用<code>p</code>查看我们所做的更改。</li>
+<li>使用<code>w</code>保存更改。</li>
+</ul>
+<p><img alt="Create sdb Partition" src="/data/attachment/album/201508/31/155113dpzpm7seeevheu2m.png"></p>
+<p><em>创建 /dev/sdb 分区</em></p>
+<p><strong>创建 /dev/sdc 分区</strong></p>
+<div class="highlight"><pre><span></span><code># fdisk /dev/sdc
+</code></pre></div>
+
+<p><img alt="Create sdc Partition" src="/data/attachment/album/201508/31/155118a9p104t94tgdvq09.png"></p>
+<p><em>创建 /dev/sdc 分区</em></p>
+<p><strong>创建 /dev/sdd 分区</strong></p>
+<div class="highlight"><pre><span></span><code># fdisk /dev/sdd
+</code></pre></div>
+
+<p><img alt="Create sdd Partition" src="/data/attachment/album/201508/31/155121d0wawwy0xbw0jz45.png"></p>
+<p><em>创建 /dev/sdd 分区</em></p>
+<p><strong>创建 /dev/sde 分区</strong></p>
+<div class="highlight"><pre><span></span><code># fdisk /dev/sde
+</code></pre></div>
+
+<p><img alt="Create sde Partition" src="/data/attachment/album/201508/31/155125ne7ub73ycb233lij.png"></p>
+<p><em>创建 /dev/sde 分区</em></p>
+<p>5、 创建好分区后，检查磁盘的 super-blocks 是个好的习惯。如果 super-blocks 不存在我们可以按前面的创建一个新的 RAID。</p>
+<div class="highlight"><pre><span></span><code># mdadm -E /dev/sd[b-e]1    
+# mdadm --examine /dev/sdb1 /dev/sdc1 /dev/sdd1 /dev/sde1 # 或
+</code></pre></div>
+
+<p><img alt="Check Raid on New Partitions" src="/data/attachment/album/201508/31/155126mysvdaqmysdsqda1.png"></p>
+<p>*在新分区中检查 RAID *</p>
+<h3>第3步：创建 md 设备（RAID）</h3>
+<p>6、 现在可以使用以下命令创建 RAID 设备<code>md0</code> （即 /dev/md0），并在所有新创建的分区中应用 RAID 级别，然后确认 RAID 设置。</p>
+<div class="highlight"><pre><span></span><code># mdadm --create /dev/md0 --level=6 --raid-devices=4 /dev/sdb1 /dev/sdc1 /dev/sdd1 /dev/sde1
+# cat /proc/mdstat
+</code></pre></div>
+
+<p><img alt="Create Raid 6 Device" src="/data/attachment/album/201508/31/155128h94u4tx9vxywvtxh.png"></p>
+<p><em>创建 Raid 6 设备</em></p>
+<p>7、 你还可以使用 watch 命令来查看当前创建 RAID 的进程，如下图所示。</p>
+<div class="highlight"><pre><span></span><code># watch -n1 cat /proc/mdstat
+</code></pre></div>
+
+<p><img alt="Check Raid 6 Process" src="/data/attachment/album/201508/31/155128un714551q7nqquw4.png"></p>
+<p><em>检查 RAID 6 创建过程</em></p>
+<p>8、 使用以下命令验证 RAID 设备。</p>
+<div class="highlight"><pre><span></span><code># mdadm -E /dev/sd[b-e]1
+</code></pre></div>
+
+<p><strong>注意</strong>::上述命令将显示四个磁盘的信息，这是相当长的，所以没有截取其完整的输出。</p>
+<p>9、 接下来，验证 RAID 阵列，以确认重新同步过程已经开始。</p>
+<div class="highlight"><pre><span></span><code># mdadm --detail /dev/md0
+</code></pre></div>
+
+<p><img alt="Check Raid 6 Array" src="/data/attachment/album/201508/31/155131pb51cm5bcrz25er5.png"></p>
+<p><em>检查 Raid 6 阵列</em></p>
+<h3>第4步：在 RAID 设备上创建文件系统</h3>
+<p>10、 使用 ext4 为<code>/dev/md0</code>创建一个文件系统，并将它挂载在 /mnt/raid6 。这里我们使用的是 ext4，但你可以根据你的选择使用任意类型的文件系统。</p>
+<div class="highlight"><pre><span></span><code># mkfs.ext4 /dev/md0
+</code></pre></div>
+
+<p><img alt="Create File System on Raid" src="/data/attachment/album/201508/31/155134h5co65n656433cmn.png"></p>
+<p><em>在 RAID 6 上创建文件系统</em></p>
+<p>11、 将创建的文件系统挂载到 /mnt/raid6，并验证挂载点下的文件，我们可以看到 lost+found 目录。</p>
+<div class="highlight"><pre><span></span><code># mkdir /mnt/raid6
+# mount /dev/md0 /mnt/raid6/
+# ls -l /mnt/raid6/
+</code></pre></div>
+
+<p>12、 在挂载点下创建一些文件，在任意文件中添加一些文字并验证其内容。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> touch /mnt/raid6/raid6_test.txt
+<span class="gh">#</span> ls -l /mnt/raid6/
+<span class="gh">#</span> echo &quot;tecmint raid setups&quot; &gt; /mnt/raid6/raid6_test.txt
+<span class="gh">#</span> cat /mnt/raid6/raid6_test.txt
+</code></pre></div>
+
+<p><img alt="Verify Raid Content" src="/data/attachment/album/201508/31/155136m5019d20c0b5f9wh.png"></p>
+<p><em>验证 RAID 内容</em></p>
+<p>13、 在 /etc/fstab 中添加以下条目使系统启动时自动挂载设备，操作系统环境不同挂载点可能会有所不同。</p>
+<div class="highlight"><pre><span></span><code># vim /etc/fstab
+
+/dev/md0                /mnt/raid6              ext4    defaults        0 0
+</code></pre></div>
+
+<p><img alt="Automount Raid 6 Device" src="/data/attachment/album/201508/31/155138wcfizczrk7f7pi2o.png"></p>
+<p><em>自动挂载 RAID 6 设备</em></p>
+<p>14、 接下来，执行<code>mount -a</code>命令来验证 fstab 中的条目是否有错误。</p>
+<div class="highlight"><pre><span></span><code># mount -av
+</code></pre></div>
+
+<p><img alt="Verify Raid Automount" src="/data/attachment/album/201508/31/155139s0y4virc9k0w6cwc.png"></p>
+<p><em>验证 RAID 是否自动挂载</em></p>
+<h3>第5步：保存 RAID 6 的配置</h3>
+<p>15、 请注意，默认情况下 RAID 没有配置文件。我们需要使用以下命令手动保存它，然后检查设备<code>/dev/md0</code>的状态。</p>
+<div class="highlight"><pre><span></span><code># mdadm --detail --scan --verbose &gt;&gt; /etc/mdadm.conf
+# cat /etc/mdadm.conf
+# mdadm --detail /dev/md0
+</code></pre></div>
+
+<p><img alt="Save Raid 6 Configuration" src="/data/attachment/album/201508/31/155142fxwvu134f84ghv4f.png"></p>
+<p><em>保存 RAID 6 配置</em></p>
+<p><img alt="Check Raid 6 Status" src="/data/attachment/album/201508/31/155142fxwvu134f84ghv4f.png"></p>
+<p><em>检查 RAID 6 状态</em></p>
+<h3>第6步：添加备用磁盘</h3>
+<p>16、 现在，已经使用了4个磁盘，并且其中两个作为奇偶校验信息来使用。在某些情况下，如果任意一个磁盘出现故障，我们仍可以得到数据，因为在 RAID 6 使用双奇偶校验。</p>
+<p>如果第二个磁盘也出现故障，在第三块磁盘损坏前我们可以添加一个​​新的。可以在创建 RAID 集时加入一个备用磁盘，但我在创建 RAID 集合前没有定义备用的磁盘。不过，我们可以在磁盘损坏后或者创建 RAID 集合时添加一块备用磁盘。现在，我们已经创建好了 RAID，下面让我演示如何添加备用磁盘。</p>
+<p>为了达到演示的目的，我已经热插入了一个新的 HDD 磁盘（即 /dev/sdf），让我们来验证接入的磁盘。</p>
+<div class="highlight"><pre><span></span><code># ls -l /dev/ | grep sd
+</code></pre></div>
+
+<p><img alt="Check New Disk" src="/data/attachment/album/201508/31/155145aiwjm64fhs6sedkh.png"></p>
+<p><em>检查新磁盘</em></p>
+<p>17、 现在再次确认新连接的磁盘没有配置过 RAID ，使用 mdadm 来检查。</p>
+<div class="highlight"><pre><span></span><code># mdadm --examine /dev/sdf
+</code></pre></div>
+
+<p><img alt="Check Raid on New Disk" src="/data/attachment/album/201508/31/155146uasasfvig88v8za6.png"></p>
+<p><em>在新磁盘中检查 RAID</em></p>
+<p><strong>注意</strong>: 像往常一样，我们早前已经为四个磁盘创建了分区，同样，我们使用 fdisk 命令为新插入的磁盘创建新分区。</p>
+<div class="highlight"><pre><span></span><code># fdisk /dev/sdf
+</code></pre></div>
+
+<p><img alt="Create sdf Partition" src="/data/attachment/album/201508/31/155151lr3zr33q0523u0x3.png"></p>
+<p><em>为 /dev/sdf 创建分区</em></p>
+<p>18、 在 /dev/sdf 创建新的分区后，在新分区上确认没有 RAID，然后将备用磁盘添加到 RAID 设备 /dev/md0 中，并验证添加的设备。</p>
+<div class="highlight"><pre><span></span><code># mdadm --examine /dev/sdf
+# mdadm --examine /dev/sdf1
+# mdadm --add /dev/md0 /dev/sdf1
+# mdadm --detail /dev/md0
+</code></pre></div>
+
+<p><img alt="Verify Raid on sdf Partition" src="/data/attachment/album/201508/31/155152ukhd5zck5h1mubmc.png"></p>
+<p><em>在 sdf 分区上验证 Raid</em></p>
+<p><img alt="Add sdf Partition to Raid" src="/data/attachment/album/201508/31/155153vzjnm6keptpljlee.png"></p>
+<p>*添加 sdf 分区到 RAID *</p>
+<p><img alt="Verify sdf Partition Details" src="/data/attachment/album/201508/31/155155w14aezgsphje4hc9.png"></p>
+<p><em>验证 sdf 分区信息</em></p>
+<h3>第7步：检查 RAID 6 容错</h3>
+<p>19、 现在，让我们检查备用驱动器是否能自动工作，当我们阵列中的任何一个磁盘出现故障时。为了测试，我将一个磁盘手工标记为故障设备。</p>
+<p>在这里，我们标记 /dev/sdd1 为故障磁盘。</p>
+<div class="highlight"><pre><span></span><code># mdadm --manage --fail /dev/md0 /dev/sdd1
+</code></pre></div>
+
+<p><img alt="Check Raid 6 Fault Tolerance" src="/data/attachment/album/201508/31/155156ugt64vi3gaz3m98q.png"></p>
+<p><em>检查 RAID 6 容错</em></p>
+<p>20、 让我们查看 RAID 的详细信息，并检查备用磁盘是否开始同步。</p>
+<div class="highlight"><pre><span></span><code># mdadm --detail /dev/md0
+</code></pre></div>
+
+<p><img alt="Check Auto Raid Syncing" src="/data/attachment/album/201508/31/155202rh713mg01zrhhfhl.png"></p>
+<p><em>检查 RAID 自动同步</em></p>
+<p><strong>哇塞!</strong> 这里，我们看到备用磁盘激活了，并开始重建进程。在底部，我们可以看到有故障的磁盘 /dev/sdd1 标记为 faulty。可以使用下面的命令查看进程重建。</p>
+<div class="highlight"><pre><span></span><code># cat /proc/mdstat
+</code></pre></div>
+
+<p><img alt="Raid 6 Auto Syncing" src="/data/attachment/album/201508/31/155204iikvi3req3aqpk2i.png"></p>
+<p><em>RAID 6 自动同步</em></p>
+<h3>结论:</h3>
+<p>在这里，我们看到了如何使用四个磁盘设置 RAID 6。这种 RAID 级别是具有高冗余的昂贵设置之一。在接下来的文章中，我们将看到如何建立一个嵌套的 RAID 10 甚至更多。请继续关注。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

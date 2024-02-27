@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Linux有问必答：nginx网络服务器上如何阻止特定用户代理（UA）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Dan Nanni 问题： 我注意到有一些机器人经常访问我的nginx驱动的网站，并且进行一些攻击性的扫描，导致消耗掉了我的网络服务器的大量 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/05/linuxyou-wen-bi-da-nginxwang-luo-fu-wu-qi-shang-ru-he-zu-zhi-te-ding-yong-hu-dai-li-ua.html" rel="bookmark"
+           title="Permalink to Linux有问必答：nginx网络服务器上如何阻止特定用户代理（UA）">Linux有问必答：nginx网络服务器上如何阻止特定用户代理（UA）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-05-22T08:30:00+02:00">
+                Published: Fri 22 May 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Dan Nanni</p>
+<blockquote>
+<p><strong>问题</strong>： 我注意到有一些机器人经常访问我的nginx驱动的网站，并且进行一些攻击性的扫描，导致消耗掉了我的网络服务器的大量资源。我一直尝试着通过用户代理符串来阻挡这些机器人。我怎样才能在nginx网络服务器上阻挡掉特定的用户代理呢？</p>
+</blockquote>
+<p>现代互联网滋生了大量各种各样的恶意机器人和网络爬虫，比如像恶意软件机器人、垃圾邮件程序或内容刮刀，这些恶意工具一直偷偷摸摸地扫描你的网站，干些诸如检测潜在网站漏洞、收获电子邮件地址，或者只是从你的网站偷取内容。大多数机器人能够通过它们的“用户代理”签名字符串来识别。</p>
+<p>作为第一道防线，你可以尝试通过将这些机器人的用户代理字符串添加入robots.txt文件来阻止这些恶意软件机器人访问你的网站。但是，很不幸的是，该操作只针对那些“行为良好”的机器人，这些机器人被设计遵循robots.txt的规范。许多恶意软件机器人可以很容易地忽略掉robots.txt，然后随意扫描你的网站。</p>
+<p>另一个用以阻挡特定机器人的途径，就是配置你的网络服务器，通过特定的用户代理字符串拒绝要求提供内容的请求。本文就是说明如何<strong>在nginx网络服务器上阻挡特定的用户代理</strong>。</p>
+<p><img alt="" src="/data/attachment/album/201505/21/230248mh6hqj5x770q61ni.jpg"></p>
+<h3>在Nginx中将特定用户代理列入黑名单</h3>
+<p>要配置用户代理阻挡列表，请打开你的网站的nginx配置文件，找到<code>server</code>定义部分。该文件可能会放在不同的地方，这取决于你的nginx配置或Linux版本（如，<code>/etc/nginx/nginx.conf</code>,<code>/etc/nginx/sites-enabled/&lt;your-site&gt;</code>,<code>/usr/local/nginx/conf/nginx.conf</code>,<code>/etc/nginx/conf.d/&lt;your-site&gt;</code>）。</p>
+<div class="highlight"><pre><span></span><code>server {
+    listen       80 default_server;
+    server_name  xmodulo.com;
+    root         /usr/share/nginx/html;
+
+    ....
+}
+</code></pre></div>
+
+<p>在打开该配置文件并找到 <code>server</code> 部分后，添加以下 if 声明到该部分内的某个地方。</p>
+<div class="highlight"><pre><span></span><code>server {
+    listen       80 default_server;
+    server_name  xmodulo.com;
+    root         /usr/share/nginx/html;
+
+    # 大小写敏感的匹配
+    if ($http_user_agent ~ (Antivirx|Arian) {
+        return 403;
+    }
+
+    #大小写无关的匹配
+    if ($http_user_agent ~* (netcrawl|npbot|malicious)) {
+        return 403;
+    }
+
+    ....
+}
+</code></pre></div>
+
+<p>如你所想，这些 if 声明使用正则表达式匹配了任意不良用户字符串，并向匹配的对象返回403 HTTP状态码。 <code>$http_user_agent</code>是HTTP请求中的一个包含有用户代理字符串的变量。‘~’操作符针对用户代理字符串进行大小写敏感匹配，而‘~*’操作符则进行大小写无关匹配。‘|’操作符是逻辑或，因此，你可以在 if 声明中放入众多的用户代理关键字，然后将它们全部阻挡掉。</p>
+<p>在修改配置文件后，你必须重新加载nginx以激活阻挡：</p>
+<div class="highlight"><pre><span></span><code><span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">nginx</span><span class="w"> </span><span class="o">-</span><span class="n">s</span><span class="w"> </span><span class="n">reload</span>
+</code></pre></div>
+
+<p>你可以通过使用带有 “--user-agent” 选项的 wget 测试用户代理阻挡。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>wget<span class="w"> </span>--user-agent<span class="w"> </span><span class="s2">&quot;malicious bot&quot;</span><span class="w"> </span>http://&lt;nginx-ip-address&gt;
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/201505/21/230250mxzyf3su08fksv3c.jpg"></p>
+<h3>管理Nginx中的用户代理黑名单</h3>
+<p>目前为止，我已经展示了在nginx中如何阻挡一些用户代理的HTTP请求。如果你有许多不同类型的网络爬虫机器人要阻挡，又该怎么办呢？</p>
+<p>由于用户代理黑名单会增长得很大，所以将它们放在nginx的server部分不是个好点子。取而代之的是，你可以创建一个独立的文件，在该文件中列出所有被阻挡的用户代理。例如，让我们创建/etc/nginx/useragent.rules，并定义以下面的格式定义所有被阻挡的用户代理的图谱。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>vi<span class="w"> </span>/etc/nginx/useragent.rules
+</code></pre></div>
+
+<p>via: <a href="http://ask.xmodulo.com/block-specific-user-agents-nginx-web-server.html">http://ask.xmodulo.com/block-specific-user-agents-nginx-web-server.html</a></p>
+<p>作者：<a href="http://ask.xmodulo.com/author/nanni">Dan Nanni</a> 译者：<a href="https://github.com/GOLinux">GOLinux</a> 校对：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创翻译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

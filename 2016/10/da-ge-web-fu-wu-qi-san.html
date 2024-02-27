@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>搭个 Web 服务器（三）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Ruslan “只有在创造中才能够学到更多。” ——皮亚杰 在本系列的第二部分中，你创造了一个可以处理基本 HTTP GET 请求的、朴素的 WSGI 服 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2016/10/da-ge-web-fu-wu-qi-san.html" rel="bookmark"
+           title="Permalink to 搭个 Web 服务器（三）">搭个 Web 服务器（三）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2016-10-09T14:42:00+02:00">
+                Published: Sun 09 October 2016
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Ruslan</p>
+<blockquote>
+<p>“只有在创造中才能够学到更多。” ——皮亚杰</p>
+</blockquote>
+<p>在本系列的<a href="/article-7685-1.html">第二部分</a>中，你创造了一个可以处理基本 HTTP GET 请求的、朴素的 WSGI 服务器。当时我问了一个问题：“你该如何让你的服务器在同一时间处理多个请求呢？”在这篇文章中，你会找到答案。系好安全带，我们要认真起来，全速前进了！你将会体验到一段非常快速的旅程。准备好你的 Linux、Mac OS X（或者其他 *nix 系统），还有你的 Python。本文中所有源代码均可在 <a href="https://github.com/rspivak/lsbaws/blob/master/part3/">GitHub</a> 上找到。</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144117s2djox1sesdiviid.png"></p>
+<h3>服务器的基本结构及如何处理请求</h3>
+<p>首先，我们来回顾一下 Web 服务器的基本结构，以及服务器处理来自客户端的请求时，所需的必要步骤。你在<a href="/article-7662-1.html">第一部分</a>及<a href="/article-7685-1.html">第二部分</a>中创建的轮询服务器只能够一次处理一个请求。在处理完当前请求之前，它不能够接受新的客户端连接。所有请求为了等待服务都需要排队，在服务繁忙时，这个队伍可能会排的很长，一些客户端可能会感到不开心。</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144221rqrdi1vhdzbf0r3g.png"></p>
+<p>这是轮询服务器 <a href="https://github.com/rspivak/lsbaws/blob/master/part3/webserver3a.py">webserver3a.py</a> 的代码：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">#####################################################################</span>
+<span class="c1"># 轮询服务器 - webserver3a.py                                       #</span>
+<span class="c1">#                                                                   #</span>
+<span class="c1"># 使用 Python 2.7.9 或 3.4                                          #</span>
+<span class="c1"># 在 Ubuntu 14.04 及 Mac OS X 环境下测试通过                        #</span>
+<span class="c1">#####################################################################</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+
+<span class="n">SERVER_ADDRESS</span> <span class="o">=</span> <span class="p">(</span><span class="n">HOST</span><span class="p">,</span> <span class="n">PORT</span><span class="p">)</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="mi">8888</span>
+<span class="n">REQUEST_QUEUE_SIZE</span> <span class="o">=</span> <span class="mi">5</span>
+
+
+<span class="k">def</span> <span class="nf">handle_request</span><span class="p">(</span><span class="n">client_connection</span><span class="p">):</span>
+    <span class="n">request</span> <span class="o">=</span> <span class="n">client_connection</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">decode</span><span class="p">())</span>
+    <span class="n">http_response</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">&quot;&quot;&quot;</span><span class="se">\</span>
+<span class="s2">HTTP/1.1 200 OK</span>
+
+<span class="s2">Hello, World!</span>
+<span class="s2">&quot;&quot;&quot;</span>
+    <span class="n">client_connection</span><span class="o">.</span><span class="n">sendall</span><span class="p">(</span><span class="n">http_response</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">serve_forever</span><span class="p">():</span>
+    <span class="n">listen_socket</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+    <span class="n">listen_socket</span><span class="o">.</span><span class="n">setsockopt</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">SOL_SOCKET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SO_REUSEADDR</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">listen_socket</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span><span class="n">SERVER_ADDRESS</span><span class="p">)</span>
+    <span class="n">listen_socket</span><span class="o">.</span><span class="n">listen</span><span class="p">(</span><span class="n">REQUEST_QUEUE_SIZE</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Serving HTTP on port </span><span class="si">{port}</span><span class="s1"> ...&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">port</span><span class="o">=</span><span class="n">PORT</span><span class="p">))</span>
+
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="n">client_connection</span><span class="p">,</span> <span class="n">client_address</span> <span class="o">=</span> <span class="n">listen_socket</span><span class="o">.</span><span class="n">accept</span><span class="p">()</span>
+        <span class="n">handle_request</span><span class="p">(</span><span class="n">client_connection</span><span class="p">)</span>
+        <span class="n">client_connection</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">serve_forever</span><span class="p">()</span>
+</code></pre></div>
+
+<p>为了观察到你的服务器在同一时间只能处理一个请求的行为，我们对服务器的代码做一点点修改：在将响应发送至客户端之后，将程序阻塞 60 秒。这个修改只需要一行代码，来告诉服务器进程暂停 60 秒钟。</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144221gpbfsxuquizfl2lq.png"></p>
+<p>这是我们更改后的代码，包含暂停语句的服务器 <a href="https://github.com/rspivak/lsbaws/blob/master/part3/webserver3b.py">webserver3b.py</a>：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">######################################################################</span>
+<span class="c1"># 轮询服务器 - webserver3b.py                                         #</span>
+<span class="c1">#                                                                    #</span>
+<span class="c1"># 使用 Python 2.7.9 或 3.4                                            #</span>
+<span class="c1"># 在 Ubuntu 14.04 及 Mac OS X 环境下测试通过                           #</span>
+<span class="c1">#                                                                    #</span>
+<span class="c1"># - 服务器向客户端发送响应之后，会阻塞 60 秒                             #</span>
+<span class="c1">######################################################################</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+<span class="kn">import</span> <span class="nn">time</span>
+
+<span class="n">SERVER_ADDRESS</span> <span class="o">=</span> <span class="p">(</span><span class="n">HOST</span><span class="p">,</span> <span class="n">PORT</span><span class="p">)</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="mi">8888</span>
+<span class="n">REQUEST_QUEUE_SIZE</span> <span class="o">=</span> <span class="mi">5</span>
+
+
+<span class="k">def</span> <span class="nf">handle_request</span><span class="p">(</span><span class="n">client_connection</span><span class="p">):</span>
+    <span class="n">request</span> <span class="o">=</span> <span class="n">client_connection</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">decode</span><span class="p">())</span>
+    <span class="n">http_response</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">&quot;&quot;&quot;</span><span class="se">\</span>
+<span class="s2">HTTP/1.1 200 OK</span>
+
+<span class="s2">Hello, World!</span>
+<span class="s2">&quot;&quot;&quot;</span>
+    <span class="n">client_connection</span><span class="o">.</span><span class="n">sendall</span><span class="p">(</span><span class="n">http_response</span><span class="p">)</span>
+    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">60</span><span class="p">)</span>  <span class="c1">### 睡眠语句，阻塞该进程 60 秒</span>
+
+
+<span class="k">def</span> <span class="nf">serve_forever</span><span class="p">():</span>
+    <span class="n">listen_socket</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+    <span class="n">listen_socket</span><span class="o">.</span><span class="n">setsockopt</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">SOL_SOCKET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SO_REUSEADDR</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">listen_socket</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span><span class="n">SERVER_ADDRESS</span><span class="p">)</span>
+    <span class="n">listen_socket</span><span class="o">.</span><span class="n">listen</span><span class="p">(</span><span class="n">REQUEST_QUEUE_SIZE</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Serving HTTP on port </span><span class="si">{port}</span><span class="s1"> ...&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">port</span><span class="o">=</span><span class="n">PORT</span><span class="p">))</span>
+
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="n">client_connection</span><span class="p">,</span> <span class="n">client_address</span> <span class="o">=</span> <span class="n">listen_socket</span><span class="o">.</span><span class="n">accept</span><span class="p">()</span>
+        <span class="n">handle_request</span><span class="p">(</span><span class="n">client_connection</span><span class="p">)</span>
+        <span class="n">client_connection</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">serve_forever</span><span class="p">()</span>
+</code></pre></div>
+
+<p>用以下命令启动服务器：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python<span class="w"> </span>webserver3b.py
+</code></pre></div>
+
+<p>现在，打开一个新的命令行窗口，然后运行 <code>curl</code> 语句。你应该可以立刻看到屏幕上显示的字符串“Hello, World!”：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>curl<span class="w"> </span>http://localhost:8888/hello
+Hello,<span class="w"> </span>World!
+</code></pre></div>
+
+<p>然后，立刻打开第二个命令行窗口，运行相同的 <code>curl</code> 命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>curl<span class="w"> </span>http://localhost:8888/hello
+</code></pre></div>
+
+<p>如果你在 60 秒之内完成了以上步骤，你会看到第二条 <code>curl</code> 指令不会立刻产生任何输出，而只是挂在了哪里。同样，服务器也不会在标准输出流中输出新的请求内容。这是这个过程在我的 Mac 电脑上的运行结果（在右下角用黄色框标注出来的窗口中，我们能看到第二个 <code>curl</code> 指令被挂起，正在等待连接被服务器接受）：</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144223uo5qz8qok8wb099h.png"></p>
+<p>当你等待足够长的时间（60 秒以上）后，你会看到第一个 <code>curl</code> 程序完成，而第二个 <code>curl</code> 在屏幕上输出了“Hello, World!”，然后休眠 60 秒，进而终止。</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144224k01m1zo1ef710fmr.png"></p>
+<p>这样运行的原因是因为在服务器在处理完第一个来自 <code>curl</code> 的请求之后，只有等待 60 秒才能开始处理第二个请求。这个处理请求的过程按顺序进行（也可以说，迭代进行），一步一步进行，在我们刚刚给出的例子中，在同一时间内只能处理一个请求。</p>
+<p>现在，我们来简单讨论一下客户端与服务器的交流过程。为了让两个程序在网络中互相交流，它们必须使用套接字。你应当在本系列的前两部分中见过它几次了。但是，套接字是什么？</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144225dabrkbpphuubp5e5.png"></p>
+<p><ruby> 套接字 <rp>  （ </rp> <rt>  socket </rt> <rp>  ） </rp></ruby>是一个通讯通道<ruby> 端点 <rp>  （ </rp> <rt>  endpoint </rt> <rp>  ） </rp></ruby>的抽象描述，它可以让你的程序通过文件描述符来与其它程序进行交流。在这篇文章中，我只会单独讨论 Linux 或 Mac OS X 中的 TCP/IP 套接字。这里有一个重点概念需要你去理解：TCP <ruby> 套接字对 <rp>  （ </rp> <rt>  socket pair </rt> <rp>  ） </rp></ruby>。</p>
+<blockquote>
+<p>TCP 连接使用的套接字对是一个由 4 个元素组成的元组，它确定了 TCP 连接的两端：本地 IP 地址、本地端口、远端 IP 地址及远端端口。一个套接字对唯一地确定了网络中的每一个 TCP 连接。在连接一端的两个值：一个 IP 地址和一个端口，通常被称作一个套接字。（引自<a href="http://www.epubit.com.cn/book/details/1692">《UNIX 网络编程 卷1：套接字联网 API （第3版）》</a>）</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/201610/09/144226b648t2futy2vyt5v.png"></p>
+<p>所以，元组 <code>{10.10.10.2:49152, 12.12.12.3:8888}</code> 就是一个能够在客户端确定 TCP 连接两端的套接字对，而元组 <code>{12.12.12.3:8888, 10.10.10.2:49152}</code> 则是在服务端确定 TCP 连接两端的套接字对。在这个例子中，确定 TCP 服务端的两个值（IP 地址 <code>12.12.12.3</code> 及端口 <code>8888</code>），代表一个套接字；另外两个值则代表客户端的套接字。</p>
+<p>一个服务器创建一个套接字并开始建立连接的基本工作流程如下：</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144227ozv3rynoay6a76my.png"></p>
+<ol>
+<li>服务器创建一个 TCP/IP 套接字。我们可以用这条 Python 语句来创建：</li>
+</ol>
+<div class="highlight"><pre><span></span><code>listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+</code></pre></div>
+
+<ol>
+<li>服务器可能会设定一些套接字选项（这个步骤是可选的，但是你可以看到上面的服务器代码做了设定，这样才能够在重启服务器时多次复用同一地址）：</li>
+</ol>
+<div class="highlight"><pre><span></span><code>listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+</code></pre></div>
+
+<ol>
+<li>然后，服务器绑定一个地址。绑定函数 <code>bind</code> 可以将一个本地协议地址赋给套接字。若使用 TCP 协议，调用绑定函数 <code>bind</code> 时，需要指定一个端口号，一个 IP 地址，或两者兼有，或两者全无。（引自<a href="http://www.epubit.com.cn/book/details/1692">《UNIX网络编程 卷1：套接字联网 API （第3版）》</a>）</li>
+</ol>
+<div class="highlight"><pre><span></span><code>listen_socket.bind(SERVER_ADDRESS)
+</code></pre></div>
+
+<ol>
+<li>然后，服务器开启套接字的监听模式。</li>
+</ol>
+<div class="highlight"><pre><span></span><code>listen_socket.listen(REQUEST_QUEUE_SIZE)
+</code></pre></div>
+
+<p>监听函数 <code>listen</code> 只应在服务端调用。它会通知操作系统内核，表明它会接受所有向该套接字发送的入站连接请求。</p>
+<p>以上四步完成后，服务器将循环接收来自客户端的连接，一次循环处理一条。当有连接可用时，接受请求函数 <code>accept</code> 将会返回一个已连接的客户端套接字。然后，服务器从这个已连接的客户端套接字中读取请求数据，将数据在其标准输出流中输出出来，并向客户端回送一条消息。然后，服务器会关闭这个客户端连接，并准备接收一个新的客户端连接。</p>
+<p>这是客户端使用 TCP/IP 协议与服务器通信的必要步骤：</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144228yg1j0wt0l0t40i0g.png"></p>
+<p>下面是一段示例代码，使用这段代码，客户端可以连接你的服务器，发送一个请求，并输出响应内容：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">socket</span>
+
+<span class="c1">### 创建一个套接字，并连接值服务器</span>
+<span class="n">sock</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+<span class="n">sock</span><span class="o">.</span><span class="n">connect</span><span class="p">((</span><span class="s1">&#39;localhost&#39;</span><span class="p">,</span> <span class="mi">8888</span><span class="p">))</span>
+
+<span class="c1">### 发送一段数据，并接收响应数据</span>
+<span class="n">sock</span><span class="o">.</span><span class="n">sendall</span><span class="p">(</span><span class="sa">b</span><span class="s1">&#39;test&#39;</span><span class="p">)</span>
+<span class="n">data</span> <span class="o">=</span> <span class="n">sock</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">decode</span><span class="p">())</span>
+</code></pre></div>
+
+<p>在创建套接字后，客户端需要连接至服务器。我们可以调用连接函数 <code>connect</code> 来完成这个操作：</p>
+<div class="highlight"><pre><span></span><code><span class="nv">sock</span>.<span class="k">connect</span><span class="ss">((</span><span class="s1">&#39;localhost&#39;</span>,<span class="w"> </span><span class="mi">8888</span><span class="ss">))</span>
+</code></pre></div>
+
+<p>客户端只需提供待连接的远程服务器的 IP 地址（或主机名），及端口号，即可连接至远端服务器。</p>
+<p>你可能已经注意到了，客户端不需要调用 <code>bind</code> 及 <code>accept</code> 函数，就可以与服务器建立连接。客户端不需要调用 <code>bind</code> 函数是因为客户端不需要关注本地 IP 地址及端口号。操作系统内核中的 TCP/IP 协议栈会在客户端调用 <code>connect</code> 函数时，自动为套接字分配本地 IP 地址及本地端口号。这个本地端口被称为<ruby> 临时端口 <rp>  （ </rp> <rt>  ephemeral port </rt> <rp>  ） </rp></ruby>，即一个短暂开放的端口。</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144229pge5dm0ixbw9i6tj.png"></p>
+<p>服务器中有一些端口被用于承载一些众所周知的服务，它们被称作<ruby> 通用 <rp>  （ </rp> <rt>  well-known </rt> <rp>  ） </rp></ruby>端口：如 80 端口用于 HTTP 服务，22 端口用于 SSH 服务。打开你的 Python shell，与你在本地运行的服务器建立一个连接，来看看内核给你的客户端套接字分配了哪个临时端口（在尝试这个例子之前，你需要运行服务器程序 <code>webserver3a.py</code> 或 <code>webserver3b.py</code>）：</p>
+<div class="highlight"><pre><span></span><code><span class="o">&gt;&gt;&gt;</span> <span class="kn">import</span> <span class="nn">socket</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">sock</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">sock</span><span class="o">.</span><span class="n">connect</span><span class="p">((</span><span class="s1">&#39;localhost&#39;</span><span class="p">,</span> <span class="mi">8888</span><span class="p">))</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">host</span><span class="p">,</span> <span class="n">port</span> <span class="o">=</span> <span class="n">sock</span><span class="o">.</span><span class="n">getsockname</span><span class="p">()[:</span><span class="mi">2</span><span class="p">]</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">host</span><span class="p">,</span> <span class="n">port</span>
+<span class="p">(</span><span class="s1">&#39;127.0.0.1&#39;</span><span class="p">,</span> <span class="mi">60589</span><span class="p">)</span>
+</code></pre></div>
+
+<p>在上面的例子中，内核将临时端口 60589 分配给了你的套接字。</p>
+<p>在我开始回答我在第二部分中提出的问题之前，我还需要快速讲解一些概念。你很快就会明白这些概念为什么非常重要。这两个概念，一个是进程，另外一个是文件描述符。</p>
+<p>什么是进程？进程就是一个程序执行的实体。举个例子：当你的服务器代码被执行时，它会被载入内存，而内存中表现此次程序运行的实体就叫做进程。内核记录了进程的一系列有关信息——比如进程 ID——来追踪它的运行情况。当你在执行轮询服务器 <code>webserver3a.py</code> 或 <code>webserver3b.py</code> 时，你其实只是启动了一个进程。</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144229pbe9pahr8m2e2r4t.png"></p>
+<p>我们在终端窗口中运行 <code>webserver3b.py</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python<span class="w"> </span>webserver3b.py
+</code></pre></div>
+
+<p>在另一个终端窗口中，我们可以使用 <code>ps</code> 命令获取该进程的相关信息：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ps<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>webserver3b<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-v<span class="w"> </span>grep
+<span class="m">7182</span><span class="w"> </span>ttys003<span class="w">    </span><span class="m">0</span>:00.04<span class="w"> </span>python<span class="w"> </span>webserver3b.py
+</code></pre></div>
+
+<p><code>ps</code> 命令显示，我们刚刚只运行了一个 Python 进程 <code>webserver3b.py</code>。当一个进程被创建时，内核会为其分配一个进程 ID，也就是 PID。在 UNIX 中，所有用户进程都有一个父进程；当然，这个父进程也有进程 ID，叫做父进程 ID，缩写为 PPID。假设你默认使用 BASH shell，那当你启动服务器时，就会启动一个新的进程，同时被赋予一个 PID，而它的父进程 PID 会被设为 BASH shell 的 PID。</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144229dnhwgqoo67oanscq.png"></p>
+<p>自己尝试一下，看看这一切都是如何工作的。重新开启你的 Python shell，它会创建一个新进程，然后在其中使用系统调用 <code>os.getpid()</code> 及 <code>os.getppid()</code> 来获取 Python shell 进程的 PID 及其父进程 PID（也就是你的 BASH shell 的 PID）。然后，在另一个终端窗口中运行 <code>ps</code> 命令，然后用 <code>grep</code> 来查找 PPID（父进程 ID，在我的例子中是 3148）。在下面的屏幕截图中，你可以看到一个我的 Mac OS X 系统中关于进程父子关系的例子，在这个例子中，子进程是我的 Python shell 进程，而父进程是 BASH shell 进程：</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144231mgczk5ap7of0akjx.png"></p>
+<p>另外一个需要了解的概念，就是文件描述符。什么是文件描述符？文件描述符是一个非负整数，当进程打开一个现有文件、创建新文件或创建一个新的套接字时，内核会将这个数返回给进程。你以前可能听说过，在 UNIX 中，一切皆是文件。内核会按文件描述符来找到一个进程所打开的文件。当你需要读取文件或向文件写入时，我们同样通过文件描述符来定位这个文件。Python 提供了高层次的操作文件（或套接字）的对象，所以你不需要直接通过文件描述符来定位文件。但是，在高层对象之下，我们就是用它来在 UNIX 中定位文件及套接字，通过这个整数的文件描述符。</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144232r6o3vrgtom63pz4y.png"></p>
+<p>一般情况下，UNIX shell 会将一个进程的标准输入流（STDIN）的文件描述符设为 0，标准输出流（STDOUT）设为 1，而标准错误打印（STDERR）的文件描述符会被设为 2。</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144233sdabhm76haaddwa0.png"></p>
+<p>我之前提到过，即使 Python 提供了高层次的文件对象或类文件对象来供你操作，你仍然可以在对象上使用 <code>fileno()</code> 方法，来获取与该文件相关联的文件描述符。回到 Python shell 中，我们来看看你该怎么做到这一点：</p>
+<div class="highlight"><pre><span></span><code><span class="o">&gt;&gt;&gt;</span> <span class="kn">import</span> <span class="nn">sys</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">sys</span><span class="o">.</span><span class="n">stdin</span>
+<span class="o">&lt;</span><span class="nb">open</span> <span class="n">file</span> <span class="s1">&#39;&lt;stdin&gt;&#39;</span><span class="p">,</span> <span class="n">mode</span> <span class="s1">&#39;r&#39;</span> <span class="n">at</span> <span class="mh">0x102beb0c0</span><span class="o">&gt;</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">sys</span><span class="o">.</span><span class="n">stdin</span><span class="o">.</span><span class="n">fileno</span><span class="p">()</span>
+<span class="mi">0</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">fileno</span><span class="p">()</span>
+<span class="mi">1</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">fileno</span><span class="p">()</span>
+<span class="mi">2</span>
+</code></pre></div>
+
+<p>当你在 Python 中操作文件及套接字时，你可能会使用高层次的文件/套接字对象，但是你仍然有可能会直接使用文件描述符。下面有一个例子，来演示如何用文件描述符做参数来进行一次写入的系统调用：</p>
+<div class="highlight"><pre><span></span><code><span class="o">&gt;&gt;&gt;</span> <span class="kn">import</span> <span class="nn">sys</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="kn">import</span> <span class="nn">os</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">res</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">fileno</span><span class="p">(),</span> <span class="s1">&#39;hello</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+<span class="n">hello</span>
+</code></pre></div>
+
+<p>下面是比较有趣的部分——不过你可能不会为此感到惊讶，因为你已经知道在 Unix 中，一切皆为文件——你的套接字对象同样有一个相关联的文件描述符。和刚才操纵文件时一样，当你在 Python 中创建一个套接字时，你会得到一个对象而不是一个非负整数，但你永远可以用我之前提到过的 <code>fileno()</code> 方法获取套接字对象的文件描述符，并可以通过这个文件描述符来直接操纵套接字。</p>
+<div class="highlight"><pre><span></span><code><span class="o">&gt;&gt;&gt;</span> <span class="kn">import</span> <span class="nn">socket</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">sock</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">sock</span><span class="o">.</span><span class="n">fileno</span><span class="p">()</span>
+<span class="mi">3</span>
+</code></pre></div>
+
+<p>我还想再提一件事：不知道你有没有注意到，在我们的第二个轮询服务器 <code>webserver3b.py</code> 中，当你的服务器休眠 60 秒的过程中，你仍然可以通过第二个 <code>curl</code> 命令连接至服务器。当然 <code>curl</code> 命令并没有立刻输出任何内容而是挂在哪里，但是既然服务器没有接受连接，那它为什么不立即拒绝掉连接，而让它还能够继续与服务器建立连接呢？这个问题的答案是：当我在调用套接字对象的 <code>listen</code> 方法时，我为该方法提供了一个 <code>BACKLOG</code> 参数，在代码中用 <code>REQUEST_QUEUE_SIZE</code> 常量来表示。<code>BACKLOG</code> 参数决定了在内核中为存放即将到来的连接请求所创建的队列的大小。当服务器 <code>webserver3b.py</code> 在睡眠的时候，你运行的第二个 <code>curl</code> 命令依然能够连接至服务器，因为内核中用来存放即将接收的连接请求的队列依然拥有足够大的可用空间。</p>
+<p>尽管增大 <code>BACKLOG</code> 参数并不能神奇地使你的服务器同时处理多个请求，但当你的服务器很繁忙时，将它设置为一个较大的值还是相当重要的。这样，在你的服务器调用 <code>accept</code> 方法时，不需要再等待一个新的连接建立，而可以立刻直接抓取队列中的第一个客户端连接，并不加停顿地立刻处理它。</p>
+<p>欧耶！现在你已经了解了一大块内容。我们来快速回顾一下我们刚刚讲解的知识（当然，如果这些对你来说都是基础知识的话，那我们就当复习好啦）。</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144233qv878ax8rlkb3sso.png"></p>
+<ul>
+<li>轮询服务器</li>
+<li>服务端套接字创建流程（创建套接字，绑定，监听及接受）</li>
+<li>客户端连接创建流程（创建套接字，连接）</li>
+<li>套接字对</li>
+<li>套接字</li>
+<li>临时端口及通用端口</li>
+<li>进程</li>
+<li>进程 ID（PID），父进程 ID（PPID），以及进程父子关系</li>
+<li>文件描述符</li>
+<li>套接字的 <code>listen</code> 方法中，<code>BACKLOG</code> 参数的含义</li>
+</ul>
+<h3>如何并发处理多个请求</h3>
+<p>现在，我可以开始回答第二部分中的那个问题了：“你该如何让你的服务器在同一时间处理多个请求呢？”或者换一种说法：“如何编写一个并发服务器？”</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144234oxoss2xo3ux3sysj.png"></p>
+<p>在 UNIX 系统中编写一个并发服务器最简单的方法，就是使用系统调用 <code>fork()</code>。</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144234wtjonkwkkt0b2d02.png"></p>
+<p>下面是全新出炉的并发服务器 <a href="https://github.com/rspivak/lsbaws/blob/master/part3/webserver3c.py">webserver3c.py</a> 的代码，它可以同时处理多个请求（和我们之前的例子 <a href="https://github.com/rspivak/lsbaws/blob/master/part3/webserver3b.py">webserver3b.py</a> 一样，每个子进程都会休眠 60 秒）：</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144221gpbfsxuquizfl2lq.png"></p>
+<div class="highlight"><pre><span></span><code><span class="c1">#######################################################</span>
+<span class="c1"># 并发服务器 - webserver3c.py                          #</span>
+<span class="c1">#                                                     #</span>
+<span class="c1"># 使用 Python 2.7.9 或 3.4                             #</span>
+<span class="c1"># 在 Ubuntu 14.04 及 Mac OS X 环境下测试通过            #</span>
+<span class="c1">#                                                     #</span>
+<span class="c1"># - 完成客户端请求处理之后，子进程会休眠 60 秒             #</span>
+<span class="c1"># - 父子进程会关闭重复的描述符                           #</span>
+<span class="c1">#                                                     #</span>
+<span class="c1">#######################################################</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+<span class="kn">import</span> <span class="nn">time</span>
+
+<span class="n">SERVER_ADDRESS</span> <span class="o">=</span> <span class="p">(</span><span class="n">HOST</span><span class="p">,</span> <span class="n">PORT</span><span class="p">)</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="mi">8888</span>
+<span class="n">REQUEST_QUEUE_SIZE</span> <span class="o">=</span> <span class="mi">5</span>
+
+
+<span class="k">def</span> <span class="nf">handle_request</span><span class="p">(</span><span class="n">client_connection</span><span class="p">):</span>
+    <span class="n">request</span> <span class="o">=</span> <span class="n">client_connection</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span>
+        <span class="s1">&#39;Child PID: </span><span class="si">{pid}</span><span class="s1">. Parent PID </span><span class="si">{ppid}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+            <span class="n">pid</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">getpid</span><span class="p">(),</span>
+            <span class="n">ppid</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">getppid</span><span class="p">(),</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">decode</span><span class="p">())</span>
+    <span class="n">http_response</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">&quot;&quot;&quot;</span><span class="se">\</span>
+<span class="s2">HTTP/1.1 200 OK</span>
+
+<span class="s2">Hello, World!</span>
+<span class="s2">&quot;&quot;&quot;</span>
+    <span class="n">client_connection</span><span class="o">.</span><span class="n">sendall</span><span class="p">(</span><span class="n">http_response</span><span class="p">)</span>
+    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">60</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">serve_forever</span><span class="p">():</span>
+    <span class="n">listen_socket</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+    <span class="n">listen_socket</span><span class="o">.</span><span class="n">setsockopt</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">SOL_SOCKET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SO_REUSEADDR</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">listen_socket</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span><span class="n">SERVER_ADDRESS</span><span class="p">)</span>
+    <span class="n">listen_socket</span><span class="o">.</span><span class="n">listen</span><span class="p">(</span><span class="n">REQUEST_QUEUE_SIZE</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Serving HTTP on port </span><span class="si">{port}</span><span class="s1"> ...&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">port</span><span class="o">=</span><span class="n">PORT</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Parent PID (PPID): </span><span class="si">{pid}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">pid</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">getpid</span><span class="p">()))</span>
+
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="n">client_connection</span><span class="p">,</span> <span class="n">client_address</span> <span class="o">=</span> <span class="n">listen_socket</span><span class="o">.</span><span class="n">accept</span><span class="p">()</span>
+        <span class="n">pid</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">fork</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">pid</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>  <span class="c1">### 子进程</span>
+            <span class="n">listen_socket</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>  <span class="c1">### 关闭子进程中复制的套接字对象</span>
+            <span class="n">handle_request</span><span class="p">(</span><span class="n">client_connection</span><span class="p">)</span>
+            <span class="n">client_connection</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">_exit</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>  <span class="c1">### 子进程在这里退出</span>
+        <span class="k">else</span><span class="p">:</span>  <span class="c1">### 父进程</span>
+            <span class="n">client_connection</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>  <span class="c1">### 关闭父进程中的客户端连接对象，并循环执行</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">serve_forever</span><span class="p">()</span>
+</code></pre></div>
+
+<p>在深入研究代码、讨论 <code>fork</code> 如何工作之前，先尝试运行它，自己看一看这个服务器是否真的可以同时处理多个客户端请求，而不是像轮询服务器 <code>webserver3a.py</code> 和 <code>webserver3b.py</code> 一样。在命令行中使用如下命令启动服务器：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python<span class="w"> </span>webserver3c.py
+</code></pre></div>
+
+<p>然后，像我们之前测试轮询服务器那样，运行两个 <code>curl</code> 命令，来看看这次的效果。现在你可以看到，即使子进程在处理客户端请求后会休眠 60 秒，但它并不会影响其它客户端连接，因为他们都是由完全独立的进程来处理的。你应该看到你的 <code>curl</code> 命令立即输出了“Hello, World!”然后挂起 60 秒。你可以按照你的想法运行尽可能多的 <code>curl</code> 命令（好吧，并不能运行特别特别多 <code>^_^</code>），所有的命令都会立刻输出来自服务器的响应 “Hello, World!”，并不会出现任何可被察觉到的延迟行为。试试看吧。</p>
+<p>如果你要理解 <code>fork()</code>，那最重要的一点是：<strong>你调用了它一次，但是它会返回两次</strong> —— 一次在父进程中，另一次是在子进程中。当你创建了一个新进程，那么 <code>fork()</code> 在子进程中的返回值是 0。如果是在父进程中，那 <code>fork()</code> 函数会返回子进程的 PID。</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144235a1xp89vzdq6n9n90.png"></p>
+<p>我依然记得在第一次看到它并尝试使用 <code>fork()</code> 的时候，我是多么的入迷。它在我眼里就像是魔法一样。这就好像我在读一段顺序执行的代码，然后“砰！”地一声，代码变成了两份，然后出现了两个实体，同时并行地运行相同的代码。讲真，那个时候我觉得它真的跟魔法一样神奇。</p>
+<p>当父进程创建出一个新的子进程时，子进程会复制从父进程中复制一份文件描述符：</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144237dlqkiiqo4j4r9oit.png"></p>
+<p>你可能注意到，在上面的代码中，父进程关闭了客户端连接：</p>
+<div class="highlight"><pre><span></span><code>else:  ### 父进程
+    client_connection.close()  # 关闭父进程的副本并循环
+</code></pre></div>
+
+<p>不过，既然父进程关闭了这个套接字，那为什么子进程仍然能够从来自客户端的套接字中读取数据呢？答案就在上面的图片中。内核会使用描述符引用计数器来决定是否要关闭一个套接字。当你的服务器创建一个子进程时，子进程会复制父进程的所有文件描述符，内核中该描述符的引用计数也会增加。如果只有一个父进程及一个子进程，那客户端套接字的文件描述符引用数应为 2；当父进程关闭客户端连接的套接字时，内核只会减少它的引用计数，将其变为 1，但这仍然不会使内核关闭该套接字。子进程也关闭了父进程中 <code>listen_socket</code> 的复制实体，因为子进程不需要关注新的客户端连接，而只需要处理已建立的客户端连接中的请求。</p>
+<div class="highlight"><pre><span></span><code>listen_socket.close()  ### 关闭子进程中的复制实体
+</code></pre></div>
+
+<p>我们将会在后文中讨论，如果你不关闭那些重复的描述符，会发生什么。</p>
+<p>你可以从你的并发服务器源码中看到，父进程的主要职责为：接受一个新的客户端连接，复制出一个子进程来处理这个连接，然后继续循环来接受另外的客户端连接，仅此而已。服务器父进程并不会处理客户端连接——子进程才会做这件事。</p>
+<p>打个岔：当我们说两个事件并发执行时，我们所要表达的意思是什么？</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144238qs0uzarwo5rua2v2.png"></p>
+<p>当我们说“两个事件并发执行”时，它通常意味着这两个事件同时发生。简单来讲，这个定义没问题，但你应该记住它的严格定义：</p>
+<blockquote>
+<p>如果你不能在代码中判断两个事件的发生顺序，那这两个事件就是并发执行的。（引自<a href="http://www.amazon.com/gp/product/1441418687/ref=as_li_tl?ie=UTF8&amp;camp=1789&amp;creative=9325&amp;creativeASIN=1441418687&amp;linkCode=as2&amp;tag=russblo0b-20&amp;linkId=QFOAWARN62OWTWUG">《信号系统简明手册 (第二版): 并发控制深入浅出及常见错误》</a>）</p>
+</blockquote>
+<p>好的，现在你又该回顾一下你刚刚学过的知识点了。</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144233qv878ax8rlkb3sso.png"></p>
+<ul>
+<li>在 Unix 中，编写一个并发服务器的最简单的方式——使用 <code>fork()</code> 系统调用；</li>
+<li>当一个进程分叉（<code>fork</code>）出另一个进程时，它会变成刚刚分叉出的进程的父进程；</li>
+<li>在进行 <code>fork</code> 调用后，父进程和子进程共享相同的文件描述符；</li>
+<li>系统内核通过描述符的引用计数来决定是否要关闭该描述符对应的文件或套接字；</li>
+<li>服务器父进程的主要职责：现在它做的只是从客户端接受一个新的连接，分叉出子进程来处理这个客户端连接，然后开始下一轮循环，去接收新的客户端连接。</li>
+</ul>
+<h3>进程分叉后不关闭重复的套接字会发生什么？</h3>
+<p>我们来看看，如果我们不在父进程与子进程中关闭重复的套接字描述符会发生什么。下面是刚才的并发服务器代码的修改版本，这段代码（<a href="https://github.com/rspivak/lsbaws/blob/master/part3/webserver3d.py">webserver3d.py</a> 中，服务器不会关闭重复的描述符）：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">#######################################################</span>
+<span class="c1"># 并发服务器 - webserver3d.py                          #</span>
+<span class="c1">#                                                     #</span>
+<span class="c1"># 使用 Python 2.7.9 或 3.4                             #</span>
+<span class="c1"># 在 Ubuntu 14.04 及 Mac OS X 环境下测试通过            #</span>
+<span class="c1">#######################################################</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+
+<span class="n">SERVER_ADDRESS</span> <span class="o">=</span> <span class="p">(</span><span class="n">HOST</span><span class="p">,</span> <span class="n">PORT</span><span class="p">)</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="mi">8888</span>
+<span class="n">REQUEST_QUEUE_SIZE</span> <span class="o">=</span> <span class="mi">5</span>
+
+
+<span class="k">def</span> <span class="nf">handle_request</span><span class="p">(</span><span class="n">client_connection</span><span class="p">):</span>
+    <span class="n">request</span> <span class="o">=</span> <span class="n">client_connection</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+    <span class="n">http_response</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">&quot;&quot;&quot;</span><span class="se">\</span>
+<span class="s2">HTTP/1.1 200 OK</span>
+
+<span class="s2">Hello, World!</span>
+<span class="s2">&quot;&quot;&quot;</span>
+    <span class="n">client_connection</span><span class="o">.</span><span class="n">sendall</span><span class="p">(</span><span class="n">http_response</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">serve_forever</span><span class="p">():</span>
+    <span class="n">listen_socket</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+    <span class="n">listen_socket</span><span class="o">.</span><span class="n">setsockopt</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">SOL_SOCKET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SO_REUSEADDR</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">listen_socket</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span><span class="n">SERVER_ADDRESS</span><span class="p">)</span>
+    <span class="n">listen_socket</span><span class="o">.</span><span class="n">listen</span><span class="p">(</span><span class="n">REQUEST_QUEUE_SIZE</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Serving HTTP on port </span><span class="si">{port}</span><span class="s1"> ...&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">port</span><span class="o">=</span><span class="n">PORT</span><span class="p">))</span>
+
+    <span class="n">clients</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="n">client_connection</span><span class="p">,</span> <span class="n">client_address</span> <span class="o">=</span> <span class="n">listen_socket</span><span class="o">.</span><span class="n">accept</span><span class="p">()</span>
+        <span class="c1">### 将引用存储起来，否则在下一轮循环时，他们会被垃圾回收机制销毁</span>
+        <span class="n">clients</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">client_connection</span><span class="p">)</span>
+        <span class="n">pid</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">fork</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">pid</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>  <span class="c1">### 子进程</span>
+            <span class="n">listen_socket</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>  <span class="c1">### 关闭子进程中多余的套接字</span>
+            <span class="n">handle_request</span><span class="p">(</span><span class="n">client_connection</span><span class="p">)</span>
+            <span class="n">client_connection</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">_exit</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>  <span class="c1">### 子进程在这里结束</span>
+        <span class="k">else</span><span class="p">:</span>  <span class="c1">### 父进程</span>
+            <span class="c1"># client_connection.close()</span>
+            <span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">clients</span><span class="p">))</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">serve_forever</span><span class="p">()</span>
+</code></pre></div>
+
+<p>用以下命令来启动服务器：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python<span class="w"> </span>webserver3d.py
+</code></pre></div>
+
+<p>用 <code>curl</code> 命令连接服务器：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>curl<span class="w"> </span>http://localhost:8888/hello
+Hello,<span class="w"> </span>World!
+</code></pre></div>
+
+<p>好，<code>curl</code> 命令输出了来自并发服务器的响应内容，但程序并没有退出，而是仍然挂起。到底发生了什么？这个服务器并不会挂起 60 秒：子进程只处理客户端连接，关闭连接然后退出，但客户端的 <code>curl</code> 命令并没有终止。</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144239j2iv2esj9svdivjs.png"></p>
+<p>所以，为什么 <code>curl</code> 不终止呢？原因就在于文件描述符的副本。当子进程关闭客户端连接时，系统内核会减少客户端套接字的引用计数，将其变为 1。服务器子进程退出了，但客户端套接字并没有被内核关闭，因为该套接字的描述符引用计数并没有变为 0，所以，这就导致了连接终止包（在 TCP/IP 协议中称作 <code>FIN</code>）不会被发送到客户端，所以客户端会一直保持连接。这里也会出现另一个问题：如果你的服务器长时间运行，并且不关闭文件描述符的副本，那么可用的文件描述符会被消耗殆尽：</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144239bxen0lvyjreinl6g.png"></p>
+<p>使用 <code>Control-C</code> 关闭服务器 <code>webserver3d.py</code>，然后在 shell 中使用内置命令 <code>ulimit</code> 来查看系统默认为你的服务器进程分配的可用资源数：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">ulimit</span><span class="w"> </span>-a
+core<span class="w"> </span>file<span class="w"> </span>size<span class="w">          </span><span class="o">(</span>blocks,<span class="w"> </span>-c<span class="o">)</span><span class="w"> </span><span class="m">0</span>
+data<span class="w"> </span>seg<span class="w"> </span>size<span class="w">           </span><span class="o">(</span>kbytes,<span class="w"> </span>-d<span class="o">)</span><span class="w"> </span>unlimited
+scheduling<span class="w"> </span>priority<span class="w">             </span><span class="o">(</span>-e<span class="o">)</span><span class="w"> </span><span class="m">0</span>
+file<span class="w"> </span>size<span class="w">               </span><span class="o">(</span>blocks,<span class="w"> </span>-f<span class="o">)</span><span class="w"> </span>unlimited
+pending<span class="w"> </span>signals<span class="w">                 </span><span class="o">(</span>-i<span class="o">)</span><span class="w"> </span><span class="m">3842</span>
+max<span class="w"> </span>locked<span class="w"> </span>memory<span class="w">       </span><span class="o">(</span>kbytes,<span class="w"> </span>-l<span class="o">)</span><span class="w"> </span><span class="m">64</span>
+max<span class="w"> </span>memory<span class="w"> </span>size<span class="w">         </span><span class="o">(</span>kbytes,<span class="w"> </span>-m<span class="o">)</span><span class="w"> </span>unlimited
+open<span class="w"> </span>files<span class="w">                      </span><span class="o">(</span>-n<span class="o">)</span><span class="w"> </span><span class="m">1024</span>
+pipe<span class="w"> </span>size<span class="w">            </span><span class="o">(</span><span class="m">512</span><span class="w"> </span>bytes,<span class="w"> </span>-p<span class="o">)</span><span class="w"> </span><span class="m">8</span>
+POSIX<span class="w"> </span>message<span class="w"> </span>queues<span class="w">     </span><span class="o">(</span>bytes,<span class="w"> </span>-q<span class="o">)</span><span class="w"> </span><span class="m">819200</span>
+real-time<span class="w"> </span>priority<span class="w">              </span><span class="o">(</span>-r<span class="o">)</span><span class="w"> </span><span class="m">0</span>
+stack<span class="w"> </span>size<span class="w">              </span><span class="o">(</span>kbytes,<span class="w"> </span>-s<span class="o">)</span><span class="w"> </span><span class="m">8192</span>
+cpu<span class="w"> </span><span class="nb">time</span><span class="w">               </span><span class="o">(</span>seconds,<span class="w"> </span>-t<span class="o">)</span><span class="w"> </span>unlimited
+max<span class="w"> </span>user<span class="w"> </span>processes<span class="w">              </span><span class="o">(</span>-u<span class="o">)</span><span class="w"> </span><span class="m">3842</span>
+virtual<span class="w"> </span>memory<span class="w">          </span><span class="o">(</span>kbytes,<span class="w"> </span>-v<span class="o">)</span><span class="w"> </span>unlimited
+file<span class="w"> </span>locks<span class="w">                      </span><span class="o">(</span>-x<span class="o">)</span><span class="w"> </span>unlimited
+</code></pre></div>
+
+<p>你可以从上面的结果看到，在我的 Ubuntu 机器中，系统为我的服务器进程分配的最大可用文件描述符（文件打开）数为 1024。</p>
+<p>现在我们来看一看，如果你的服务器不关闭重复的描述符，它会如何消耗可用的文件描述符。在一个已有的或新建的终端窗口中，将你的服务器进程的最大可用文件描述符设为 256：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">ulimit</span><span class="w"> </span>-n<span class="w"> </span><span class="m">256</span>
+</code></pre></div>
+
+<p>在你刚刚运行 <code>ulimit -n 256</code> 的终端窗口中运行服务器 <a href="https://github.com/rspivak/lsbaws/blob/master/part3/webserver3d.py">webserver3d.py</a>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python<span class="w"> </span>webserver3d.py
+</code></pre></div>
+
+<p>然后使用下面的客户端 <a href="https://github.com/rspivak/lsbaws/blob/master/part3/client3.py">client3.py</a> 来测试你的服务器。</p>
+<div class="highlight"><pre><span></span><code><span class="c1">#######################################################</span>
+<span class="c1"># 测试客户端 - client3.py                              #</span>
+<span class="c1">#                                                     #</span>
+<span class="c1"># 使用 Python 2.7.9 或 3.4                             #</span>
+<span class="c1"># 在 Ubuntu 14.04 及 Mac OS X 环境下测试通过            #</span>
+<span class="c1">#######################################################</span>
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">errno</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+
+
+<span class="n">SERVER_ADDRESS</span> <span class="o">=</span> <span class="s1">&#39;localhost&#39;</span><span class="p">,</span> <span class="mi">8888</span>
+<span class="n">REQUEST</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">&quot;&quot;&quot;</span><span class="se">\</span>
+<span class="s2">GET /hello HTTP/1.1</span>
+<span class="s2">Host: localhost:8888</span>
+
+<span class="s2">&quot;&quot;&quot;</span>
+
+
+<span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">max_clients</span><span class="p">,</span> <span class="n">max_conns</span><span class="p">):</span>
+    <span class="n">socks</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">client_num</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_clients</span><span class="p">):</span>
+        <span class="n">pid</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">fork</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">pid</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">connection_num</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_conns</span><span class="p">):</span>
+                <span class="n">sock</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+                <span class="n">sock</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">SERVER_ADDRESS</span><span class="p">)</span>
+                <span class="n">sock</span><span class="o">.</span><span class="n">sendall</span><span class="p">(</span><span class="n">REQUEST</span><span class="p">)</span>
+                <span class="n">socks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">sock</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">connection_num</span><span class="p">)</span>
+                <span class="n">os</span><span class="o">.</span><span class="n">_exit</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span>
+        <span class="n">description</span><span class="o">=</span><span class="s1">&#39;Test client for LSBAWS.&#39;</span><span class="p">,</span>
+        <span class="n">formatter_class</span><span class="o">=</span><span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentDefaultsHelpFormatter</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s1">&#39;--max-conns&#39;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">1024</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s1">&#39;Maximum number of connections per client.&#39;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s1">&#39;--max-clients&#39;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s1">&#39;Maximum number of clients.&#39;</span>
+    <span class="p">)</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+    <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">max_clients</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">max_conns</span><span class="p">)</span>
+</code></pre></div>
+
+<p>在一个新建的终端窗口中，运行 <code>client3.py</code> 然后让它与服务器同步创建 300 个连接：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python<span class="w"> </span>client3.py<span class="w"> </span>--max-clients<span class="o">=</span><span class="m">300</span>
+</code></pre></div>
+
+<p>过一会，你的服务器进程就该爆了。这是我的环境中出现的异常截图：</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144240p2xiaofi2cxhoo2m.png"></p>
+<p>这个例子很明显——你的服务器应该关闭描述符副本。</p>
+<h4>僵尸进程</h4>
+<p>但是，即使你关闭了描述符副本，你依然没有摆脱险境，因为你的服务器还有一个问题，这个问题在于“<ruby> 僵尸 <rp>  （ </rp> <rt>  zombies </rt> <rp>  ） </rp></ruby>”！</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144241uwx1agi4xljgwgir.png"></p>
+<p>没错，这个服务器代码确实在制造僵尸进程。我们来看看怎么回事。重新运行你的服务器：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python<span class="w"> </span>webserver3d.py
+</code></pre></div>
+
+<p>在另一个终端窗口中运行以下 <code>curl</code> 命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>curl<span class="w"> </span>http://localhost:8888/hello
+</code></pre></div>
+
+<p>现在，运行 <code>ps</code> 环境，来查看正在运行的 Python 进程。下面是我的环境中 <code>ps</code> 的运行结果：</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">ps</span><span class="w"> </span><span class="n">auxw</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="o">-</span><span class="n">i</span><span class="w"> </span><span class="n">python</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="o">-</span><span class="n">v</span><span class="w"> </span><span class="n">grep</span>
+<span class="n">vagrant</span><span class="w">   </span><span class="mi">9099</span><span class="w">  </span><span class="mf">0.0</span><span class="w">  </span><span class="mf">1.2</span><span class="w">  </span><span class="mi">31804</span><span class="w">  </span><span class="mi">6256</span><span class="w"> </span><span class="n">pts</span><span class="o">/</span><span class="mi">0</span><span class="w">    </span><span class="n">S</span><span class="o">+</span><span class="w">   </span><span class="mi">16</span><span class="err">:</span><span class="mi">33</span><span class="w">   </span><span class="mi">0</span><span class="err">:</span><span class="mi">00</span><span class="w"> </span><span class="n">python</span><span class="w"> </span><span class="n">webserver3d</span><span class="p">.</span><span class="n">py</span>
+<span class="n">vagrant</span><span class="w">   </span><span class="mi">9102</span><span class="w">  </span><span class="mf">0.0</span><span class="w">  </span><span class="mf">0.0</span><span class="w">      </span><span class="mi">0</span><span class="w">     </span><span class="mi">0</span><span class="w"> </span><span class="n">pts</span><span class="o">/</span><span class="mi">0</span><span class="w">    </span><span class="n">Z</span><span class="o">+</span><span class="w">   </span><span class="mi">16</span><span class="err">:</span><span class="mi">33</span><span class="w">   </span><span class="mi">0</span><span class="err">:</span><span class="mi">00</span><span class="w"> </span><span class="o">[</span><span class="n">python</span><span class="o">]</span><span class="w"> </span><span class="o">&lt;</span><span class="n">defunct</span><span class="o">&gt;</span>
+</code></pre></div>
+
+<p>你看到第二行中，pid 为 9102，状态为 <code>Z+</code>，名字里面有个 <code>&lt;defunct&gt;</code> 的进程了吗？那就是我们的僵尸进程。这个僵尸进程的问题在于：你无法将它杀掉！</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144242rnzg3zh0d1qmnm0h.png"></p>
+<p>就算你尝试使用 <code>kill -9</code> 来杀死僵尸进程，它们仍旧会存活。自己试试看，看看结果。</p>
+<p>这个僵尸到底是什么，为什么我们的服务器会造出它们呢？一个<ruby> 僵尸进程 <rp>  （ </rp> <rt>  zombie </rt> <rp>  ） </rp></ruby>是一个已经结束的进程，但它的父进程并没有等待（<code>waited</code>）它结束，并且也没有收到它的终结状态。如果一个进程在父进程退出之前退出，系统内核会把它变为一个僵尸进程，存储它的部分信息，以便父进程读取。内核保存的进程信息通常包括进程 ID、进程终止状态，以及进程的资源占用情况。OK，所以僵尸进程确实有存在的意义，但如果服务器不管这些僵尸进程，你的系统将会被壅塞。我们来看看这个会如何发生。首先，关闭你运行的服务器；然后，在一个新的终端窗口中，使用 <code>ulimit</code> 命令将最大用户进程数设为 400（同时，要确保你的最大可用描述符数大于这个数字，我们在这里设为 500）：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">ulimit</span><span class="w"> </span>-u<span class="w"> </span><span class="m">400</span>
+$<span class="w"> </span><span class="nb">ulimit</span><span class="w"> </span>-n<span class="w"> </span><span class="m">500</span>
+</code></pre></div>
+
+<p>在你刚刚运行 <code>ulimit -u 400</code> 命令的终端中，运行服务器 <code>webserver3d.py</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python<span class="w"> </span>webserver3d.py
+</code></pre></div>
+
+<p>在一个新的终端窗口中，运行 <code>client3.py</code>，并且让它与服务器同时创建 500 个连接：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python<span class="w"> </span>client3.py<span class="w"> </span>--max-clients<span class="o">=</span><span class="m">500</span>
+</code></pre></div>
+
+<p>然后，过一会，你的服务器进程应该会再次爆了，它会在创建新进程时抛出一个 <code>OSError: 资源暂时不可用</code> 的异常。但它并没有达到系统允许的最大进程数。这是我的环境中输出的异常信息截图：</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144242xwf457nwft574404.png"></p>
+<p>你可以看到，如果服务器不管僵尸进程，它们会引发问题。接下来我会简单探讨一下僵尸进程问题的解决方案。</p>
+<p>我们来回顾一下你刚刚掌握的知识点：</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144233qv878ax8rlkb3sso.png"></p>
+<ul>
+<li>如果你不关闭文件描述符副本，客户端就不会在请求处理完成后终止，因为客户端连接没有被关闭；</li>
+<li>如果你不关闭文件描述符副本，长久运行的服务器最终会把可用的文件描述符（最大文件打开数）消耗殆尽；</li>
+<li>当你创建一个新进程，而父进程不等待（<code>wait</code>）子进程，也不在子进程结束后收集它的终止状态，它会变为一个僵尸进程；</li>
+<li>僵尸通常都会吃东西，在我们的例子中，僵尸进程会吃掉资源。如果你的服务器不管僵尸进程，它最终会消耗掉所有的可用进程（最大用户进程数）；</li>
+<li>你不能杀死（<code>kill</code>）僵尸进程，你需要等待（<code>wait</code>）它。</li>
+</ul>
+<h3>如何处理僵尸进程？</h3>
+<p>所以，你需要做什么来处理僵尸进程呢？你需要修改你的服务器代码，来等待（<code>wait</code>）僵尸进程，并收集它们的终止信息。你可以在代码中使用系统调用 <code>wait</code> 来完成这个任务。不幸的是，这个方法离理想目标还很远，因为在没有终止的子进程存在的情况下调用 <code>wait</code> 会导致服务器进程阻塞，这会阻碍你的服务器处理新的客户端连接请求。那么，我们有其他选择吗？嗯，有的，其中一个解决方案需要结合信号处理以及 <code>wait</code> 系统调用。</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144243orgiz9gzzotl1fo7.png"></p>
+<p>这是它的工作流程。当一个子进程退出时，内核会发送 <code>SIGCHLD</code> 信号。父进程可以设置一个信号处理器，它可以异步响应 <code>SIGCHLD</code> 信号，并在信号响应函数中等待（<code>wait</code>）子进程收集终止信息，从而阻止了僵尸进程的存在。</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144244n844sw233eab5s58.png"></p>
+<p>顺便说一下，异步事件意味着父进程无法提前知道事件的发生时间。</p>
+<p>修改你的服务器代码，设置一个 <code>SIGCHLD</code> 信号处理器，在信号处理器中等待（<code>wait</code>）终止的子进程。修改后的代码如下（<a href="https://github.com/rspivak/lsbaws/blob/master/part3/webserver3e.py">webserver3e.py</a>）：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">#######################################################</span>
+<span class="c1"># 并发服务器 - webserver3e.py                          #</span>
+<span class="c1">#                                                     #</span>
+<span class="c1"># 使用 Python 2.7.9 或 3.4                             #</span>
+<span class="c1"># 在 Ubuntu 14.04 及 Mac OS X 环境下测试通过            #</span>
+<span class="c1">#######################################################</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">signal</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+<span class="kn">import</span> <span class="nn">time</span>
+
+<span class="n">SERVER_ADDRESS</span> <span class="o">=</span> <span class="p">(</span><span class="n">HOST</span><span class="p">,</span> <span class="n">PORT</span><span class="p">)</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="mi">8888</span>
+<span class="n">REQUEST_QUEUE_SIZE</span> <span class="o">=</span> <span class="mi">5</span>
+
+
+<span class="k">def</span> <span class="nf">grim_reaper</span><span class="p">(</span><span class="n">signum</span><span class="p">,</span> <span class="n">frame</span><span class="p">):</span>
+    <span class="n">pid</span><span class="p">,</span> <span class="n">status</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">wait</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span>
+        <span class="s1">&#39;Child </span><span class="si">{pid}</span><span class="s1"> terminated with status </span><span class="si">{status}</span><span class="s1">&#39;</span>
+        <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">pid</span><span class="o">=</span><span class="n">pid</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="n">status</span><span class="p">)</span>
+    <span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">handle_request</span><span class="p">(</span><span class="n">client_connection</span><span class="p">):</span>
+    <span class="n">request</span> <span class="o">=</span> <span class="n">client_connection</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">decode</span><span class="p">())</span>
+    <span class="n">http_response</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">&quot;&quot;&quot;</span><span class="se">\</span>
+<span class="s2">HTTP/1.1 200 OK</span>
+
+<span class="s2">Hello, World!</span>
+<span class="s2">&quot;&quot;&quot;</span>
+    <span class="n">client_connection</span><span class="o">.</span><span class="n">sendall</span><span class="p">(</span><span class="n">http_response</span><span class="p">)</span>
+    <span class="c1">### 挂起进程，来允许父进程完成循环，并在 &quot;accept&quot; 处阻塞</span>
+    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">serve_forever</span><span class="p">():</span>
+    <span class="n">listen_socket</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+    <span class="n">listen_socket</span><span class="o">.</span><span class="n">setsockopt</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">SOL_SOCKET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SO_REUSEADDR</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">listen_socket</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span><span class="n">SERVER_ADDRESS</span><span class="p">)</span>
+    <span class="n">listen_socket</span><span class="o">.</span><span class="n">listen</span><span class="p">(</span><span class="n">REQUEST_QUEUE_SIZE</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Serving HTTP on port </span><span class="si">{port}</span><span class="s1"> ...&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">port</span><span class="o">=</span><span class="n">PORT</span><span class="p">))</span>
+
+    <span class="n">signal</span><span class="o">.</span><span class="n">signal</span><span class="p">(</span><span class="n">signal</span><span class="o">.</span><span class="n">SIGCHLD</span><span class="p">,</span> <span class="n">grim_reaper</span><span class="p">)</span>
+
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="n">client_connection</span><span class="p">,</span> <span class="n">client_address</span> <span class="o">=</span> <span class="n">listen_socket</span><span class="o">.</span><span class="n">accept</span><span class="p">()</span>
+        <span class="n">pid</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">fork</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">pid</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>  <span class="c1">### 子进程</span>
+            <span class="n">listen_socket</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>  <span class="c1">### 关闭子进程中多余的套接字</span>
+            <span class="n">handle_request</span><span class="p">(</span><span class="n">client_connection</span><span class="p">)</span>
+            <span class="n">client_connection</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">_exit</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>  <span class="c1">### 父进程</span>
+            <span class="n">client_connection</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">serve_forever</span><span class="p">()</span>
+</code></pre></div>
+
+<p>运行服务器：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python<span class="w"> </span>webserver3e.py
+</code></pre></div>
+
+<p>使用你的老朋友——<code>curl</code> 命令来向修改后的并发服务器发送一个请求：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>curl<span class="w"> </span>http://localhost:8888/hello
+</code></pre></div>
+
+<p>再来看看服务器：</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144245lantztjl3tlalitl.png"></p>
+<p>刚刚发生了什么？<code>accept</code> 调用失败了，错误信息为 <code>EINTR</code>。</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144246txay743rab5zura7.png"></p>
+<p>当子进程退出并触发 <code>SIGCHLD</code> 事件时，父进程的 <code>accept</code> 调用被阻塞了，系统转去运行信号处理器，当信号处理函数完成时，<code>accept</code> 系统调用被打断：</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144246fea64024jb14hda1.png"></p>
+<p>别担心，这个问题很好解决。你只需要重新运行 <code>accept</code> 系统调用即可。这是修改后的服务器代码 <a href="https://github.com/rspivak/lsbaws/blob/master/part3/webserver3f.py">webserver3f.py</a>，它可以解决这个问题：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">#######################################################</span>
+<span class="c1"># 并发服务器 - webserver3f.py                          #</span>
+<span class="c1">#                                                     #</span>
+<span class="c1"># 使用 Python 2.7.9 或 3.4                             #</span>
+<span class="c1"># 在 Ubuntu 14.04 及 Mac OS X 环境下测试通过            #</span>
+<span class="c1">#######################################################</span>
+<span class="kn">import</span> <span class="nn">errno</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">signal</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+
+<span class="n">SERVER_ADDRESS</span> <span class="o">=</span> <span class="p">(</span><span class="n">HOST</span><span class="p">,</span> <span class="n">PORT</span><span class="p">)</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="mi">8888</span>
+<span class="n">REQUEST_QUEUE_SIZE</span> <span class="o">=</span> <span class="mi">1024</span>
+
+
+<span class="k">def</span> <span class="nf">grim_reaper</span><span class="p">(</span><span class="n">signum</span><span class="p">,</span> <span class="n">frame</span><span class="p">):</span>
+    <span class="n">pid</span><span class="p">,</span> <span class="n">status</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">wait</span><span class="p">()</span>
+
+
+<span class="k">def</span> <span class="nf">handle_request</span><span class="p">(</span><span class="n">client_connection</span><span class="p">):</span>
+    <span class="n">request</span> <span class="o">=</span> <span class="n">client_connection</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">decode</span><span class="p">())</span>
+    <span class="n">http_response</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">&quot;&quot;&quot;</span><span class="se">\</span>
+<span class="s2">HTTP/1.1 200 OK</span>
+
+<span class="s2">Hello, World!</span>
+<span class="s2">&quot;&quot;&quot;</span>
+    <span class="n">client_connection</span><span class="o">.</span><span class="n">sendall</span><span class="p">(</span><span class="n">http_response</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">serve_forever</span><span class="p">():</span>
+    <span class="n">listen_socket</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+    <span class="n">listen_socket</span><span class="o">.</span><span class="n">setsockopt</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">SOL_SOCKET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SO_REUSEADDR</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">listen_socket</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span><span class="n">SERVER_ADDRESS</span><span class="p">)</span>
+    <span class="n">listen_socket</span><span class="o">.</span><span class="n">listen</span><span class="p">(</span><span class="n">REQUEST_QUEUE_SIZE</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Serving HTTP on port </span><span class="si">{port}</span><span class="s1"> ...&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">port</span><span class="o">=</span><span class="n">PORT</span><span class="p">))</span>
+
+    <span class="n">signal</span><span class="o">.</span><span class="n">signal</span><span class="p">(</span><span class="n">signal</span><span class="o">.</span><span class="n">SIGCHLD</span><span class="p">,</span> <span class="n">grim_reaper</span><span class="p">)</span>
+
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">client_connection</span><span class="p">,</span> <span class="n">client_address</span> <span class="o">=</span> <span class="n">listen_socket</span><span class="o">.</span><span class="n">accept</span><span class="p">()</span>
+        <span class="k">except</span> <span class="ne">IOError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">code</span><span class="p">,</span> <span class="n">msg</span> <span class="o">=</span> <span class="n">e</span><span class="o">.</span><span class="n">args</span>
+            <span class="c1">### 若 &#39;accept&#39; 被打断，那么重启它</span>
+            <span class="k">if</span> <span class="n">code</span> <span class="o">==</span> <span class="n">errno</span><span class="o">.</span><span class="n">EINTR</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span>
+
+        <span class="n">pid</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">fork</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">pid</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>  <span class="c1">### 子进程</span>
+            <span class="n">listen_socket</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>  <span class="c1">### 关闭子进程中多余的描述符</span>
+            <span class="n">handle_request</span><span class="p">(</span><span class="n">client_connection</span><span class="p">)</span>
+            <span class="n">client_connection</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">_exit</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>  <span class="c1">### 父进程</span>
+            <span class="n">client_connection</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>  <span class="c1">### 关闭父进程中多余的描述符，继续下一轮循环</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">serve_forever</span><span class="p">()</span>
+</code></pre></div>
+
+<p>运行更新后的服务器 <code>webserver3f.py</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python<span class="w"> </span>webserver3f.py
+</code></pre></div>
+
+<p>用 <code>curl</code> 来向更新后的并发服务器发送一个请求：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>curl<span class="w"> </span>http://localhost:8888/hello
+</code></pre></div>
+
+<p>看到了吗？没有 EINTR 异常出现了。现在检查一下，确保没有僵尸进程存活，调用 <code>wait</code> 函数的 <code>SIGCHLD</code> 信号处理器能够正常处理被终止的子进程。我们只需使用 <code>ps</code> 命令，然后看看现在没有处于 <code>Z+</code> 状态（或名字包含 <code>&lt;defunct&gt;</code> ）的 Python 进程就好了。很棒！僵尸进程没有了，我们很安心。</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144233qv878ax8rlkb3sso.png"></p>
+<ul>
+<li>如果你创建了一个子进程，但是不等待它，它就会变成一个僵尸进程；</li>
+<li>使用 <code>SIGCHLD</code> 信号处理器可以异步地等待子进程终止，并收集其终止状态；</li>
+<li>当使用事件处理器时，你需要牢记，系统调用可能会被打断，所以你需要处理这种情况发生时带来的异常。</li>
+</ul>
+<h4>正确处理 SIGCHLD 信号</h4>
+<p>好的，一切顺利。是不是没问题了？额，几乎是。重新尝试运行 <code>webserver3f.py</code> 但我们这次不会只发送一个请求，而是同步创建 128 个连接：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python<span class="w"> </span>client3.py<span class="w"> </span>--max-clients<span class="w"> </span><span class="m">128</span>
+</code></pre></div>
+
+<p>现在再次运行 <code>ps</code> 命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ps<span class="w"> </span>auxw<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-i<span class="w"> </span>python<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-v<span class="w"> </span>grep
+</code></pre></div>
+
+<p>看到了吗？天啊，僵尸进程又出来了！</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144247j00e0g8unel00ynx.png"></p>
+<p>这回怎么回事？当你同时运行 128 个客户端，建立 128 个连接时，服务器的子进程几乎会在同一时间处理好你的请求，然后退出。这会导致非常多的 <code>SIGCHLD</code> 信号被发送到父进程。问题在于，这些信号不会存储在队列中，所以你的服务器进程会错过很多信号，这也就导致了几个僵尸进程处于无主状态：</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144248d4q49tpglnnnntpz.png"></p>
+<p>这个问题的解决方案依然是设置 <code>SIGCHLD</code> 事件处理器。但我们这次将会用 <code>WNOHANG</code> 参数循环调用 <code>waitpid</code> 来替代 <code>wait</code>，以保证所有处于终止状态的子进程都会被处理。下面是修改后的代码，<a href="https://github.com/rspivak/lsbaws/blob/master/part3/webserver3g.py">webserver3g.py</a>：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">#######################################################</span>
+<span class="c1"># 并发服务器 - webserver3g.py                          #</span>
+<span class="c1">#                                                     #</span>
+<span class="c1"># 使用 Python 2.7.9 或 3.4                             #</span>
+<span class="c1"># 在 Ubuntu 14.04 及 Mac OS X 环境下测试通过            #</span>
+<span class="c1">#######################################################</span>
+<span class="kn">import</span> <span class="nn">errno</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">signal</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+
+<span class="n">SERVER_ADDRESS</span> <span class="o">=</span> <span class="p">(</span><span class="n">HOST</span><span class="p">,</span> <span class="n">PORT</span><span class="p">)</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="mi">8888</span>
+<span class="n">REQUEST_QUEUE_SIZE</span> <span class="o">=</span> <span class="mi">1024</span>
+
+
+<span class="k">def</span> <span class="nf">grim_reaper</span><span class="p">(</span><span class="n">signum</span><span class="p">,</span> <span class="n">frame</span><span class="p">):</span>
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">pid</span><span class="p">,</span> <span class="n">status</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">waitpid</span><span class="p">(</span>
+                <span class="o">-</span><span class="mi">1</span><span class="p">,</span>          <span class="c1">### 等待所有子进程</span>
+                 <span class="n">os</span><span class="o">.</span><span class="n">WNOHANG</span>  <span class="c1">### 无终止进程时，不阻塞进程，并抛出 EWOULDBLOCK 错误</span>
+            <span class="p">)</span>
+        <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
+            <span class="k">return</span>
+
+        <span class="k">if</span> <span class="n">pid</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>  <span class="c1">### 没有僵尸进程存在了</span>
+            <span class="k">return</span>
+
+
+<span class="k">def</span> <span class="nf">handle_request</span><span class="p">(</span><span class="n">client_connection</span><span class="p">):</span>
+    <span class="n">request</span> <span class="o">=</span> <span class="n">client_connection</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">decode</span><span class="p">())</span>
+    <span class="n">http_response</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">&quot;&quot;&quot;</span><span class="se">\</span>
+<span class="s2">HTTP/1.1 200 OK</span>
+
+<span class="s2">Hello, World!</span>
+<span class="s2">&quot;&quot;&quot;</span>
+    <span class="n">client_connection</span><span class="o">.</span><span class="n">sendall</span><span class="p">(</span><span class="n">http_response</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">serve_forever</span><span class="p">():</span>
+    <span class="n">listen_socket</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span>
+    <span class="n">listen_socket</span><span class="o">.</span><span class="n">setsockopt</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">SOL_SOCKET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SO_REUSEADDR</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">listen_socket</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span><span class="n">SERVER_ADDRESS</span><span class="p">)</span>
+    <span class="n">listen_socket</span><span class="o">.</span><span class="n">listen</span><span class="p">(</span><span class="n">REQUEST_QUEUE_SIZE</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Serving HTTP on port </span><span class="si">{port}</span><span class="s1"> ...&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">port</span><span class="o">=</span><span class="n">PORT</span><span class="p">))</span>
+
+    <span class="n">signal</span><span class="o">.</span><span class="n">signal</span><span class="p">(</span><span class="n">signal</span><span class="o">.</span><span class="n">SIGCHLD</span><span class="p">,</span> <span class="n">grim_reaper</span><span class="p">)</span>
+
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">client_connection</span><span class="p">,</span> <span class="n">client_address</span> <span class="o">=</span> <span class="n">listen_socket</span><span class="o">.</span><span class="n">accept</span><span class="p">()</span>
+        <span class="k">except</span> <span class="ne">IOError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">code</span><span class="p">,</span> <span class="n">msg</span> <span class="o">=</span> <span class="n">e</span><span class="o">.</span><span class="n">args</span>
+            <span class="c1">### 若 &#39;accept&#39; 被打断，那么重启它</span>
+            <span class="k">if</span> <span class="n">code</span> <span class="o">==</span> <span class="n">errno</span><span class="o">.</span><span class="n">EINTR</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span>
+
+        <span class="n">pid</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">fork</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">pid</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>  <span class="c1">### 子进程</span>
+            <span class="n">listen_socket</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>  <span class="c1">### 关闭子进程中多余的描述符</span>
+            <span class="n">handle_request</span><span class="p">(</span><span class="n">client_connection</span><span class="p">)</span>
+            <span class="n">client_connection</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">_exit</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>  <span class="c1">### 父进程</span>
+            <span class="n">client_connection</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>  <span class="c1">### 关闭父进程中多余的描述符，继续下一轮循环</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">serve_forever</span><span class="p">()</span>
+</code></pre></div>
+
+<p>运行服务器：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python<span class="w"> </span>webserver3g.py
+</code></pre></div>
+
+<p>使用测试客户端 <code>client3.py</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python<span class="w"> </span>client3.py<span class="w"> </span>--max-clients<span class="w"> </span><span class="m">128</span>
+</code></pre></div>
+
+<p>现在来查看一下，确保没有僵尸进程存在。耶！没有僵尸的生活真美好 <code>^_^</code>。</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144249sxqgjqoj5cvo5on5.png"></p>
+<h3>大功告成</h3>
+<p>恭喜！你刚刚经历了一段很长的旅程，我希望你能够喜欢它。现在你拥有了自己的简易并发服务器，并且这段代码能够为你在继续研究生产级 Web 服务器的路上奠定基础。</p>
+<p>我将会留一个作业：你需要将第二部分中的 WSGI 服务器升级，将它改造为一个并发服务器。你可以在<a href="https://github.com/rspivak/lsbaws/blob/master/part3/webserver3h.py">这里</a>找到更改后的代码。但是，当你实现了自己的版本之后，你才应该来看我的代码。你已经拥有了实现这个服务器所需的所有信息。所以，快去实现它吧 <code>^_^</code>。</p>
+<p>然后要做什么呢？乔希·比林斯说过：</p>
+<blockquote>
+<p>“就像一枚邮票一样——专注于一件事，不达目的不罢休。”</p>
+</blockquote>
+<p>开始学习基本知识。回顾你已经学过的知识。然后一步一步深入。</p>
+<p><img alt="" src="/data/attachment/album/201610/09/144250vs6pqlc7jzpbs57b.png"></p>
+<blockquote>
+<p>“如果你只学会了方法，你将会被这些方法所困。但如果你学会了原理，那你就能发明出新的方法。”——拉尔夫·沃尔多·爱默生</p>
+<p>“有道无术，术尚可求也，有术无道，止于术”——中国古代也有这样的话，LCTT 译注</p>
+</blockquote>
+<p>下面是一份书单，我从这些书中提炼出了这篇文章所需的素材。他们能助你在我刚刚所述的几个方面中发掘出兼具深度和广度的知识。我极力推荐你们去搞到这几本书看看：从你的朋友那里借，在当地的图书馆中阅读，或者直接在亚马逊上把它买回来。下面是我的典藏秘籍：</p>
+<ol>
+<li><a href="http://www.epubit.com.cn/book/details/1692">《UNIX 网络编程 卷1：套接字联网 API （第3版）》</a></li>
+<li><a href="http://www.epubit.com.cn/book/details/1625">《UNIX 环境高级编程（第3版）》</a></li>
+<li><a href="http://www.epubit.com.cn/book/details/1432">《Linux/UNIX 系统编程手册》</a></li>
+<li><a href="http://www.epubit.com.cn/book/details/4232">《TCP/IP 详解 卷1：协议（第2版）</a></li>
+<li><a href="http://www.amazon.com/gp/product/1441418687/ref=as_li_tl?ie=UTF8&amp;camp=1789&amp;creative=9325&amp;creativeASIN=1441418687&amp;linkCode=as2&amp;tag=russblo0b-20&amp;linkId=QFOAWARN62OWTWUG">《信号系统简明手册 (第二版): 并发控制深入浅出及常见错误》</a>，这本书也可以从<a href="http://greenteapress.com/semaphores/">作者的个人网站</a>中免费下载到。</li>
+</ol>
+<p>顺便，我在撰写一本名为《搭个 Web 服务器：从头开始》的书。这本书讲解了如何从头开始编写一个基本的 Web 服务器，里面包含本文中没有的更多细节。订阅<a href="https://ruslanspivak.com/lsbaws-part1/">原文下方的邮件列表</a>，你就可以获取到这本书的最新进展，以及发布日期。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>RHCE 系列（二）：如何进行包过滤、网络地址转换和设置内核运行时参数</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Gabriel Cánepa 正如第一部分（“设置静态网络路由”）提到的，在这篇文章（RHCE 系列第二部分），我们首先介绍红帽企业版 Linux 7（RHEL）中包过滤 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/10/rhce-xi-lie-er-ru-he-jin-xing-bao-guo-lu-wang-luo-di-zhi-zhuan-huan-he-she-zhi-nei-he-yun-xing-shi-can-shu.html" rel="bookmark"
+           title="Permalink to RHCE 系列（二）：如何进行包过滤、网络地址转换和设置内核运行时参数">RHCE 系列（二）：如何进行包过滤、网络地址转换和设置内核运行时参数</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-10-23T10:24:00+02:00">
+                Published: Fri 23 October 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Gabriel Cánepa</p>
+<p>正如第一部分（“<a href="/article-6451-1.html">设置静态网络路由</a>”）提到的，在这篇文章（RHCE 系列第二部分），我们首先介绍红帽企业版 Linux 7（RHEL）中包过滤和网络地址转换（NAT）的原理，然后再介绍在某些条件发生变化或者需要变动时设置运行时内核参数以改变运行时内核行为。</p>
+<p><img alt="RHEL 中的网络包过滤" src="/data/attachment/album/201510/23/002719hl4wgarug71nwfgu.jpg"></p>
+<p><em>RHCE 第二部分：网络包过滤</em></p>
+<h3>RHEL 7 中的网络包过滤</h3>
+<p>当我们讨论数据包过滤的时候，我们指防火墙读取每个试图通过它的数据包的包头所进行的处理。然后，根据系统管理员之前定义的规则，通过采取所要求的动作过滤数据包。</p>
+<p>正如你可能知道的，从 RHEL 7 开始，管理防火墙的默认服务是 <a href="http://www.tecmint.com/firewalld-rules-for-centos-7/">firewalld</a>。类似 iptables，它和 Linux 内核的 netfilter 模块交互以便检查和操作网络数据包。但不像 iptables，Firewalld 的更新可以立即生效，而不用中断活跃的连接 - 你甚至不需要重启服务。</p>
+<p>Firewalld 的另一个优势是它允许我们定义基于预配置服务名称的规则（之后会详细介绍）。</p>
+<p>在第一部分，我们用了下面的场景：</p>
+<p><img alt="静态路由网络示意图" src="/data/attachment/album/201510/23/002721q6grtow794perp7m.png"></p>
+<p><em>静态路由网络示意图</em></p>
+<p>然而，你应该记得，由于还没有介绍包过滤，为了简化例子，我们停用了2号路由器的防火墙。现在让我们来看看如何使接收的数据包发送到目的地的特定服务或端口。</p>
+<p>首先，让我们添加一条永久规则允许从 enp0s3 (192.168.0.19) 到 enp0s8 (10.0.0.18) 的入站流量：</p>
+<div class="highlight"><pre><span></span><code># firewall-cmd --permanent --direct --add-rule ipv4 filter FORWARD 0 -i enp0s3 -o enp0s8 -j ACCEPT
+</code></pre></div>
+
+<p>上面的命令会把规则保存到 <code>/etc/firewalld/direct.xml</code> 中：</p>
+<div class="highlight"><pre><span></span><code><span class="c"># cat /etc/firewalld/direct.xml</span>
+</code></pre></div>
+
+<p><img alt="在 CentOS 7 中检查 Firewalld 保存的规则" src="/data/attachment/album/201510/23/002723n6qhu77pz1npye11.png"></p>
+<p><em>检查 Firewalld 保存的规则</em></p>
+<p>然后启用规则使其立即生效：</p>
+<div class="highlight"><pre><span></span><code># firewall-cmd --direct --add-rule ipv4 filter FORWARD 0 -i enp0s3 -o enp0s8 -j ACCEPT
+</code></pre></div>
+
+<p>现在你可以从 RHEL 7 中通过 telnet 到 web 服务器并再次运行 <a href="http://www.tecmint.com/12-tcpdump-commands-a-network-sniffer-tool/">tcpdump</a> 监视两台机器之间的 TCP 流量，这次2号路由器已经启用了防火墙。</p>
+<div class="highlight"><pre><span></span><code># telnet 10.0.0.20 80
+# tcpdump -qnnvvv -i enp0s3 host 10.0.0.20
+</code></pre></div>
+
+<p>如果你想只允许从 192.168.0.18 到 web 服务器（80 号端口）的连接而阻塞 192.168.0.0/24 网络中的其它来源呢？</p>
+<p>在 web 服务器的防火墙中添加以下规则：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="nx">firewall</span><span class="o">-</span><span class="nx">cmd</span><span class="w"> </span><span class="o">--</span><span class="nx">add</span><span class="o">-</span><span class="nx">rich</span><span class="o">-</span><span class="nx">rule</span><span class="w"> </span><span class="err">&#39;</span><span class="nx">rule</span><span class="w"> </span><span class="nx">family</span><span class="p">=</span><span class="s">&quot;ipv4&quot;</span><span class="w"> </span><span class="nx">source</span><span class="w"> </span><span class="nx">address</span><span class="p">=</span><span class="s">&quot;192.168.0.18/24&quot;</span><span class="w"> </span><span class="nx">service</span><span class="w"> </span><span class="nx">name</span><span class="p">=</span><span class="s">&quot;http&quot;</span><span class="w"> </span><span class="nx">accept</span><span class="err">&#39;</span>
+<span class="err">#</span><span class="w"> </span><span class="nx">firewall</span><span class="o">-</span><span class="nx">cmd</span><span class="w"> </span><span class="o">--</span><span class="nx">add</span><span class="o">-</span><span class="nx">rich</span><span class="o">-</span><span class="nx">rule</span><span class="w"> </span><span class="err">&#39;</span><span class="nx">rule</span><span class="w"> </span><span class="nx">family</span><span class="p">=</span><span class="s">&quot;ipv4&quot;</span><span class="w"> </span><span class="nx">source</span><span class="w"> </span><span class="nx">address</span><span class="p">=</span><span class="s">&quot;192.168.0.18/24&quot;</span><span class="w"> </span><span class="nx">service</span><span class="w"> </span><span class="nx">name</span><span class="p">=</span><span class="s">&quot;http&quot;</span><span class="w"> </span><span class="nx">accept</span><span class="err">&#39;</span><span class="w"> </span><span class="o">--</span><span class="nx">permanent</span>
+<span class="err">#</span><span class="w"> </span><span class="nx">firewall</span><span class="o">-</span><span class="nx">cmd</span><span class="w"> </span><span class="o">--</span><span class="nx">add</span><span class="o">-</span><span class="nx">rich</span><span class="o">-</span><span class="nx">rule</span><span class="w"> </span><span class="err">&#39;</span><span class="nx">rule</span><span class="w"> </span><span class="nx">family</span><span class="p">=</span><span class="s">&quot;ipv4&quot;</span><span class="w"> </span><span class="nx">source</span><span class="w"> </span><span class="nx">address</span><span class="p">=</span><span class="s">&quot;192.168.0.0/24&quot;</span><span class="w"> </span><span class="nx">service</span><span class="w"> </span><span class="nx">name</span><span class="p">=</span><span class="s">&quot;http&quot;</span><span class="w"> </span><span class="nx">drop</span><span class="err">&#39;</span>
+<span class="err">#</span><span class="w"> </span><span class="nx">firewall</span><span class="o">-</span><span class="nx">cmd</span><span class="w"> </span><span class="o">--</span><span class="nx">add</span><span class="o">-</span><span class="nx">rich</span><span class="o">-</span><span class="nx">rule</span><span class="w"> </span><span class="err">&#39;</span><span class="nx">rule</span><span class="w"> </span><span class="nx">family</span><span class="p">=</span><span class="s">&quot;ipv4&quot;</span><span class="w"> </span><span class="nx">source</span><span class="w"> </span><span class="nx">address</span><span class="p">=</span><span class="s">&quot;192.168.0.0/24&quot;</span><span class="w"> </span><span class="nx">service</span><span class="w"> </span><span class="nx">name</span><span class="p">=</span><span class="s">&quot;http&quot;</span><span class="w"> </span><span class="nx">drop</span><span class="err">&#39;</span><span class="w"> </span><span class="o">--</span><span class="nx">permanent</span>
+</code></pre></div>
+
+<p>现在你可以从 192.168.0.18 和 192.168.0.0/24 中的其它机器发送到 web 服务器的 HTTP 请求。第一种情况连接会成功完成，但第二种情况最终会超时。</p>
+<p>任何下面的命令可以验证这个结果：</p>
+<div class="highlight"><pre><span></span><code># telnet 10.0.0.20 80
+# wget 10.0.0.20
+</code></pre></div>
+
+<p>我强烈建议你看看 Fedora Project Wiki 中的 <a href="https://fedoraproject.org/wiki/Features/FirewalldRichLanguage">Firewalld Rich Language</a> 文档更详细地了解关于富规则的内容。</p>
+<h3>RHEL 7 中的网络地址转换（NAT）</h3>
+<p>网络地址转换（NAT）是为专用网络中的一组计算机（也可能是其中的一台）分配一个独立的公共 IP 地址的过程。这样，在内部网络中仍然可以用它们自己的私有 IP 地址来区别，但外部“看来”它们是一样的。</p>
+<p>另外，网络地址转换使得内部网络中的计算机发送请求到外部资源（例如因特网），然后只有源系统能接收到对应的响应成为可能。</p>
+<p>现在让我们考虑下面的场景：</p>
+<p><img alt="RHEL 中的网络地址转换" src="/data/attachment/album/201510/23/002725fyy2qs9q2spopl5l.png"></p>
+<p><em>网络地址转换</em></p>
+<p>在2号路由器中，我们会把 enp0s3 接口移动到外部区域（external），enp0s8 到内部区域（external），伪装（masquerading）或者说 NAT 默认是启用的：</p>
+<div class="highlight"><pre><span></span><code># firewall-cmd --list-all --zone=external
+# firewall-cmd --change-interface=enp0s3 --zone=external
+# firewall-cmd --change-interface=enp0s3 --zone=external --permanent
+# firewall-cmd --change-interface=enp0s8 --zone=internal
+# firewall-cmd --change-interface=enp0s8 --zone=internal --permanent
+</code></pre></div>
+
+<p>对于我们当前的设置，内部区域（internal） - 以及和它一起启用的任何东西都是默认区域：</p>
+<div class="highlight"><pre><span></span><code># firewall-cmd --set-default-zone=internal
+</code></pre></div>
+
+<p>下一步，让我们重载防火墙规则并保持状态信息：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># firewall-cmd --reload</span>
+</code></pre></div>
+
+<p>最后，在 web 服务器中添加2号路由器为默认网关：</p>
+<div class="highlight"><pre><span></span><code># ip route add default via 10.0.0.18
+</code></pre></div>
+
+<p>现在你会发现在 web 服务器中你可以 ping 1号路由器和外部网站（例如 tecmint.com）：</p>
+<div class="highlight"><pre><span></span><code># ping -c 2 192.168.0.1
+# ping -c 2 tecmint.com
+</code></pre></div>
+
+<p><img alt="验证网络路由" src="/data/attachment/album/201510/23/002726hc8yn8iz1n5bvhcb.png"></p>
+<p><em>验证网络路由</em></p>
+<h3>在 RHEL 7 中设置内核运行时参数</h3>
+<p>在 Linux 中，允许你更改、启用以及停用内核运行时参数，RHEL 也不例外。当操作条件发生变化时，<code>/proc/sys</code> 接口（sysctl）允许你实时设置运行时参数改变系统行为，而不需太多麻烦。</p>
+<p>为了实现这个目的，会用 shell 内建的 echo 写 <code>/proc/sys/&lt;category&gt;</code> 中的文件，其中 <code>&lt;category&gt;</code> 一般是以下目录中的一个：</p>
+<ul>
+<li>dev: 连接到机器中的特定设备的参数。</li>
+<li>fs: 文件系统配置（例如 quotas 和 inodes）。</li>
+<li>kernel: 内核配置。</li>
+<li>net: 网络配置。</li>
+<li>vm: 内核的虚拟内存的使用。</li>
+</ul>
+<p>要显示所有当前可用值的列表，运行</p>
+<div class="highlight"><pre><span></span><code># sysctl -a | less
+</code></pre></div>
+
+<p>在第一部分中，我们通过以下命令改变了 <code>net.ipv4.ip_forward</code> 参数的值以允许 Linux 机器作为一个路由器。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> echo 1 &gt; /proc/sys/net/ipv4/ip_forward
+</code></pre></div>
+
+<p>另一个你可能想要设置的运行时参数是 <code>kernel.sysrq</code>，它会启用你键盘上的 <code>Sysrq</code> 键，以使系统更好的运行一些底层功能，例如如果由于某些原因冻结了后重启系统：</p>
+<div class="highlight"><pre><span></span><code># echo 1 &gt; /proc/sys/kernel/sysrq
+</code></pre></div>
+
+<p>要显示特定参数的值，可以按照下面方式使用 <code>sysctl</code>：</p>
+<div class="highlight"><pre><span></span><code># sysctl &lt;parameter.name&gt;
+</code></pre></div>
+
+<p>例如，</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> sysctl net.ipv4.ip_forward
+<span class="gh">#</span> sysctl kernel.sysrq
+</code></pre></div>
+
+<p>有些参数，例如上面提到的某个，只需要一个值，而其它一些（例如 <code>fs.inode-state</code>）要求多个值：</p>
+<p><img alt="在 Linux 中查看内核参数" src="/data/attachment/album/201510/23/002730d23s84e866essh46.png"></p>
+<p><em>查看内核参数</em></p>
+<p>不管什么情况下，做任何更改之前你都需要阅读内核文档。</p>
+<p>请注意系统重启后这些设置会丢失。要使这些更改永久生效，我们需要添加内容到 <code>/etc/sysctl.d</code> 目录的 .conf 文件，像下面这样：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> echo &quot;net.ipv4.ip_forward = 1&quot; &gt; /etc/sysctl.d/10-forward.conf
+</code></pre></div>
+
+<p>（其中数字 10 表示相对同一个目录中其它文件的处理顺序）。</p>
+<p>并用下面命令启用更改：</p>
+<div class="highlight"><pre><span></span><code># sysctl -p /etc/sysctl.d/10-forward.conf
+</code></pre></div>
+
+<h3>总结</h3>
+<p>在这篇指南中我们解释了基本的包过滤、网络地址变换和在运行的系统中设置内核运行时参数并使重启后能持久化。我希望这些信息能对你有用，如往常一样，我们期望收到你的回复！</p>
+<p>别犹豫，在下面的表单中和我们分享你的疑问、评论和建议吧。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

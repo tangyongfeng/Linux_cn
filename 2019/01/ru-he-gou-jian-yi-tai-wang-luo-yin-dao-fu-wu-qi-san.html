@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何构建一台网络引导服务器（三）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Gregory Bartholomew 在 如何构建一台网络引导服务器（一） 中，我们提供了一个极简的 iPXE 引导脚本来引导你的网络引导镜像。许多用户除 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/01/ru-he-gou-jian-yi-tai-wang-luo-yin-dao-fu-wu-qi-san.html" rel="bookmark"
+           title="Permalink to 如何构建一台网络引导服务器（三）">如何构建一台网络引导服务器（三）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-01-01T17:18:00+01:00">
+                Published: Tue 01 January 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Gregory Bartholomew</p>
+<p><img alt="" src="/data/attachment/album/201901/01/172110uwb7tt3x0gapas33.jpg"></p>
+<p>在 <a href="/article-10379-1.html">如何构建一台网络引导服务器（一）</a> 中，我们提供了一个极简的 <a href="https://ipxe.org/">iPXE</a> 引导脚本来引导你的网络引导镜像。许多用户除了使用网络引导镜像外，可能在机器本地也有一个操作系统。但是使用常见的工作站的 BIOS 去切换引导加载器是很笨拙的。在本系列文件的第三部分，我们将向你展示如何设置一个更复杂的 iPXE 配置。它将允许终端用户以更容易的方式去选择引导哪个操作系统。它也可以配置为让系统管理员从一台中央服务器来统一管理引导菜单。</p>
+<h3>一个交互式 iPXE 引导菜单</h3>
+<p>下面这些命令重定义了网络引导镜像的 <code>boot.cfg</code> 来作为一个交互式的 iPXE 引导菜单，并使用了一个 5 秒倒计时的定时器：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nv">MY_FVER</span><span class="o">=</span><span class="m">29</span>
+$<span class="w"> </span><span class="nv">MY_KRNL</span><span class="o">=</span><span class="k">$(</span>ls<span class="w"> </span>-c<span class="w"> </span>/fc<span class="nv">$MY_FVER</span>/lib/modules<span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-n<span class="w"> </span><span class="m">1</span><span class="k">)</span>
+$<span class="w"> </span><span class="nv">MY_DNS1</span><span class="o">=</span><span class="m">192</span>.0.2.91
+$<span class="w"> </span><span class="nv">MY_DNS2</span><span class="o">=</span><span class="m">192</span>.0.2.92
+$<span class="w"> </span><span class="nv">MY_NAME</span><span class="o">=</span>server-01.example.edu
+$<span class="w"> </span><span class="nv">MY_EMAN</span><span class="o">=</span><span class="k">$(</span><span class="nb">echo</span><span class="w"> </span><span class="nv">$MY_NAME</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>tr<span class="w"> </span><span class="s1">&#39;.&#39;</span><span class="w"> </span><span class="s2">&quot;\n&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>tac<span class="w"> </span><span class="p">|</span><span class="w"> </span>tr<span class="w"> </span><span class="s2">&quot;\n&quot;</span><span class="w"> </span><span class="s1">&#39;.&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>cut<span class="w"> </span>-b<span class="w"> </span>-<span class="si">${#</span><span class="nv">MY_NAME</span><span class="si">}</span><span class="k">)</span>
+$<span class="w"> </span><span class="nv">MY_ADDR</span><span class="o">=</span><span class="k">$(</span>host<span class="w"> </span>-t<span class="w"> </span>A<span class="w"> </span><span class="nv">$MY_NAME</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>awk<span class="w"> </span><span class="s1">&#39;{print $4}&#39;</span><span class="k">)</span>
+$<span class="w"> </span>cat<span class="w"> </span><span class="s">&lt;&lt; END &gt; $HOME/esp/linux/boot.cfg</span>
+<span class="s">#!ipxe</span>
+
+<span class="s">set timeout 5000</span>
+
+<span class="s">:menu</span>
+<span class="s">menu iPXE Boot Menu</span>
+<span class="s">item --key 1 lcl 1. Microsoft Windows 10</span>
+<span class="s">item --key 2 f$MY_FVER 2. RedHat Fedora $MY_FVER</span>
+<span class="s">choose --timeout \${timeout} --default lcl selected || goto shell</span>
+<span class="s">set timeout 0</span>
+<span class="s">goto \${selected}</span>
+
+<span class="s">:failed</span>
+<span class="s">echo boot failed, dropping to shell...</span>
+<span class="s">goto shell</span>
+
+<span class="s">:shell</span>
+<span class="s">echo type &#39;exit&#39; to get the back to the menu</span>
+<span class="s">set timeout 0</span>
+<span class="s">shell</span>
+<span class="s">goto menu</span>
+
+<span class="s">:lcl</span>
+<span class="s">exit</span>
+
+<span class="s">:f$MY_FVER</span>
+<span class="s">kernel --name kernel.efi \${prefix}/vmlinuz-$MY_KRNL initrd=initrd.img ro ip=dhcp rd.peerdns=0 nameserver=$MY_DNS1 nameserver=$MY_DNS2 root=/dev/disk/by-path/ip-$MY_ADDR:3260-iscsi-iqn.$MY_EMAN:fc$MY_FVER-lun-1 netroot=iscsi:$MY_ADDR::::iqn.$MY_EMAN:fc$MY_FVER console=tty0 console=ttyS0,115200n8 audit=0 selinux=0 quiet</span>
+<span class="s">initrd --name initrd.img \${prefix}/initramfs-$MY_KRNL.img</span>
+<span class="s">boot || goto failed</span>
+<span class="s">END</span>
+</code></pre></div>
+
+<p>上述菜单有五个节：</p>
+<ul>
+<li><code>menu</code> 定义了显示在屏幕上的实际菜单内容。</li>
+<li><code>failed</code> 提示用户发生了错误，并将用户带到 shell 以错误错误。</li>
+<li><code>shell</code> 提供了交互式命令提示符。你可以在引导菜单出现时按下 <code>Esc</code> 键进入，或者是 <code>boot</code> 命令失败时也会进入到命令提示符。</li>
+<li><code>lcl</code> 包含一个提供给 iPXE 退出的简单命令，以及返还控制权给 BIOS。在 iPXE 之后，无论你希望缺省引导的设备（即：工作站的本地硬件）是什么，都必须在你的工作站的 BIOS 中正确地作为下一个引导设备列出来。</li>
+<li><code>f29</code> 包含前面文章提到同一个网络引导代码，但使用最终的退出代码来替换掉 <code>goto failed</code>。</li>
+</ul>
+<p>从你的 <code>$HOME/esp/linux</code> 目录中复制更新后的 <code>boot.cfg</code> 到所有客户端系统的 ESP 中。如果一切顺利，你应该会看到类似下面图片的结果：</p>
+<p><img alt="" src="/data/attachment/album/201901/01/171919n41ejmemrvvorlj4.png"></p>
+<h3>一个服务器托管的引导菜单</h3>
+<p>你可以添加到网络引导服务器的另一个特性是，能够从一台中央位置去管理所有客户端的引导菜单。这个特性尤其适用于批量安装（升级）一个新版本的操作系统。在你将新内核和新的 <code>initramfs</code> 复制到所有客户端的 ESP 之后，这个特性可以让你执行一种 <a href="https://en.wikipedia.org/wiki/Atomicity_(database_systems)">原子事务</a> 去切换所有客户端到新操作系统。</p>
+<p>安装 Mojolicious：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>-i
+<span class="c1"># dnf install -y perl-Mojolicious</span>
+</code></pre></div>
+
+<p>定义 “bootmenu” 应用程序：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="nt">mkdir</span><span class="w"> </span><span class="o">/</span><span class="nt">opt</span><span class="o">/</span><span class="nt">bootmenu</span>
+<span class="err">#</span><span class="w"> </span><span class="nt">cat</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="nt">END</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="o">/</span><span class="nt">opt</span><span class="o">/</span><span class="nt">bootmenu</span><span class="o">/</span><span class="nt">bootmenu</span><span class="p">.</span><span class="nc">pl</span>
+<span class="err">#</span><span class="o">!/</span><span class="nt">usr</span><span class="o">/</span><span class="nt">bin</span><span class="o">/</span><span class="nt">env</span><span class="w"> </span><span class="nt">perl</span>
+<span class="nt">use</span><span class="w"> </span><span class="nt">Mojolicious</span><span class="p">::</span><span class="nd">Lite</span><span class="o">;</span>
+<span class="nt">use</span><span class="w"> </span><span class="nt">Mojolicious</span><span class="p">::</span><span class="nd">Plugins</span><span class="o">;</span>
+
+<span class="nt">plugin</span><span class="w"> </span><span class="s1">&#39;Config&#39;</span><span class="o">;</span>
+
+<span class="nt">get</span><span class="w"> </span><span class="s1">&#39;/menu&#39;</span><span class="o">;</span>
+
+<span class="nt">app-</span><span class="o">&gt;</span><span class="nt">start</span><span class="o">;</span>
+<span class="nt">END</span>
+<span class="err">#</span><span class="w"> </span><span class="nt">chmod</span><span class="w"> </span><span class="nt">755</span><span class="w"> </span><span class="o">/</span><span class="nt">opt</span><span class="o">/</span><span class="nt">bootmenu</span><span class="o">/</span><span class="nt">bootmenu</span><span class="p">.</span><span class="nc">pl</span>
+</code></pre></div>
+
+<p>为 “bootmenu” 应用程序定义配置文件：</p>
+<div class="highlight"><pre><span></span><code><span class="o">#</span> <span class="n">cat</span> <span class="o">&lt;&lt;</span> <span class="kr">END</span> <span class="o">&gt;</span> <span class="o">/</span><span class="n">opt</span><span class="o">/</span><span class="n">bootmenu</span><span class="o">/</span><span class="n">bootmenu</span><span class="p">.</span><span class="n">conf</span>
+<span class="p">{</span>
+ <span class="n">hypnotoad</span> <span class="o">=&gt;</span> <span class="p">{</span>
+ <span class="n">listen</span> <span class="o">=&gt;</span> <span class="p">[</span><span class="s">&#39;http://*:80&#39;</span><span class="p">],</span>
+ <span class="n">pid_file</span> <span class="o">=&gt;</span> <span class="s">&#39;/run/bootmenu/bootmenu.pid&#39;</span><span class="p">,</span>
+ <span class="p">}</span>
+<span class="p">}</span>
+<span class="kr">END</span>
+</code></pre></div>
+
+<p>这是一个非常简单的 Mojolicious 应用程序，它监听 80 端口，并且只回应对 <code>/menu</code> 的请求。如果你想快速了解 Mojolicious 能做什么，运行 <code>man Mojolicious::Guides::Growing</code> 去查看手册。按 <code>Q</code> 键退出手册。</p>
+<p>将 <code>boot.cfg</code> 移到我们的网络引导应用程序中作为一个名为 <code>menu.html.ep</code> 的模板：</p>
+<div class="highlight"><pre><span></span><code># mkdir /opt/bootmenu/templates
+# mv $HOME/esp/linux/boot.cfg /opt/bootmenu/templates/menu.html.ep
+</code></pre></div>
+
+<p>定义一个 systemd 服务去管理引导菜单应用程序：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># cat &lt;&lt; END &gt; /etc/systemd/system/bootmenu.service</span>
+<span class="k">[Unit]</span>
+<span class="na">Description</span><span class="o">=</span><span class="s">Serves iPXE Menus over HTTP</span>
+<span class="na">After</span><span class="o">=</span><span class="s">network-online.target</span>
+
+<span class="k">[Service]</span>
+<span class="na">Type</span><span class="o">=</span><span class="s">forking</span>
+<span class="na">DynamicUser</span><span class="o">=</span><span class="s">true</span>
+<span class="na">RuntimeDirectory</span><span class="o">=</span><span class="s">bootmenu</span>
+<span class="na">PIDFile</span><span class="o">=</span><span class="s">/run/bootmenu/bootmenu.pid</span>
+<span class="na">ExecStart</span><span class="o">=</span><span class="s">/usr/bin/hypnotoad /opt/bootmenu/bootmenu.pl</span>
+<span class="na">ExecReload</span><span class="o">=</span><span class="s">/usr/bin/hypnotoad /opt/bootmenu/bootmenu.pl</span>
+<span class="na">AmbientCapabilities</span><span class="o">=</span><span class="s">CAP_NET_BIND_SERVICE</span>
+<span class="na">KillMode</span><span class="o">=</span><span class="s">process</span>
+
+<span class="k">[Install]</span>
+<span class="na">WantedBy</span><span class="o">=</span><span class="s">multi-user.target</span>
+<span class="err">END</span>
+</code></pre></div>
+
+<p>在本地防火墙中为 HTTP 服务添加一个例外规则，并启动 bootmenu 服务：</p>
+<div class="highlight"><pre><span></span><code># firewall-cmd --add-service http
+# firewall-cmd --runtime-to-permanent
+# systemctl enable bootmenu.service
+# systemctl start bootmenu.service
+</code></pre></div>
+
+<p>用 <code>wget</code> 测试它：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>wget
+$<span class="w"> </span><span class="nv">MY_BOOTMENU_SERVER</span><span class="o">=</span>server-01.example.edu
+$<span class="w"> </span>wget<span class="w"> </span>-q<span class="w"> </span>-O<span class="w"> </span>-<span class="w"> </span>http://<span class="nv">$MY_BOOTMENU_SERVER</span>/menu
+</code></pre></div>
+
+<p>以上的命令应该会输出类似下面的内容：</p>
+<div class="highlight"><pre><span></span><code>#!ipxe
+
+set<span class="w"> </span>timeout<span class="w"> </span>5000
+
+:menu
+menu<span class="w"> </span>iPXE<span class="w"> </span>Boot<span class="w"> </span>Menu
+item<span class="w"> </span>--key<span class="w"> </span>1<span class="w"> </span>lcl<span class="w"> </span>1.<span class="w"> </span>Microsoft<span class="w"> </span>Windows<span class="w"> </span>10
+item<span class="w"> </span>--key<span class="w"> </span>2<span class="w"> </span>f29<span class="w"> </span>2.<span class="w"> </span>RedHat<span class="w"> </span>Fedora<span class="w"> </span>29
+choose<span class="w"> </span>--timeout<span class="w"> </span><span class="cp">${</span><span class="n">timeout</span><span class="cp">}</span><span class="w"> </span>--default<span class="w"> </span>lcl<span class="w"> </span>selected<span class="w"> </span>||<span class="w"> </span>goto<span class="w"> </span>shell
+set<span class="w"> </span>timeout<span class="w"> </span>0
+goto<span class="w"> </span><span class="cp">${</span><span class="n">selected</span><span class="cp">}</span>
+
+:failed
+echo<span class="w"> </span>boot<span class="w"> </span>failed,<span class="w"> </span>dropping<span class="w"> </span>to<span class="w"> </span>shell...
+goto<span class="w"> </span>shell
+
+:shell
+echo<span class="w"> </span>type<span class="w"> </span>&#39;exit&#39;<span class="w"> </span>to<span class="w"> </span>get<span class="w"> </span>the<span class="w"> </span>back<span class="w"> </span>to<span class="w"> </span>the<span class="w"> </span>menu
+set<span class="w"> </span>timeout<span class="w"> </span>0
+shell
+goto<span class="w"> </span>menu
+
+:lcl
+exit
+
+:f29
+kernel<span class="w"> </span>--name<span class="w"> </span>kernel.efi<span class="w"> </span><span class="cp">${</span><span class="n">prefix</span><span class="cp">}</span>/vmlinuz-4.19.4-300.fc29.x86_64<span class="w"> </span>initrd=initrd.img<span class="w"> </span>ro<span class="w"> </span>ip=dhcp<span class="w"> </span>rd.peerdns=0<span class="w"> </span>nameserver=192.0.2.91<span class="w"> </span>nameserver=192.0.2.92<span class="w"> </span>root=/dev/disk/by-path/ip-192.0.2.158:3260-iscsi-iqn.edu.example.server-01:fc29-lun-1<span class="w"> </span>netroot=iscsi:192.0.2.158::::iqn.edu.example.server-01:fc29<span class="w"> </span>console=tty0<span class="w"> </span>console=ttyS0,115200n8<span class="w"> </span>audit=0<span class="w"> </span>selinux=0<span class="w"> </span>quiet
+initrd<span class="w"> </span>--name<span class="w"> </span>initrd.img<span class="w"> </span><span class="cp">${</span><span class="n">prefix</span><span class="cp">}</span>/initramfs-4.19.4-300.fc29.x86_64.img
+boot<span class="w"> </span>||<span class="w"> </span>goto<span class="w"> </span>failed
+</code></pre></div>
+
+<p>现在，引导菜单服务器已经正常工作了，重新构建 <code>ipxe.efi</code> 引导加载器，使用一个初始化脚本指向它。</p>
+<p>第一步，先更新我们在本系列文章的第一部分中创建的 <code>init.ipxe</code> 脚本：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nv">MY_BOOTMENU_SERVER</span><span class="o">=</span>server-01.example.edu
+$<span class="w"> </span>cat<span class="w"> </span><span class="s">&lt;&lt; END &gt; $HOME/ipxe/init.ipxe</span>
+<span class="s">#!ipxe</span>
+
+<span class="s">dhcp || exit</span>
+<span class="s">set prefix file:///linux</span>
+<span class="s">chain http://$MY_BOOTMENU_SERVER/menu || exit</span>
+<span class="s">END</span>
+</code></pre></div>
+
+<p>现在，重新构建引导加载器：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span><span class="nv">$HOME</span>/ipxe/src
+$<span class="w"> </span>make<span class="w"> </span>clean
+$<span class="w"> </span>make<span class="w"> </span>bin-x86_64-efi/ipxe.efi<span class="w"> </span><span class="nv">EMBED</span><span class="o">=</span>../init.ipxe
+</code></pre></div>
+
+<p>将更新后的引导加载器复制到你的 ESP 中：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cp<span class="w"> </span><span class="nv">$HOME</span>/ipxe/src/bin-x86_64-efi/ipxe.efi<span class="w"> </span><span class="nv">$HOME</span>/esp/efi/boot/bootx64.efi
+</code></pre></div>
+
+<p>将更新后的引导加载器复制到所有的客户端中之后，以后更新引导菜单只需要简单地编辑 <code>/opt/bootmenu/templates/menu.html.ep</code> 文件，然后再运行如下命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>restart<span class="w"> </span>bootmenu.service
+</code></pre></div>
+
+<h3>做一步的改变</h3>
+<p>如果引导菜单服务器工作正常，在你的客户端系统上的 <code>boot.cfg</code> 文件将更长。</p>
+<p>比如，重新添加 Fedora 28 镜像到引导菜单中：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>-i
+<span class="c1"># MY_FVER=28</span>
+<span class="c1"># MY_KRNL=$(ls -c /fc$MY_FVER/lib/modules | head -n 1)</span>
+<span class="c1"># MY_DNS1=192.0.2.91</span>
+<span class="c1"># MY_DNS2=192.0.2.92</span>
+<span class="c1"># MY_NAME=$(&lt;/etc/hostname)</span>
+<span class="c1"># MY_EMAN=$(echo $MY_NAME | tr &#39;.&#39; &quot;\n&quot; | tac | tr &quot;\n&quot; &#39;.&#39; | cut -b -${#MY_NAME})</span>
+<span class="c1"># MY_ADDR=$(host -t A $MY_NAME | awk &#39;{print $4}&#39;)</span>
+<span class="c1"># cat &lt;&lt; END &gt;&gt; /opt/bootmenu/templates/menu.html.ep</span>
+
+:f<span class="nv">$MY_FVER</span>
+kernel<span class="w"> </span>--name<span class="w"> </span>kernel.efi<span class="w"> </span><span class="se">\$</span><span class="o">{</span>prefix<span class="o">}</span>/vmlinuz-<span class="nv">$MY_KRNL</span><span class="w"> </span><span class="nv">initrd</span><span class="o">=</span>initrd.img<span class="w"> </span>ro<span class="w"> </span><span class="nv">ip</span><span class="o">=</span>dhcp<span class="w"> </span>rd.peerdns<span class="o">=</span><span class="m">0</span><span class="w"> </span><span class="nv">nameserver</span><span class="o">=</span><span class="nv">$MY_DNS1</span><span class="w"> </span><span class="nv">nameserver</span><span class="o">=</span><span class="nv">$MY_DNS2</span><span class="w"> </span><span class="nv">root</span><span class="o">=</span>/dev/disk/by-path/ip-<span class="nv">$MY_ADDR</span>:3260-iscsi-iqn.<span class="nv">$MY_EMAN</span>:fc<span class="nv">$MY_FVER</span>-lun-1<span class="w"> </span><span class="nv">netroot</span><span class="o">=</span>iscsi:<span class="nv">$MY_ADDR</span>::::iqn.<span class="nv">$MY_EMAN</span>:fc<span class="nv">$MY_FVER</span><span class="w"> </span><span class="nv">console</span><span class="o">=</span>tty0<span class="w"> </span><span class="nv">console</span><span class="o">=</span>ttyS0,115200n8<span class="w"> </span><span class="nv">audit</span><span class="o">=</span><span class="m">0</span><span class="w"> </span><span class="nv">selinux</span><span class="o">=</span><span class="m">0</span><span class="w"> </span>quiet
+initrd<span class="w"> </span>--name<span class="w"> </span>initrd.img<span class="w"> </span><span class="se">\$</span><span class="o">{</span>prefix<span class="o">}</span>/initramfs-<span class="nv">$MY_KRNL</span>.img
+boot<span class="w"> </span><span class="o">||</span><span class="w"> </span>goto<span class="w"> </span>failed
+END
+<span class="c1"># sed -i &quot;/item --key 2/a item --key 3 f$MY_FVER 3. RedHat Fedora $MY_FVER&quot; /opt/bootmenu/templates/menu.html.ep</span>
+<span class="c1"># systemctl restart bootmenu.service</span>
+</code></pre></div>
+
+<p>如果一切顺利，你的客户端下次引导时，应该看到如下图所示的结果：</p>
+<p><img alt="" src="/data/attachment/album/201901/01/171956bnon3q9qkaqnofws.png"></p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

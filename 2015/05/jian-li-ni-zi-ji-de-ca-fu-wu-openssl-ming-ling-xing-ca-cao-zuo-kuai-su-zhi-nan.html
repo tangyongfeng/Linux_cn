@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>建立你自己的 CA 服务：OpenSSL 命令行 CA 操作快速指南</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Remy van Elst 这些是关于使用 OpenSSL 生成证书授权（CA）、中间证书授权和末端证书的速记随笔，内容包括 OCSP、CRL 和 CA 颁发者信息，以及 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/05/jian-li-ni-zi-ji-de-ca-fu-wu-openssl-ming-ling-xing-ca-cao-zuo-kuai-su-zhi-nan.html" rel="bookmark"
+           title="Permalink to 建立你自己的 CA 服务：OpenSSL 命令行 CA 操作快速指南">建立你自己的 CA 服务：OpenSSL 命令行 CA 操作快速指南</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-05-14T08:19:00+02:00">
+                Published: Thu 14 May 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Remy van Elst</p>
+<p>这些是关于使用 OpenSSL 生成证书授权（CA）、中间证书授权和末端证书的速记随笔，内容包括 OCSP、CRL 和 CA 颁发者信息，以及指定颁发和有效期限等。</p>
+<p>我们将建立我们自己的根 CA，我们将使用根 CA 来生成一个中间 CA 的例子，我们将使用中间 CA 来签署末端用户证书。</p>
+<p><img alt="" src="/data/attachment/album/201505/14/002424qm1ntrmmr1m15azf.jpg"></p>
+<h3>根 CA</h3>
+<p>创建根 CA 授权目录并切换到该目录：</p>
+<div class="highlight"><pre><span></span><code>mkdir ~/SSLCA/root/
+cd ~/SSLCA/root/
+</code></pre></div>
+
+<p>为我们的根 CA 生成一个8192位长的 SHA-256 RSA 密钥：</p>
+<div class="highlight"><pre><span></span><code>openssl genrsa -aes256 -out rootca.key 8192
+</code></pre></div>
+
+<p>样例输出：</p>
+<div class="highlight"><pre><span></span><code>Generating RSA private key, 8192 bit long modulus
+.........++
+....................................................................................................................++
+e is 65537 (0x10001)
+</code></pre></div>
+
+<p>如果你想要用密码保护该密钥，请添加 <code>-aes256</code> 选项。</p>
+<p>创建自签名根 CA 证书 <code>ca.crt</code>；你需要为你的根 CA 提供一个身份：</p>
+<div class="highlight"><pre><span></span><code>openssl req -sha256 -new -x509 -days 1826 -key rootca.key -out rootca.crt
+</code></pre></div>
+
+<p>样例输出：</p>
+<div class="highlight"><pre><span></span><code><span class="n">You</span><span class="w"> </span><span class="k">are</span><span class="w"> </span><span class="n">about</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">asked</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">enter</span><span class="w"> </span><span class="n">information</span><span class="w"> </span><span class="n">that</span><span class="w"> </span><span class="n">will</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">incorporated</span>
+<span class="k">into</span><span class="w"> </span><span class="n">your</span><span class="w"> </span><span class="n">certificate</span><span class="w"> </span><span class="n">request</span><span class="p">.</span>
+<span class="n">What</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="k">are</span><span class="w"> </span><span class="n">about</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">enter</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">what</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="k">called</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">Distinguished</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">DN</span><span class="p">.</span>
+<span class="n">There</span><span class="w"> </span><span class="k">are</span><span class="w"> </span><span class="n">quite</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">few</span><span class="w"> </span><span class="n">fields</span><span class="w"> </span><span class="n">but</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="n">can</span><span class="w"> </span><span class="n">leave</span><span class="w"> </span><span class="ow">some</span><span class="w"> </span><span class="n">blank</span>
+<span class="k">For</span><span class="w"> </span><span class="ow">some</span><span class="w"> </span><span class="n">fields</span><span class="w"> </span><span class="n">there</span><span class="w"> </span><span class="n">will</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="k">default</span><span class="w"> </span><span class="k">value</span><span class="p">,</span>
+<span class="k">If</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="n">enter</span><span class="w"> </span><span class="s1">&#39;.&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">field</span><span class="w"> </span><span class="n">will</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="nf">left</span><span class="w"> </span><span class="n">blank</span><span class="p">.</span>
+<span class="o">-----</span>
+<span class="n">Country</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="mi">2</span><span class="w"> </span><span class="n">letter</span><span class="w"> </span><span class="n">code</span><span class="p">)</span><span class="w"> </span><span class="o">[</span><span class="n">AU</span><span class="o">]</span><span class="err">:</span><span class="n">NL</span>
+<span class="k">State</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="n">Province</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="k">full</span><span class="w"> </span><span class="n">name</span><span class="p">)</span><span class="w"> </span><span class="o">[</span><span class="n">Some-State</span><span class="o">]</span><span class="err">:</span><span class="n">Zuid</span><span class="w"> </span><span class="n">Holland</span>
+<span class="n">Locality</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="n">eg</span><span class="p">,</span><span class="w"> </span><span class="n">city</span><span class="p">)</span><span class="w"> </span><span class="err">[]:</span><span class="n">Rotterdam</span>
+<span class="n">Organization</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="n">eg</span><span class="p">,</span><span class="w"> </span><span class="n">company</span><span class="p">)</span><span class="w"> </span><span class="o">[</span><span class="n">Internet Widgits Pty Ltd</span><span class="o">]</span><span class="err">:</span><span class="n">Sparkling</span><span class="w"> </span><span class="n">Network</span>
+<span class="n">Organizational</span><span class="w"> </span><span class="n">Unit</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="n">eg</span><span class="p">,</span><span class="w"> </span><span class="k">section</span><span class="p">)</span><span class="w"> </span><span class="err">[]:</span><span class="n">Sparkling</span><span class="w"> </span><span class="n">CA</span>
+<span class="n">Common</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="n">e</span><span class="p">.</span><span class="n">g</span><span class="p">.</span><span class="w"> </span><span class="n">server</span><span class="w"> </span><span class="n">FQDN</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="n">YOUR</span><span class="w"> </span><span class="n">name</span><span class="p">)</span><span class="w"> </span><span class="err">[]:</span><span class="n">Sparkling</span><span class="w"> </span><span class="n">Root</span><span class="w"> </span><span class="n">CA</span>
+<span class="n">Email</span><span class="w"> </span><span class="n">Address</span><span class="w"> </span><span class="err">[]:</span>
+</code></pre></div>
+
+<p>创建一个存储 CA 序列的文件：</p>
+<div class="highlight"><pre><span></span><code>touch certindex
+echo 1000 &gt; certserial
+echo 1000 &gt; crlnumber
+</code></pre></div>
+
+<p>放置 CA 配置文件，该文件持有 CRL 和 OCSP 末端的存根。</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="n">vim</span><span class="w"> </span><span class="n">ca</span><span class="p">.</span><span class="n">conf</span>
+<span class="o">[</span><span class="n"> ca </span><span class="o">]</span>
+<span class="n">default_ca</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">myca</span>
+
+<span class="o">[</span><span class="n"> crl_ext </span><span class="o">]</span>
+<span class="n">issuerAltName</span><span class="o">=</span><span class="nl">issuer</span><span class="p">:</span><span class="n">copy</span><span class="w"> </span>
+<span class="n">authorityKeyIdentifier</span><span class="o">=</span><span class="nl">keyid</span><span class="p">:</span><span class="n">always</span>
+
+<span class="w"> </span><span class="o">[</span><span class="n"> myca </span><span class="o">]</span>
+<span class="w"> </span><span class="n">dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">.</span><span class="o">/</span>
+<span class="w"> </span><span class="n">new_certs_dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">$</span><span class="n">dir</span>
+<span class="w"> </span><span class="n">unique_subject</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">no</span>
+<span class="w"> </span><span class="n">certificate</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">$</span><span class="n">dir</span><span class="o">/</span><span class="n">rootca</span><span class="p">.</span><span class="n">crt</span>
+<span class="w"> </span><span class="k">database</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">$</span><span class="n">dir</span><span class="o">/</span><span class="n">certindex</span>
+<span class="w"> </span><span class="n">private_key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">$</span><span class="n">dir</span><span class="o">/</span><span class="n">rootca</span><span class="p">.</span><span class="k">key</span>
+<span class="w"> </span><span class="n">serial</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">$</span><span class="n">dir</span><span class="o">/</span><span class="n">certserial</span>
+<span class="w"> </span><span class="n">default_days</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">730</span>
+<span class="w"> </span><span class="n">default_md</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">sha1</span>
+<span class="w"> </span><span class="n">policy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">myca_policy</span>
+<span class="w"> </span><span class="n">x509_extensions</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">myca_extensions</span>
+<span class="w"> </span><span class="n">crlnumber</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">$</span><span class="n">dir</span><span class="o">/</span><span class="n">crlnumber</span>
+<span class="w"> </span><span class="n">default_crl_days</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">730</span>
+
+<span class="w"> </span><span class="o">[</span><span class="n"> myca_policy </span><span class="o">]</span>
+<span class="w"> </span><span class="n">commonName</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">supplied</span>
+<span class="w"> </span><span class="n">stateOrProvinceName</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">supplied</span>
+<span class="w"> </span><span class="n">countryName</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">optional</span>
+<span class="w"> </span><span class="n">emailAddress</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">optional</span>
+<span class="w"> </span><span class="n">organizationName</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">supplied</span>
+<span class="w"> </span><span class="n">organizationalUnitName</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">optional</span>
+
+<span class="w"> </span><span class="o">[</span><span class="n"> myca_extensions </span><span class="o">]</span>
+<span class="w"> </span><span class="n">basicConstraints</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">critical</span><span class="p">,</span><span class="nl">CA</span><span class="p">:</span><span class="k">TRUE</span>
+<span class="w"> </span><span class="n">keyUsage</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">critical</span><span class="p">,</span><span class="ow">any</span>
+<span class="w"> </span><span class="n">subjectKeyIdentifier</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">hash</span>
+<span class="w"> </span><span class="n">authorityKeyIdentifier</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nl">keyid</span><span class="p">:</span><span class="n">always</span><span class="p">,</span><span class="n">issuer</span>
+<span class="w"> </span><span class="n">keyUsage</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">digitalSignature</span><span class="p">,</span><span class="n">keyEncipherment</span><span class="p">,</span><span class="n">cRLSign</span><span class="p">,</span><span class="n">keyCertSign</span>
+<span class="w"> </span><span class="n">extendedKeyUsage</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">serverAuth</span>
+<span class="w"> </span><span class="n">crlDistributionPoints</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">@crl_section</span>
+<span class="w"> </span><span class="n">subjectAltName</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="nv">@alt_names</span>
+<span class="w"> </span><span class="n">authorityInfoAccess</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">@ocsp_section</span>
+
+<span class="w"> </span><span class="o">[</span><span class="n"> v3_ca </span><span class="o">]</span>
+<span class="w"> </span><span class="n">basicConstraints</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">critical</span><span class="p">,</span><span class="nl">CA</span><span class="p">:</span><span class="k">TRUE</span><span class="p">,</span><span class="nl">pathlen</span><span class="p">:</span><span class="mi">0</span>
+<span class="w"> </span><span class="n">keyUsage</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">critical</span><span class="p">,</span><span class="ow">any</span>
+<span class="w"> </span><span class="n">subjectKeyIdentifier</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">hash</span>
+<span class="w"> </span><span class="n">authorityKeyIdentifier</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nl">keyid</span><span class="p">:</span><span class="n">always</span><span class="p">,</span><span class="n">issuer</span>
+<span class="w"> </span><span class="n">keyUsage</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">digitalSignature</span><span class="p">,</span><span class="n">keyEncipherment</span><span class="p">,</span><span class="n">cRLSign</span><span class="p">,</span><span class="n">keyCertSign</span>
+<span class="w"> </span><span class="n">extendedKeyUsage</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">serverAuth</span>
+<span class="w"> </span><span class="n">crlDistributionPoints</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">@crl_section</span>
+<span class="w"> </span><span class="n">subjectAltName</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="nv">@alt_names</span>
+<span class="w"> </span><span class="n">authorityInfoAccess</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">@ocsp_section</span>
+
+<span class="w"> </span><span class="o">[</span><span class="n">alt_names</span><span class="o">]</span>
+<span class="w"> </span><span class="n">DNS</span><span class="mf">.0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Sparkling</span><span class="w"> </span><span class="n">Intermidiate</span><span class="w"> </span><span class="n">CA</span><span class="w"> </span><span class="mi">1</span>
+<span class="w"> </span><span class="n">DNS</span><span class="mf">.1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Sparkling</span><span class="w"> </span><span class="n">CA</span><span class="w"> </span><span class="n">Intermidiate</span><span class="w"> </span><span class="mi">1</span>
+
+<span class="w"> </span><span class="o">[</span><span class="n">crl_section</span><span class="o">]</span>
+<span class="w"> </span><span class="n">URI</span><span class="mf">.0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nl">http</span><span class="p">:</span><span class="o">//</span><span class="n">pki</span><span class="p">.</span><span class="n">sparklingca</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">SparklingRoot</span><span class="p">.</span><span class="n">crl</span>
+<span class="w"> </span><span class="n">URI</span><span class="mf">.1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nl">http</span><span class="p">:</span><span class="o">//</span><span class="n">pki</span><span class="p">.</span><span class="k">backup</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">SparklingRoot</span><span class="p">.</span><span class="n">crl</span>
+
+<span class="w"> </span><span class="o">[</span><span class="n">ocsp_section</span><span class="o">]</span>
+<span class="w"> </span><span class="n">caIssuers</span><span class="p">;</span><span class="n">URI</span><span class="mf">.0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nl">http</span><span class="p">:</span><span class="o">//</span><span class="n">pki</span><span class="p">.</span><span class="n">sparklingca</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">SparklingRoot</span><span class="p">.</span><span class="n">crt</span>
+<span class="w"> </span><span class="n">caIssuers</span><span class="p">;</span><span class="n">URI</span><span class="mf">.1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nl">http</span><span class="p">:</span><span class="o">//</span><span class="n">pki</span><span class="p">.</span><span class="k">backup</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">SparklingRoot</span><span class="p">.</span><span class="n">crt</span>
+<span class="w"> </span><span class="n">OCSP</span><span class="p">;</span><span class="n">URI</span><span class="mf">.0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nl">http</span><span class="p">:</span><span class="o">//</span><span class="n">pki</span><span class="p">.</span><span class="n">sparklingca</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">ocsp</span><span class="o">/</span>
+<span class="w"> </span><span class="n">OCSP</span><span class="p">;</span><span class="n">URI</span><span class="mf">.1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nl">http</span><span class="p">:</span><span class="o">//</span><span class="n">pki</span><span class="p">.</span><span class="k">backup</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">ocsp</span><span class="o">/</span>
+</code></pre></div>
+
+<p>如果你需要设置某个特定的证书生效/过期日期，请添加以下内容到<code>[myca]</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> format: YYYYMMDDHHMMSS
+default_enddate = 20191222035911
+default_startdate = 20181222035911
+</code></pre></div>
+
+<h3>创建中间 CA</h3>
+<p>生成中间 CA （名为 intermediate1）的私钥：</p>
+<div class="highlight"><pre><span></span><code>openssl genrsa -out intermediate1.key 4096
+</code></pre></div>
+
+<p>生成中间 CA 的 CSR：</p>
+<div class="highlight"><pre><span></span><code>openssl req -new -sha256 -key intermediate1.key -out intermediate1.csr
+</code></pre></div>
+
+<p>样例输出：</p>
+<div class="highlight"><pre><span></span><code><span class="n">You</span><span class="w"> </span><span class="k">are</span><span class="w"> </span><span class="n">about</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">asked</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">enter</span><span class="w"> </span><span class="n">information</span><span class="w"> </span><span class="n">that</span><span class="w"> </span><span class="n">will</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">incorporated</span>
+<span class="k">into</span><span class="w"> </span><span class="n">your</span><span class="w"> </span><span class="n">certificate</span><span class="w"> </span><span class="n">request</span><span class="p">.</span>
+<span class="n">What</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="k">are</span><span class="w"> </span><span class="n">about</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">enter</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">what</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="k">called</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">Distinguished</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">DN</span><span class="p">.</span>
+<span class="n">There</span><span class="w"> </span><span class="k">are</span><span class="w"> </span><span class="n">quite</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">few</span><span class="w"> </span><span class="n">fields</span><span class="w"> </span><span class="n">but</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="n">can</span><span class="w"> </span><span class="n">leave</span><span class="w"> </span><span class="ow">some</span><span class="w"> </span><span class="n">blank</span>
+<span class="k">For</span><span class="w"> </span><span class="ow">some</span><span class="w"> </span><span class="n">fields</span><span class="w"> </span><span class="n">there</span><span class="w"> </span><span class="n">will</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="k">default</span><span class="w"> </span><span class="k">value</span><span class="p">,</span>
+<span class="k">If</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="n">enter</span><span class="w"> </span><span class="s1">&#39;.&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">field</span><span class="w"> </span><span class="n">will</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="nf">left</span><span class="w"> </span><span class="n">blank</span><span class="p">.</span>
+<span class="o">-----</span>
+<span class="n">Country</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="mi">2</span><span class="w"> </span><span class="n">letter</span><span class="w"> </span><span class="n">code</span><span class="p">)</span><span class="w"> </span><span class="o">[</span><span class="n">AU</span><span class="o">]</span><span class="err">:</span><span class="n">NL</span>
+<span class="k">State</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="n">Province</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="k">full</span><span class="w"> </span><span class="n">name</span><span class="p">)</span><span class="w"> </span><span class="o">[</span><span class="n">Some-State</span><span class="o">]</span><span class="err">:</span><span class="n">Zuid</span><span class="w"> </span><span class="n">Holland</span>
+<span class="n">Locality</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="n">eg</span><span class="p">,</span><span class="w"> </span><span class="n">city</span><span class="p">)</span><span class="w"> </span><span class="err">[]:</span><span class="n">Rotterdam</span>
+<span class="n">Organization</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="n">eg</span><span class="p">,</span><span class="w"> </span><span class="n">company</span><span class="p">)</span><span class="w"> </span><span class="o">[</span><span class="n">Internet Widgits Pty Ltd</span><span class="o">]</span><span class="err">:</span><span class="n">Sparkling</span><span class="w"> </span><span class="n">Network</span>
+<span class="n">Organizational</span><span class="w"> </span><span class="n">Unit</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="n">eg</span><span class="p">,</span><span class="w"> </span><span class="k">section</span><span class="p">)</span><span class="w"> </span><span class="err">[]:</span><span class="n">Sparkling</span><span class="w"> </span><span class="n">CA</span>
+<span class="n">Common</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="n">e</span><span class="p">.</span><span class="n">g</span><span class="p">.</span><span class="w"> </span><span class="n">server</span><span class="w"> </span><span class="n">FQDN</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="n">YOUR</span><span class="w"> </span><span class="n">name</span><span class="p">)</span><span class="w"> </span><span class="err">[]:</span><span class="n">Sparkling</span><span class="w"> </span><span class="n">Intermediate</span><span class="w"> </span><span class="n">CA</span>
+<span class="n">Email</span><span class="w"> </span><span class="n">Address</span><span class="w"> </span><span class="err">[]:</span>
+
+<span class="n">Please</span><span class="w"> </span><span class="n">enter</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">following</span><span class="w"> </span><span class="s1">&#39;extra&#39;</span><span class="w"> </span><span class="n">attributes</span>
+<span class="k">to</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">sent</span><span class="w"> </span><span class="k">with</span><span class="w"> </span><span class="n">your</span><span class="w"> </span><span class="n">certificate</span><span class="w"> </span><span class="n">request</span>
+<span class="n">A</span><span class="w"> </span><span class="n">challenge</span><span class="w"> </span><span class="n">password</span><span class="w"> </span><span class="err">[]:</span>
+<span class="n">An</span><span class="w"> </span><span class="n">optional</span><span class="w"> </span><span class="n">company</span><span class="w"> </span><span class="n">name</span><span class="w"> </span><span class="err">[]:</span>
+</code></pre></div>
+
+<p>确保中间 CA 的主体（CN）和根 CA 不同。</p>
+<p>用根 CA 签署中间 CA 的 CSR：</p>
+<div class="highlight"><pre><span></span><code>openssl ca -batch -config ca.conf -notext -in intermediate1.csr -out intermediate1.crt
+</code></pre></div>
+
+<p>样例输出：</p>
+<div class="highlight"><pre><span></span><code><span class="nv">Using</span><span class="w"> </span><span class="nv">configuration</span><span class="w"> </span><span class="nv">from</span><span class="w"> </span><span class="nv">ca</span>.<span class="nv">conf</span>
+<span class="nv">Check</span><span class="w"> </span><span class="nv">that</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="nv">request</span><span class="w"> </span><span class="nv">matches</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="nv">signature</span>
+<span class="nv">Signature</span><span class="w"> </span><span class="nv">ok</span>
+<span class="nv">The</span><span class="w"> </span><span class="nv">Subject</span><span class="err">&#39;s Distinguished Name is as follows</span>
+<span class="nv">countryName</span><span class="w">           </span>:<span class="nv">PRINTABLE</span>:<span class="s1">&#39;NL&#39;</span>
+<span class="nv">stateOrProvinceName</span><span class="w">   </span>:<span class="nv">ASN</span>.<span class="mi">1</span><span class="w"> </span><span class="mi">12</span>:<span class="s1">&#39;Zuid Holland&#39;</span>
+<span class="nv">localityName</span><span class="w">          </span>:<span class="nv">ASN</span>.<span class="mi">1</span><span class="w"> </span><span class="mi">12</span>:<span class="s1">&#39;Rotterdam&#39;</span>
+<span class="nv">organizationName</span><span class="w">      </span>:<span class="nv">ASN</span>.<span class="mi">1</span><span class="w"> </span><span class="mi">12</span>:<span class="s1">&#39;Sparkling Network&#39;</span>
+<span class="nv">organizationalUnitName</span>:<span class="nv">ASN</span>.<span class="mi">1</span><span class="w"> </span><span class="mi">12</span>:<span class="s1">&#39;Sparkling CA&#39;</span>
+<span class="nv">commonName</span><span class="w">            </span>:<span class="nv">ASN</span>.<span class="mi">1</span><span class="w"> </span><span class="mi">12</span>:<span class="s1">&#39;Sparkling Intermediate CA&#39;</span>
+<span class="nv">Certificate</span><span class="w"> </span><span class="nv">is</span><span class="w"> </span><span class="nv">to</span><span class="w"> </span><span class="nv">be</span><span class="w"> </span><span class="nv">certified</span><span class="w"> </span><span class="k">until</span><span class="w"> </span><span class="nv">Mar</span><span class="w"> </span><span class="mi">30</span><span class="w"> </span><span class="mi">15</span>:<span class="mi">07</span>:<span class="mi">43</span><span class="w"> </span><span class="mi">2017</span><span class="w"> </span><span class="nv">GMT</span><span class="w"> </span><span class="ss">(</span><span class="mi">730</span><span class="w"> </span><span class="nv">days</span><span class="ss">)</span>
+
+<span class="nv">Write</span><span class="w"> </span><span class="nv">out</span><span class="w"> </span><span class="nv">database</span><span class="w"> </span><span class="nv">with</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="nv">new</span><span class="w"> </span><span class="nv">entries</span>
+<span class="nv">Data</span><span class="w"> </span><span class="nv">Base</span><span class="w"> </span><span class="nv">Updated</span>
+</code></pre></div>
+
+<p>生成 CRL（同时采用 PEM 和 DER 格式）：</p>
+<div class="highlight"><pre><span></span><code>openssl ca -config ca.conf -gencrl -keyfile rootca.key -cert rootca.crt -out rootca.crl.pem
+
+openssl crl -inform PEM -in rootca.crl.pem -outform DER -out rootca.crl
+</code></pre></div>
+
+<p>每次使用该 CA 签署证书后，请生成 CRL。</p>
+<p>如果你需要撤销该中间证书：</p>
+<div class="highlight"><pre><span></span><code>openssl ca -config ca.conf -revoke intermediate1.crt -keyfile rootca.key -cert rootca.crt
+</code></pre></div>
+
+<h3>配置中间 CA</h3>
+<p>为该中间 CA 创建一个新文件夹，然后进入该文件夹：</p>
+<div class="highlight"><pre><span></span><code>mkdir ~/SSLCA/intermediate1/
+cd ~/SSLCA/intermediate1/
+</code></pre></div>
+
+<p>从根 CA 拷贝中间证书和密钥：</p>
+<div class="highlight"><pre><span></span><code>cp ~/SSLCA/root/intermediate1.key ./
+cp ~/SSLCA/root/intermediate1.crt ./
+</code></pre></div>
+
+<p>创建索引文件：</p>
+<div class="highlight"><pre><span></span><code>touch certindex
+echo 1000 &gt; certserial
+echo 1000 &gt; crlnumber
+</code></pre></div>
+
+<p>创建一个新的 <code>ca.conf</code> 文件：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="n">vim</span><span class="w"> </span><span class="n">ca</span><span class="p">.</span><span class="n">conf</span>
+<span class="o">[</span><span class="n"> ca </span><span class="o">]</span>
+<span class="n">default_ca</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">myca</span>
+
+<span class="o">[</span><span class="n"> crl_ext </span><span class="o">]</span>
+<span class="n">issuerAltName</span><span class="o">=</span><span class="nl">issuer</span><span class="p">:</span><span class="n">copy</span><span class="w"> </span>
+<span class="n">authorityKeyIdentifier</span><span class="o">=</span><span class="nl">keyid</span><span class="p">:</span><span class="n">always</span>
+
+<span class="w"> </span><span class="o">[</span><span class="n"> myca </span><span class="o">]</span>
+<span class="w"> </span><span class="n">dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">.</span><span class="o">/</span>
+<span class="w"> </span><span class="n">new_certs_dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">$</span><span class="n">dir</span>
+<span class="w"> </span><span class="n">unique_subject</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">no</span>
+<span class="w"> </span><span class="n">certificate</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">$</span><span class="n">dir</span><span class="o">/</span><span class="n">intermediate1</span><span class="p">.</span><span class="n">crt</span>
+<span class="w"> </span><span class="k">database</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">$</span><span class="n">dir</span><span class="o">/</span><span class="n">certindex</span>
+<span class="w"> </span><span class="n">private_key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">$</span><span class="n">dir</span><span class="o">/</span><span class="n">intermediate1</span><span class="p">.</span><span class="k">key</span>
+<span class="w"> </span><span class="n">serial</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">$</span><span class="n">dir</span><span class="o">/</span><span class="n">certserial</span>
+<span class="w"> </span><span class="n">default_days</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">365</span>
+<span class="w"> </span><span class="n">default_md</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">sha1</span>
+<span class="w"> </span><span class="n">policy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">myca_policy</span>
+<span class="w"> </span><span class="n">x509_extensions</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">myca_extensions</span>
+<span class="w"> </span><span class="n">crlnumber</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">$</span><span class="n">dir</span><span class="o">/</span><span class="n">crlnumber</span>
+<span class="w"> </span><span class="n">default_crl_days</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">365</span>
+
+<span class="w"> </span><span class="o">[</span><span class="n"> myca_policy </span><span class="o">]</span>
+<span class="w"> </span><span class="n">commonName</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">supplied</span>
+<span class="w"> </span><span class="n">stateOrProvinceName</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">supplied</span>
+<span class="w"> </span><span class="n">countryName</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">optional</span>
+<span class="w"> </span><span class="n">emailAddress</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">optional</span>
+<span class="w"> </span><span class="n">organizationName</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">supplied</span>
+<span class="w"> </span><span class="n">organizationalUnitName</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">optional</span>
+
+<span class="w"> </span><span class="o">[</span><span class="n"> myca_extensions </span><span class="o">]</span>
+<span class="w"> </span><span class="n">basicConstraints</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">critical</span><span class="p">,</span><span class="nl">CA</span><span class="p">:</span><span class="k">FALSE</span>
+<span class="w"> </span><span class="n">keyUsage</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">critical</span><span class="p">,</span><span class="ow">any</span>
+<span class="w"> </span><span class="n">subjectKeyIdentifier</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">hash</span>
+<span class="w"> </span><span class="n">authorityKeyIdentifier</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nl">keyid</span><span class="p">:</span><span class="n">always</span><span class="p">,</span><span class="n">issuer</span>
+<span class="w"> </span><span class="n">keyUsage</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">digitalSignature</span><span class="p">,</span><span class="n">keyEncipherment</span>
+<span class="w"> </span><span class="n">extendedKeyUsage</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">serverAuth</span>
+<span class="w"> </span><span class="n">crlDistributionPoints</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">@crl_section</span>
+<span class="w"> </span><span class="n">subjectAltName</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="nv">@alt_names</span>
+<span class="w"> </span><span class="n">authorityInfoAccess</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">@ocsp_section</span>
+
+<span class="w"> </span><span class="o">[</span><span class="n">alt_names</span><span class="o">]</span>
+<span class="w"> </span><span class="n">DNS</span><span class="mf">.0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">example</span><span class="p">.</span><span class="n">com</span>
+<span class="w"> </span><span class="n">DNS</span><span class="mf">.1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">example</span><span class="p">.</span><span class="n">org</span>
+
+<span class="w"> </span><span class="o">[</span><span class="n">crl_section</span><span class="o">]</span>
+<span class="w"> </span><span class="n">URI</span><span class="mf">.0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nl">http</span><span class="p">:</span><span class="o">//</span><span class="n">pki</span><span class="p">.</span><span class="n">sparklingca</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">SparklingIntermidiate1</span><span class="p">.</span><span class="n">crl</span>
+<span class="w"> </span><span class="n">URI</span><span class="mf">.1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nl">http</span><span class="p">:</span><span class="o">//</span><span class="n">pki</span><span class="p">.</span><span class="k">backup</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">SparklingIntermidiate1</span><span class="p">.</span><span class="n">crl</span>
+
+<span class="w"> </span><span class="o">[</span><span class="n">ocsp_section</span><span class="o">]</span>
+<span class="w"> </span><span class="n">caIssuers</span><span class="p">;</span><span class="n">URI</span><span class="mf">.0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nl">http</span><span class="p">:</span><span class="o">//</span><span class="n">pki</span><span class="p">.</span><span class="n">sparklingca</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">SparklingIntermediate1</span><span class="p">.</span><span class="n">crt</span>
+<span class="w"> </span><span class="n">caIssuers</span><span class="p">;</span><span class="n">URI</span><span class="mf">.1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nl">http</span><span class="p">:</span><span class="o">//</span><span class="n">pki</span><span class="p">.</span><span class="k">backup</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">SparklingIntermediate1</span><span class="p">.</span><span class="n">crt</span>
+<span class="w"> </span><span class="n">OCSP</span><span class="p">;</span><span class="n">URI</span><span class="mf">.0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nl">http</span><span class="p">:</span><span class="o">//</span><span class="n">pki</span><span class="p">.</span><span class="n">sparklingca</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">ocsp</span><span class="o">/</span>
+<span class="w"> </span><span class="n">OCSP</span><span class="p">;</span><span class="n">URI</span><span class="mf">.1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nl">http</span><span class="p">:</span><span class="o">//</span><span class="n">pki</span><span class="p">.</span><span class="k">backup</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">ocsp</span><span class="o">/</span>
+</code></pre></div>
+
+<p>修改 <code>[alt_names]</code> 部分，添加你需要的主体备选名。如果你不需要主体备选名，请移除该部分包括<code>subjectAltName = @alt_names</code>的行。</p>
+<p>如果你需要设置一个指定的生效/到期日期，请添加以下内容到 <code>[myca]</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> format: YYYYMMDDHHMMSS
+default_enddate = 20191222035911
+default_startdate = 20181222035911
+</code></pre></div>
+
+<p>生成一个空白 CRL（同时以 PEM 和 DER 格式）：</p>
+<div class="highlight"><pre><span></span><code>openssl ca -config ca.conf -gencrl -keyfile rootca.key -cert rootca.crt -out rootca.crl.pem
+
+openssl crl -inform PEM -in rootca.crl.pem -outform DER -out rootca.crl
+</code></pre></div>
+
+<h3>生成末端用户证书</h3>
+<p>我们使用这个新的中间 CA 来生成一个末端用户证书，请重复以下操作来使用该 CA 为每个用户签署。</p>
+<div class="highlight"><pre><span></span><code>mkdir enduser-certs
+</code></pre></div>
+
+<p>生成末端用户的私钥：</p>
+<div class="highlight"><pre><span></span><code>openssl genrsa -out enduser-certs/enduser-example.com.key 4096
+</code></pre></div>
+
+<p>生成末端用户的 CSR：</p>
+<div class="highlight"><pre><span></span><code>openssl req -new -sha256 -key enduser-certs/enduser-example.com.key -out enduser-certs/enduser-example.com.csr
+</code></pre></div>
+
+<p>样例输出：</p>
+<div class="highlight"><pre><span></span><code><span class="n">You</span><span class="w"> </span><span class="k">are</span><span class="w"> </span><span class="n">about</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">asked</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">enter</span><span class="w"> </span><span class="n">information</span><span class="w"> </span><span class="n">that</span><span class="w"> </span><span class="n">will</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">incorporated</span>
+<span class="k">into</span><span class="w"> </span><span class="n">your</span><span class="w"> </span><span class="n">certificate</span><span class="w"> </span><span class="n">request</span><span class="p">.</span>
+<span class="n">What</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="k">are</span><span class="w"> </span><span class="n">about</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">enter</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">what</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="k">called</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">Distinguished</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">DN</span><span class="p">.</span>
+<span class="n">There</span><span class="w"> </span><span class="k">are</span><span class="w"> </span><span class="n">quite</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">few</span><span class="w"> </span><span class="n">fields</span><span class="w"> </span><span class="n">but</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="n">can</span><span class="w"> </span><span class="n">leave</span><span class="w"> </span><span class="ow">some</span><span class="w"> </span><span class="n">blank</span>
+<span class="k">For</span><span class="w"> </span><span class="ow">some</span><span class="w"> </span><span class="n">fields</span><span class="w"> </span><span class="n">there</span><span class="w"> </span><span class="n">will</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="k">default</span><span class="w"> </span><span class="k">value</span><span class="p">,</span>
+<span class="k">If</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="n">enter</span><span class="w"> </span><span class="s1">&#39;.&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">field</span><span class="w"> </span><span class="n">will</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="nf">left</span><span class="w"> </span><span class="n">blank</span><span class="p">.</span>
+<span class="o">-----</span>
+<span class="n">Country</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="mi">2</span><span class="w"> </span><span class="n">letter</span><span class="w"> </span><span class="n">code</span><span class="p">)</span><span class="w"> </span><span class="o">[</span><span class="n">AU</span><span class="o">]</span><span class="err">:</span><span class="n">NL</span>
+<span class="k">State</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="n">Province</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="k">full</span><span class="w"> </span><span class="n">name</span><span class="p">)</span><span class="w"> </span><span class="o">[</span><span class="n">Some-State</span><span class="o">]</span><span class="err">:</span><span class="n">Noord</span><span class="w"> </span><span class="n">Holland</span>
+<span class="n">Locality</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="n">eg</span><span class="p">,</span><span class="w"> </span><span class="n">city</span><span class="p">)</span><span class="w"> </span><span class="err">[]:</span><span class="n">Amsterdam</span>
+<span class="n">Organization</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="n">eg</span><span class="p">,</span><span class="w"> </span><span class="n">company</span><span class="p">)</span><span class="w"> </span><span class="o">[</span><span class="n">Internet Widgits Pty Ltd</span><span class="o">]</span><span class="err">:</span><span class="n">Example</span><span class="w"> </span><span class="n">Inc</span>
+<span class="n">Organizational</span><span class="w"> </span><span class="n">Unit</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="n">eg</span><span class="p">,</span><span class="w"> </span><span class="k">section</span><span class="p">)</span><span class="w"> </span><span class="err">[]:</span><span class="n">IT</span><span class="w"> </span><span class="n">Dept</span>
+<span class="n">Common</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="n">e</span><span class="p">.</span><span class="n">g</span><span class="p">.</span><span class="w"> </span><span class="n">server</span><span class="w"> </span><span class="n">FQDN</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="n">YOUR</span><span class="w"> </span><span class="n">name</span><span class="p">)</span><span class="w"> </span><span class="err">[]:</span><span class="n">example</span><span class="p">.</span><span class="n">com</span>
+<span class="n">Email</span><span class="w"> </span><span class="n">Address</span><span class="w"> </span><span class="err">[]:</span>
+
+<span class="n">Please</span><span class="w"> </span><span class="n">enter</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">following</span><span class="w"> </span><span class="s1">&#39;extra&#39;</span><span class="w"> </span><span class="n">attributes</span>
+<span class="k">to</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">sent</span><span class="w"> </span><span class="k">with</span><span class="w"> </span><span class="n">your</span><span class="w"> </span><span class="n">certificate</span><span class="w"> </span><span class="n">request</span>
+<span class="n">A</span><span class="w"> </span><span class="n">challenge</span><span class="w"> </span><span class="n">password</span><span class="w"> </span><span class="err">[]:</span>
+<span class="n">An</span><span class="w"> </span><span class="n">optional</span><span class="w"> </span><span class="n">company</span><span class="w"> </span><span class="n">name</span><span class="w"> </span><span class="err">[]:</span>
+</code></pre></div>
+
+<p>使用中间 CA 签署末端用户的 CSR：</p>
+<div class="highlight"><pre><span></span><code>openssl ca -batch -config ca.conf -notext -in enduser-certs/enduser-example.com.csr -out enduser-certs/enduser-example.com.crt
+</code></pre></div>
+
+<p>样例输出：</p>
+<div class="highlight"><pre><span></span><code><span class="nv">Using</span><span class="w"> </span><span class="nv">configuration</span><span class="w"> </span><span class="nv">from</span><span class="w"> </span><span class="nv">ca</span>.<span class="nv">conf</span>
+<span class="nv">Check</span><span class="w"> </span><span class="nv">that</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="nv">request</span><span class="w"> </span><span class="nv">matches</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="nv">signature</span>
+<span class="nv">Signature</span><span class="w"> </span><span class="nv">ok</span>
+<span class="nv">The</span><span class="w"> </span><span class="nv">Subject</span><span class="err">&#39;s Distinguished Name is as follows</span>
+<span class="nv">countryName</span><span class="w">           </span>:<span class="nv">PRINTABLE</span>:<span class="s1">&#39;NL&#39;</span>
+<span class="nv">stateOrProvinceName</span><span class="w">   </span>:<span class="nv">ASN</span>.<span class="mi">1</span><span class="w"> </span><span class="mi">12</span>:<span class="s1">&#39;Noord Holland&#39;</span>
+<span class="nv">localityName</span><span class="w">          </span>:<span class="nv">ASN</span>.<span class="mi">1</span><span class="w"> </span><span class="mi">12</span>:<span class="s1">&#39;Amsterdam&#39;</span>
+<span class="nv">organizationName</span><span class="w">      </span>:<span class="nv">ASN</span>.<span class="mi">1</span><span class="w"> </span><span class="mi">12</span>:<span class="s1">&#39;Example Inc&#39;</span>
+<span class="nv">organizationalUnitName</span>:<span class="nv">ASN</span>.<span class="mi">1</span><span class="w"> </span><span class="mi">12</span>:<span class="s1">&#39;IT Dept&#39;</span>
+<span class="nv">commonName</span><span class="w">            </span>:<span class="nv">ASN</span>.<span class="mi">1</span><span class="w"> </span><span class="mi">12</span>:<span class="s1">&#39;example.com&#39;</span>
+<span class="nv">Certificate</span><span class="w"> </span><span class="nv">is</span><span class="w"> </span><span class="nv">to</span><span class="w"> </span><span class="nv">be</span><span class="w"> </span><span class="nv">certified</span><span class="w"> </span><span class="k">until</span><span class="w"> </span><span class="nv">Mar</span><span class="w"> </span><span class="mi">30</span><span class="w"> </span><span class="mi">15</span>:<span class="mi">18</span>:<span class="mi">26</span><span class="w"> </span><span class="mi">2016</span><span class="w"> </span><span class="nv">GMT</span><span class="w"> </span><span class="ss">(</span><span class="mi">365</span><span class="w"> </span><span class="nv">days</span><span class="ss">)</span>
+
+<span class="nv">Write</span><span class="w"> </span><span class="nv">out</span><span class="w"> </span><span class="nv">database</span><span class="w"> </span><span class="nv">with</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="nv">new</span><span class="w"> </span><span class="nv">entries</span>
+<span class="nv">Data</span><span class="w"> </span><span class="nv">Base</span><span class="w"> </span><span class="nv">Updated</span>
+</code></pre></div>
+
+<p>生成 CRL（同时以 PEM 和 DER 格式）：</p>
+<div class="highlight"><pre><span></span><code>openssl ca -config ca.conf -gencrl -keyfile intermediate1.key -cert intermediate1.crt -out intermediate1.crl.pem
+
+openssl crl -inform PEM -in intermediate1.crl.pem -outform DER -out intermediate1.crl
+</code></pre></div>
+
+<p>每次你使用该 CA 签署证书后，都需要生成 CRL。</p>
+<p>如果你需要撤销该末端用户证书：</p>
+<div class="highlight"><pre><span></span><code>openssl ca -config ca.conf -revoke enduser-certs/enduser-example.com.crt -keyfile intermediate1.key -cert intermediate1.crt
+</code></pre></div>
+
+<p>样例输出：</p>
+<div class="highlight"><pre><span></span><code>Using configuration from ca.conf
+Revoking Certificate 1000.
+Data Base Updated
+</code></pre></div>
+
+<p>通过连接根证书和中间证书来创建证书链文件。</p>
+<div class="highlight"><pre><span></span><code>cat ../root/rootca.crt intermediate1.crt &gt; enduser-certs/enduser-example.com.chain
+</code></pre></div>
+
+<p>发送以下文件给末端用户：</p>
+<div class="highlight"><pre><span></span><code>enduser-example.com.crt
+enduser-example.com.key
+enduser-example.com.chain
+</code></pre></div>
+
+<p>你也可以让末端用户提供他们自己的 CSR，而只发送给他们这个 .crt 文件。不要把它从服务器删除，否则你就不能撤销了。</p>
+<h3>校验证书</h3>
+<p>你可以对证书链使用以下命令来验证末端用户证书：</p>
+<div class="highlight"><pre><span></span><code>openssl verify -CAfile enduser-certs/enduser-example.com.chain enduser-certs/enduser-example.com.crt 
+enduser-certs/enduser-example.com.crt: OK
+</code></pre></div>
+
+<p>你也可以针对 CRL 来验证。首先，将 PEM 格式的 CRL 和证书链相连接：</p>
+<div class="highlight"><pre><span></span><code>cat ../root/rootca.crt intermediate1.crt intermediate1.crl.pem &gt; enduser-certs/enduser-example.com.crl.chain
+</code></pre></div>
+
+<p>验证证书：</p>
+<div class="highlight"><pre><span></span><code>openssl verify -crl_check -CAfile enduser-certs/enduser-example.com.crl.chain enduser-certs/enduser-example.com.crt
+</code></pre></div>
+
+<p>没有撤销时的输出：</p>
+<div class="highlight"><pre><span></span><code>enduser-certs/enduser-example.com.crt: OK
+</code></pre></div>
+
+<p>撤销后的输出如下：</p>
+<div class="highlight"><pre><span></span><code>enduser-certs/enduser-example.com.crt: CN = example.com, ST = Noord Holland, C = NL, O = Example Inc, OU = IT Dept
+error 23 at 0 depth lookup:certificate revoked
+</code></pre></div>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

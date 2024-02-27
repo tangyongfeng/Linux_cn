@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Linux 启动过程分析</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Alison Chaiken 理解运转良好的系统对于处理不可避免的故障是最好的准备。 关于开源软件最古老的笑话是：“代码是 自具文档化 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/03/linux-qi-dong-guo-cheng-fen-xi.html" rel="bookmark"
+           title="Permalink to Linux 启动过程分析">Linux 启动过程分析</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-03-13T10:57:27+01:00">
+                Published: Tue 13 March 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Alison Chaiken</p>
+<blockquote>
+<p>理解运转良好的系统对于处理不可避免的故障是最好的准备。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/201803/13/105722o147fp61hdhxb2pp.jpg"></p>
+<p>关于开源软件最古老的笑话是：“代码是<ruby> 自具文档化的 <rt>  self-documenting </rt></ruby>”。经验表明，阅读源代码就像听天气预报一样：明智的人依然出门会看看室外的天气。本文讲述了如何运用调试工具来观察和分析 Linux 系统的启动。分析一个功能正常的系统启动过程，有助于用户和开发人员应对不可避免的故障。</p>
+<p>从某些方面看，启动过程非常简单。内核在单核上以单线程和同步状态启动，似乎可以理解。但内核本身是如何启动的呢？<a href="https://en.wikipedia.org/wiki/Initial_ramdisk">initrd（initial ramdisk）</a> 和<ruby> 引导程序 <rt>  bootloader </rt></ruby>具有哪些功能？还有，为什么以太网端口上的 LED 灯是常亮的呢？</p>
+<p>请继续阅读寻找答案。在 GitHub 上也提供了 <a href="https://github.com/chaiken/LCA2018-Demo-Code">介绍演示和练习的代码</a>。</p>
+<h3>启动的开始：OFF 状态</h3>
+<h4><ruby> 局域网唤醒 <rt>  Wake-on-LAN </rt></ruby></h4>
+<p>OFF 状态表示系统没有上电，没错吧？表面简单，其实不然。例如，如果系统启用了局域网唤醒机制（WOL），以太网指示灯将亮起。通过以下命令来检查是否是这种情况：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># sudo ethtool &lt;interface name&gt;</span>
+</code></pre></div>
+
+<p>其中 <code>&lt;interface name&gt;</code> 是网络接口的名字，比如 <code>eth0</code>。（<code>ethtool</code> 可以在同名的 Linux 软件包中找到。）如果输出中的 <code>Wake-on</code> 显示 <code>g</code>，则远程主机可以通过发送 <a href="https://en.wikipedia.org/wiki/Wake-on-LAN"><ruby> 魔法数据包 <rt>  MagicPacket </rt></ruby></a> 来启动系统。如果您无意远程唤醒系统，也不希望其他人这样做，请在系统 BIOS 菜单中将 WOL 关闭，或者用以下方式：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># sudo ethtool -s &lt;interface name&gt; wol d</span>
+</code></pre></div>
+
+<p>响应魔法数据包的处理器可能是网络接口的一部分，也可能是 <a href="https://lwn.net/Articles/630778/"><ruby> 底板管理控制器 <rt>  Baseboard Management Controller </rt></ruby></a>（BMC）。</p>
+<h4>英特尔管理引擎、平台控制器单元和 Minix</h4>
+<p>BMC 不是唯一的在系统关闭时仍在监听的微控制器（MCU）。x86_64 系统还包含了用于远程管理系统的英特尔管理引擎（IME）软件套件。从服务器到笔记本电脑，各种各样的设备都包含了这项技术，它开启了如 KVM 远程控制和英特尔功能许可服务等 <a href="https://www.youtube.com/watch?v=iffTJ1vPCSo&amp;amp;amp;amp;amp;amp;index=65&amp;amp;amp;amp;amp;amp;list=PLbzoR-pLrL6pISWAq-1cXP4_UZAyRtesk">功能</a>。根据 <a href="https://www.intel.com/content/www/us/en/support/articles/000025619/software.html">Intel 自己的检测工具</a>，<a href="https://security-center.intel.com/advisory.aspx?intelid=INTEL-SA-00086&amp;amp;amp;amp;amp;amp;languageid=en-fr">IME 存在尚未修补的漏洞</a>。坏消息是，要禁用 IME 很难。Trammell Hudson 发起了一个 <a href="https://github.com/corna/me_cleaner">me_cleaner 项目</a>，它可以清除一些相对恶劣的 IME 组件，比如嵌入式 Web 服务器，但也可能会影响运行它的系统。</p>
+<p>IME 固件和<ruby> 系统管理模式 <rt>  System Management Mode </rt></ruby>（SMM）软件是 <a href="https://lwn.net/Articles/738649/">基于 Minix 操作系统</a> 的，并运行在单独的<ruby> 平台控制器单元 <rt>  Platform Controller Hub </rt></ruby>上（LCTT 译注：即南桥芯片），而不是主 CPU 上。然后，SMM 启动位于主处理器上的<ruby> 通用可扩展固件接口 <rt>  Universal Extensible Firmware Interface </rt></ruby>（UEFI）软件，相关内容 <a href="https://lwn.net/Articles/699551/">已被提及多次</a>。Google 的 Coreboot 小组已经启动了一个雄心勃勃的 <a href="https://trmm.net/NERF"><ruby> 非扩展性缩减版固件 <rt>  Non-Extensible Reduced Firmware </rt></ruby></a>（NERF）项目，其目的不仅是要取代 UEFI，还要取代早期的 Linux 用户空间组件，如 systemd。在我们等待这些新成果的同时，Linux 用户现在就可以从 Purism、System76 或 Dell 等处购买 <a href="https://www.extremetech.com/computing/259879-dell-now-shipping-laptops-intels-management-engine-disabled">禁用了 IME</a> 的笔记本电脑，另外 <a href="https://lwn.net/Articles/733837/">带有 ARM 64 位处理器笔记本电脑</a> 还是值得期待的。</p>
+<h4>引导程序</h4>
+<p>除了启动那些问题不断的间谍软件外，早期引导固件还有什么功能呢？引导程序的作用是为新上电的处理器提供通用操作系统（如 Linux）所需的资源。在开机时，不但没有虚拟内存，在控制器启动之前连 DRAM 也没有。然后，引导程序打开电源，并扫描总线和接口，以定位内核镜像和根文件系统的位置。U-Boot 和 GRUB 等常见的引导程序支持 USB、PCI 和 NFS 等接口，以及更多的嵌入式专用设备，如 NOR 闪存和 NAND 闪存。引导程序还与 <a href="https://linuxplumbersconf.org/2017/ocw/events/LPC2017/tracks/639"><ruby> 可信平台模块 <rt>  Trusted Platform Module </rt></ruby></a>（TPM）等硬件安全设备进行交互，在启动最开始建立信任链。</p>
+<p><img alt="Running the U-boot bootloader" src="/data/attachment/album/201803/13/105730idnjdmrmr25nzyrl.png" title="Running the U-boot bootloader"></p>
+<p><em>在构建主机上的沙盒中运行 U-boot 引导程序。</em></p>
+<p>包括树莓派、任天堂设备、汽车主板和 Chromebook 在内的系统都支持广泛使用的开源引导程序 <a href="http://www.denx.de/wiki/DULG/Manual">U-Boot</a>。它没有系统日志，当发生问题时，甚至没有任何控制台输出。为了便于调试，U-Boot 团队提供了一个沙盒，可以在构建主机甚至是夜间的持续集成（CI）系统上测试补丁程序。如果系统上安装了 Git 和 GNU Compiler Collection（GCC）等通用的开发工具，使用 U-Boot 沙盒会相对简单：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="nt">git</span><span class="w"> </span><span class="nt">clone</span><span class="w"> </span><span class="nt">git</span><span class="o">://</span><span class="nt">git</span><span class="p">.</span><span class="nc">denx</span><span class="p">.</span><span class="nc">de</span><span class="o">/</span><span class="nt">u-boot</span><span class="o">;</span><span class="w"> </span><span class="nt">cd</span><span class="w"> </span><span class="nt">u-boot</span>
+<span class="err">#</span><span class="w"> </span><span class="nt">make</span><span class="w"> </span><span class="nt">ARCH</span><span class="o">=</span><span class="nt">sandbox</span><span class="w"> </span><span class="nt">defconfig</span>
+<span class="err">#</span><span class="w"> </span><span class="nt">make</span><span class="o">;</span><span class="w"> </span><span class="o">./</span><span class="nt">u-boot</span>
+<span class="o">=&gt;</span><span class="w"> </span><span class="nt">printenv</span>
+<span class="o">=&gt;</span><span class="w"> </span><span class="nt">help</span>
+</code></pre></div>
+
+<p>在 x86_64 上运行 U-Boot，可以测试一些棘手的功能，如 <a href="https://github.com/chaiken/LCA2018-Demo-Code">模拟存储设备</a> 的重新分区、基于 TPM 的密钥操作以及 USB 设备热插拔等。U-Boot 沙盒甚至可以在 GDB 调试器下单步执行。使用沙盒进行开发的速度比将引导程序刷新到电路板上的测试快 10 倍，并且可以使用 <code>Ctrl + C</code> 恢复一个“变砖”的沙盒。</p>
+<h3>启动内核</h3>
+<h4>配置引导内核</h4>
+<p>引导程序完成任务后将跳转到已加载到主内存中的内核代码，并开始执行，传递用户指定的任何命令行选项。内核是什么样的程序呢？用命令 <code>file /boot/vmlinuz</code> 可以看到它是一个 “bzImage”，意思是一个大的压缩的镜像。Linux 源代码树包含了一个可以解压缩这个文件的工具—— <a href="https://github.com/torvalds/linux/blob/master/scripts/extract-vmlinux">extract-vmlinux</a>：</p>
+<div class="highlight"><pre><span></span><code># scripts/extract-vmlinux /boot/vmlinuz-$(uname -r) &gt; vmlinux
+# file vmlinux
+vmlinux: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically
+linked, stripped
+</code></pre></div>
+
+<p>内核是一个 <a href="http://man7.org/linux/man-pages/man5/elf.5.html"><ruby> 可执行与可链接格式 <rt>  Executable and Linking Format </rt></ruby></a>（ELF）的二进制文件，就像 Linux 的用户空间程序一样。这意味着我们可以使用 <code>binutils</code> 包中的命令，如 <code>readelf</code> 来检查它。比较一下输出，例如：</p>
+<div class="highlight"><pre><span></span><code># readelf -S /bin/date
+# readelf -S vmlinux
+</code></pre></div>
+
+<p>这两个二进制文件中的段内容大致相同。</p>
+<p>所以内核必须像其他的 Linux ELF 文件一样启动，但用户空间程序是如何启动的呢？在 <code>main()</code> 函数中？并不确切。</p>
+<p>在 <code>main()</code> 函数运行之前，程序需要一个执行上下文，包括堆栈内存以及 <code>stdio</code>、<code>stdout</code> 和 <code>stderr</code> 的文件描述符。用户空间程序从标准库（多数 Linux 系统在用 “glibc”）中获取这些资源。参照以下输出：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="k">file</span><span class="w"> </span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="nc">date</span>
+<span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="nc">date</span><span class="err">:</span><span class="w"> </span><span class="n">ELF</span><span class="w"> </span><span class="mi">64</span><span class="o">-</span><span class="nc">bit</span><span class="w"> </span><span class="n">LSB</span><span class="w"> </span><span class="n">shared</span><span class="w"> </span><span class="k">object</span><span class="p">,</span><span class="w"> </span><span class="n">x86</span><span class="o">-</span><span class="mi">64</span><span class="p">,</span><span class="w"> </span><span class="n">version</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">(</span><span class="n">SYSV</span><span class="p">),</span><span class="w"> </span><span class="n">dynamically</span>
+<span class="n">linked</span><span class="p">,</span><span class="w"> </span><span class="n">interpreter</span><span class="w"> </span><span class="o">/</span><span class="n">lib64</span><span class="o">/</span><span class="n">ld</span><span class="o">-</span><span class="n">linux</span><span class="o">-</span><span class="n">x86</span><span class="o">-</span><span class="mf">64.</span><span class="n">so</span><span class="mf">.2</span><span class="p">,</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">GNU</span><span class="o">/</span><span class="n">Linux</span><span class="w"> </span><span class="mf">2.6.32</span><span class="p">,</span>
+<span class="n">BuildID</span><span class="o">[</span><span class="n">sha1</span><span class="o">]=</span><span class="mf">14e8563676</span><span class="n">febeb06d701dbee35d225c5a8e565a</span><span class="p">,</span>
+<span class="n">stripped</span>
+</code></pre></div>
+
+<p>ELF 二进制文件有一个解释器，就像 Bash 和 Python 脚本一样，但是解释器不需要像脚本那样用 <code>#!</code> 指定，因为 ELF 是 Linux 的原生格式。ELF 解释器通过调用 <code>_start()</code> 函数来用所需资源 <a href="https://0xax.gitbooks.io/linux-insides/content/Misc/program_startup.html">配置一个二进制文件</a>，这个函数可以从 glibc 源代码包中找到，可以 <a href="https://github.com/chaiken/LCA2018-Demo-Code/commit/e543d9812058f2dd65f6aed45b09dda886c5fd4e">用 GDB 查看</a>。内核显然没有解释器，必须自我配置，这是怎么做到的呢？</p>
+<p>用 GDB 检查内核的启动给出了答案。首先安装内核的调试软件包，内核中包含一个<ruby> 未剥离的 <rt>  unstripped </rt></ruby> vmlinux，例如 <code>apt-get install linux-image-amd64-dbg</code>，或者从源代码编译和安装你自己的内核，可以参照 <a href="http://kernel-handbook.alioth.debian.org/">Debian Kernel Handbook</a> 中的指令。<code>gdb vmlinux</code> 后加 <code>info files</code> 可显示 ELF 段 <code>init.text</code>。在 <code>init.text</code> 中用 <code>l *(address)</code> 列出程序执行的开头，其中 <code>address</code> 是 <code>init.text</code> 的十六进制开头。用 GDB 可以看到 x86_64 内核从内核文件 <a href="https://github.com/torvalds/linux/blob/master/arch/x86/boot/compressed/head_64.S">arch/x86/kernel/head_64.S</a> 开始启动，在这个文件中我们找到了汇编函数 <code>start_cpu0()</code>，以及一段明确的代码显示在调用 <code>x86_64 start_kernel()</code> 函数之前创建了堆栈并解压了 zImage。ARM 32 位内核也有类似的文件 <a href="https://github.com/torvalds/linux/blob/master/arch/arm/boot/compressed/head.S">arch/arm/kernel/head.S</a>。<code>start_kernel()</code> 不针对特定的体系结构，所以这个函数驻留在内核的 <a href="https://github.com/torvalds/linux/blob/master/init/main.c">init/main.c</a> 中。<code>start_kernel()</code> 可以说是 Linux 真正的 <code>main()</code> 函数。</p>
+<h3>从 start_kernel() 到 PID 1</h3>
+<h4>内核的硬件清单：设备树和 ACPI 表</h4>
+<p>在引导时，内核需要硬件信息，不仅仅是已编译过的处理器类型。代码中的指令通过单独存储的配置数据进行扩充。有两种主要的数据存储方法：<a href="https://www.youtube.com/watch?v=m_NyYEBxfn8"><ruby> 设备树 <rt>  device-tree </rt></ruby></a> 和 <a href="http://events.linuxfoundation.org/sites/events/files/slides/x86-platform.pdf">高级配置和电源接口（ACPI）表</a>。内核通过读取这些文件了解每次启动时需要运行的硬件。</p>
+<p>对于嵌入式设备，设备树是已安装硬件的清单。设备树只是一个与内核源代码同时编译的文件，通常与 <code>vmlinux</code> 一样位于 <code>/boot</code> 目录中。要查看 ARM 设备上的设备树的内容，只需对名称与 <code>/boot/*.dtb</code> 匹配的文件执行 <code>binutils</code> 包中的 <code>strings</code> 命令即可，这里 <code>dtb</code> 是指<ruby> 设备树二进制文件 <rt>  device-tree binary </rt></ruby>。显然，只需编辑构成它的类 JSON 的文件并重新运行随内核源代码提供的特殊 <code>dtc</code> 编译器即可修改设备树。虽然设备树是一个静态文件，其文件路径通常由命令行引导程序传递给内核，但近年来增加了一个 <a href="http://lwn.net/Articles/616859/">设备树覆盖</a> 的功能，内核在启动后可以动态加载热插拔的附加设备。</p>
+<p>x86 系列和许多企业级的 ARM64 设备使用 <a href="http://events.linuxfoundation.org/sites/events/files/slides/x86-platform.pdf">ACPI</a> 机制。与设备树不同的是，ACPI 信息存储在内核在启动时通过访问板载 ROM 而创建的 <code>/sys/firmware/acpi/tables</code> 虚拟文件系统中。读取 ACPI 表的简单方法是使用 <code>acpica-tools</code> 包中的 <code>acpidump</code> 命令。例如：</p>
+<p><img alt="ACPI tables on Lenovo laptops" src="/data/attachment/album/201803/13/105730cv2tdpg1n9cgp9ng.png" title="ACPI tables on Lenovo laptops"></p>
+<p><em>联想笔记本电脑的 ACPI 表都是为 Windows 2001 设置的。</em></p>
+<p>是的，你的 Linux 系统已经准备好用于 Windows 2001 了，你要考虑安装吗？与设备树不同，ACPI 具有方法和数据，而设备树更多地是一种硬件描述语言。ACPI 方法在启动后仍处于活动状态。例如，运行 <code>acpi_listen</code> 命令（在 <code>apcid</code> 包中），然后打开和关闭笔记本机盖会发现 ACPI 功能一直在运行。暂时地和动态地 <a href="https://www.mjmwired.net/kernel/Documentation/acpi/method-customizing.txt">覆盖 ACPI 表</a> 是可能的，而永久地改变它需要在引导时与 BIOS 菜单交互或刷新 ROM。如果你遇到那么多麻烦，也许你应该 <a href="https://www.coreboot.org/Supported_Motherboards">安装 coreboot</a>，这是开源固件的替代品。</p>
+<h4>从 start_kernel() 到用户空间</h4>
+<p><a href="https://github.com/torvalds/linux/blob/master/init/main.c">init/main.c</a> 中的代码竟然是可读的，而且有趣的是，它仍然在使用 1991 - 1992 年的 Linus Torvalds 的原始版权。在一个刚启动的系统上运行 <code>dmesg | head</code>，其输出主要来源于此文件。第一个 CPU 注册到系统中，全局数据结构被初始化，并且调度程序、中断处理程序（IRQ）、定时器和控制台按照严格的顺序逐一启动。在 <code>timekeeping_init()</code> 函数运行之前，所有的时间戳都是零。内核初始化的这部分是同步的，也就是说执行只发生在一个线程中，在最后一个完成并返回之前，没有任何函数会被执行。因此，即使在两个系统之间，<code>dmesg</code> 的输出也是完全可重复的，只要它们具有相同的设备树或 ACPI 表。Linux 的行为就像在 MCU 上运行的 RTOS（实时操作系统）一样，如 QNX 或 VxWorks。这种情况持续存在于函数 <code>rest_init()</code> 中，该函数在终止时由 <code>start_kernel()</code> 调用。</p>
+<p><img alt="Summary of early kernel boot process." src="/data/attachment/album/201803/13/105731rc4s4iqezgid1hky.png" title="Summary of early kernel boot process."></p>
+<p><em>早期的内核启动流程。</em></p>
+<p>函数 <code>rest_init()</code> 产生了一个新进程以运行 <code>kernel_init()</code>，并调用了 <code>do_initcalls()</code>。用户可以通过将 <code>initcall_debug</code> 附加到内核命令行来监控 <code>initcalls</code>，这样每运行一次 <code>initcall</code> 函数就会产生 一个 <code>dmesg</code> 条目。<code>initcalls</code> 会历经七个连续的级别：early、core、postcore、arch、subsys、fs、device 和 late。<code>initcalls</code> 最为用户可见的部分是所有处理器外围设备的探测和设置：总线、网络、存储和显示器等等，同时加载其内核模块。<code>rest_init()</code> 也会在引导处理器上产生第二个线程，它首先运行 <code>cpu_idle()</code>，然后等待调度器分配工作。</p>
+<p><code>kernel_init()</code> 也可以 <a href="http://free-electrons.com/pub/conferences/2014/elc/clement-smp-bring-up-on-arm-soc">设置对称多处理（SMP）结构</a>。在较新的内核中，如果 <code>dmesg</code> 的输出中出现 “Bringing up secondary CPUs...” 等字样，系统便使用了 SMP。SMP 通过“热插拔” CPU 来进行，这意味着它用状态机来管理其生命周期，这种状态机在概念上类似于热插拔的 U 盘一样。内核的电源管理系统经常会使某个<ruby> 核 <rt>  core </rt></ruby>离线，然后根据需要将其唤醒，以便在不忙的机器上反复调用同一段的 CPU 热插拔代码。观察电源管理系统调用 CPU 热插拔代码的 <a href="http://www.brendangregg.com/ebpf.html">BCC 工具</a> 称为 <code>offcputime.py</code>。</p>
+<p>请注意，<code>init/main.c</code> 中的代码在 <code>smp_init()</code> 运行时几乎已执行完毕：引导处理器已经完成了大部分一次性初始化操作，其它核无需重复。尽管如此，跨 CPU 的线程仍然要在每个核上生成，以管理每个核的中断（IRQ）、工作队列、定时器和电源事件。例如，通过 <code>ps -o psr</code> 命令可以查看服务每个 CPU 上的线程的 softirqs 和 workqueues。</p>
+<div class="highlight"><pre><span></span><code># ps -o pid,psr,comm $(pgrep ksoftirqd)  
+ PID PSR COMMAND 
+   7   0 ksoftirqd/0 
+  16   1 ksoftirqd/1 
+  22   2 ksoftirqd/2 
+  28   3 ksoftirqd/3 
+
+# ps -o pid,psr,comm $(pgrep kworker)
+PID  PSR COMMAND 
+   4   0 kworker/0:0H 
+  18   1 kworker/1:0H 
+  24   2 kworker/2:0H 
+  30   3 kworker/3:0H
+[ . . . ]
+</code></pre></div>
+
+<p>其中，PSR 字段代表“<ruby> 处理器 <rt>  processor </rt></ruby>”。每个核还必须拥有自己的定时器和 <code>cpuhp</code> 热插拔处理程序。</p>
+<p>那么用户空间是如何启动的呢？在最后，<code>kernel_init()</code> 寻找可以代表它执行 <code>init</code> 进程的 <code>initrd</code>。如果没有找到，内核直接执行 <code>init</code> 本身。那么为什么需要 <code>initrd</code> 呢？</p>
+<h4>早期的用户空间：谁规定要用 initrd？</h4>
+<p>除了设备树之外，在启动时可以提供给内核的另一个文件路径是 <code>initrd</code> 的路径。<code>initrd</code> 通常位于 <code>/boot</code> 目录中，与 x86 系统中的 bzImage 文件 vmlinuz 一样，或是与 ARM 系统中的 uImage 和设备树相同。用 <code>initramfs-tools-core</code> 软件包中的 <code>lsinitramfs</code> 工具可以列出 <code>initrd</code> 的内容。发行版的 <code>initrd</code> 方案包含了最小化的 <code>/bin</code>、<code>/sbin</code> 和 <code>/etc</code> 目录以及内核模块，还有 <code>/scripts</code> 中的一些文件。所有这些看起来都很熟悉，因为 <code>initrd</code> 大致上是一个简单的最小化 Linux 根文件系统。看似相似，其实不然，因为位于虚拟内存盘中的 <code>/bin</code> 和 <code>/sbin</code> 目录下的所有可执行文件几乎都是指向 <a href="https://www.mjmwired.net/kernel/Documentation/acpi/initrd_table_override.txt">BusyBox 二进制文件</a> 的符号链接，由此导致 <code>/bin</code> 和 <code>/sbin</code> 目录比 glibc 的小 10 倍。</p>
+<p>如果要做的只是加载一些模块，然后在普通的根文件系统上启动 <code>init</code>，为什么还要创建一个 <code>initrd</code> 呢？想想一个加密的根文件系统，解密可能依赖于加载一个位于根文件系统 <code>/lib/modules</code> 的内核模块，当然还有 <code>initrd</code> 中的。加密模块可能被静态地编译到内核中，而不是从文件加载，但有多种原因不希望这样做。例如，用模块静态编译内核可能会使其太大而不能适应存储空间，或者静态编译可能会违反软件许可条款。不出所料，存储、网络和人类输入设备（HID）驱动程序也可能存在于 <code>initrd</code> 中。<code>initrd</code> 基本上包含了任何挂载根文件系统所必需的非内核代码。<code>initrd</code> 也是用户存放 <a href="https://www.mjmwired.net/kernel/Documentation/acpi/initrd_table_override.txt">自定义ACPI</a> 表代码的地方。</p>
+<p><img alt="Rescue shell and a custom &lt;code&gt;initrd&lt;/code&gt;." src="/data/attachment/album/201803/13/105732ympxw546urala8w3.png" title="Rescue shell and a custom &lt;code&gt;initrd&lt;/code&gt;."></p>
+<p><em>救援模式的 shell 和自定义的 <code>initrd</code> 还是很有意思的。</em></p>
+<p><code>initrd</code> 对测试文件系统和数据存储设备也很有用。将这些测试工具存放在 <code>initrd</code> 中，并从内存中运行测试，而不是从被测对象中运行。</p>
+<p>最后，当 <code>init</code> 开始运行时，系统就启动啦！由于第二个处理器现在在运行，机器已经成为我们所熟知和喜爱的异步、可抢占、不可预测和高性能的生物。的确，<code>ps -o pid,psr,comm -p 1</code> 很容易显示用户空间的 <code>init</code> 进程已不在引导处理器上运行了。</p>
+<h3>总结</h3>
+<p>Linux 引导过程听起来或许令人生畏，即使是简单嵌入式设备上的软件数量也是如此。但换个角度来看，启动过程相当简单，因为启动中没有抢占、RCU 和竞争条件等扑朔迷离的复杂功能。只关注内核和 PID 1 会忽略了引导程序和辅助处理器为运行内核执行的大量准备工作。虽然内核在 Linux 程序中是独一无二的，但通过一些检查 ELF 文件的工具也可以了解其结构。学习一个正常的启动过程，可以帮助运维人员处理启动的故障。</p>
+<p>要了解更多信息，请参阅 Alison Chaiken 的演讲——<a href="https://rego.linux.conf.au/schedule/presentation/16/">Linux: The first second</a>，已于 1 月 22 日至 26 日在悉尼举行。参见 <a href="https://linux.conf.au/index.html">linux.conf.au</a>。</p>
+<p>感谢 <a href="http://shallowsky.com/">Akkana Peck</a> 的提议和指正。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

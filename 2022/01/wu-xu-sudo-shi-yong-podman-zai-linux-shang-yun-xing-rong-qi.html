@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>无需 sudo 使用 Podman 在 Linux 上运行容器</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Seth Kenlon 配置你的系统使用无根容器。 容器是现代计算的一个重要组成部分，随着围绕容器的基础设施的发展，新的和更好 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2022/01/wu-xu-sudo-shi-yong-podman-zai-linux-shang-yun-xing-rong-qi.html" rel="bookmark"
+           title="Permalink to 无需 sudo 使用 Podman 在 Linux 上运行容器">无需 sudo 使用 Podman 在 Linux 上运行容器</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2022-01-18T15:31:00+01:00">
+                Published: Tue 18 January 2022
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Seth Kenlon</p>
+<blockquote>
+<p>配置你的系统使用无根容器。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/202201/18/033424l111pvcc1iy0a1a1.jpg" title="Command line prompt"></p>
+<p>容器是现代计算的一个重要组成部分，随着围绕容器的基础设施的发展，新的和更好的工具开始浮出水面。过去，你只需用 <a href="https://opensource.com/article/18/11/behind-scenes-linux-containers">LXC</a> 就可以运行容器，然而随着 Docker 得到了普及，它开始变得越来越复杂。最终，我们在 <a href="http://podman.io">Podman</a> 得到了我们所期望的容器管理系统：一个无守护进程的容器引擎，它使容器和吊舱易于构建、运行和管理。</p>
+<p>容器直接与 Linux 内核能力（如控制组和命名空间）交互，它们在这些命名空间中产生大量的新进程。简而言之，运行一个容器实际上就是在 Linux 系统内部运行一个 Linux 系统。从操作系统的角度来看，它看起来非常像一种管理和特权活动。普通用户通常不能像容器那样自由支配系统资源，所以默认情况下，运行 Podman 需要 root 或 <code>sudo</code> 权限。然而，这只是默认设置，而且这绝不是唯一可用的设置。本文演示了如何配置你的 Linux 系统，使普通用户可以在不使用 <code>sudo</code> 的情况下（“<ruby> 无根 <rt>  rootless </rt></ruby>”）运行 Podman。</p>
+<h3>命名空间的用户 ID</h3>
+<p><a href="https://opensource.com/article/19/10/namespaces-and-containers-linux">内核命名空间</a> 本质上是一种虚构的结构，可帮助 Linux 跟踪哪些进程属于同一类。这是 Linux 中的“队列护栏”。一个队列中的进程与另一个队列中的进程之间实际上没有区别，但可以将它们用“警戒线”彼此隔离。要声明一组进程为“容器”，而另一组进程为你的操作系统，将它们分开是关键。</p>
+<p>Linux 通过用户 ID（UID）和组 ID（GID）来跟踪哪个用户或组拥有的进程。通常情况下，一个用户可以访问一千个左右的从属 UID，以分配给命名空间的子进程。由于 Podman 运行的是分配给启动容器的用户的整个从属操作系统，因此你需要的不仅仅是默认分配的从属 UID 和从属 GID。</p>
+<p>你可以用 <code>usermod</code> 命令授予一个用户更多的从属 UID 和从属 GID。例如，要授予用户 <code>tux</code> 更多的从属 UID 和从属 GID，选择一个还没分配用户的适当的高 UID（如 200000），然后将其增加几千：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>usermod<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--add-subuids<span class="w"> </span><span class="m">200000</span>-265536<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--add-subgids<span class="w"> </span><span class="m">200000</span>-265536<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>tux
+</code></pre></div>
+
+<h3>命名空间访问</h3>
+<p>对命名空间数量也有限制。这通常被设置得很高。你可以用 <code>systctl</code>，即内核参数工具来验证用户的命名空间分配：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sysctl<span class="w"> </span>--all<span class="w"> </span>--pattern<span class="w"> </span>user_namespaces
+user.max_user_namespaces<span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">28633</span>
+</code></pre></div>
+
+<p>这是很充足的命名空间，而且可能是你的发行版默认设置的。如果你的发行版没有这个属性或者设置得很低，那么你可以在文件 <code>/etc/sysctl.d/userns.conf</code> 中输入这样的文本来创建它：</p>
+<div class="highlight"><pre><span></span><code>user.max_user_namespaces=28633
+</code></pre></div>
+
+<p>加载该设置：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>sysctl<span class="w"> </span>-p<span class="w"> </span>/etc/sysctl.d/userns.conf
+</code></pre></div>
+
+<h3>在没有 root 权限的情况下运行一个容器</h3>
+<p>当你设置好你的配置，重启你的计算机，以确保你的用户和内核参数的变化被加载和激活。</p>
+<p>重启后，试着运行一个容器镜像：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>podman<span class="w"> </span>run<span class="w"> </span>-it<span class="w"> </span>busybox<span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;hello&quot;</span>
+hello
+</code></pre></div>
+
+<h3>容器像命令一样</h3>
+<p>如果你是第一次接触容器，可能会觉得很神秘，但实际上，它们与你现有的 Linux 系统没有什么不同。它们实际上是在你的系统上运行的进程，没有仿真环境或虚拟机的成本和障碍。容器和你的操作系统之间的区别只是内核命名空间，所以它们实际上只是带有不同标签的本地进程。Podman 使这一点比以往更加明显，当你将 Podman 配置为无根命令，容器感觉更像命令而不是虚拟环境。Podman 使容器和吊舱变得简单，所以请试一试。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

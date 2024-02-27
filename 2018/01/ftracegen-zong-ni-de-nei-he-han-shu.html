@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>ftrace：跟踪你的内核函数！</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Julia Evans 大家好！今天我们将去讨论一个调试工具：ftrace，之前我的博客上还没有讨论过它。还有什么能比一个新的调试工具更 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/01/ftracegen-zong-ni-de-nei-he-han-shu.html" rel="bookmark"
+           title="Permalink to ftrace：跟踪你的内核函数！">ftrace：跟踪你的内核函数！</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-01-24T11:46:58+01:00">
+                Published: Wed 24 January 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Julia Evans</p>
+<p><img alt="" src="/data/attachment/album/201801/24/114629wxzw91rhxshvr1h2.jpg"></p>
+<p>大家好！今天我们将去讨论一个调试工具：ftrace，之前我的博客上还没有讨论过它。还有什么能比一个新的调试工具更让人激动呢？</p>
+<p>这个非常棒的 ftrace 并不是个新的工具！它大约在 Linux 的 2.6 内核版本中就有了，时间大约是在 2008 年。<a href="https://lwn.net/Articles/290277/">这一篇是我用谷歌能找到的最早的文档</a>。因此，如果你是一个调试系统的“老手”，可能早就已经使用它了！</p>
+<p>我知道，ftrace 已经存在了大约 2.5 年了（LCTT 译注：距本文初次写作时），但是还没有真正的去学习它。假设我明天要召开一个专题研究会，那么，关于 ftrace 应该讨论些什么？因此，今天是时间去讨论一下它了！</p>
+<h3>什么是 ftrace？</h3>
+<p>ftrace 是一个 Linux 内核特性，它可以让你去跟踪 Linux 内核的函数调用。为什么要这么做呢？好吧，假设你调试一个奇怪的问题，而你已经得到了你的内核版本中这个问题在源代码中的开始的位置，而你想知道这里到底发生了什么？</p>
+<p>每次在调试的时候，我并不会经常去读内核源代码，但是，极个别的情况下会去读它！例如，本周在工作中，我有一个程序在内核中卡死了。查看到底是调用了什么函数，能够帮我更好的理解在内核中发生了什么，哪些系统涉及其中！（在我的那个案例中，它是虚拟内存系统）。</p>
+<p>我认为 ftrace 是一个十分好用的工具（它肯定没有 <code>strace</code> 那样使用广泛，也比它难以使用），但是它还是值得你去学习。因此，让我们开始吧！</p>
+<h3>使用 ftrace 的第一步</h3>
+<p>不像 <code>strace</code> 和 <code>perf</code>，ftrace 并不是真正的 <strong>程序</strong> – 你不能只运行 <code>ftrace my_cool_function</code>。那样太容易了！</p>
+<p>如果你去读 <a href="https://lwn.net/Articles/365835/">使用 ftrace 调试内核</a>，它会告诉你从 <code>cd /sys/kernel/debug/tracing</code> 开始，然后做很多文件系统的操作。</p>
+<p>对于我来说，这种办法太麻烦——一个使用 ftrace 的简单例子像是这样：</p>
+<div class="highlight"><pre><span></span><code>cd /sys/kernel/debug/tracing
+echo function &gt; current_tracer
+echo do_page_fault &gt; set_ftrace_filter
+cat trace
+</code></pre></div>
+
+<p>这个文件系统是跟踪系统的接口（“给这些神奇的文件赋值，然后该发生的事情就会发生”）理论上看起来似乎可用，但是它不是我的首选方式。</p>
+<p>幸运的是，ftrace 团队也考虑到这个并不友好的用户界面，因此，它有了一个更易于使用的界面，它就是 <code>trace-cmd</code>！！！<code>trace-cmd</code> 是一个带命令行参数的普通程序。我们后面将使用它！我在 LWN 上找到了一个 <code>trace-cmd</code> 的使用介绍：<a href="https://lwn.net/Articles/410200/">trace-cmd: Ftrace 的一个前端</a>。</p>
+<h3>开始使用 trace-cmd：让我们仅跟踪一个函数</h3>
+<p>首先，我需要去使用 <code>sudo apt-get install trace-cmd</code> 安装 <code>trace-cmd</code>，这一步很容易。</p>
+<p>对于第一个 ftrace 的演示，我决定去了解我的内核如何去处理一个页面故障。当 Linux 分配内存时，它经常偷懒，（“你并不是<em>真的</em>计划去使用内存，对吗？”）。这意味着，当一个应用程序尝试去对分配给它的内存进行写入时，就会发生一个页面故障，而这个时候，内核才会真正的为应用程序去分配物理内存。</p>
+<p>我们开始使用 <code>trace-cmd</code> 并让它跟踪 <code>do_page_fault</code> 函数！</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>trace-cmd<span class="w"> </span>record<span class="w"> </span>-p<span class="w"> </span><span class="k">function</span><span class="w"> </span>-l<span class="w"> </span>do_page_fault
+<span class="w">  </span>plugin<span class="w"> </span><span class="s1">&#39;function&#39;</span>
+Hit<span class="w"> </span>Ctrl^C<span class="w"> </span>to<span class="w"> </span>stop<span class="w"> </span>recording
+</code></pre></div>
+
+<p>我将它运行了几秒钟，然后按下了 <code>Ctrl+C</code>。 让我大吃一惊的是，它竟然产生了一个 2.5MB 大小的名为 <code>trace.dat</code> 的跟踪文件。我们来看一下这个文件的内容！</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>trace-cmd<span class="w"> </span>report
+<span class="w">          </span>chrome-15144<span class="w"> </span><span class="o">[</span><span class="m">000</span><span class="o">]</span><span class="w"> </span><span class="m">11446</span>.466121:<span class="w"> </span><span class="k">function</span>:<span class="w">             </span>do_page_fault
+<span class="w">          </span>chrome-15144<span class="w"> </span><span class="o">[</span><span class="m">000</span><span class="o">]</span><span class="w"> </span><span class="m">11446</span>.467910:<span class="w"> </span><span class="k">function</span>:<span class="w">             </span>do_page_fault
+<span class="w">          </span>chrome-15144<span class="w"> </span><span class="o">[</span><span class="m">000</span><span class="o">]</span><span class="w"> </span><span class="m">11446</span>.469174:<span class="w"> </span><span class="k">function</span>:<span class="w">             </span>do_page_fault
+<span class="w">          </span>chrome-15144<span class="w"> </span><span class="o">[</span><span class="m">000</span><span class="o">]</span><span class="w"> </span><span class="m">11446</span>.474225:<span class="w"> </span><span class="k">function</span>:<span class="w">             </span>do_page_fault
+<span class="w">          </span>chrome-15144<span class="w"> </span><span class="o">[</span><span class="m">000</span><span class="o">]</span><span class="w"> </span><span class="m">11446</span>.474386:<span class="w"> </span><span class="k">function</span>:<span class="w">             </span>do_page_fault
+<span class="w">          </span>chrome-15144<span class="w"> </span><span class="o">[</span><span class="m">000</span><span class="o">]</span><span class="w"> </span><span class="m">11446</span>.478768:<span class="w"> </span><span class="k">function</span>:<span class="w">             </span>do_page_fault
+<span class="w"> </span>CompositorTileW-15154<span class="w"> </span><span class="o">[</span><span class="m">001</span><span class="o">]</span><span class="w"> </span><span class="m">11446</span>.480172:<span class="w"> </span><span class="k">function</span>:<span class="w">             </span>do_page_fault
+<span class="w">          </span>chrome-1830<span class="w">  </span><span class="o">[</span><span class="m">003</span><span class="o">]</span><span class="w"> </span><span class="m">11446</span>.486696:<span class="w"> </span><span class="k">function</span>:<span class="w">             </span>do_page_fault
+<span class="w"> </span>CompositorTileW-15154<span class="w"> </span><span class="o">[</span><span class="m">001</span><span class="o">]</span><span class="w"> </span><span class="m">11446</span>.488983:<span class="w"> </span><span class="k">function</span>:<span class="w">             </span>do_page_fault
+<span class="w"> </span>CompositorTileW-15154<span class="w"> </span><span class="o">[</span><span class="m">001</span><span class="o">]</span><span class="w"> </span><span class="m">11446</span>.489034:<span class="w"> </span><span class="k">function</span>:<span class="w">             </span>do_page_fault
+<span class="w"> </span>CompositorTileW-15154<span class="w"> </span><span class="o">[</span><span class="m">001</span><span class="o">]</span><span class="w"> </span><span class="m">11446</span>.489045:<span class="w"> </span><span class="k">function</span>:<span class="w">             </span>do_page_fault
+</code></pre></div>
+
+<p>看起来很整洁 – 它展示了进程名（chrome）、进程 ID（15144）、CPU ID（000），以及它跟踪的函数。</p>
+<p>通过察看整个文件，（<code>sudo trace-cmd report | grep chrome</code>）可以看到，我们跟踪了大约 1.5 秒，在这 1.5 秒的时间段内，Chrome 发生了大约 500 个页面故障。真是太酷了！这就是我们做的第一个 ftrace！</p>
+<h3>下一个 ftrace 技巧：我们来跟踪一个进程！</h3>
+<p>好吧，只看一个函数是有点无聊！假如我想知道一个程序中都发生了什么事情。我使用一个名为 Hugo 的静态站点生成器。看看内核为 Hugo 都做了些什么事情？</p>
+<p>在我的电脑上 Hugo 的 PID 现在是 25314，因此，我使用如下的命令去记录所有的内核函数：</p>
+<div class="highlight"><pre><span></span><code><span class="nv">sudo</span><span class="w"> </span><span class="nv">trace</span><span class="o">-</span><span class="nv">cmd</span><span class="w"> </span><span class="nv">record</span><span class="w"> </span><span class="o">--</span><span class="nv">help</span><span class="w"> </span>#<span class="w"> </span><span class="nv">I</span><span class="w"> </span><span class="nv">read</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="nv">help</span><span class="o">!</span>
+<span class="nv">sudo</span><span class="w"> </span><span class="nv">trace</span><span class="o">-</span><span class="nv">cmd</span><span class="w"> </span><span class="nv">record</span><span class="w"> </span><span class="o">-</span><span class="nv">p</span><span class="w"> </span><span class="nv">function</span><span class="w"> </span><span class="o">-</span><span class="nv">P</span><span class="w"> </span><span class="mi">25314</span><span class="w"> </span>#<span class="w"> </span><span class="nv">record</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nv">PID</span><span class="w"> </span><span class="mi">25314</span>
+</code></pre></div>
+
+<p><code>sudo trace-cmd report</code> 输出了 18,000 行。如果你对这些感兴趣，你可以看 <a href="https://gist.githubusercontent.com/jvns/e5c2d640f7ec76ed9ed579be1de3312e/raw/78b8425436dc4bb5bb4fa76a4f85d5809f7d1ef2/trace-cmd-report.txt">这里是所有的 18,000 行的输出</a>。</p>
+<p>18,000 行太多了，因此，在这里仅摘录其中几行。</p>
+<p>当系统调用 <code>clock_gettime</code> 运行的时候，都发生了什么：</p>
+<div class="highlight"><pre><span></span><code> compat_SyS_clock_gettime
+    SyS_clock_gettime
+       clockid_to_kclock
+       posix_clock_realtime_get
+          getnstimeofday64
+             __getnstimeofday64
+                arch_counter_read
+    __compat_put_timespec
+</code></pre></div>
+
+<p>这是与进程调试相关的一些东西：</p>
+<div class="highlight"><pre><span></span><code> cpufreq_sched_irq_work
+    wake_up_process
+       try_to_wake_up
+          _raw_spin_lock_irqsave
+             do_raw_spin_lock
+          _raw_spin_lock
+             do_raw_spin_lock
+          walt_ktime_clock
+             ktime_get
+                arch_counter_read
+          walt_update_task_ravg
+             exiting_task
+</code></pre></div>
+
+<p>虽然你可能还不理解它们是做什么的，但是，能够看到所有的这些函数调用也是件很酷的事情。</p>
+<h3>“function graph” 跟踪</h3>
+<p>这里有另外一个模式，称为 <code>function_graph</code>。除了它既可以进入也可以退出一个函数外，其它的功能和函数跟踪器是一样的。<a href="https://gist.githubusercontent.com/jvns/f32e9b06bcd2f1f30998afdd93e4aaa5/raw/8154d9828bb895fd6c9b0ee062275055b3775101/function_graph.txt">这里是那个跟踪器的输出</a></p>
+<div class="highlight"><pre><span></span><code>sudo trace-cmd record -p function_graph -P 25314
+</code></pre></div>
+
+<p>同样，这里只是一个片断（这次来自 futex 代码）：</p>
+<div class="highlight"><pre><span></span><code>             |      futex_wake() {
+             |        get_futex_key() {
+             |          get_user_pages_fast() {
+  1.458 us   |            __get_user_pages_fast();
+  4.375 us   |          }
+             |          __might_sleep() {
+  0.292 us   |            ___might_sleep();
+  2.333 us   |          }
+  0.584 us   |          get_futex_key_refs();
+             |          unlock_page() {
+  0.291 us   |            page_waitqueue();
+  0.583 us   |            __wake_up_bit();
+  5.250 us   |          }
+  0.583 us   |          put_page();
++ 24.208 us  |        }
+</code></pre></div>
+
+<p>我们看到在这个示例中，在 <code>futex_wake</code> 后面调用了 <code>get_futex_key</code>。这是在源代码中真实发生的事情吗？我们可以检查一下！！<a href="https://github.com/torvalds/linux/blob/v4.4/kernel/futex.c#L1313-L1324">这里是在 Linux 4.4 中 futex_wake 的定义</a> (我的内核版本是 4.4）。</p>
+<p>为节省时间我直接贴出来，它的内容如下：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">static</span><span class="w"> </span><span class="nx">int</span>
+<span class="nx">futex_wake</span><span class="p">(</span><span class="kt">u32</span><span class="w"> </span><span class="nx">__user</span><span class="w"> </span><span class="o">*</span><span class="nx">uaddr</span><span class="p">,</span><span class="w"> </span><span class="nx">unsigned</span><span class="w"> </span><span class="nx">int</span><span class="w"> </span><span class="nx">flags</span><span class="p">,</span><span class="w"> </span><span class="nx">int</span><span class="w"> </span><span class="nx">nr_wake</span><span class="p">,</span><span class="w"> </span><span class="kt">u32</span><span class="w"> </span><span class="nx">bitset</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="nx">struct</span><span class="w"> </span><span class="nx">futex_hash_bucket</span><span class="w"> </span><span class="o">*</span><span class="nx">hb</span><span class="p">;</span>
+<span class="w">    </span><span class="nx">struct</span><span class="w"> </span><span class="nx">futex_q</span><span class="w"> </span><span class="o">*</span><span class="nx">this</span><span class="p">,</span><span class="w"> </span><span class="o">*</span><span class="nx">next</span><span class="p">;</span>
+<span class="w">    </span><span class="nx">union</span><span class="w"> </span><span class="nx">futex_key</span><span class="w"> </span><span class="nx">key</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">FUTEX_KEY_INIT</span><span class="p">;</span>
+<span class="w">    </span><span class="nx">int</span><span class="w"> </span><span class="nx">ret</span><span class="p">;</span>
+<span class="w">    </span><span class="nx">WAKE_Q</span><span class="p">(</span><span class="nx">wake_q</span><span class="p">);</span>
+
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(!</span><span class="nx">bitset</span><span class="p">)</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="o">-</span><span class="nx">EINVAL</span><span class="p">;</span>
+
+<span class="w">    </span><span class="nx">ret</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">get_futex_key</span><span class="p">(</span><span class="nx">uaddr</span><span class="p">,</span><span class="w"> </span><span class="nx">flags</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="nx">FLAGS_SHARED</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">key</span><span class="p">,</span><span class="w"> </span><span class="nx">VERIFY_READ</span><span class="p">);</span>
+</code></pre></div>
+
+<p>如你所见，在 <code>futex_wake</code> 中的第一个函数调用真的是 <code>get_futex_key</code>！ 太棒了！相比阅读内核代码，阅读函数跟踪肯定是更容易的找到结果的办法，并且让人高兴的是，还能看到所有的函数用了多长时间。</p>
+<h3>如何知道哪些函数可以被跟踪</h3>
+<p>如果你去运行 <code>sudo trace-cmd list -f</code>，你将得到一个你可以跟踪的函数的列表。它很简单但是也很重要。</p>
+<h3>最后一件事：事件！</h3>
+<p>现在，我们已经知道了怎么去跟踪内核中的函数，真是太酷了！</p>
+<p>还有一类我们可以跟踪的东西！有些事件与我们的函数调用并不相符。例如，你可能想知道当一个程序被调度进入或者离开 CPU 时，都发生了什么事件！你可能想通过“盯着”函数调用计算出来，但是，我告诉你，不可行！</p>
+<p>由于函数也为你提供了几种事件，因此，你可以看到当重要的事件发生时，都发生了什么事情。你可以使用 <code>sudo cat /sys/kernel/debug/tracing/available_events</code> 来查看这些事件的一个列表。 </p>
+<p>我查看了全部的 sched<em>switch 事件。我并不完全知道 sched</em>switch 是什么，但是，我猜测它与调度有关。</p>
+<div class="highlight"><pre><span></span><code>sudo cat /sys/kernel/debug/tracing/available_events
+sudo trace-cmd record -e sched:sched_switch
+sudo trace-cmd report
+</code></pre></div>
+
+<p>输出如下：</p>
+<div class="highlight"><pre><span></span><code> 16169.624862:   Chrome_ChildIOT:24817 [112] S ==&gt; chrome:15144 [120]
+ 16169.624992:   chrome:15144 [120] S ==&gt; swapper/3:0 [120]
+ 16169.625202:   swapper/3:0 [120] R ==&gt; Chrome_ChildIOT:24817 [112]
+ 16169.625251:   Chrome_ChildIOT:24817 [112] R ==&gt; chrome:1561 [112]
+ 16169.625437:   chrome:1561 [112] S ==&gt; chrome:15144 [120]
+</code></pre></div>
+
+<p>现在，可以很清楚地看到这些切换，从 PID 24817 -&gt; 15144 -&gt; kernel -&gt; 24817 -&gt; 1561 -&gt; 15114。(所有的这些事件都发生在同一个 CPU 上）。</p>
+<h3>ftrace 是如何工作的？</h3>
+<p>ftrace 是一个动态跟踪系统。当我们开始 ftrace 内核函数时，<strong>函数的代码会被改变</strong>。让我们假设去跟踪 <code>do_page_fault</code> 函数。内核将在那个函数的汇编代码中插入一些额外的指令，以便每次该函数被调用时去提示跟踪系统。内核之所以能够添加额外的指令的原因是，Linux 将额外的几个 NOP 指令编译进每个函数中，因此，当需要的时候，这里有添加跟踪代码的地方。</p>
+<p>这是一个十分复杂的问题，因为，当不需要使用 ftrace 去跟踪我的内核时，它根本就不影响性能。而当我需要跟踪时，跟踪的函数越多，产生的开销就越大。</p>
+<p>（或许有些是不对的，但是，我认为的 ftrace 就是这样工作的）</p>
+<h3>更容易地使用 ftrace：brendan gregg 的工具及 kernelshark</h3>
+<p>正如我们在文件中所讨论的，你需要去考虑很多的关于单个的内核函数/事件直接使用 ftrace 都做了些什么。能够做到这一点很酷！但是也需要做大量的工作！</p>
+<p>Brendan Gregg （我们的 Linux 调试工具“大神”）有个工具仓库，它使用 ftrace 去提供关于像 I/O 延迟这样的各种事情的信息。这是它在 GitHub 上全部的 <a href="https://github.com/brendangregg/perf-tools">perf-tools</a> 仓库。</p>
+<p>这里有一个权衡，那就是这些工具易于使用，但是你被限制仅能用于 Brendan Gregg 认可并做到工具里面的方面。它包括了很多方面！:)</p>
+<p>另一个工具是将 ftrace 的输出可视化，做的比较好的是 <a href="https://lwn.net/Articles/425583/">kernelshark</a>。我还没有用过它，但是看起来似乎很有用。你可以使用 <code>sudo apt-get install kernelshark</code> 来安装它。</p>
+<h3>一个新的超能力</h3>
+<p>我很高兴能够花一些时间去学习 ftrace！对于任何内核工具，不同的内核版本有不同的功效，我希望有一天你能发现它很有用！</p>
+<h3>ftrace 系列文章的一个索引</h3>
+<p>最后，这里是我找到的一些 ftrace 方面的文章。它们大部分在 LWN （Linux 新闻周刊）上，它是 Linux 的一个极好的资源（你可以购买一个 <a href="https://lwn.net/subscribe/Info">订阅</a>！）</p>
+<ul>
+<li><a href="https://lwn.net/Articles/365835/">使用 Ftrace 调试内核 - part 1</a> (Dec 2009, Steven Rostedt)</li>
+<li><a href="https://lwn.net/Articles/366796/">使用 Ftrace 调试内核 - part 2</a> (Dec 2009, Steven Rostedt)</li>
+<li><a href="https://lwn.net/Articles/370423/">Linux 函数跟踪器的秘密</a> (Jan 2010, Steven Rostedt)</li>
+<li><a href="https://lwn.net/Articles/410200/">trace-cmd：Ftrace 的一个前端</a> (Oct 2010, Steven Rostedt)</li>
+<li><a href="https://lwn.net/Articles/425583/">使用 KernelShark 去分析实时调试器</a> (2011, Steven Rostedt)</li>
+<li><a href="https://lwn.net/Articles/608497/">Ftrace: 神秘的开关</a> (2014, Brendan Gregg)</li>
+<li>内核文档：（它十分有用） <a href="https://raw.githubusercontent.com/torvalds/linux/v4.4/Documentation/trace/ftrace.txt">Documentation/ftrace.txt</a></li>
+<li>你能跟踪的事件的文档 <a href="https://raw.githubusercontent.com/torvalds/linux/v4.4/Documentation/trace/events.txt">Documentation/events.txt</a></li>
+<li>linux 内核开发上的一些 ftrace 设计文档 （不是有用，而是有趣！) <a href="https://raw.githubusercontent.com/torvalds/linux/v4.4/Documentation/trace/ftrace-design.txt">Documentation/ftrace-design.txt</a></li>
+</ul>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

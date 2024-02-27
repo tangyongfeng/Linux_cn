@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>一次 Docker 镜像的逆向工程</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Simon Arneaud 这要从一次咨询的失误说起：政府组织 A 让政府组织 B 开发一个 Web 应用程序。政府机构 B 把部分工作外包给某个 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2021/04/yi-ci-docker-jing-xiang-de-ni-xiang-gong-cheng.html" rel="bookmark"
+           title="Permalink to 一次 Docker 镜像的逆向工程">一次 Docker 镜像的逆向工程</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2021-04-01T21:55:31+02:00">
+                Published: Thu 01 April 2021
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Simon Arneaud</p>
+<p><img alt="" src="/data/attachment/album/202104/01/215523oajrgjo77irb7nun.jpg"></p>
+<p>这要从一次咨询的失误说起：政府组织 A 让政府组织 B 开发一个 Web 应用程序。政府机构 B 把部分工作外包给某个人。后来，项目的托管和维护被外包给一家私人公司 C。C 公司发现，之前外包的人（已经离开很久了）构建了一个自定义的 Docker 镜像，并将其成为系统构建的依赖项，但这个人没有提交原始的 Dockerfile。C 公司有合同义务管理这个 Docker 镜像，可是他们他们没有源代码。C 公司偶尔叫我进去做各种工作，所以处理一些关于这个神秘 Docker 镜像的事情就成了我的工作。</p>
+<p>幸运的是，Docker 镜像的格式比想象的透明多了。虽然还需要做一些侦查工作，但只要解剖一个镜像文件，就能发现很多东西。例如，这里有一个 <a href="https://github.com/tmknom/prettier">Prettier 代码格式化</a> 的镜像可供快速浏览。</p>
+<p>首先，让 Docker <ruby> 守护进程 <rt>  daemon </rt></ruby>拉取镜像，然后将镜像提取到文件中：</p>
+<div class="highlight"><pre><span></span><code>docker pull tmknom/prettier:2.0.5
+docker save tmknom/prettier:2.0.5 &gt; prettier.tar
+</code></pre></div>
+
+<p>是的，该文件只是一个典型 tarball 格式的归档文件：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>tar<span class="w"> </span>xvf<span class="w"> </span>prettier.tar
+6c37da2ee7de579a0bf5495df32ba3e7807b0a42e2a02779206d165f55f1ba70/
+6c37da2ee7de579a0bf5495df32ba3e7807b0a42e2a02779206d165f55f1ba70/VERSION
+6c37da2ee7de579a0bf5495df32ba3e7807b0a42e2a02779206d165f55f1ba70/json
+6c37da2ee7de579a0bf5495df32ba3e7807b0a42e2a02779206d165f55f1ba70/layer.tar
+88f38be28f05f38dba94ce0c1328ebe2b963b65848ab96594f8172a9c3b0f25b.json
+a9cc4ace48cd792ef888ade20810f82f6c24aaf2436f30337a2a712cd054dc97/
+a9cc4ace48cd792ef888ade20810f82f6c24aaf2436f30337a2a712cd054dc97/VERSION
+a9cc4ace48cd792ef888ade20810f82f6c24aaf2436f30337a2a712cd054dc97/json
+a9cc4ace48cd792ef888ade20810f82f6c24aaf2436f30337a2a712cd054dc97/layer.tar
+d4f612de5397f1fc91272cfbad245b89eac8fa4ad9f0fc10a40ffbb54a356cb4/
+d4f612de5397f1fc91272cfbad245b89eac8fa4ad9f0fc10a40ffbb54a356cb4/VERSION
+d4f612de5397f1fc91272cfbad245b89eac8fa4ad9f0fc10a40ffbb54a356cb4/json
+d4f612de5397f1fc91272cfbad245b89eac8fa4ad9f0fc10a40ffbb54a356cb4/layer.tar
+manifest.json
+repositories
+</code></pre></div>
+
+<p>如你所见，Docker 在命名时经常使用<ruby> 哈希 <rt>  hash </rt></ruby>。我们看看 <code>manifest.json</code>。它是以难以阅读的压缩 JSON 写的，不过 <a href="https://stedolan.github.io/jq/">JSON 瑞士军刀 jq</a> 可以很好地打印 JSON：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>jq<span class="w"> </span>.<span class="w"> </span>manifest.json
+<span class="o">[</span>
+<span class="w">  </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;Config&quot;</span>:<span class="w"> </span><span class="s2">&quot;88f38be28f05f38dba94ce0c1328ebe2b963b65848ab96594f8172a9c3b0f25b.json&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;RepoTags&quot;</span>:<span class="w"> </span><span class="o">[</span>
+<span class="w">      </span><span class="s2">&quot;tmknom/prettier:2.0.5&quot;</span>
+<span class="w">    </span><span class="o">]</span>,
+<span class="w">    </span><span class="s2">&quot;Layers&quot;</span>:<span class="w"> </span><span class="o">[</span>
+<span class="w">      </span><span class="s2">&quot;a9cc4ace48cd792ef888ade20810f82f6c24aaf2436f30337a2a712cd054dc97/layer.tar&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;d4f612de5397f1fc91272cfbad245b89eac8fa4ad9f0fc10a40ffbb54a356cb4/layer.tar&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;6c37da2ee7de579a0bf5495df32ba3e7807b0a42e2a02779206d165f55f1ba70/layer.tar&quot;</span>
+<span class="w">    </span><span class="o">]</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="o">]</span>
+</code></pre></div>
+
+<p>请注意，这三个<ruby> 层 <rt>  Layer </rt></ruby>对应三个以哈希命名的目录。我们以后再看。现在，让我们看看 <code>Config</code> 键指向的 JSON 文件。它有点长，所以我只在这里转储第一部分：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>jq<span class="w"> </span>.<span class="w"> </span>88f38be28f05f38dba94ce0c1328ebe2b963b65848ab96594f8172a9c3b0f25b.json<span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-n<span class="w"> </span><span class="m">20</span>
+<span class="o">{</span>
+<span class="w">  </span><span class="s2">&quot;architecture&quot;</span>:<span class="w"> </span><span class="s2">&quot;amd64&quot;</span>,
+<span class="w">  </span><span class="s2">&quot;config&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;Hostname&quot;</span>:<span class="w"> </span><span class="s2">&quot;&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;Domainname&quot;</span>:<span class="w"> </span><span class="s2">&quot;&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;User&quot;</span>:<span class="w"> </span><span class="s2">&quot;&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;AttachStdin&quot;</span>:<span class="w"> </span>false,
+<span class="w">    </span><span class="s2">&quot;AttachStdout&quot;</span>:<span class="w"> </span>false,
+<span class="w">    </span><span class="s2">&quot;AttachStderr&quot;</span>:<span class="w"> </span>false,
+<span class="w">    </span><span class="s2">&quot;Tty&quot;</span>:<span class="w"> </span>false,
+<span class="w">    </span><span class="s2">&quot;OpenStdin&quot;</span>:<span class="w"> </span>false,
+<span class="w">    </span><span class="s2">&quot;StdinOnce&quot;</span>:<span class="w"> </span>false,
+<span class="w">    </span><span class="s2">&quot;Env&quot;</span>:<span class="w"> </span><span class="o">[</span>
+<span class="w">      </span><span class="s2">&quot;PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin&quot;</span>
+<span class="w">    </span><span class="o">]</span>,
+<span class="w">    </span><span class="s2">&quot;Cmd&quot;</span>:<span class="w"> </span><span class="o">[</span>
+<span class="w">      </span><span class="s2">&quot;--help&quot;</span>
+<span class="w">    </span><span class="o">]</span>,
+<span class="w">    </span><span class="s2">&quot;ArgsEscaped&quot;</span>:<span class="w"> </span>true,
+<span class="w">    </span><span class="s2">&quot;Image&quot;</span>:<span class="w"> </span><span class="s2">&quot;sha256:93e72874b338c1e0734025e1d8ebe259d4f16265dc2840f88c4c754e1c01ba0a&quot;</span>,
+</code></pre></div>
+
+<p>最重要的是 <code>history</code> 列表，它列出了镜像中的每一层。Docker 镜像由这些层堆叠而成。Dockerfile 中几乎每条命令都会变成一个层，描述该命令对镜像所做的更改。如果你执行 <code>RUN script.sh</code> 命令创建了 <code>really_big_file</code>，然后用 <code>RUN rm really_big_file</code> 命令删除文件，Docker 镜像实际生成两层：一个包含 <code>really_big_file</code>，一个包含 <code>.wh.really_big_file</code> 记录来删除它。整个镜像文件大小不变。这就是为什么你会经常看到像 <code>RUN script.sh &amp;&amp; rm really_big_file</code> 这样的 Dockerfile 命令链接在一起——它保障所有更改都合并到一层中。</p>
+<p>以下是该 Docker 镜像中记录的所有层。注意，大多数层不改变文件系统镜像，并且 <code>empty_layer</code> 标记为 <code>true</code>。以下只有三个层是非空的，与我们之前描述的相符。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>jq<span class="w"> </span>.history<span class="w"> </span>88f38be28f05f38dba94ce0c1328ebe2b963b65848ab96594f8172a9c3b0f25b.json
+<span class="o">[</span>
+<span class="w">  </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;created&quot;</span>:<span class="w"> </span><span class="s2">&quot;2020-04-24T01:05:03.608058404Z&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;created_by&quot;</span>:<span class="w"> </span><span class="s2">&quot;/bin/sh -c #(nop) ADD file:b91adb67b670d3a6ff9463e48b7def903ed516be66fc4282d22c53e41512be49 in / &quot;</span>
+<span class="w">  </span><span class="o">}</span>,
+<span class="w">  </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;created&quot;</span>:<span class="w"> </span><span class="s2">&quot;2020-04-24T01:05:03.92860976Z&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;created_by&quot;</span>:<span class="w"> </span><span class="s2">&quot;/bin/sh -c #(nop)  CMD [\&quot;/bin/sh\&quot;]&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;empty_layer&quot;</span>:<span class="w"> </span><span class="nb">true</span>
+<span class="w">  </span><span class="o">}</span>,
+<span class="w">  </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;created&quot;</span>:<span class="w"> </span><span class="s2">&quot;2020-04-29T06:34:06.617130538Z&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;created_by&quot;</span>:<span class="w"> </span><span class="s2">&quot;/bin/sh -c #(nop)  ARG BUILD_DATE&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;empty_layer&quot;</span>:<span class="w"> </span><span class="nb">true</span>
+<span class="w">  </span><span class="o">}</span>,
+<span class="w">  </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;created&quot;</span>:<span class="w"> </span><span class="s2">&quot;2020-04-29T06:34:07.020521808Z&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;created_by&quot;</span>:<span class="w"> </span><span class="s2">&quot;/bin/sh -c #(nop)  ARG VCS_REF&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;empty_layer&quot;</span>:<span class="w"> </span><span class="nb">true</span>
+<span class="w">  </span><span class="o">}</span>,
+<span class="w">  </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;created&quot;</span>:<span class="w"> </span><span class="s2">&quot;2020-04-29T06:34:07.36915054Z&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;created_by&quot;</span>:<span class="w"> </span><span class="s2">&quot;/bin/sh -c #(nop)  ARG VERSION&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;empty_layer&quot;</span>:<span class="w"> </span><span class="nb">true</span>
+<span class="w">  </span><span class="o">}</span>,
+<span class="w">  </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;created&quot;</span>:<span class="w"> </span><span class="s2">&quot;2020-04-29T06:34:07.708820086Z&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;created_by&quot;</span>:<span class="w"> </span><span class="s2">&quot;/bin/sh -c #(nop)  ARG REPO_NAME&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;empty_layer&quot;</span>:<span class="w"> </span><span class="nb">true</span>
+<span class="w">  </span><span class="o">}</span>,
+<span class="w">  </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;created&quot;</span>:<span class="w"> </span><span class="s2">&quot;2020-04-29T06:34:08.06429638Z&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;created_by&quot;</span>:<span class="w"> </span><span class="s2">&quot;/bin/sh -c #(nop)  LABEL org.label-schema.vendor=tmknom org.label-schema.name=tmknom/prettier org.label-schema.description=Prettier is an opinionated code formatter. org.label-schema.build-date=2020-04-29T06:34:01Z org</span>
+<span class="s2">.label-schema.version=2.0.5 org.label-schema.vcs-ref=35d2587 org.label-schema.vcs-url=https://github.com/tmknom/prettier org.label-schema.usage=https://github.com/tmknom/prettier/blob/master/README.md#usage org.label-schema.docker.cmd=do</span>
+<span class="s2">cker run --rm -v </span><span class="nv">$PWD</span><span class="s2">:/work tmknom/prettier --parser=markdown --write &#39;**/*.md&#39; org.label-schema.schema-version=1.0&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;empty_layer&quot;</span>:<span class="w"> </span><span class="nb">true</span>
+<span class="w">  </span><span class="o">}</span>,
+<span class="w">  </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;created&quot;</span>:<span class="w"> </span><span class="s2">&quot;2020-04-29T06:34:08.511269907Z&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;created_by&quot;</span>:<span class="w"> </span><span class="s2">&quot;/bin/sh -c #(nop)  ARG NODEJS_VERSION=12.15.0-r1&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;empty_layer&quot;</span>:<span class="w"> </span><span class="nb">true</span>
+<span class="w">  </span><span class="o">}</span>,
+<span class="w">  </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;created&quot;</span>:<span class="w"> </span><span class="s2">&quot;2020-04-29T06:34:08.775876657Z&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;created_by&quot;</span>:<span class="w"> </span><span class="s2">&quot;/bin/sh -c #(nop)  ARG PRETTIER_VERSION&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;empty_layer&quot;</span>:<span class="w"> </span><span class="nb">true</span>
+<span class="w">  </span><span class="o">}</span>,
+<span class="w">  </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;created&quot;</span>:<span class="w"> </span><span class="s2">&quot;2020-04-29T06:34:26.399622951Z&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;created_by&quot;</span>:<span class="w"> </span><span class="s2">&quot;|6 BUILD_DATE=2020-04-29T06:34:01Z NODEJS_VERSION=12.15.0-r1 PRETTIER_VERSION=2.0.5 REPO_NAME=tmknom/prettier VCS_REF=35d2587 VERSION=2.0.5 /bin/sh -c set -x &amp;&amp;     apk add --no-cache nodejs=</span><span class="si">${</span><span class="nv">NODEJS_VERSION</span><span class="si">}</span><span class="s2"> nodejs-np</span>
+<span class="s2">m=</span><span class="si">${</span><span class="nv">NODEJS_VERSION</span><span class="si">}</span><span class="s2"> &amp;&amp;     npm install -g prettier@</span><span class="si">${</span><span class="nv">PRETTIER_VERSION</span><span class="si">}</span><span class="s2"> &amp;&amp;     npm cache clean --force &amp;&amp;     apk del nodejs-npm&quot;</span>
+<span class="w">  </span><span class="o">}</span>,
+<span class="w">  </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;created&quot;</span>:<span class="w"> </span><span class="s2">&quot;2020-04-29T06:34:26.764034848Z&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;created_by&quot;</span>:<span class="w"> </span><span class="s2">&quot;/bin/sh -c #(nop) WORKDIR /work&quot;</span>
+<span class="w">  </span><span class="o">}</span>,
+<span class="w">  </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;created&quot;</span>:<span class="w"> </span><span class="s2">&quot;2020-04-29T06:34:27.092671047Z&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;created_by&quot;</span>:<span class="w"> </span><span class="s2">&quot;/bin/sh -c #(nop)  ENTRYPOINT [\&quot;/usr/bin/prettier\&quot;]&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;empty_layer&quot;</span>:<span class="w"> </span><span class="nb">true</span>
+<span class="w">  </span><span class="o">}</span>,
+<span class="w">  </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;created&quot;</span>:<span class="w"> </span><span class="s2">&quot;2020-04-29T06:34:27.406606712Z&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;created_by&quot;</span>:<span class="w"> </span><span class="s2">&quot;/bin/sh -c #(nop)  CMD [\&quot;--help\&quot;]&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;empty_layer&quot;</span>:<span class="w"> </span><span class="nb">true</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="o">]</span>
+</code></pre></div>
+
+<p>太棒了！所有的命令都在 <code>created_by</code> 字段中，我们几乎可以用这些命令重建 Dockerfile。但不是完全可以。最上面的 <code>ADD</code> 命令实际上没有给我们需要添加的文件。<code>COPY</code> 命令也没有全部信息。我们还失去了 <code>FROM</code> 语句，因为它们扩展成了从基础 Docker 镜像继承的所有层。</p>
+<p>我们可以通过查看<ruby> 时间戳 <rt>  timestamp </rt></ruby>，按 Dockerfile 对层进行分组。大多数层的时间戳相差不到一分钟，代表每一层构建所需的时间。但是前两层是 <code>2020-04-24</code>，其余的是 <code>2020-04-29</code>。这是因为前两层来自一个基础 Docker 镜像。理想情况下，我们可以找出一个 <code>FROM</code> 命令来获得这个镜像，这样我们就有了一个可维护的 Dockerfile。</p>
+<p><code>manifest.json</code> 展示第一个非空层是 <code>a9cc4ace48cd792ef888ade20810f82f6c24aaf2436f30337a2a712cd054dc97/layer.tar</code>。让我们看看它：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>a9cc4ace48cd792ef888ade20810f82f6c24aaf2436f30337a2a712cd054dc97/
+$<span class="w"> </span>tar<span class="w"> </span>tf<span class="w"> </span>layer.tf<span class="w"> </span><span class="p">|</span><span class="w"> </span>head
+bin/
+bin/arch
+bin/ash
+bin/base64
+bin/bbconfig
+bin/busybox
+bin/cat
+bin/chgrp
+bin/chmod
+bin/chown
+</code></pre></div>
+
+<p>看起来它可能是一个<ruby> 操作系统 <rt>  operating system </rt></ruby>基础镜像，这也是你期望从典型 Dockerfile 中看到的。Tarball 中有 488 个条目，如果你浏览一下，就会发现一些有趣的条目：</p>
+<div class="highlight"><pre><span></span><code><span class="p">...</span>
+<span class="n">dev</span><span class="o">/</span>
+<span class="n">etc</span><span class="o">/</span>
+<span class="n">etc</span><span class="o">/</span><span class="n">alpine</span><span class="o">-</span><span class="k">release</span>
+<span class="n">etc</span><span class="o">/</span><span class="n">apk</span><span class="o">/</span>
+<span class="n">etc</span><span class="o">/</span><span class="n">apk</span><span class="o">/</span><span class="n">arch</span>
+<span class="n">etc</span><span class="o">/</span><span class="n">apk</span><span class="o">/</span><span class="n">keys</span><span class="o">/</span>
+<span class="n">etc</span><span class="o">/</span><span class="n">apk</span><span class="o">/</span><span class="n">keys</span><span class="o">/</span><span class="n">alpine</span><span class="o">-</span><span class="n">devel</span><span class="nv">@lists</span><span class="p">.</span><span class="n">alpinelinux</span><span class="p">.</span><span class="n">org</span><span class="o">-</span><span class="mi">4</span><span class="n">a6a0840</span><span class="p">.</span><span class="n">rsa</span><span class="p">.</span><span class="n">pub</span>
+<span class="n">etc</span><span class="o">/</span><span class="n">apk</span><span class="o">/</span><span class="n">keys</span><span class="o">/</span><span class="n">alpine</span><span class="o">-</span><span class="n">devel</span><span class="nv">@lists</span><span class="p">.</span><span class="n">alpinelinux</span><span class="p">.</span><span class="n">org</span><span class="o">-</span><span class="mi">5243</span><span class="n">ef4b</span><span class="p">.</span><span class="n">rsa</span><span class="p">.</span><span class="n">pub</span>
+<span class="n">etc</span><span class="o">/</span><span class="n">apk</span><span class="o">/</span><span class="n">keys</span><span class="o">/</span><span class="n">alpine</span><span class="o">-</span><span class="n">devel</span><span class="nv">@lists</span><span class="p">.</span><span class="n">alpinelinux</span><span class="p">.</span><span class="n">org</span><span class="o">-</span><span class="mi">5261</span><span class="n">cecb</span><span class="p">.</span><span class="n">rsa</span><span class="p">.</span><span class="n">pub</span>
+<span class="n">etc</span><span class="o">/</span><span class="n">apk</span><span class="o">/</span><span class="n">protected_paths</span><span class="p">.</span><span class="n">d</span><span class="o">/</span>
+<span class="n">etc</span><span class="o">/</span><span class="n">apk</span><span class="o">/</span><span class="n">repositories</span>
+<span class="n">etc</span><span class="o">/</span><span class="n">apk</span><span class="o">/</span><span class="n">world</span>
+<span class="n">etc</span><span class="o">/</span><span class="n">conf</span><span class="p">.</span><span class="n">d</span><span class="o">/</span>
+<span class="p">...</span>
+</code></pre></div>
+
+<p>果不其然，这是一个 <a href="https://www.alpinelinux.org/">Alpine</a> 镜像，如果你注意到其他层使用 <code>apk</code> 命令安装软件包，你可能已经猜到了。让我们解压 tarball 看看：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>mkdir<span class="w"> </span>files
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>files
+$<span class="w"> </span>tar<span class="w"> </span>xf<span class="w"> </span>../layer.tar
+$<span class="w"> </span>ls
+bin<span class="w">  </span>dev<span class="w">  </span>etc<span class="w">  </span>home<span class="w">  </span>lib<span class="w">  </span>media<span class="w">  </span>mnt<span class="w">  </span>opt<span class="w">  </span>proc<span class="w">  </span>root<span class="w">  </span>run<span class="w">  </span>sbin<span class="w">  </span>srv<span class="w">  </span>sys<span class="w">  </span>tmp<span class="w">  </span>usr<span class="w">  </span>var
+$<span class="w"> </span>cat<span class="w"> </span>etc/alpine-release
+<span class="m">3</span>.11.6
+</code></pre></div>
+
+<p>如果你拉取、解压 <code>alpine:3.11.6</code>，你会发现里面有一个非空层，<code>layer.tar</code> 与 Prettier 镜像基础层中的 <code>layer.tar</code> 是一样的。</p>
+<p>出于兴趣，另外两个非空层是什么？第二层是包含 Prettier 安装包的主层。它有 528 个条目，包含 Prettier、一堆依赖项和证书更新：</p>
+<div class="highlight"><pre><span></span><code><span class="o">...</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">lib</span><span class="o">/</span><span class="nx">libuv</span><span class="p">.</span><span class="nx">so</span><span class="m m-Double">.1</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">lib</span><span class="o">/</span><span class="nx">libuv</span><span class="p">.</span><span class="nx">so</span><span class="m m-Double">.1.0.0</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">lib</span><span class="o">/</span><span class="nx">node_modules</span><span class="o">/</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">lib</span><span class="o">/</span><span class="nx">node_modules</span><span class="o">/</span><span class="nx">prettier</span><span class="o">/</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">lib</span><span class="o">/</span><span class="nx">node_modules</span><span class="o">/</span><span class="nx">prettier</span><span class="o">/</span><span class="nx">LICENSE</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">lib</span><span class="o">/</span><span class="nx">node_modules</span><span class="o">/</span><span class="nx">prettier</span><span class="o">/</span><span class="nx">README</span><span class="p">.</span><span class="nx">md</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">lib</span><span class="o">/</span><span class="nx">node_modules</span><span class="o">/</span><span class="nx">prettier</span><span class="o">/</span><span class="nx">bin</span><span class="o">-</span><span class="nx">prettier</span><span class="p">.</span><span class="nx">js</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">lib</span><span class="o">/</span><span class="nx">node_modules</span><span class="o">/</span><span class="nx">prettier</span><span class="o">/</span><span class="nx">doc</span><span class="p">.</span><span class="nx">js</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">lib</span><span class="o">/</span><span class="nx">node_modules</span><span class="o">/</span><span class="nx">prettier</span><span class="o">/</span><span class="nx">index</span><span class="p">.</span><span class="nx">js</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">lib</span><span class="o">/</span><span class="nx">node_modules</span><span class="o">/</span><span class="nx">prettier</span><span class="o">/</span><span class="kn">package</span><span class="p">.</span><span class="nx">json</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">lib</span><span class="o">/</span><span class="nx">node_modules</span><span class="o">/</span><span class="nx">prettier</span><span class="o">/</span><span class="nx">parser</span><span class="o">-</span><span class="nx">angular</span><span class="p">.</span><span class="nx">js</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">lib</span><span class="o">/</span><span class="nx">node_modules</span><span class="o">/</span><span class="nx">prettier</span><span class="o">/</span><span class="nx">parser</span><span class="o">-</span><span class="nx">babel</span><span class="p">.</span><span class="nx">js</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">lib</span><span class="o">/</span><span class="nx">node_modules</span><span class="o">/</span><span class="nx">prettier</span><span class="o">/</span><span class="nx">parser</span><span class="o">-</span><span class="nx">flow</span><span class="p">.</span><span class="nx">js</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">lib</span><span class="o">/</span><span class="nx">node_modules</span><span class="o">/</span><span class="nx">prettier</span><span class="o">/</span><span class="nx">parser</span><span class="o">-</span><span class="nx">glimmer</span><span class="p">.</span><span class="nx">js</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">lib</span><span class="o">/</span><span class="nx">node_modules</span><span class="o">/</span><span class="nx">prettier</span><span class="o">/</span><span class="nx">parser</span><span class="o">-</span><span class="nx">graphql</span><span class="p">.</span><span class="nx">js</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">lib</span><span class="o">/</span><span class="nx">node_modules</span><span class="o">/</span><span class="nx">prettier</span><span class="o">/</span><span class="nx">parser</span><span class="o">-</span><span class="nx">html</span><span class="p">.</span><span class="nx">js</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">lib</span><span class="o">/</span><span class="nx">node_modules</span><span class="o">/</span><span class="nx">prettier</span><span class="o">/</span><span class="nx">parser</span><span class="o">-</span><span class="nx">markdown</span><span class="p">.</span><span class="nx">js</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">lib</span><span class="o">/</span><span class="nx">node_modules</span><span class="o">/</span><span class="nx">prettier</span><span class="o">/</span><span class="nx">parser</span><span class="o">-</span><span class="nx">postcss</span><span class="p">.</span><span class="nx">js</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">lib</span><span class="o">/</span><span class="nx">node_modules</span><span class="o">/</span><span class="nx">prettier</span><span class="o">/</span><span class="nx">parser</span><span class="o">-</span><span class="nx">typescript</span><span class="p">.</span><span class="nx">js</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">lib</span><span class="o">/</span><span class="nx">node_modules</span><span class="o">/</span><span class="nx">prettier</span><span class="o">/</span><span class="nx">parser</span><span class="o">-</span><span class="nx">yaml</span><span class="p">.</span><span class="nx">js</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">lib</span><span class="o">/</span><span class="nx">node_modules</span><span class="o">/</span><span class="nx">prettier</span><span class="o">/</span><span class="nx">standalone</span><span class="p">.</span><span class="nx">js</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">lib</span><span class="o">/</span><span class="nx">node_modules</span><span class="o">/</span><span class="nx">prettier</span><span class="o">/</span><span class="nx">third</span><span class="o">-</span><span class="nx">party</span><span class="p">.</span><span class="nx">js</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">local</span><span class="o">/</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">local</span><span class="o">/</span><span class="nx">share</span><span class="o">/</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">local</span><span class="o">/</span><span class="nx">share</span><span class="o">/</span><span class="nx">ca</span><span class="o">-</span><span class="nx">certificates</span><span class="o">/</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">sbin</span><span class="o">/</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">sbin</span><span class="o">/</span><span class="nx">update</span><span class="o">-</span><span class="nx">ca</span><span class="o">-</span><span class="nx">certificates</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">share</span><span class="o">/</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">share</span><span class="o">/</span><span class="nx">ca</span><span class="o">-</span><span class="nx">certificates</span><span class="o">/</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">share</span><span class="o">/</span><span class="nx">ca</span><span class="o">-</span><span class="nx">certificates</span><span class="o">/</span><span class="nx">mozilla</span><span class="o">/</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">share</span><span class="o">/</span><span class="nx">ca</span><span class="o">-</span><span class="nx">certificates</span><span class="o">/</span><span class="nx">mozilla</span><span class="o">/</span><span class="nx">ACCVRAIZ1</span><span class="p">.</span><span class="nx">crt</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">share</span><span class="o">/</span><span class="nx">ca</span><span class="o">-</span><span class="nx">certificates</span><span class="o">/</span><span class="nx">mozilla</span><span class="o">/</span><span class="nx">AC_RAIZ_FNMT</span><span class="o">-</span><span class="nx">RCM</span><span class="p">.</span><span class="nx">crt</span>
+<span class="nx">usr</span><span class="o">/</span><span class="nx">share</span><span class="o">/</span><span class="nx">ca</span><span class="o">-</span><span class="nx">certificates</span><span class="o">/</span><span class="nx">mozilla</span><span class="o">/</span><span class="nx">Actalis_Authentication_Root_CA</span><span class="p">.</span><span class="nx">crt</span>
+<span class="o">...</span>
+</code></pre></div>
+
+<p>第三层由 <code>WORKDIR /work</code> 命令创建，它只包含一个条目：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>tar<span class="w"> </span>tf<span class="w"> </span>6c37da2ee7de579a0bf5495df32ba3e7807b0a42e2a02779206d165f55f1ba70/layer.tar
+work/
+</code></pre></div>
+
+<p><a href="https://github.com/tmknom/prettier/blob/35d2587ec052e880d73f73547f1ffc2b11e29597/Dockerfile">原始 Dockerfile 在 Prettier 的 git 仓库中</a>。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 badIPs.com 保护你的服务器，并通过 Fail2ban 报告恶意 IP</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Stephane T 这篇指南向你介绍使用 badips 滥用追踪器 （ abuse tracker ） 和 Fail2ban 保护你的服务器或计算机的步骤。我已经在 Debian 8 Jessie 和 Debian 7 Wheezy 系统 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/04/shi-yong-badipscom-bao-hu-ni-de-fu-wu-qi-bing-tong-guo-fail2ban-bao-gao-e-yi-ip.html" rel="bookmark"
+           title="Permalink to 使用 badIPs.com 保护你的服务器，并通过 Fail2ban 报告恶意 IP">使用 badIPs.com 保护你的服务器，并通过 Fail2ban 报告恶意 IP</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-04-26T12:31:00+02:00">
+                Published: Wed 26 April 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Stephane T</p>
+<p><img alt="" src="/data/attachment/album/201704/26/123044cdfzvlbjbh2v6vx6.jpg"></p>
+<p>这篇指南向你介绍使用 badips <ruby> 滥用追踪器 <rp>  （ </rp> <rt>  abuse tracker </rt> <rp>  ） </rp></ruby>和 Fail2ban 保护你的服务器或计算机的步骤。我已经在 Debian 8 Jessie 和 Debian 7 Wheezy 系统上进行了测试。</p>
+<p><strong>什么是 badIPs？</strong></p>
+<p>BadIps 是通过 <a href="http://www.fail2ban.org/">fail2ban</a> 报告为不良 IP 的列表。</p>
+<p>这个指南包括两个部分，第一部分介绍列表的使用，第二部分介绍数据提交。</p>
+<h3>使用 badIPs 列表</h3>
+<h4>定义安全等级和类别</h4>
+<p>你可以通过使用 REST API 获取 IP 地址列表。</p>
+<ul>
+<li>当你使用 GET 请求获取 URL：<a href="https://www.badips.com/get/categories">https://www.badips.com/get/categories</a> 后，你就可以看到服务中现有的所有不同类别。</li>
+<li>第二步，决定适合你的等级。 参考 badips 应该有所帮助（我个人使用 <code>scope = 3</code>）：</li>
+<li>如果你想要编译一个统计信息模块或者将数据用于实验目的，那么你应该用等级 0 开始。</li>
+<li>如果你想用防火墙保护你的服务器或者网站，使用等级 2。可能也要和你的结果相结合，尽管它们可能没有超过 0 或 1 的情况。</li>
+<li>如果你想保护一个网络商店、或高流量、赚钱的电子商务服务器，我推荐你使用值 3 或 4。当然还是要和你的结果相结合。</li>
+<li>如果你是偏执狂，那就使用 5。</li>
+</ul>
+<p>现在你已经有了两个变量，通过把它们两者连接起来获取你的链接。</p>
+<div class="highlight"><pre><span></span><code><span class="x">http://www.badips.com/get/list/</span><span class="cp">{{</span><span class="nv">SERVICE</span><span class="cp">}}</span><span class="x">/</span><span class="cp">{{</span><span class="nv">LEVEL</span><span class="cp">}}</span>
+</code></pre></div>
+
+<p>注意：像我一样，你可以获取所有服务。在这种情况下把服务的名称改为 <code>any</code>。</p>
+<p>最终的 URL 就是：</p>
+<div class="highlight"><pre><span></span><code>https://www.badips.com/get/list/any/3
+</code></pre></div>
+
+<h3>创建脚本</h3>
+<p>所有都完成了之后，我们就会创建一个简单的脚本。</p>
+<p>1、 把你的列表放到一个临时文件。</p>
+<p>2、 在 iptables 中创建一个<ruby> 链 <rp>  （ </rp> <rt>  chain </rt> <rp>  ） </rp></ruby>（只需要创建一次）。（LCTT 译注：iptables 可能包括多个<ruby> 表 <rp>  （ </rp> <rt>  tables </rt> <rp>  ） </rp></ruby>，表可能包括多个<ruby> 链 <rp>  （ </rp> <rt>  chains </rt> <rp>  ） </rp></ruby>，链可能包括多个<ruby> 规则 <rp>  （ </rp> <rt>  rules </rt> <rp>  ） </rp></ruby>）</p>
+<p>3、 把所有链接到该链的数据（旧条目）刷掉。</p>
+<p>4、 把每个 IP 链接到这个新的链。</p>
+<p>5、 完成后，阻塞所有链接到该链的 INPUT / OUTPUT /FORWARD 请求。</p>
+<p>6、 删除我们的临时文件。</p>
+<p>为此，我们创建脚本：</p>
+<div class="highlight"><pre><span></span><code>cd /home/&lt;user&gt;/
+vi myBlacklist.sh
+</code></pre></div>
+
+<p>把以下内容输入到文件。</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/bin/sh</span>
+<span class="c1">### based on this version http://www.timokorthals.de/?p=334</span>
+<span class="c1">### adapted by Stéphane T.</span>
+
+<span class="nv">_ipt</span><span class="o">=</span>/sbin/iptables<span class="w">    </span><span class="c1">### iptables 路径（应该是这个）</span>
+<span class="nv">_input</span><span class="o">=</span>badips.db<span class="w">       </span><span class="c1">### 数据库的名称（会用这个名称下载）</span>
+<span class="nv">_pub_if</span><span class="o">=</span>eth0<span class="w">           </span><span class="c1">### 连接到互联网的设备（执行 $ifconfig 获取）</span>
+<span class="nv">_droplist</span><span class="o">=</span>droplist<span class="w">     </span><span class="c1">### iptables 中链的名称（如果你已经有这么一个名称的链，你就换另外一个）</span>
+<span class="nv">_level</span><span class="o">=</span><span class="m">3</span><span class="w">               </span><span class="c1">### Blog（LCTT 译注：Bad log）等级：不怎么坏（0）、确认坏（3）、相当坏（5）（从 www.badips.com 获取详情）</span>
+<span class="nv">_service</span><span class="o">=</span>any<span class="w">           </span><span class="c1">### 记录日志的服务（从 www.badips.com 获取详情）</span>
+
+<span class="c1">### 获取不良 IPs</span>
+wget<span class="w"> </span>-qO-<span class="w"> </span>http://www.badips.com/get/list/<span class="si">${</span><span class="nv">_service</span><span class="si">}</span>/<span class="nv">$_level</span><span class="w"> </span>&gt;<span class="w"> </span><span class="nv">$_input</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">{</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$0</span><span class="s2">: Unable to download ip list.&quot;</span><span class="p">;</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span><span class="p">;</span><span class="w"> </span><span class="o">}</span>
+
+<span class="c1">### 设置我们的黑名单 ###</span>
+<span class="c1">### 首先清除该链</span>
+<span class="nv">$_ipt</span><span class="w"> </span>--flush<span class="w"> </span><span class="nv">$_droplist</span>
+
+<span class="c1">### 创建新的链</span>
+<span class="c1">### 首次运行时取消下面一行的注释</span>
+<span class="c1"># $_ipt -N $_droplist</span>
+
+<span class="c1">### 过滤掉注释和空行</span>
+<span class="c1">### 保存每个 ip 到 $ip</span>
+<span class="k">for</span><span class="w"> </span>ip<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="sb">`</span>cat<span class="w"> </span><span class="nv">$_input</span><span class="sb">`</span>
+<span class="k">do</span>
+<span class="w">    </span><span class="c1">### 添加到 $_droplist</span>
+<span class="w">    </span><span class="nv">$_ipt</span><span class="w"> </span>-A<span class="w"> </span><span class="nv">$_droplist</span><span class="w"> </span>-i<span class="w"> </span><span class="si">${</span><span class="nv">_pub_if</span><span class="si">}</span><span class="w"> </span>-s<span class="w"> </span><span class="nv">$ip</span><span class="w"> </span>-j<span class="w"> </span>LOG<span class="w"> </span>--log-prefix<span class="w"> </span><span class="s2">&quot;Drop Bad IP List &quot;</span>
+<span class="w">    </span><span class="nv">$_ipt</span><span class="w"> </span>-A<span class="w"> </span><span class="nv">$_droplist</span><span class="w"> </span>-i<span class="w"> </span><span class="si">${</span><span class="nv">_pub_if</span><span class="si">}</span><span class="w"> </span>-s<span class="w"> </span><span class="nv">$ip</span><span class="w"> </span>-j<span class="w"> </span>DROP
+<span class="k">done</span>
+
+<span class="c1">### 最后，插入或者追加到我们的黑名单列表</span>
+<span class="nv">$_ipt</span><span class="w"> </span>-I<span class="w"> </span>INPUT<span class="w"> </span>-j<span class="w"> </span><span class="nv">$_droplist</span>
+<span class="nv">$_ipt</span><span class="w"> </span>-I<span class="w"> </span>OUTPUT<span class="w"> </span>-j<span class="w"> </span><span class="nv">$_droplist</span>
+<span class="nv">$_ipt</span><span class="w"> </span>-I<span class="w"> </span>FORWARD<span class="w"> </span>-j<span class="w"> </span><span class="nv">$_droplist</span>
+
+<span class="c1">### 删除你的临时文件</span>
+rm<span class="w"> </span><span class="nv">$_input</span>
+<span class="nb">exit</span><span class="w"> </span><span class="m">0</span>
+</code></pre></div>
+
+<p>完成这些后，你应该创建一个定时任务定期更新我们的黑名单。</p>
+<p>为此，我使用 crontab 在每天晚上 11:30（在我的延迟备份之前） 运行脚本。</p>
+<div class="highlight"><pre><span></span><code>crontab -e
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="mf">23</span><span class="w"> </span><span class="mf">30</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="o">/</span><span class="n">home</span><span class="o">/&lt;</span><span class="n">user</span><span class="o">&gt;/</span><span class="n">myBlacklist</span><span class="mf">.</span><span class="n">sh</span><span class="w"> </span><span class="err">#</span><span class="n">Block</span><span class="w"> </span><span class="n">BAD</span><span class="w"> </span><span class="n">IPS</span>
+</code></pre></div>
+
+<p>别忘了更改脚本的权限：</p>
+<div class="highlight"><pre><span></span><code>chmod + x myBlacklist.sh
+</code></pre></div>
+
+<p>现在终于完成了，你的服务器/计算机应该更安全了。</p>
+<p>你也可以像下面这样手动运行脚本：</p>
+<div class="highlight"><pre><span></span><code>cd /home/&lt;user&gt;/
+./myBlacklist.sh
+</code></pre></div>
+
+<p>它可能要花费一些时间，因此期间别中断脚本。事实上，耗时取决于该脚本的最后一行。</p>
+<h3>使用 Fail2ban 向 badIPs 报告 IP 地址</h3>
+<p>在本篇指南的第二部分，我会向你展示如何通过使用 Fail2ban 向 badips.com 网站报告不良 IP 地址。</p>
+<h4>Fail2ban &gt;= 0.8.12</h4>
+<p>通过 Fail2ban 完成报告。取决于你 Fail2ban 的版本，你要使用本章的第一或第二节。</p>
+<p>如果你 fail2ban 的版本是 0.8.12 或更新版本。</p>
+<div class="highlight"><pre><span></span><code>fail2ban-server --version
+</code></pre></div>
+
+<p>在每个你要报告的类别中，添加一个 action。</p>
+<div class="highlight"><pre><span></span><code><span class="k">[ssh]</span>
+<span class="na">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">true</span>
+<span class="na">action</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">iptables-multiport</span>
+<span class="w">         </span><span class="na">badips[category</span><span class="o">=</span><span class="s">ssh]</span>
+<span class="na">port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">ssh</span>
+<span class="na">filter</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">sshd</span>
+<span class="na">logpath</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">/var/log/auth.log</span>
+<span class="na">maxretry</span><span class="o">=</span><span class="w"> </span><span class="s">6</span>
+</code></pre></div>
+
+<p>正如你看到的，类别是 SSH，从 <a href="https://www.badips.com/get/categories">https://www.badips.com/get/categories</a> 查找正确类别。</p>
+<h4>Fail2ban &lt; 0.8.12</h4>
+<p>如果版本是 0.8.12 之前，你需要新建一个 action。你可以从 <a href="https://www.badips.com/asset/fail2ban/badips.conf">https://www.badips.com/asset/fail2ban/badips.conf</a> 下载。</p>
+<div class="highlight"><pre><span></span><code>wget https://www.badips.com/asset/fail2ban/badips.conf -O /etc/fail2ban/action.d/badips.conf
+</code></pre></div>
+
+<p>在上面的 badips.conf 中，你可以像前面那样激活每个类别，也可以全局启用它：</p>
+<div class="highlight"><pre><span></span><code>cd /etc/fail2ban/
+vi jail.conf
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="k">[DEFAULT]</span>
+<span class="na">...</span>
+
+<span class="na">banaction</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">iptables-multiport</span>
+<span class="w">            </span><span class="na">badips</span>
+</code></pre></div>
+
+<p>现在重启 fail2ban - 从现在开始它就应该开始报告了。</p>
+<div class="highlight"><pre><span></span><code>service fail2ban restart
+</code></pre></div>
+
+<h3>你的 IP 报告统计信息</h3>
+<p>最后一步 - 没那么有用。你可以创建一个密钥。 但如果你想看你的数据，这一步就很有帮助。</p>
+<p>复制/粘贴下面的命令，你的控制台中就会出现一个 JSON 响应。</p>
+<div class="highlight"><pre><span></span><code>wget https://www.badips.com/get/key -qO -
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code>{
+  &quot;err&quot;:&quot;&quot;,
+  &quot;suc&quot;:&quot;new key 5f72253b673eb49fc64dd34439531b5cca05327f has been set.&quot;,
+  &quot;key&quot;:&quot;5f72253b673eb49fc64dd34439531b5cca05327f&quot;
+}
+</code></pre></div>
+
+<p>到 <a href="https://www.badips.com/">badips</a> 网站，输入你的 “key” 并点击 “statistics”。</p>
+<p>现在你就可以看到不同类别的统计信息。</p>
+<p>（题图：<a href="https://pixabay.com/zh/%E9%BB%91%E5%AE%A2-%E6%94%BB%E5%87%BB-%E6%8E%A9%E7%A0%81-%E4%BA%92%E8%81%94%E7%BD%91-%E5%8C%BF%E5%90%8D-%E4%BA%8C%E8%BF%9B%E5%88%B6-%E4%B8%80-%E7%BD%91%E7%BB%9C-%E7%8A%AF%E7%BD%AA-1872304/">Pixabay , CC0</a>）</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

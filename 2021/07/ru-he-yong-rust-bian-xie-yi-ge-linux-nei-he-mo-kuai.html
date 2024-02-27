@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何用 Rust 编写一个 Linux 内核模块</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: 苏子彬 编者按：近些年来 Rust 语言由于其内存安全性和性能等优势得到了很多关注，尤其是 Linux 内核也在准备将其集成到 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2021/07/ru-he-yong-rust-bian-xie-yi-ge-linux-nei-he-mo-kuai.html" rel="bookmark"
+           title="Permalink to 如何用 Rust 编写一个 Linux 内核模块">如何用 Rust 编写一个 Linux 内核模块</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2021-07-06T12:34:00+02:00">
+                Published: Tue 06 July 2021
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: 苏子彬</p>
+<p><img alt="" src="/data/attachment/album/202107/06/123438wl3c1llssams0aa5.jpg"></p>
+<blockquote>
+<p>编者按：近些年来 Rust 语言由于其内存安全性和性能等优势得到了很多关注，尤其是 Linux 内核也在准备将其集成到其中，因此，我们特邀阿里云工程师苏子彬为我们介绍一下如何在 Linux 内核中集成 Rust 支持。 </p>
+</blockquote>
+<p>2021 年 4 月 14 号，一封主题名为《<a href="https://lkml.org/lkml/2021/4/14/1023">Rust support</a>》的邮件出现在 LKML 邮件组中。这封邮件主要介绍了向内核引入 Rust 语言支持的一些看法以及所做的工作。邮件的发送者是 <a href="https://ojeda.dev/">Miguel Ojeda</a>，为内核中 Compiler attributes、.clang-format 等多个模块的维护者，也是目前 Rust for Linux 项目的维护者。</p>
+<p>Rust for Linux 项目目前得到了 <a href="https://www.zdnet.com/article/rust-in-the-linux-kernel-just-got-a-big-boost-from-google/">Google 的大力支持</a>，<a href="https://ojeda.dev/">Miguel Ojeda</a> 当前的全职工作就是负责 Rust for Linux 项目。</p>
+<p>长期以来，内核使用 C 语言和汇编语言作为主要的开发语言，部分辅助语言包括 Python、Perl、shell 被用来进行代码生成、打补丁、检查等工作。2016 年 Linux 25 岁生日时，在对 Linus Torvalds 的一篇 <a href="https://www.infoworld.com/article/3109150/linux-at-25-linus-torvalds-on-the-evolution-and-future-of-linux.html">采访</a>中，他就曾表示过：</p>
+<blockquote>
+<p>这根本不是一个新现象。我们有过使用 Modula-2 或 Ada 的系统人员，我不得不说 Rust 看起来比这两个灾难要好得多。</p>
+<p>我对 Rust 用于操作系统内核并不信服（虽然系统编程不仅限于内核），但同时，毫无疑问，C 有很多局限性。</p>
+</blockquote>
+<p>在最新的对 <a href="https://lkml.org/lkml/2021/4/14/1023">Rust support</a> 的 RFC 邮件的回复中，他更是说：</p>
+<blockquote>
+<p>所以我对几个个别补丁做了回应，但总体上我不讨厌它。</p>
+</blockquote>
+<p>没有用他特有的回复方式来反击，应该就是暗自喜欢了吧。</p>
+<p>目前 Rust for Linux 依然是一个独立于上游的项目，并且主要工作还集中的驱动接口相关的开发上，并非一个完善的项目。</p>
+<p>项目地址： <a href="https://github.com/Rust-for-Linux/linux">https://github.com/Rust-for-Linux/linux</a></p>
+<h3>为什么是 Rust</h3>
+<p>在 <a href="https://ojeda.dev/">Miguel Ojeda</a> 的第一个 RFC 邮件中，他已经提到了 “Why Rust”，简单总结下：</p>
+<ul>
+<li>在<ruby> 安全子集 <rt>  safe subset </rt></ruby>中不存在未定义行为，包括内存安全和数据竞争；</li>
+<li>更加严格的类型检测系统能够进一步减少逻辑错误；</li>
+<li>明确区分 <code>safe</code> 和 <code>unsafe</code> 代码；</li>
+<li>更加面向未来的语言：<code>sum</code> 类型、模式匹配、泛型、RAII、生命周期、共享及专属引用、模块与可见性等等；</li>
+<li>可扩展的独立标准库；</li>
+<li>集成的开箱可用工具：文档生成、代码格式化、linter 等，这些都基于编译器本身。</li>
+</ul>
+<h3>编译支持 Rust 的内核</h3>
+<p>根据 <a href="https://github.com/Rust-for-Linux/linux/blob/rust/Documentation/rust/quick-start.rst">Rust for Linux 文档</a>，编译一个包含 Rust 支持的内核需要如下步骤：</p>
+<ol>
+<li>安装 <code>rustc</code> 编译器。Rust for Linux 不依赖 cargo，但需要最新的 beta 版本的 <code>rustc</code>。使用 <code>rustup</code>命令安装：</li>
+</ol>
+<div class="highlight"><pre><span></span><code>rustup default beta-2021-06-23
+</code></pre></div>
+
+<ol>
+<li>安装 Rust 标准库的源码。Rust for Linux 会交叉编译 Rust 的 <code>core</code> 库，并将这两个库链接进内核镜像。</li>
+</ol>
+<div class="highlight"><pre><span></span><code>rustup component add rust-src
+</code></pre></div>
+
+<ol>
+<li>安装 <code>libclang</code> 库。<code>libclang</code> 被 <code>bindgen</code> 用做前端，用来处理 C 代码。<code>libclang</code> 可以从 <a href="https://github.com/llvm/llvm-project/releases">llvm 官方主页</a> 下载预编译好的版本。</li>
+<li>安装 <code>bindgen</code> 工具，<code>bindgen</code> 是一个自动将 C 接口转为 RustFFI 接口的库：</li>
+</ol>
+<div class="highlight"><pre><span></span><code>cargo install --locked --version 0.56.0 bindgen
+</code></pre></div>
+
+<ol>
+<li>克隆最新的 Rust for Linux 代码：</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="nv">git</span><span class="w"> </span><span class="nv">clone</span><span class="w"> </span><span class="nv">https</span>:<span class="o">//</span><span class="nv">github</span>.<span class="nv">com</span><span class="o">/</span><span class="nv">Rust</span><span class="o">-</span><span class="k">for</span><span class="o">-</span><span class="nv">Linux</span><span class="o">/</span><span class="nv">linux</span>.<span class="nv">git</span>
+</code></pre></div>
+
+<ol>
+<li>配置内核启用 Rust 支持：</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="n">Kernel</span><span class="w"> </span><span class="n">hacking</span>
+<span class="w">  </span><span class="o">-&gt;</span><span class="w"> </span><span class="nf">Sample</span><span class="w"> </span><span class="n">kernel</span><span class="w"> </span><span class="n">code</span>
+<span class="w">    </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">Rust</span><span class="w"> </span><span class="n">samples</span>
+</code></pre></div>
+
+<ol>
+<li>构建：</li>
+</ol>
+<div class="highlight"><pre><span></span><code>LIBCLANG_PATH=/path/to/libclang make -j LLVM=1 bzImage
+</code></pre></div>
+
+<p>这里我们使用 <code>clang</code> 作为默认的内核编译器，使用 <code>gcc</code> 理论上是可以的，但还处于 <a href="https://github.com/Rust-for-Linux/linux/blob/rust/Documentation/rust/quick-start.rst#building">早期实验</a> 阶段。</p>
+<h3>Rust 是如何集成进内核的</h3>
+<h4>目录结构</h4>
+<p>为了将 Rust 集成进内核中，开发者首先对 Kbuild 系统进行修改，加入了相关配置项来开启/关闭 Rust 的支持。</p>
+<p>此外，为了编译 <code>rs</code> 文件，添加了一些 <code>Makefile</code> 的规则。这些修改分散在内核目录中的不同文件里。</p>
+<p>Rust 生成的目标代码中的符号会因为 <code>Mangling</code> 导致其长度超过同样的 C 程序所生成符号的长度，因此，需要对内核的符号长度相关的逻辑进行补丁。开发者引入了 “大内核符号”的概念，用来在保证向前兼容的情况下，支持 Rust 生成的目标文件符号长度。</p>
+<p>其他 Rust 相关的代码都被放置在了 <code>rust</code> 目录下。</p>
+<h4>在 Rust 中使用 C 函数</h4>
+<p>Rust 提供 FFI（<ruby> 外部函数接口 <rt>  Foreign Function Interface </rt></ruby>）用来支持对 C 代码的调用。<a href="https://github.com/rust-lang/rust-bindgen">Bindgen</a> 是一个 Rust 官方的工具，用来自动化地从 C 函数中生成 Rust 的 FFI 绑定。内核中的 Rust 也使用该工具从原生的内核 C 接口中生成 Rust 的 FFI 绑定。</p>
+<div class="highlight"><pre><span></span><code><span class="nx">quiet_cmd_bindgen</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">BINDGEN</span><span class="w"> </span><span class="err">$@</span>
+<span class="w">      </span><span class="nx">cmd_bindgen</span><span class="w"> </span><span class="p">=</span><span class="w"> </span>\
+<span class="w">    </span><span class="err">$</span><span class="p">(</span><span class="nx">BINDGEN</span><span class="p">)</span><span class="w"> </span><span class="err">$</span><span class="p">&lt;</span><span class="w"> </span><span class="err">$</span><span class="p">(</span><span class="nx">shell</span><span class="w"> </span><span class="nx">grep</span><span class="w"> </span><span class="o">-</span><span class="nx">v</span><span class="w"> </span><span class="err">&#39;</span><span class="o">^</span><span class="err">\#\</span><span class="o">|^</span><span class="err">$$&#39;</span><span class="w"> </span><span class="err">$</span><span class="p">(</span><span class="nx">srctree</span><span class="p">)</span><span class="o">/</span><span class="nx">rust</span><span class="o">/</span><span class="nx">bindgen_parameters</span><span class="p">)</span><span class="w"> </span>\
+<span class="w">        </span><span class="o">--</span><span class="nx">use</span><span class="o">-</span><span class="nx">core</span><span class="w"> </span><span class="o">--</span><span class="nx">with</span><span class="o">-</span><span class="nx">derive</span><span class="o">-</span><span class="k">default</span><span class="w"> </span><span class="o">--</span><span class="nx">ctypes</span><span class="o">-</span><span class="nx">prefix</span><span class="w"> </span><span class="nx">c_types</span><span class="w"> </span>\
+<span class="w">        </span><span class="o">--</span><span class="nx">no</span><span class="o">-</span><span class="nx">debug</span><span class="w"> </span><span class="err">&#39;</span><span class="p">.</span><span class="o">*</span><span class="err">&#39;</span><span class="w"> </span>\
+<span class="w">        </span><span class="o">--</span><span class="nx">size_t</span><span class="o">-</span><span class="k">is</span><span class="o">-</span><span class="nx">usize</span><span class="w"> </span><span class="o">-</span><span class="nx">o</span><span class="w"> </span><span class="err">$@</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="err">$</span><span class="p">(</span><span class="nx">bindgen_c_flags_final</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="nx">DMODULE</span>
+
+<span class="err">$</span><span class="p">(</span><span class="nx">objtree</span><span class="p">)</span><span class="o">/</span><span class="nx">rust</span><span class="o">/</span><span class="nx">bindings_generated</span><span class="p">.</span><span class="nx">rs</span><span class="p">:</span><span class="w"> </span><span class="err">$</span><span class="p">(</span><span class="nx">srctree</span><span class="p">)</span><span class="o">/</span><span class="nx">rust</span><span class="o">/</span><span class="nx">kernel</span><span class="o">/</span><span class="nx">bindings_helper</span><span class="p">.</span><span class="nx">h</span><span class="w"> </span>\
+<span class="w">    </span><span class="err">$</span><span class="p">(</span><span class="nx">srctree</span><span class="p">)</span><span class="o">/</span><span class="nx">rust</span><span class="o">/</span><span class="nx">bindgen_parameters</span><span class="w"> </span><span class="nx">FORCE</span>
+<span class="w">    </span><span class="err">$</span><span class="p">(</span><span class="nx">call</span><span class="w"> </span><span class="nx">if_changed_dep</span><span class="p">,</span><span class="nx">bindgen</span><span class="p">)</span>
+</code></pre></div>
+
+<h4>ABI</h4>
+<p>Rust 相关的代码会单独从 <code>rs</code> 编译为 <code>.o</code>，生成的目标文件是标准的 ELF 文件。在链接阶段，内核的链接器将 Rust 生成的目标文件与其他 C 程序生成的目标文件一起链接为内核镜像文件。因此，只要 Rust 生成的目标文件 ABI 与 C 程序的一致，就可以无差别的被链接（当然，被引用的符号还是要存在的）。</p>
+<h4>Rust 的 <code>alloc</code> 与 <code>core</code> 库</h4>
+<p>目前 Rust for Linux 依赖于 <code>core</code> 库。在 <code>core</code> 中定义了基本的 Rust 数据结构与语言特性，例如熟悉的 <code>Option&lt;&gt;</code> 和 <code>Result&lt;&gt;</code> 就是 <code>core</code> 库所提供。</p>
+<p>这个库被交叉编译后被直接链接进内核镜像文件，这也是导致启用 Rust 的内核镜像文件尺寸较大的原因。在未来的工作中，这两个库会被进一步被优化，去除掉某些无用的部分，例如浮点操作，Unicode 相关的内容，Futures 相关的功能等。</p>
+<p>之前的 Rust for Linux 项目还依赖于 Rust 的 <code>alloc</code> 库。Rust for Linux 定义了自己的 <code>GlobalAlloc</code> 用来管理基本的堆内存分配。主要被用来进行堆内存分配，并且使用 <code>GFP_KERNEL</code> 标识作为默认的内存分配模式。</p>
+<p>不过在在最新的 <a href="https://github.com/Rust-for-Linux/linux/pull/402">拉取请求</a> 中，社区已经将移植并修改了 Rust的 <code>alloc</code> 库，使其能够在尽量保证与 Rust 上游统一的情况下，允许开发者定制自己的内存分配器。不过目前使用自定义的 <code>GFP_</code> 标识来分配内存依然是不支持的，但好消息是这个功能正在开发中。</p>
+<h3>“Hello World” 内核模块</h3>
+<p>用一个简单的 Hello World 来展示如何使用 Rust 语言编写驱动代码，<code>hello_world.rs</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="err">#!</span><span class="o">[</span><span class="n">no_std</span><span class="o">]</span>
+<span class="err">#!</span><span class="o">[</span><span class="n">feature(allocator_api, global_asm)</span><span class="o">]</span>
+
+<span class="k">use</span><span class="w"> </span><span class="nl">kernel</span><span class="p">:</span><span class="err">:</span><span class="nl">prelude</span><span class="p">:</span><span class="err">:</span><span class="o">*</span><span class="p">;</span>
+
+<span class="k">module</span><span class="err">!</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="nl">type</span><span class="p">:</span><span class="w"> </span><span class="n">HelloWorld</span><span class="p">,</span>
+<span class="w">    </span><span class="nl">name</span><span class="p">:</span><span class="w"> </span><span class="n">b</span><span class="ss">&quot;hello_world&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nl">author</span><span class="p">:</span><span class="w"> </span><span class="n">b</span><span class="ss">&quot;d0u9&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nl">description</span><span class="p">:</span><span class="w"> </span><span class="n">b</span><span class="ss">&quot;A simple hello world example&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nl">license</span><span class="p">:</span><span class="w"> </span><span class="n">b</span><span class="ss">&quot;GPL v2&quot;</span><span class="p">,</span>
+<span class="err">}</span>
+
+<span class="n">struct</span><span class="w"> </span><span class="n">HelloWorld</span><span class="p">;</span>
+
+<span class="n">impl</span><span class="w"> </span><span class="n">KernelModule</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">HelloWorld</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">fn</span><span class="w"> </span><span class="n">init</span><span class="p">()</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="k">Result</span><span class="o">&lt;</span><span class="n">Self</span><span class="o">&gt;</span><span class="w"> </span><span class="err">{</span>
+<span class="w">        </span><span class="n">pr_info</span><span class="err">!</span><span class="p">(</span><span class="ss">&quot;Hello world from rust!\n&quot;</span><span class="p">);</span>
+
+<span class="w">        </span><span class="n">Ok</span><span class="p">(</span><span class="n">HelloWorld</span><span class="p">)</span>
+<span class="w">    </span><span class="err">}</span>
+<span class="err">}</span>
+
+<span class="n">impl</span><span class="w"> </span><span class="k">Drop</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">HelloWorld</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">fn</span><span class="w"> </span><span class="k">drop</span><span class="p">(</span><span class="o">&amp;</span><span class="n">mut</span><span class="w"> </span><span class="n">self</span><span class="p">)</span><span class="w"> </span><span class="err">{</span>
+<span class="w">        </span><span class="n">pr_info</span><span class="err">!</span><span class="p">(</span><span class="ss">&quot;Bye world from rust!\n&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="err">}</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<p>与之对应的 <code>Makefile</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="nv">obj</span><span class="o">-</span><span class="nv">m</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nv">hello_world</span><span class="o">.</span><span class="nv">o</span>
+</code></pre></div>
+
+<p>构建：</p>
+<div class="highlight"><pre><span></span><code>make -C /path/to/linux_src M=$(pwd) LLVM=1 modules
+</code></pre></div>
+
+<p>之后就和使用普通的内核模块一样，使用 <code>insmod</code> 工具或者 <code>modprobe</code> 工具加载就可以了。在使用体验上是没有区别的。</p>
+<h4><code>module! { }</code> 宏</h4>
+<p>这个宏可以被认为是 Rust 内核模块的入口，因为在其中定义了一个内核模块所需的所有信息，包括：<code>Author</code>、<code>License</code>、<code>Description</code> 等。其中最重要的是 <code>type</code> 字段，在其中需要指定内核模块结构的名字。在这个例子中：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">module</span><span class="p">!</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="o">...</span>
+<span class="w">    </span><span class="k">type</span><span class="p">:</span><span class="w"> </span><span class="nx">HelloWorld</span><span class="p">,</span>
+<span class="w">    </span><span class="o">...</span>
+<span class="p">}</span>
+
+<span class="nx">struct</span><span class="w"> </span><span class="nx">HelloWorld</span><span class="p">;</span>
+</code></pre></div>
+
+<h4><code>module_init()</code> 与 <code>module_exit()</code></h4>
+<p>在使用 C 编写的内核模块中，这两个宏定义了模块的入口函数与退出函数。在 Rust 编写的内核模块中，对应的功能由 <code>trait KernelModule</code> 和 <code>trait Drop</code> 来实现。<code>trait KernelModule</code> 中定义 <code>init()</code> 函数，会在模块驱动初始化时被调用；<code>trait Drop</code> 是 Rust 的内置 trait，其中定义的 <code>drop()</code> 函数会在变量生命周期结束时被调用。</p>
+<h4>编译与链接</h4>
+<p>所有的内核模块文件会首先被编译成 <code>.o</code> 目标文件，之后由内核链接器将这些 <code>.o</code> 文件和自动生成的模块目标文件 <code>.mod.o</code> 一起链接成为 <code>.ko</code> 文件。这个 <code>.ko</code> 文件符合动态库 ELF 文件格式，能够被内核识别并加载。</p>
+<h3>其他</h3>
+<p>完整的介绍 Rust 是如何被集成进内核的文章可以在 <a href="https://github.com/d0u9/Linux-Device-Driver-Rust/tree/master/00_Introduction_to_Rust_Module_in_Linux">我的 Github</a> 上找到，由于写的仓促，可能存在一些不足，还请见谅。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

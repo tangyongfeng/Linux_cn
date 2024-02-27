@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>创建一个容器化的机器学习模型</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Sven Bösiger 数据科学家在创建机器学习模型后，必须将其部署到生产中。要在不同的基础架构上运行它，使用容器并通过 REST API …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/12/chuang-jian-yi-ge-rong-qi-hua-de-ji-qi-xue-xi-mo-xing.html" rel="bookmark"
+           title="Permalink to 创建一个容器化的机器学习模型">创建一个容器化的机器学习模型</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-12-15T09:18:26+01:00">
+                Published: Sat 15 December 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Sven Bösiger</p>
+<p><img alt="" src="/data/attachment/album/201812/15/091829w45rgg1peoawzce7.jpg"></p>
+<p>数据科学家在创建机器学习模型后，必须将其部署到生产中。要在不同的基础架构上运行它，使用容器并通过 REST API 公开模型是部署机器学习模型的常用方法。本文演示了如何在 <a href="https://fedoramagazine.org/running-containers-with-podman/">Podman</a> 容器中使用 <a href="https://connexion.readthedocs.io/en/latest/">Connexion</a> 推出使用 REST API 的 <a href="https://www.tensorflow.org">TensorFlow</a> 机器学习模型。</p>
+<h3>准备</h3>
+<p>首先，使用以下命令安装 Podman：</p>
+<div class="highlight"><pre><span></span><code>sudo dnf -y install podman
+</code></pre></div>
+
+<p>接下来，为容器创建一个新文件夹并切换到该目录。</p>
+<div class="highlight"><pre><span></span><code>mkdir deployment_container &amp;&amp; cd deployment_container
+</code></pre></div>
+
+<h3>TensorFlow 模型的 REST API</h3>
+<p>下一步是为机器学习模型创建 REST API。这个 <a href="https://github.com/svenboesiger/titanic_tf_ml_model">github 仓库</a>包含一个预训练模型，以及能让 REST API 工作的设置。</p>
+<p>使用以下命令在 <code>deployment_container</code> 目录中克隆它：</p>
+<div class="highlight"><pre><span></span><code>git clone https://github.com/svenboesiger/titanic_tf_ml_model.git
+</code></pre></div>
+
+<h4>prediction.py 和 ml_model/</h4>
+<p><a href="https://github.com/svenboesiger/titanic_tf_ml_model/blob/master/prediction.py">prediction.py</a> 能进行 Tensorflow 预测，而 20x20x20 神经网络的权重位于文件夹 <a href="https://github.com/svenboesiger/titanic_tf_ml_model/tree/master/ml_model/titanic">ml_model/</a> 中。</p>
+<h4>swagger.yaml</h4>
+<p><a href="https://github.com/svenboesiger/titanic_tf_ml_model/blob/master/swagger.yaml">swagger.yaml</a> 使用 <a href="https://github.com/OAI/OpenAPI-Specification/blob/master/versions/2.0.md">Swagger规范</a> 定义 Connexion 库的 API。此文件包含让你的服务器提供输入参数验证、输出响应数据验证、URL 端点定义所需的所有信息。</p>
+<p>额外地，Connexion 还将给你提供一个简单但有用的单页 Web 应用，它演示了如何使用 Javascript 调用 API 和更新 DOM。</p>
+<div class="highlight"><pre><span></span><code><span class="nx">swagger</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;2.0&quot;</span>
+<span class="nx">info</span><span class="p">:</span>
+<span class="w">  </span><span class="nx">description</span><span class="p">:</span><span class="w"> </span><span class="nx">This</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">swagger</span><span class="w"> </span><span class="nx">file</span><span class="w"> </span><span class="nx">that</span><span class="w"> </span><span class="nx">goes</span><span class="w"> </span><span class="nx">with</span><span class="w"> </span><span class="nx">our</span><span class="w"> </span><span class="nx">server</span><span class="w"> </span><span class="nx">code</span>
+<span class="w">  </span><span class="nx">version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;1.0.0&quot;</span>
+<span class="w">  </span><span class="nx">title</span><span class="p">:</span><span class="w"> </span><span class="nx">Tensorflow</span><span class="w"> </span><span class="nx">Podman</span><span class="w"> </span><span class="nx">Article</span>
+<span class="nx">consumes</span><span class="p">:</span>
+<span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="s">&quot;application/json&quot;</span>
+<span class="nx">produces</span><span class="p">:</span>
+<span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="s">&quot;application/json&quot;</span>
+
+
+<span class="nx">basePath</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;/&quot;</span>
+
+<span class="nx">paths</span><span class="p">:</span>
+<span class="w">  </span><span class="o">/</span><span class="nx">survival_probability</span><span class="p">:</span>
+<span class="w">    </span><span class="nx">post</span><span class="p">:</span>
+<span class="w">      </span><span class="nx">operationId</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;prediction.post&quot;</span>
+<span class="w">      </span><span class="nx">tags</span><span class="p">:</span>
+<span class="w">        </span><span class="o">-</span><span class="w"> </span><span class="s">&quot;Prediction&quot;</span>
+<span class="w">      </span><span class="nx">summary</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;The prediction data structure provided by the server application&quot;</span>
+<span class="w">      </span><span class="nx">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Retrieve the chance of surviving the titanic disaster&quot;</span>
+<span class="w">      </span><span class="nx">parameters</span><span class="p">:</span>
+<span class="w">        </span><span class="o">-</span><span class="w"> </span><span class="k">in</span><span class="p">:</span><span class="w"> </span><span class="nx">body</span>
+<span class="w">          </span><span class="nx">name</span><span class="p">:</span><span class="w"> </span><span class="nx">passenger</span>
+<span class="w">          </span><span class="nx">required</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">          </span><span class="nx">schema</span><span class="p">:</span>
+<span class="w">            </span><span class="err">$</span><span class="nx">ref</span><span class="p">:</span><span class="w"> </span><span class="err">&#39;#</span><span class="o">/</span><span class="nx">definitions</span><span class="o">/</span><span class="nx">PredictionPost</span><span class="err">&#39;</span>
+<span class="w">      </span><span class="nx">responses</span><span class="p">:</span>
+<span class="w">        </span><span class="err">&#39;</span><span class="mi">201</span><span class="err">&#39;</span><span class="p">:</span>
+<span class="w">          </span><span class="nx">description</span><span class="p">:</span><span class="w"> </span><span class="err">&#39;</span><span class="nx">Survival</span><span class="w"> </span><span class="nx">probability</span><span class="w"> </span><span class="nx">of</span><span class="w"> </span><span class="nx">an</span><span class="w"> </span><span class="nx">individual</span><span class="w"> </span><span class="nx">Titanic</span><span class="w"> </span><span class="nx">passenger</span><span class="err">&#39;</span>
+
+<span class="nx">definitions</span><span class="p">:</span>
+<span class="w">  </span><span class="nx">PredictionPost</span><span class="p">:</span>
+<span class="w">    </span><span class="k">type</span><span class="p">:</span><span class="w"> </span><span class="nx">object</span>
+</code></pre></div>
+
+<h4>server.py 和 requirements.txt</h4>
+<p><a href="https://github.com/svenboesiger/titanic_tf_ml_model/blob/master/server.py">server.py</a> 定义了启动 Connexion 服务器的入口点。</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">connexion</span>
+
+<span class="n">app</span> <span class="o">=</span> <span class="n">connexion</span><span class="o">.</span><span class="n">App</span><span class="p">(</span><span class="vm">__name__</span><span class="p">,</span> <span class="n">specification_dir</span><span class="o">=</span><span class="s1">&#39;./&#39;</span><span class="p">)</span>
+
+<span class="n">app</span><span class="o">.</span><span class="n">add_api</span><span class="p">(</span><span class="s1">&#39;swagger.yaml&#39;</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+ <span class="n">app</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">debug</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</code></pre></div>
+
+<p><a href="https://github.com/svenboesiger/titanic_tf_ml_model/blob/master/requirements.txt">requirements.txt</a> 定义了运行程序所需的 python 包。</p>
+<div class="highlight"><pre><span></span><code>connexion
+tensorflow
+pandas
+</code></pre></div>
+
+<h3>容器化！</h3>
+<p>为了让 Podman 构建映像，请在上面的准备步骤中创建的 <code>deployment_container</code> 目录中创建一个名为 <code>Dockerfile</code> 的新文件：</p>
+<div class="highlight"><pre><span></span><code><span class="n">FROM</span><span class="w"> </span><span class="n">fedora</span><span class="p">:</span><span class="mi">28</span>
+
+<span class="c1"># File Author / Maintainer</span>
+<span class="n">MAINTAINER</span><span class="w"> </span><span class="n">Sven</span><span class="w"> </span><span class="n">Boesiger</span><span class="w"> </span><span class="o">&lt;</span><span class="n">donotspam</span><span class="err">@</span><span class="n">ujelang</span><span class="o">.</span><span class="n">com</span><span class="o">&gt;</span>
+
+<span class="c1"># Update the sources</span>
+<span class="n">RUN</span><span class="w"> </span><span class="n">dnf</span><span class="w"> </span><span class="o">-</span><span class="n">y</span><span class="w"> </span><span class="n">update</span><span class="w"> </span><span class="o">--</span><span class="n">refresh</span>
+
+<span class="c1"># Install additional dependencies</span>
+<span class="n">RUN</span><span class="w"> </span><span class="n">dnf</span><span class="w"> </span><span class="o">-</span><span class="n">y</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="n">libstdc</span><span class="o">++</span>
+
+<span class="n">RUN</span><span class="w"> </span><span class="n">dnf</span><span class="w"> </span><span class="o">-</span><span class="n">y</span><span class="w"> </span><span class="n">autoremove</span>
+
+<span class="c1"># Copy the application folder inside the container</span>
+<span class="n">ADD</span><span class="w"> </span><span class="o">/</span><span class="n">titanic_tf_ml_model</span><span class="w"> </span><span class="o">/</span><span class="n">titanic_tf_ml_model</span>
+
+<span class="c1"># Get pip to download and install requirements:</span>
+<span class="n">RUN</span><span class="w"> </span><span class="n">pip3</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="o">-</span><span class="n">r</span><span class="w"> </span><span class="o">/</span><span class="n">titanic_tf_ml_model</span><span class="o">/</span><span class="n">requirements</span><span class="o">.</span><span class="n">txt</span>
+
+<span class="c1"># Expose ports</span>
+<span class="n">EXPOSE</span><span class="w"> </span><span class="mi">5000</span>
+
+<span class="c1"># Set the default directory where CMD will execute</span>
+<span class="n">WORKDIR</span><span class="w"> </span><span class="o">/</span><span class="n">titanic_tf_ml_model</span>
+
+<span class="c1"># Set the default command to execute</span>
+<span class="c1"># when creating a new container</span>
+<span class="n">CMD</span><span class="w"> </span><span class="n">python3</span><span class="w"> </span><span class="n">server</span><span class="o">.</span><span class="n">py</span>
+</code></pre></div>
+
+<p>接下来，使用以下命令构建容器镜像：</p>
+<div class="highlight"><pre><span></span><code>podman build -t ml_deployment .
+</code></pre></div>
+
+<h3>运行容器</h3>
+<p>随着容器镜像的构建和准备就绪，你可以使用以下命令在本地运行它：</p>
+<div class="highlight"><pre><span></span><code>podman run -p 5000:5000 ml_deployment
+</code></pre></div>
+
+<p>在 Web 浏览器中输入 <a href="http://0.0.0.0:5000/">http://0.0.0.0:5000/ui</a> 访问 Swagger/Connexion UI 并测试模型：</p>
+<p><img alt="" src="/data/attachment/album/201812/15/091830ggg293pc3q19z377.png"></p>
+<p>当然，你现在也可以在应用中通过 REST API 访问模型。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Bash Getopts - 让你的脚本支持命令行参数</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: '' 以前我总想知道如何为我的Bash脚本创建命令行参数。经过搜索，我发现了2个函数可以处理这个问题，getopt 函数和 getopts 函数。我无意争论哪一个函数更好的。getopts 是一个shell内建命令，而且 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2014/06/bash-getopts-rang-ni-de-jiao-ben-zhi-chi-ming-ling-xing-can-shu.html" rel="bookmark"
+           title="Permalink to Bash Getopts - 让你的脚本支持命令行参数">Bash Getopts - 让你的脚本支持命令行参数</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2014-06-16T12:55:00+02:00">
+                Published: Mon 16 June 2014
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: ''</p>
+<p>以前我总想知道如何为我的Bash脚本创建命令行参数。经过搜索，我发现了2个函数可以处理这个问题，<strong>getopt</strong> 函数和 <strong>getopts</strong> 函数。我无意争论哪一个函数更好的。<strong>getopts</strong> 是一个shell内建命令，而且似乎比 <strong>getopt</strong> 更容易实现这个功能，所以在这篇文章里我准备讲讲getopts。</p>
+<p><img alt="" src="/data/attachment/album/201406/16/144459khrh6o1s7m1kmjl4.png"></p>
+<h3>bash getopts</h3>
+<p>开始的时候，我只试着处理传递给脚本的命令行参数。最后，我添加了另外一些有用的功能函数，使得这个脚本可以成为其他任何交互式脚本处理命令行的开始模板。我还添加了一个纯文本格式的帮助函数，让脚本更加容易阅读。</p>
+<p>与其来一长段文字解释 <strong>getopts</strong> 在bash中是如何工作的，我认为不如直接来一个能工作的脚本更让人觉得轻松一些。</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/bin/bash</span>
+
+<span class="c1">######################################################################</span>
+<span class="c1">#This is an example of using getopts in Bash. It also contains some</span>
+<span class="c1">#other bits of code I find useful.</span>
+<span class="c1">#Author: Linerd</span>
+<span class="c1">#Website: http://tuxtweaks.com/</span>
+<span class="c1">#Copyright 2014</span>
+<span class="c1">#License: Creative Commons Attribution-ShareAlike 4.0</span>
+<span class="c1">#http://creativecommons.org/licenses/by-sa/4.0/legalcode</span>
+<span class="c1">######################################################################</span>
+
+<span class="c1">#Set Script Name variable</span>
+<span class="nv">SCRIPT</span><span class="o">=</span><span class="sb">`</span>basename<span class="w"> </span><span class="si">${</span><span class="nv">BASH_SOURCE</span><span class="p">[0]</span><span class="si">}</span><span class="sb">`</span>
+
+<span class="c1">#Initialize variables to default values.</span>
+<span class="nv">OPT_A</span><span class="o">=</span>A
+<span class="nv">OPT_B</span><span class="o">=</span>B
+<span class="nv">OPT_C</span><span class="o">=</span>C
+<span class="nv">OPT_D</span><span class="o">=</span>D
+
+<span class="c1">#Set fonts for Help.[译注: 这里tput用来更改终端文本属性,比如加粗，高亮等]</span>
+<span class="nv">NORM</span><span class="o">=</span><span class="sb">`</span>tput<span class="w"> </span>sgr0<span class="sb">`</span>
+<span class="nv">BOLD</span><span class="o">=</span><span class="sb">`</span>tput<span class="w"> </span>bold<span class="sb">`</span>
+<span class="nv">REV</span><span class="o">=</span><span class="sb">`</span>tput<span class="w"> </span>smso<span class="sb">`</span>
+
+<span class="c1">#Help function</span>
+<span class="k">function</span><span class="w"> </span>HELP<span class="w"> </span><span class="o">{</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span>-e<span class="w"> </span><span class="se">\\</span>n<span class="s2">&quot;Help documentation for </span><span class="si">${</span><span class="nv">BOLD</span><span class="si">}${</span><span class="nv">SCRIPT</span><span class="si">}</span><span class="s2">.</span><span class="si">${</span><span class="nv">NORM</span><span class="si">}</span><span class="s2">&quot;</span><span class="se">\\</span>n
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">REV</span><span class="si">}</span><span class="s2">Basic usage:</span><span class="si">${</span><span class="nv">NORM</span><span class="si">}</span><span class="s2"> </span><span class="si">${</span><span class="nv">BOLD</span><span class="si">}</span><span class="nv">$SCRIPT</span><span class="s2"> file.ext</span><span class="si">${</span><span class="nv">NORM</span><span class="si">}</span><span class="s2">&quot;</span><span class="se">\\</span>n
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Command line switches are optional. The following switches are recognized.&quot;</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">REV</span><span class="si">}</span><span class="s2">-a</span><span class="si">${</span><span class="nv">NORM</span><span class="si">}</span><span class="s2">  --Sets the value for option </span><span class="si">${</span><span class="nv">BOLD</span><span class="si">}</span><span class="s2">a</span><span class="si">${</span><span class="nv">NORM</span><span class="si">}</span><span class="s2">. Default is </span><span class="si">${</span><span class="nv">BOLD</span><span class="si">}</span><span class="s2">A</span><span class="si">${</span><span class="nv">NORM</span><span class="si">}</span><span class="s2">.&quot;</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">REV</span><span class="si">}</span><span class="s2">-b</span><span class="si">${</span><span class="nv">NORM</span><span class="si">}</span><span class="s2">  --Sets the value for option </span><span class="si">${</span><span class="nv">BOLD</span><span class="si">}</span><span class="s2">b</span><span class="si">${</span><span class="nv">NORM</span><span class="si">}</span><span class="s2">. Default is </span><span class="si">${</span><span class="nv">BOLD</span><span class="si">}</span><span class="s2">B</span><span class="si">${</span><span class="nv">NORM</span><span class="si">}</span><span class="s2">.&quot;</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">REV</span><span class="si">}</span><span class="s2">-c</span><span class="si">${</span><span class="nv">NORM</span><span class="si">}</span><span class="s2">  --Sets the value for option </span><span class="si">${</span><span class="nv">BOLD</span><span class="si">}</span><span class="s2">c</span><span class="si">${</span><span class="nv">NORM</span><span class="si">}</span><span class="s2">. Default is </span><span class="si">${</span><span class="nv">BOLD</span><span class="si">}</span><span class="s2">C</span><span class="si">${</span><span class="nv">NORM</span><span class="si">}</span><span class="s2">.&quot;</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">REV</span><span class="si">}</span><span class="s2">-d</span><span class="si">${</span><span class="nv">NORM</span><span class="si">}</span><span class="s2">  --Sets the value for option </span><span class="si">${</span><span class="nv">BOLD</span><span class="si">}</span><span class="s2">d</span><span class="si">${</span><span class="nv">NORM</span><span class="si">}</span><span class="s2">. Default is </span><span class="si">${</span><span class="nv">BOLD</span><span class="si">}</span><span class="s2">D</span><span class="si">${</span><span class="nv">NORM</span><span class="si">}</span><span class="s2">.&quot;</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">REV</span><span class="si">}</span><span class="s2">-h</span><span class="si">${</span><span class="nv">NORM</span><span class="si">}</span><span class="s2">  --Displays this help message. No further functions are performed.&quot;</span><span class="se">\\</span>n
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;Example: </span><span class="si">${</span><span class="nv">BOLD</span><span class="si">}</span><span class="nv">$SCRIPT</span><span class="s2"> -a foo -b man -c chu -d bar file.ext</span><span class="si">${</span><span class="nv">NORM</span><span class="si">}</span><span class="s2">&quot;</span><span class="se">\\</span>n
+<span class="w">  </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="o">}</span>
+
+<span class="c1">#Check the number of arguments. If none are passed, print help and exit.</span>
+<span class="nv">NUMARGS</span><span class="o">=</span><span class="nv">$#</span>
+<span class="nb">echo</span><span class="w"> </span>-e<span class="w"> </span><span class="se">\\</span>n<span class="s2">&quot;Number of arguments: </span><span class="nv">$NUMARGS</span><span class="s2">&quot;</span>
+<span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="nv">$NUMARGS</span><span class="w"> </span>-eq<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">  </span>HELP
+<span class="k">fi</span>
+
+<span class="c1">### Start getopts code ###</span>
+
+<span class="c1">#Parse command line flags</span>
+<span class="c1">#如果选项需要后跟参数，在选项后面加&quot;:&quot;</span>
+<span class="c1">#注意&quot;-h&quot;选项后面没有&quot;:&quot;，因为他不需要参数。选项字符串最开始的&quot;:&quot;是用来去掉来自getopts本身的报错的，同时获取不能识别的选项。（译注：如果选项字符串不以&quot;:&quot;开头，发生错误（非法的选项或者缺少参数）时，getopts会向错误输出打印错误信息；如果以&quot;:&quot;开头，则不会打印[在man中叫slient error reporting]，同时将出错的选项赋给OPTARG变量）</span>
+
+<span class="k">while</span><span class="w"> </span><span class="nb">getopts</span><span class="w"> </span>:a:b:c:d:h<span class="w"> </span>FLAG<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">  </span><span class="k">case</span><span class="w"> </span><span class="nv">$FLAG</span><span class="w"> </span><span class="k">in</span>
+<span class="w">    </span>a<span class="o">)</span><span class="w">  </span><span class="c1">#set option &quot;a&quot;</span>
+<span class="w">      </span><span class="nv">OPT_A</span><span class="o">=</span><span class="nv">$OPTARG</span>
+<span class="w">      </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;-a used: </span><span class="nv">$OPTARG</span><span class="s2">&quot;</span>
+<span class="w">      </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;OPT_A = </span><span class="nv">$OPT_A</span><span class="s2">&quot;</span>
+<span class="w">      </span><span class="p">;;</span>
+<span class="w">    </span>b<span class="o">)</span><span class="w">  </span><span class="c1">#set option &quot;b&quot;</span>
+<span class="w">      </span><span class="nv">OPT_B</span><span class="o">=</span><span class="nv">$OPTARG</span>
+<span class="w">      </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;-b used: </span><span class="nv">$OPTARG</span><span class="s2">&quot;</span>
+<span class="w">      </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;OPT_B = </span><span class="nv">$OPT_B</span><span class="s2">&quot;</span>
+<span class="w">      </span><span class="p">;;</span>
+<span class="w">    </span>c<span class="o">)</span><span class="w">  </span><span class="c1">#set option &quot;c&quot;</span>
+<span class="w">      </span><span class="nv">OPT_C</span><span class="o">=</span><span class="nv">$OPTARG</span>
+<span class="w">      </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;-c used: </span><span class="nv">$OPTARG</span><span class="s2">&quot;</span>
+<span class="w">      </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;OPT_C = </span><span class="nv">$OPT_C</span><span class="s2">&quot;</span>
+<span class="w">      </span><span class="p">;;</span>
+<span class="w">    </span>d<span class="o">)</span><span class="w">  </span><span class="c1">#set option &quot;d&quot;</span>
+<span class="w">      </span><span class="nv">OPT_D</span><span class="o">=</span><span class="nv">$OPTARG</span>
+<span class="w">      </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;-d used: </span><span class="nv">$OPTARG</span><span class="s2">&quot;</span>
+<span class="w">      </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;OPT_D = </span><span class="nv">$OPT_D</span><span class="s2">&quot;</span>
+<span class="w">      </span><span class="p">;;</span>
+<span class="w">    </span>h<span class="o">)</span><span class="w">  </span><span class="c1">#show help</span>
+<span class="w">      </span>HELP
+<span class="w">      </span><span class="p">;;</span>
+<span class="w">    </span><span class="se">\?</span><span class="o">)</span><span class="w"> </span><span class="c1">#unrecognized option - show help</span>
+<span class="w">      </span><span class="nb">echo</span><span class="w"> </span>-e<span class="w"> </span><span class="se">\\</span>n<span class="s2">&quot;Option -</span><span class="si">${</span><span class="nv">BOLD</span><span class="si">}</span><span class="nv">$OPTARG</span><span class="si">${</span><span class="nv">NORM</span><span class="si">}</span><span class="s2"> not allowed.&quot;</span>
+<span class="w">      </span>HELP
+<span class="w">      </span><span class="c1">#在这里如果你不想打印完整的帮助信息，只想显示简单的错误信息，去掉上面的两行，同时使用下面的两行。</span>
+<span class="w">      </span><span class="c1">#echo -e &quot;Use ${BOLD}$SCRIPT -h${NORM} to see the help documentation.&quot;\\n</span>
+<span class="w">      </span><span class="c1">#exit 2</span>
+<span class="w">      </span><span class="p">;;</span>
+<span class="w">  </span><span class="k">esac</span>
+<span class="k">done</span>
+
+<span class="nb">shift</span><span class="w"> </span><span class="k">$((</span><span class="nv">OPTIND</span><span class="o">-</span><span class="m">1</span><span class="k">))</span><span class="w">  </span><span class="c1">#This tells getopts to move on to the next argument.</span>
+
+<span class="c1">### End getopts code ###</span>
+
+
+<span class="c1">### Main loop to process files ###</span>
+
+<span class="c1">#这里你可以用你的脚本处理逻辑来替代。这个例子只是在终端中打印文件的文件名和后缀名。你可以把任意其他的文件处理任务放到这个while-do循环中。   </span>
+
+<span class="k">while</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="nv">$#</span><span class="w"> </span>-ne<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">  </span><span class="nv">FILE</span><span class="o">=</span><span class="nv">$1</span>
+<span class="w">  </span><span class="nv">TEMPFILE</span><span class="o">=</span><span class="sb">`</span>basename<span class="w"> </span><span class="nv">$FILE</span><span class="sb">`</span>
+<span class="w">  </span><span class="c1">#TEMPFILE=&quot;${FILE##*/}&quot;  #另外一种获取不带后缀的文件名的方法。</span>
+<span class="w">  </span><span class="nv">FILE_BASE</span><span class="o">=</span><span class="sb">`</span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">TEMPFILE</span><span class="p">%.*</span><span class="si">}</span><span class="s2">&quot;</span><span class="sb">`</span><span class="w">  </span><span class="c1">#file without extension</span>
+<span class="w">  </span><span class="nv">FILE_EXT</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">TEMPFILE</span><span class="p">##*.</span><span class="si">}</span><span class="s2">&quot;</span><span class="w">  </span><span class="c1">#file extension</span>
+
+
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span>-e<span class="w"> </span><span class="se">\\</span>n<span class="s2">&quot;Input file is: </span><span class="nv">$FILE</span><span class="s2">&quot;</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;File withouth extension is: </span><span class="nv">$FILE_BASE</span><span class="s2">&quot;</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;File extension is: </span><span class="nv">$FILE_EXT</span><span class="s2">&quot;</span><span class="se">\\</span>n
+<span class="w">  </span><span class="nb">shift</span><span class="w">  </span><span class="c1">#Move on to next input file.</span>
+<span class="k">done</span>
+
+<span class="c1">### End main loop ###</span>
+
+<span class="nb">exit</span><span class="w"> </span><span class="m">0</span>
+</code></pre></div>
+
+<p>将上面的代码复制到你的文本编辑器里，然后保存到你的可执行路径下。我将这个脚本命名为 <strong>options</strong> 并保存到 <strong>/home/linerd/bin</strong> 路径下。保存之后记得给你的脚本添加可执行权限。</p>
+<div class="highlight"><pre><span></span><code>chmod +x ~/bin/options
+</code></pre></div>
+
+<p>现在脚本已经可以运行了。试试用 <strong>-h</strong> 参数来打印帮助信息吧。</p>
+<div class="highlight"><pre><span></span><code>options -h
+</code></pre></div>
+
+<p>遇到不支持的选项，脚本同样可以给出提示，并打印帮助信息。</p>
+<div class="highlight"><pre><span></span><code>options -z
+</code></pre></div>
+
+<p>最后，getopts可以以任意的顺序处理你给的命令行参数。唯一的限制是你要处理的文件必须放在所有参数的最后。</p>
+<div class="highlight"><pre><span></span><code>options -d bar -c chu -b man -a foo example1.txt example2.txt
+</code></pre></div>
+
+<p>现在你可以从这些例子里看到如何通过命令行参数给脚本里的变量赋值。这个脚本里除了getopts还有很多其他的东西，但是我认为这些就足以成为一个新脚本的开头模板了。如果你有兴趣更深入地学习bash的getopts，你可以找找深埋在man page的“Builtins”这一节里的文档，也可以从 <a href="http://tuxtweaks.com/2014/05/bash-getopts/www.gnu.org/software/bash/manual/html_node/Bourne-Shell-Builtins.html">Bash Reference Manual</a> 找到信息。</p>
+<h3>接下来呢?</h3>
+<p>你会用getops来干什么呢？在评论里告诉我吧。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在 Fedora 上为 SSH 设置双因子验证</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Curt Warfield 每天似乎都有一个安全漏洞的新闻报道，说我们的数据会因此而存在风险。尽管 SSH 是一种远程连接系统的安全方 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/03/zai-fedora-shang-wei-ssh-she-zhi-shuang-yin-zi-yan-zheng.html" rel="bookmark"
+           title="Permalink to 在 Fedora 上为 SSH 设置双因子验证">在 Fedora 上为 SSH 设置双因子验证</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-03-24T09:10:55+01:00">
+                Published: Sun 24 March 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Curt Warfield</p>
+<p><img alt="" src="/data/attachment/album/201903/24/091059htuvvhpttruuvzkh.png"></p>
+<p>每天似乎都有一个安全漏洞的新闻报道，说我们的数据会因此而存在风险。尽管 SSH 是一种远程连接系统的安全方式，但你仍然可以使它更安全。本文将向你展示如何做到这一点。</p>
+<p>此时<ruby> 双因子验证 <rt>  two-factor authentication </rt></ruby>（2FA）就有用武之地了。即使你禁用密码并只允许使用公钥和私钥进行 SSH 连接，但如果未经授权的用户偷窃了你的密钥，他仍然可以借此访问系统。</p>
+<p>使用双因子验证，你不能仅仅使用 SSH 密钥连接到服务器，你还需要提供手机上的验证器应用程序随机生成的数字。</p>
+<p>本文展示的方法是<ruby> 基于时间的一次性密码 <rt>  Time-based One-time Password </rt></ruby>（TOTP）算法。<a href="https://en.wikipedia.org/wiki/Google_Authenticator">Google Authenticator</a> 用作服务器应用程序。默认情况下，Google Authenticator 在 Fedora 中是可用的。</p>
+<p>至于手机，你可以使用与 TOTP 兼容的任何可以双路验证的应用程序。Andorid 或 iOS 有许多可以与 TOTP 和 Google Authenticator 配合使用的免费应用程序。本文与 <a href="https://freeotp.github.io/">FreeOTP</a> 为例。</p>
+<h3>安装并设置 Google Authenticator</h3>
+<p>首先，在你的服务器上安装 Google Authenticator。 <code>$ sudo dnf install -y google-authenticator</code></p>
+<p>运行应用程序：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>google-authenticator
+</code></pre></div>
+
+<p>该应用程序提供了一系列问题。下面的片段展示了如何进行合理的安全设置：</p>
+<div class="highlight"><pre><span></span><code>Do you want authentication tokens to be time-based (y/n) y
+Do you want me to update your &quot;/home/user/.google_authenticator&quot; file (y/n)? y
+</code></pre></div>
+
+<p>这个应用程序为你提供一个密钥、验证码和恢复码。把它们放在安全的地方。如果你丢失了手机，恢复码是访问服务器的<strong>唯一</strong>方式。</p>
+<h3>设置手机验证</h3>
+<p>在你的手机上安装验证器应用程序（FreeOTP）。如果你有一台安卓手机，那么你可以在 Google Play 中找到它，也可以在苹果 iPhone 的 iTunes 商店中找到它。</p>
+<p>Google Authenticator 会在屏幕上显示一个二维码。打开手机上的 FreeOTP 应用程序，选择添加新账户，在应用程序顶部选择二维码形状工具，然后扫描二维码即可。设置完成后，在每次远程连接服务器时，你必须提供验证器应用程序生成的随机数。</p>
+<h3>完成配置</h3>
+<p>应用程序会向你询问更多的问题。下面示例展示了如何设置合理的安全配置。</p>
+<div class="highlight"><pre><span></span><code><span class="k">Do</span><span class="w"> </span><span class="nv">you</span><span class="w"> </span><span class="nv">want</span><span class="w"> </span><span class="nv">to</span><span class="w"> </span><span class="nv">disallow</span><span class="w"> </span><span class="nv">multiple</span><span class="w"> </span><span class="nv">uses</span><span class="w"> </span><span class="nv">of</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="nv">same</span><span class="w"> </span><span class="nv">authentication</span><span class="w"> </span><span class="nv">token</span>?<span class="w"> </span><span class="nv">This</span><span class="w"> </span><span class="nv">restricts</span><span class="w"> </span><span class="nv">you</span><span class="w"> </span><span class="nv">to</span><span class="w"> </span><span class="nv">one</span><span class="w"> </span><span class="nv">login</span><span class="w"> </span><span class="nv">about</span><span class="w"> </span><span class="nv">every</span><span class="w"> </span><span class="mi">30</span><span class="nv">s</span>,<span class="w"> </span><span class="nv">but</span><span class="w"> </span><span class="nv">it</span><span class="w"> </span><span class="nv">increases</span><span class="w"> </span><span class="nv">your</span><span class="w"> </span><span class="nv">chances</span><span class="w"> </span><span class="nv">to</span><span class="w"> </span><span class="nv">notice</span><span class="w"> </span><span class="nv">or</span><span class="w"> </span><span class="nv">even</span><span class="w"> </span><span class="nv">prevent</span><span class="w"> </span><span class="nv">man</span><span class="o">-</span><span class="nv">in</span><span class="o">-</span><span class="nv">the</span><span class="o">-</span><span class="nv">middle</span><span class="w"> </span><span class="nv">attacks</span><span class="w"> </span><span class="ss">(</span><span class="nv">y</span><span class="o">/</span><span class="nv">n</span><span class="ss">)</span><span class="w"> </span><span class="nv">y</span>
+<span class="nv">By</span><span class="w"> </span><span class="nv">default</span>,<span class="w"> </span><span class="nv">tokens</span><span class="w"> </span><span class="nv">are</span><span class="w"> </span><span class="nv">good</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="mi">30</span><span class="w"> </span><span class="nv">seconds</span>.<span class="w"> </span><span class="nv">In</span><span class="w"> </span><span class="nv">order</span><span class="w"> </span><span class="nv">to</span><span class="w"> </span><span class="nv">compensate</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nv">possible</span><span class="w"> </span><span class="nv">time</span><span class="o">-</span><span class="nv">skew</span><span class="w"> </span><span class="nv">between</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="nv">client</span><span class="w"> </span><span class="nv">and</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="nv">server</span>,<span class="w"> </span><span class="nv">we</span><span class="w"> </span><span class="nv">allow</span><span class="w"> </span><span class="nv">an</span><span class="w"> </span><span class="nv">extra</span><span class="w"> </span><span class="nv">token</span><span class="w"> </span><span class="nv">before</span><span class="w"> </span><span class="nv">and</span><span class="w"> </span><span class="nv">after</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="nv">current</span><span class="w"> </span><span class="nv">time</span>.<span class="w"> </span><span class="k">If</span><span class="w"> </span><span class="nv">you</span><span class="w"> </span><span class="nv">experience</span><span class="w"> </span><span class="nv">problems</span><span class="w"> </span><span class="nv">with</span><span class="w"> </span><span class="nv">poor</span><span class="w"> </span><span class="nv">time</span><span class="w"> </span><span class="nv">synchronization</span>,<span class="w"> </span><span class="nv">you</span><span class="w"> </span><span class="nv">can</span><span class="w"> </span><span class="nv">increase</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="nv">window</span><span class="w"> </span><span class="nv">from</span><span class="w"> </span><span class="nv">its</span><span class="w"> </span><span class="nv">default</span><span class="w"> </span><span class="nv">size</span><span class="w"> </span><span class="nv">of</span><span class="w"> </span><span class="o">+-</span><span class="mi">1</span><span class="nv">min</span><span class="w"> </span><span class="ss">(</span><span class="nv">window</span><span class="w"> </span><span class="nv">size</span><span class="w"> </span><span class="nv">of</span><span class="w"> </span><span class="mi">3</span><span class="ss">)</span><span class="w"> </span><span class="nv">to</span><span class="w"> </span><span class="nv">about</span><span class="w"> </span><span class="o">+-</span><span class="mi">4</span><span class="nv">min</span><span class="w"> </span><span class="ss">(</span><span class="nv">window</span><span class="w"> </span><span class="nv">size</span><span class="w"> </span><span class="nv">of</span><span class="w"> </span><span class="mi">17</span><span class="w"> </span><span class="nv">acceptable</span><span class="w"> </span><span class="nv">tokens</span><span class="ss">)</span>.
+<span class="k">Do</span><span class="w"> </span><span class="nv">you</span><span class="w"> </span><span class="nv">want</span><span class="w"> </span><span class="nv">to</span><span class="w"> </span><span class="k">do</span><span class="w"> </span><span class="nv">so</span>?<span class="w"> </span><span class="ss">(</span><span class="nv">y</span><span class="o">/</span><span class="nv">n</span><span class="ss">)</span><span class="w"> </span><span class="nv">n</span>
+<span class="k">If</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="nv">computer</span><span class="w"> </span><span class="nv">that</span><span class="w"> </span><span class="nv">you</span><span class="w"> </span><span class="nv">are</span><span class="w"> </span><span class="nv">logging</span><span class="w"> </span><span class="nv">into</span><span class="w"> </span><span class="nv">isn</span><span class="err">&#39;t hardened against brute-force login attempts, you can enable rate-limiting for the authentication module. By default, this limits attackers to no more than 3 login attempts every 30s.</span>
+<span class="err">Do you want to enable rate-limiting (y/n) y</span>
+</code></pre></div>
+
+<p>现在，你必须设置 SSH 来利用新的双路验证。</p>
+<h3>配置 SSH</h3>
+<p>在完成此步骤之前，<strong>确保你已使用公钥建立了一个可用的 SSH 连接</strong>，因为我们将禁用密码连接。如果出现问题或错误，一个已经建立的连接将允许你修复问题。</p>
+<p>在你的服务器上，使用 <a href="https://fedoramagazine.org/howto-use-sudo/">sudo</a> 编辑 <code>/etc/pam.d/sshd</code> 文件。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>vi<span class="w"> </span>/etc/pam.d/ssh
+</code></pre></div>
+
+<p>注释掉 <code>auth substack password-auth</code> 这一行：</p>
+<div class="highlight"><pre><span></span><code>#auth       substack     password-auth
+</code></pre></div>
+
+<p>将以下行添加到文件底部：</p>
+<div class="highlight"><pre><span></span><code>auth sufficient pam_google_authenticator.so
+</code></pre></div>
+
+<p>保存并关闭文件。然后编辑 <code>/etc/ssh/sshd_config</code> 文件：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>vi<span class="w"> </span>/etc/ssh/sshd_config
+</code></pre></div>
+
+<p>找到 <code>ChallengeResponseAuthentication</code> 这一行并将其更改为 <code>yes</code>：</p>
+<div class="highlight"><pre><span></span><code>ChallengeResponseAuthentication yes
+</code></pre></div>
+
+<p>找到 <code>PasswordAuthentication</code> 这一行并将其更改为 <code>no</code>：</p>
+<div class="highlight"><pre><span></span><code>PasswordAuthentication no
+</code></pre></div>
+
+<p>将以下行添加到文件底部：</p>
+<div class="highlight"><pre><span></span><code>AuthenticationMethods publickey,password publickey,keyboard-interactive
+</code></pre></div>
+
+<p>保存并关闭文件，然后重新启动 SSH：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>restart<span class="w"> </span>sshd
+</code></pre></div>
+
+<h3>测试双因子验证</h3>
+<p>当你尝试连接到服务器时，系统会提示你输入验证码：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">user@client ~</span><span class="o">]</span><span class="err">$</span><span class="w"> </span><span class="n">ssh</span><span class="w"> </span><span class="k">user</span><span class="nv">@example</span><span class="p">.</span><span class="n">com</span>
+<span class="n">Verification</span><span class="w"> </span><span class="nl">code</span><span class="p">:</span>
+</code></pre></div>
+
+<p>验证码由你手机上的验证器应用程序随机生成。由于这个数字每隔几秒就会发生变化，因此你需要在它变化之前输入它。</p>
+<p><img alt="" src="/data/attachment/album/201903/24/091059twxbg02bi240aokd.png"></p>
+<p>如果你不输入验证码，你将无法访问系统，你会收到一个权限被拒绝的错误：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">user@client ~</span><span class="o">]</span><span class="err">$</span><span class="w"> </span><span class="n">ssh</span><span class="w"> </span><span class="k">user</span><span class="nv">@example</span><span class="p">.</span><span class="n">com</span>
+<span class="n">Verification</span><span class="w"> </span><span class="nl">code</span><span class="p">:</span>
+<span class="n">Verification</span><span class="w"> </span><span class="nl">code</span><span class="p">:</span>
+<span class="n">Verification</span><span class="w"> </span><span class="nl">code</span><span class="p">:</span>
+<span class="n">Permission</span><span class="w"> </span><span class="n">denied</span><span class="w"> </span><span class="p">(</span><span class="n">keyboard</span><span class="o">-</span><span class="n">interactive</span><span class="p">).</span>
+<span class="o">[</span><span class="n">user@client ~</span><span class="o">]</span><span class="err">$</span>
+</code></pre></div>
+
+<h3>结论</h3>
+<p>通过添加这种简单的双路验证，现在未经授权的用户访问你的服务器将变得更加困难。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

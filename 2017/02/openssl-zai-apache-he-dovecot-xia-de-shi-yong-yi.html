@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>OpenSSL 在 Apache 和 Dovecot 下的使用（一）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: CARLA SCHRODER 在这有两部分的系列中，Carla Schroder 会向你展示如何创建自己的 OpenSSL 证书以及如何配置 Apache 和 Dovecot 来使用它们。 这么长时间之 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/02/openssl-zai-apache-he-dovecot-xia-de-shi-yong-yi.html" rel="bookmark"
+           title="Permalink to OpenSSL 在 Apache 和 Dovecot 下的使用（一）">OpenSSL 在 Apache 和 Dovecot 下的使用（一）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-02-02T08:02:00+01:00">
+                Published: Thu 02 February 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: CARLA SCHRODER</p>
+<p><img alt="" src="/data/attachment/album/201702/01/220254cao1abzt8bm3wmao.jpg"></p>
+<blockquote>
+<p>在这有两部分的系列中，Carla Schroder 会向你展示如何创建自己的 OpenSSL 证书以及如何配置 Apache 和 Dovecot 来使用它们。</p>
+</blockquote>
+<p>这么长时间之后，我的读者们，这里是我给你们承诺的在 Apache 中使用 OpenSSL 的方法，下周你会看到在 Dovecot 中使用 SSL。 在这个分为两部分的系列中，我们将学习如何创建自己的 OpenSSL 证书，以及如何配置 Apache 和 Dovecot 来使用它们。</p>
+<p>这些例子基于这些教程：</p>
+<ul>
+<li><a href="https://www.linux.com/learn/apache-ubuntu-linux-beginners">给初学者看的在 Ubuntu Linux 上使用 Apache</a></li>
+<li><a href="https://www.linux.com/learn/apache-ubuntu-linux-beginners-part-2">给初学者看的在 Ubuntu Linux 上使用 Apache：第 2 部分</a></li>
+<li><a href="https://www.linux.com/learn/apache-centos-linux-beginners">给初学者看的在 CentOS Linux 上使用 Apache</a></li>
+</ul>
+<h3>创建你的证书</h3>
+<p>Debian/Ubuntu/Mint 会在 <code>/etc/ssl</code> 中存储私钥和证书的符号链接。系统自带的证书保存在 <code>/usr/share/ca-certificates</code> 中。你安装或创建的证书在 <code>/usr/local/share/ca-certificates/</code> 中。</p>
+<p>这个例子是对 Debian 而言。创建私钥和公用证书，将证书转换为正确的格式，并将其符号链接到正确的目录：</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">openssl</span><span class="w"> </span><span class="n">req</span><span class="w"> </span><span class="o">-</span><span class="n">x509</span><span class="w"> </span><span class="o">-</span><span class="n">days</span><span class="w"> </span><span class="mi">365</span><span class="w"> </span><span class="o">-</span><span class="n">nodes</span><span class="w"> </span><span class="o">-</span><span class="n">newkey</span><span class="w"> </span><span class="nl">rsa</span><span class="p">:</span><span class="mi">2048</span><span class="w"> </span><span class="err">\</span>
+<span class="w">   </span><span class="o">-</span><span class="n">keyout</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">ssl</span><span class="o">/</span><span class="n">private</span><span class="o">/</span><span class="n">test</span><span class="o">-</span><span class="n">com</span><span class="p">.</span><span class="k">key</span><span class="w"> </span><span class="o">-</span><span class="k">out</span><span class="w"> </span><span class="err">\</span>
+<span class="w">   </span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="k">local</span><span class="o">/</span><span class="n">share</span><span class="o">/</span><span class="n">ca</span><span class="o">-</span><span class="n">certificates</span><span class="o">/</span><span class="n">test</span><span class="o">-</span><span class="n">com</span><span class="p">.</span><span class="n">crt</span>
+<span class="n">Generating</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="mi">2048</span><span class="w"> </span><span class="nc">bit</span><span class="w"> </span><span class="n">RSA</span><span class="w"> </span><span class="n">private</span><span class="w"> </span><span class="k">key</span>
+<span class="p">.......</span><span class="o">+++</span>
+<span class="p">......................................</span><span class="o">+++</span>
+<span class="n">writing</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">private</span><span class="w"> </span><span class="k">key</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="s1">&#39;/etc/ssl/private/test-com.key&#39;</span>
+<span class="o">-----</span>
+<span class="n">You</span><span class="w"> </span><span class="k">are</span><span class="w"> </span><span class="n">about</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">asked</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">enter</span><span class="w"> </span><span class="n">information</span><span class="w"> </span><span class="n">that</span><span class="w"> </span><span class="n">will</span><span class="w"> </span>
+<span class="n">be</span><span class="w"> </span><span class="n">incorporated</span><span class="w"> </span><span class="k">into</span><span class="w"> </span><span class="n">your</span><span class="w"> </span><span class="n">certificate</span><span class="w"> </span><span class="n">request</span><span class="p">.</span>
+<span class="n">What</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="k">are</span><span class="w"> </span><span class="n">about</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">enter</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">what</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="k">called</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">Distinguished</span><span class="w"> </span>
+<span class="n">Name</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">DN</span><span class="p">.</span><span class="w"> </span><span class="n">There</span><span class="w"> </span><span class="k">are</span><span class="w"> </span><span class="n">quite</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">few</span><span class="w"> </span><span class="n">fields</span><span class="w"> </span><span class="n">but</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="n">can</span><span class="w"> </span><span class="n">leave</span><span class="w"> </span><span class="ow">some</span><span class="w"> </span><span class="n">blank</span>
+<span class="k">For</span><span class="w"> </span><span class="ow">some</span><span class="w"> </span><span class="n">fields</span><span class="w"> </span><span class="n">there</span><span class="w"> </span><span class="n">will</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="k">default</span><span class="w"> </span><span class="k">value</span><span class="p">,</span>
+<span class="k">If</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="n">enter</span><span class="w"> </span><span class="s1">&#39;.&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">field</span><span class="w"> </span><span class="n">will</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="nf">left</span><span class="w"> </span><span class="n">blank</span><span class="p">.</span>
+<span class="o">-----</span>
+<span class="n">Country</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="mi">2</span><span class="w"> </span><span class="n">letter</span><span class="w"> </span><span class="n">code</span><span class="p">)</span><span class="w"> </span><span class="o">[</span><span class="n">AU</span><span class="o">]</span><span class="err">:</span><span class="n">US</span>
+<span class="k">State</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="n">Province</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="k">full</span><span class="w"> </span><span class="n">name</span><span class="p">)</span><span class="w"> </span><span class="o">[</span><span class="n">Some-State</span><span class="o">]</span><span class="err">:</span><span class="n">WA</span>
+<span class="n">Locality</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="n">eg</span><span class="p">,</span><span class="w"> </span><span class="n">city</span><span class="p">)</span><span class="w"> </span><span class="err">[]:</span><span class="n">Seattle</span>
+<span class="n">Organization</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="n">eg</span><span class="p">,</span><span class="w"> </span><span class="n">company</span><span class="p">)</span><span class="w"> </span><span class="o">[</span><span class="n">Internet Widgits Pty Ltd</span><span class="o">]</span><span class="err">:</span><span class="n">Alrac</span><span class="w"> </span><span class="n">Writing</span><span class="w"> </span><span class="n">Sweatshop</span>
+<span class="n">Organizational</span><span class="w"> </span><span class="n">Unit</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="n">eg</span><span class="p">,</span><span class="w"> </span><span class="k">section</span><span class="p">)</span><span class="w"> </span><span class="err">[]:</span><span class="n">home</span><span class="w"> </span><span class="n">dungeon</span>
+<span class="n">Common</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="n">e</span><span class="p">.</span><span class="n">g</span><span class="p">.</span><span class="w"> </span><span class="n">server</span><span class="w"> </span><span class="n">FQDN</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="n">YOUR</span><span class="w"> </span><span class="n">name</span><span class="p">)</span><span class="w"> </span><span class="err">[]:</span><span class="n">www</span><span class="p">.</span><span class="n">test</span><span class="p">.</span><span class="n">com</span>
+<span class="n">Email</span><span class="w"> </span><span class="n">Address</span><span class="w"> </span><span class="err">[]:</span><span class="k">admin</span><span class="nv">@test</span><span class="p">.</span><span class="n">com</span>
+
+<span class="err">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="k">update</span><span class="o">-</span><span class="n">ca</span><span class="o">-</span><span class="n">certificates</span>
+<span class="n">Updating</span><span class="w"> </span><span class="n">certificates</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">ssl</span><span class="o">/</span><span class="n">certs</span><span class="p">...</span>
+<span class="mi">1</span><span class="w"> </span><span class="n">added</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="n">removed</span><span class="p">;</span><span class="w"> </span><span class="n">done</span><span class="p">.</span>
+<span class="n">Running</span><span class="w"> </span><span class="n">hooks</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">ca</span><span class="o">-</span><span class="n">certificates</span><span class="o">/</span><span class="k">update</span><span class="p">.</span><span class="n">d</span><span class="p">...</span>
+
+<span class="n">Adding</span><span class="w"> </span><span class="nl">debian</span><span class="p">:</span><span class="n">test</span><span class="o">-</span><span class="n">com</span><span class="p">.</span><span class="n">pem</span>
+<span class="n">done</span><span class="p">.</span>
+<span class="n">done</span><span class="p">.</span>
+</code></pre></div>
+
+<p>CentOS/Fedora 使用不同的文件结构，并不使用 <code>update-ca-certificates</code>，使用这个命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>openssl<span class="w"> </span>req<span class="w"> </span>-x509<span class="w"> </span>-days<span class="w"> </span><span class="m">365</span><span class="w"> </span>-nodes<span class="w"> </span>-newkey<span class="w"> </span>rsa:2048<span class="w"> </span><span class="se">\</span>
+<span class="w">   </span>-keyout<span class="w"> </span>/etc/httpd/ssl/test-com.key<span class="w"> </span>-out<span class="w"> </span><span class="se">\</span>
+<span class="w">   </span>/etc/httpd/ssl/test-com.crt
+</code></pre></div>
+
+<p>最重要的条目是 <code>Common Name</code>，它必须与你的完全限定域名（FQDN）完全匹配。此外其它信息都是任意的。<code>-nodes</code> 用于创建一个无密码的证书，这是 Apache 所必需的。<code>-days</code> 用于定义过期日期。更新证书是一个麻烦的事情，但这样应该能够额外提供一些安全保障。参见 <a href="https://community.letsencrypt.org/t/pros-and-cons-of-90-day-certificate-lifetimes/4621">90 天证书有效期的利弊</a>中的讨论。</p>
+<h3>配置 Apache</h3>
+<p>现在配置 Apache 以使用你的新证书。如果你遵循<a href="https://www.linux.com/learn/apache-ubuntu-linux-beginners-part-2">给初学者看的在 Ubuntu Linux 上使用 Apache：第 2 部分</a>，你所要做的就是修改虚拟主机配置中的 <code>SSLCertificateFile</code> 和 <code>SSLCertificateKeyFile</code>，以指向你的新私钥和公共证书。来自该教程中的 <code>test.com</code> 示例现在看起来像这样：</p>
+<div class="highlight"><pre><span></span><code>SSLCertificateFile /etc/ssl/certs/test-com.pem
+SSLCertificateKeyFile /etc/ssl/private/test-com.key
+</code></pre></div>
+
+<p>CentOS 用户，请参阅在 CentOS wiki 中的<a href="https://wiki.centos.org/HowTos/Https">在 CentOS 上设置 SSL 加密的 Web 服务器</a>一文。过程是类似的，wiki 会告诉如何处理 SELinux。</p>
+<h3>测试 Apache SSL</h3>
+<p>一个简单的方法是用你的网络浏览器访问 https://yoursite.com，看看它是否可以正常工作。在第一次这样做时，你会在你过度保护的 web 浏览器中看到可怕的警告说网站是不安全的，因为它使用的是自签名证书。请忽略你这个敏感的浏览器，并单击屏幕创建永久性例外。 如果你遵循在<a href="https://www.linux.com/learn/apache-ubuntu-linux-beginners-part-2">给初学者看的在 Ubuntu Linux 上使用 Apache：第 2 部分</a>上的示例虚拟主机配置，那么即使你的网站访问者尝试使用纯 HTTP，你的网站的所有流量都将强制通过 HTTPS。</p>
+<p>一个很好测试方法是使用 OpenSSL。是的，有一个漂亮的命令来测试这些东西。试下这个：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>openssl<span class="w"> </span>s_client<span class="w"> </span>-connect<span class="w"> </span>www.test.com:443
+CONNECTED<span class="o">(</span><span class="m">00000003</span><span class="o">)</span>
+<span class="nv">depth</span><span class="o">=</span><span class="m">0</span><span class="w"> </span><span class="nv">C</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>US,<span class="w"> </span><span class="nv">ST</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>WA,<span class="w"> </span><span class="nv">L</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>Seattle,<span class="w"> </span><span class="nv">O</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>Alrac<span class="w"> </span>Writing<span class="w"> </span>Sweatshop,<span class="w"> </span>
+<span class="nv">OU</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>home<span class="w"> </span>dungeon,<span class="w"> </span><span class="nv">CN</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>www.test.com,<span class="w"> </span><span class="nv">emailAddress</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>admin@test.com
+verify<span class="w"> </span><span class="k">return</span>:1
+Server<span class="w"> </span>certificate
+-----BEGIN<span class="w"> </span>CERTIFICATE-----
+<span class="o">[</span>...<span class="o">]</span>
+</code></pre></div>
+
+<p>这里输出了大量的信息。这里有很多关于 <code>openssl s_client</code> 的有趣信息; 现在足够我们知道我们的 web 服务器是否使用了正确的 SSL 证书。</p>
+<h3>创建一个证书签名请求</h3>
+<p>如果你决定使用第三方证书颁发机构（CA），那么就必须创建证书签名请求（CSR）。你将它发送给你的新 CA，他们将签署并将其发送给您。他们可能对创建你的 CSR 有自己的要求; 这是如何创建一个新的私钥和 CSR 的典型示例：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>openssl<span class="w"> </span>req<span class="w"> </span>-newkey<span class="w"> </span>rsa:2048<span class="w"> </span>-nodes<span class="w"> </span><span class="se">\</span>
+<span class="w">   </span>-keyout<span class="w"> </span>yourdomain.key<span class="w"> </span>-out<span class="w"> </span>yourdomain.csr
+</code></pre></div>
+
+<p>你也可以从一个已经存在的 key 中创建一个 CSR：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>openssl<span class="w"> </span>req<span class="w">  </span>-key<span class="w"> </span>yourdomain.key<span class="w"> </span><span class="se">\</span>
+<span class="w">   </span>-new<span class="w"> </span>-out<span class="w"> </span>domain.csr
+</code></pre></div>
+
+<p>今天就是这样了。下周我们将<a href="https://www.linux.com/learn/intro-to-linux/openssl-apache-and-dovecot-part-2">学习如何正确地在 Dovecot 中设置 OpenSSL</a>。</p>
+<h3>额外的教程</h3>
+<ul>
+<li><a href="https://www.linux.com/learn/quieting-scary-web-browser-ssl-alerts">消灭让人害怕的 web 浏览器 SSL 警告</a></li>
+<li><a href="https://www.linux.com/learn/how-set-secure-remote-networking-openvpn-linux-part-1">如何在 Linux 上使用 OpenVPN 设置安全远程网络：第一部分</a></li>
+<li><a href="https://www.linux.com/learn/how-set-secure-remote-networking-openvpn-linux-part-2">如何在 Linux 上使用 OpenVPN 设置安全远程网络：第一部分</a></li>
+</ul>
+<p>提高你的系统管理职业生涯吧！查看Linux基金会的<a href="https://training.linuxfoundation.org/linux-courses/system-administration-training/essentials-of-system-administration">系统管理的要点</a>课程。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

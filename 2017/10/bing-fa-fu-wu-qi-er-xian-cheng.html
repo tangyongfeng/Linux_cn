@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>并发服务器（二）：线程</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Eli Bendersky 这是并发网络服务器系列的第二节。第一节 提出了服务端实现的协议，还有简单的顺序服务器的代码，是这整个系 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/10/bing-fa-fu-wu-qi-er-xian-cheng.html" rel="bookmark"
+           title="Permalink to 并发服务器（二）：线程">并发服务器（二）：线程</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-10-26T08:19:00+02:00">
+                Published: Thu 26 October 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Eli Bendersky</p>
+<p><img alt="" src="/data/attachment/album/201710/25/222024zb32ugz3j6zb83p1.jpg"></p>
+<p>这是并发网络服务器系列的第二节。<a href="/article-8993-1.html">第一节</a> 提出了服务端实现的协议，还有简单的顺序服务器的代码，是这整个系列的基础。</p>
+<p>这一节里，我们来看看怎么用多线程来实现并发，用 C 实现一个最简单的多线程服务器，和用 Python 实现的线程池。</p>
+<p>该系列的所有文章：</p>
+<ul>
+<li><a href="/article-8993-1.html">第一节 - 简介</a></li>
+<li><a href="http://eli.thegreenplace.net/2017/concurrent-servers-part-2-threads/">第二节 - 线程</a></li>
+<li><a href="http://eli.thegreenplace.net/2017/concurrent-servers-part-3-event-driven/">第三节 - 事件驱动</a></li>
+</ul>
+<h3>多线程的方法设计并发服务器</h3>
+<p>说起第一节里的顺序服务器的性能，最显而易见的，是在服务器处理客户端连接时，计算机的很多资源都被浪费掉了。尽管假定客户端快速发送完消息，不做任何等待，仍然需要考虑网络通信的开销；网络要比现在的 CPU 慢上百万倍还不止，因此 CPU 运行服务器时会等待接收套接字的流量，而大量的时间都花在完全不必要的等待中。</p>
+<p>这里是一份示意图，表明顺序时客户端的运行过程：</p>
+<p><img alt="顺序客户端处理流程" src="/data/attachment/album/201710/25/222103eq4m5lppzptox4op.png"></p>
+<p>这个图片上有 3 个客户端程序。棱形表示客户端的“到达时间”（即客户端尝试连接服务器的时间）。黑色线条表示“等待时间”（客户端等待服务器真正接受连接所用的时间），有色矩形表示“处理时间”（服务器和客户端使用协议进行交互所用的时间）。有色矩形的末端表示客户端断开连接。</p>
+<p>上图中，绿色和橘色的客户端尽管紧跟在蓝色客户端之后到达服务器，也要等到服务器处理完蓝色客户端的请求。这时绿色客户端得到响应，橘色的还要等待一段时间。</p>
+<p>多线程服务器会开启多个控制线程，让操作系统管理 CPU 的并发（使用多个 CPU 核心）。当客户端连接的时候，创建一个线程与之交互，而在主线程中，服务器能够接受其他的客户端连接。下图是该模式的时间轴：</p>
+<p><img alt="并行客户端处理流程" src="/data/attachment/album/201710/25/222103i6agglugm8ml2mlw.png"></p>
+<h3>每个客户端一个线程，在 C 语言里要用 pthread</h3>
+<p>这篇文章的 <a href="https://github.com/eliben/code-for-blog/blob/master/2017/async-socket-server/threaded-server.c">第一个示例代码</a> 是一个简单的 “每个客户端一个线程” 的服务器，用 C 语言编写，使用了 <a href="http://eli.thegreenplace.net/2010/04/05/pthreads-as-a-case-study-of-good-api-design">phtreads API</a> 用于实现多线程。这里是主循环代码：</p>
+<div class="highlight"><pre><span></span><code><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">struct</span><span class="w"> </span><span class="nx">sockaddr_in</span><span class="w"> </span><span class="nx">peer_addr</span><span class="p">;</span>
+<span class="w">  </span><span class="nx">socklen_t</span><span class="w"> </span><span class="nx">peer_addr_len</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">sizeof</span><span class="p">(</span><span class="nx">peer_addr</span><span class="p">);</span>
+
+<span class="w">  </span><span class="nx">int</span><span class="w"> </span><span class="nx">newsockfd</span><span class="w"> </span><span class="p">=</span>
+<span class="w">      </span><span class="nx">accept</span><span class="p">(</span><span class="nx">sockfd</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="nx">struct</span><span class="w"> </span><span class="nx">sockaddr</span><span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="nx">peer_addr</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">peer_addr_len</span><span class="p">);</span>
+
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">newsockfd</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">perror_die</span><span class="p">(</span><span class="s">&quot;ERROR on accept&quot;</span><span class="p">);</span>
+<span class="w">  </span><span class="p">}</span>
+
+<span class="w">  </span><span class="nx">report_peer_connected</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">peer_addr</span><span class="p">,</span><span class="w"> </span><span class="nx">peer_addr_len</span><span class="p">);</span>
+<span class="w">  </span><span class="nx">pthread_t</span><span class="w"> </span><span class="nx">the_thread</span><span class="p">;</span>
+
+<span class="w">  </span><span class="nx">thread_config_t</span><span class="o">*</span><span class="w"> </span><span class="nx">config</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="p">(</span><span class="nx">thread_config_t</span><span class="o">*</span><span class="p">)</span><span class="nx">malloc</span><span class="p">(</span><span class="nx">sizeof</span><span class="p">(</span><span class="o">*</span><span class="nx">config</span><span class="p">));</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(!</span><span class="nx">config</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">die</span><span class="p">(</span><span class="s">&quot;OOM&quot;</span><span class="p">);</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="w">  </span><span class="nx">config</span><span class="o">-&gt;</span><span class="nx">sockfd</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">newsockfd</span><span class="p">;</span>
+<span class="w">  </span><span class="nx">pthread_create</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">the_thread</span><span class="p">,</span><span class="w"> </span><span class="nx">NULL</span><span class="p">,</span><span class="w"> </span><span class="nx">server_thread</span><span class="p">,</span><span class="w"> </span><span class="nx">config</span><span class="p">);</span>
+
+<span class="w">  </span><span class="c1">// 回收线程 —— 在线程结束的时候，它占用的资源会被回收</span>
+<span class="w">  </span><span class="c1">// 因为主线程在一直运行，所以它比服务线程存活更久。</span>
+<span class="w">  </span><span class="nx">pthread_detach</span><span class="p">(</span><span class="nx">the_thread</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这是 <code>server_thread</code> 函数：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">void</span><span class="o">*</span><span class="w"> </span><span class="nx">server_thread</span><span class="p">(</span><span class="nx">void</span><span class="o">*</span><span class="w"> </span><span class="nx">arg</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">thread_config_t</span><span class="o">*</span><span class="w"> </span><span class="nx">config</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="p">(</span><span class="nx">thread_config_t</span><span class="o">*</span><span class="p">)</span><span class="nx">arg</span><span class="p">;</span>
+<span class="w">  </span><span class="nx">int</span><span class="w"> </span><span class="nx">sockfd</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">config</span><span class="o">-&gt;</span><span class="nx">sockfd</span><span class="p">;</span>
+<span class="w">  </span><span class="nx">free</span><span class="p">(</span><span class="nx">config</span><span class="p">);</span>
+
+<span class="w">  </span><span class="c1">// This cast will work for Linux, but in general casting pthread_id to an 这个类型转换在 Linux 中可以正常运行，但是一般来说将 pthread_id 类型转换成整形不便于移植代码</span>
+<span class="w">  </span><span class="c1">// integral type isn&#39;t portable.</span>
+<span class="w">  </span><span class="nx">unsigned</span><span class="w"> </span><span class="nx">long</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="p">(</span><span class="nx">unsigned</span><span class="w"> </span><span class="nx">long</span><span class="p">)</span><span class="nx">pthread_self</span><span class="p">();</span>
+<span class="w">  </span><span class="nx">printf</span><span class="p">(</span><span class="s">&quot;Thread %lu created to handle connection with socket %d\n&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">id</span><span class="p">,</span>
+<span class="w">         </span><span class="nx">sockfd</span><span class="p">);</span>
+<span class="w">  </span><span class="nx">serve_connection</span><span class="p">(</span><span class="nx">sockfd</span><span class="p">);</span>
+<span class="w">  </span><span class="nx">printf</span><span class="p">(</span><span class="s">&quot;Thread %lu done\n&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">id</span><span class="p">);</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>线程 “configuration” 是作为 <code>thread_config_t</code> 结构体进行传递的：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">typedef</span><span class="w"> </span><span class="nx">struct</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">int</span><span class="w"> </span><span class="nx">sockfd</span><span class="p">;</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="nx">thread_config_t</span><span class="p">;</span>
+</code></pre></div>
+
+<p>主循环中调用的 <code>pthread_create</code> 产生一个新线程，然后运行 <code>server_thread</code> 函数。这个线程会在 <code>server_thread</code> 返回的时候结束。而在 <code>serve_connection</code> 返回的时候 <code>server_thread</code> 才会返回。<code>serve_connection</code> 和第一节完全一样。</p>
+<p>第一节中我们用脚本生成了多个并发访问的客户端，观察服务器是怎么处理的。现在来看看多线程服务器的处理结果：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python3.6<span class="w"> </span>simple-client.py<span class="w">  </span>-n<span class="w"> </span><span class="m">3</span><span class="w"> </span>localhost<span class="w"> </span><span class="m">9090</span>
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:56,632:conn1<span class="w"> </span>connected...
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:56,632:conn2<span class="w"> </span>connected...
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:56,632:conn0<span class="w"> </span>connected...
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:56,632:conn1<span class="w"> </span>sending<span class="w"> </span>b<span class="s1">&#39;^abc$de^abte$f&#39;</span>
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:56,632:conn2<span class="w"> </span>sending<span class="w"> </span>b<span class="s1">&#39;^abc$de^abte$f&#39;</span>
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:56,632:conn0<span class="w"> </span>sending<span class="w"> </span>b<span class="s1">&#39;^abc$de^abte$f&#39;</span>
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:56,633:conn1<span class="w"> </span>received<span class="w"> </span>b<span class="s1">&#39;b&#39;</span>
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:56,633:conn2<span class="w"> </span>received<span class="w"> </span>b<span class="s1">&#39;b&#39;</span>
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:56,633:conn0<span class="w"> </span>received<span class="w"> </span>b<span class="s1">&#39;b&#39;</span>
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:56,670:conn1<span class="w"> </span>received<span class="w"> </span>b<span class="s1">&#39;cdbcuf&#39;</span>
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:56,671:conn0<span class="w"> </span>received<span class="w"> </span>b<span class="s1">&#39;cdbcuf&#39;</span>
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:56,671:conn2<span class="w"> </span>received<span class="w"> </span>b<span class="s1">&#39;cdbcuf&#39;</span>
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:57,634:conn1<span class="w"> </span>sending<span class="w"> </span>b<span class="s1">&#39;xyz^123&#39;</span>
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:57,634:conn2<span class="w"> </span>sending<span class="w"> </span>b<span class="s1">&#39;xyz^123&#39;</span>
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:57,634:conn1<span class="w"> </span>received<span class="w"> </span>b<span class="s1">&#39;234&#39;</span>
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:57,634:conn0<span class="w"> </span>sending<span class="w"> </span>b<span class="s1">&#39;xyz^123&#39;</span>
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:57,634:conn2<span class="w"> </span>received<span class="w"> </span>b<span class="s1">&#39;234&#39;</span>
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:57,634:conn0<span class="w"> </span>received<span class="w"> </span>b<span class="s1">&#39;234&#39;</span>
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:58,635:conn1<span class="w"> </span>sending<span class="w"> </span>b<span class="s1">&#39;25$^ab0000$abab&#39;</span>
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:58,635:conn2<span class="w"> </span>sending<span class="w"> </span>b<span class="s1">&#39;25$^ab0000$abab&#39;</span>
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:58,636:conn1<span class="w"> </span>received<span class="w"> </span>b<span class="s1">&#39;36bc1111&#39;</span>
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:58,636:conn2<span class="w"> </span>received<span class="w"> </span>b<span class="s1">&#39;36bc1111&#39;</span>
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:58,637:conn0<span class="w"> </span>sending<span class="w"> </span>b<span class="s1">&#39;25$^ab0000$abab&#39;</span>
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:58,637:conn0<span class="w"> </span>received<span class="w"> </span>b<span class="s1">&#39;36bc1111&#39;</span>
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:58,836:conn2<span class="w"> </span>disconnecting
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:58,836:conn1<span class="w"> </span>disconnecting
+INFO:2017-09-20<span class="w"> </span><span class="m">06</span>:31:58,837:conn0<span class="w"> </span>disconnecting
+</code></pre></div>
+
+<p>实际上，所有客户端同时连接，它们与服务器的通信是同时发生的。</p>
+<h3>每个客户端一个线程的难点</h3>
+<p>尽管在现代操作系统中就资源利用率方面来看，线程相当的高效，但前一节中讲到的方法在高负载时却会出现纰漏。</p>
+<p>想象一下这样的情景：很多客户端同时进行连接，某些会话持续的时间长。这意味着某个时刻服务器上有很多活跃的线程。太多的线程会消耗掉大量的内存和 CPU 资源，而仅仅是用于上下文切换<sup> 注1</sup> 。另外其也可视为安全问题：因为这样的设计容易让服务器成为 <a href="https://en.wikipedia.org/wiki/Denial-of-service_attack">DoS 攻击</a> 的目标 —— 上百万个客户端同时连接，并且客户端都处于闲置状态，这样耗尽了所有资源就可能让服务器宕机。</p>
+<p>当服务器要与每个客户端通信，CPU 进行大量计算时，就会出现更严重的问题。这种情况下，容易想到的方法是减少服务器的响应能力 —— 只有其中一些客户端能得到服务器的响应。</p>
+<p>因此，对多线程服务器所能够处理的并发客户端数做一些 <em>速率限制</em> 就是个明智的选择。有很多方法可以实现。最容易想到的是计数当前已经连接上的客户端，把连接数限制在某个范围内（需要通过仔细的测试后决定）。另一种流行的多线程应用设计是使用 <em>线程池</em>。</p>
+<h3>线程池</h3>
+<p><a href="https://en.wikipedia.org/wiki/Thread_pool">线程池</a> 很简单，也很有用。服务器创建几个任务线程，这些线程从某些队列中获取任务。这就是“池”。然后每一个客户端的连接被当成任务分发到池中。只要池中有空闲的线程，它就会去处理任务。如果当前池中所有线程都是繁忙状态，那么服务器就会阻塞，直到线程池可以接受任务（某个繁忙状态的线程处理完当前任务后，变回空闲的状态）。</p>
+<p>这里有个 4 线程的线程池处理任务的图。任务（这里就是客户端的连接）要等到线程池中的某个线程可以接受新任务。</p>
+<p><img alt="" src="/data/attachment/album/201710/25/222106e6d0mqr3dbgf3r6b.png"></p>
+<p>非常明显，线程池的定义就是一种按比例限制的机制。我们可以提前设定服务器所能拥有的线程数。那么这就是并发连接的最多的客户端数 —— 其它的客户端就要等到线程空闲。如果我们的池中有 8 个线程，那么 8 就是服务器可以处理的最多的客户端并发连接数，哪怕上千个客户端想要同时连接。</p>
+<p>那么怎么确定池中需要有多少个线程呢？通过对问题范畴进行细致的分析、评估、实验以及根据我们拥有的硬件配置。如果是单核的云服务器，答案只有一个；如果是 100 核心的多套接字的服务器，那么答案就有很多种。也可以在运行时根据负载动态选择池的大小 —— 我会在这个系列之后的文章中谈到这个东西。</p>
+<p>使用线程池的服务器在高负载情况下表现出 <em>性能退化</em> —— 客户端能够以稳定的速率进行连接，可能会比其它时刻得到响应的用时稍微久一点；也就是说，无论多少个客户端同时进行连接，服务器总能保持响应，尽最大能力响应等待的客户端。与之相反，每个客户端一个线程的服务器，会接收多个客户端的连接直到过载，这时它更容易崩溃或者因为要处理<em>所有</em>客户端而变得缓慢，因为资源都被耗尽了（比如虚拟内存的占用）。</p>
+<h3>在服务器上使用线程池</h3>
+<p>为了<a href="https://github.com/eliben/code-for-blog/blob/master/2017/async-socket-server/threadpool-server.py">改变服务器的实现</a>，我用了 Python，在 Python 的标准库中带有一个已经实现好的稳定的线程池。（<code>concurrent.futures</code> 模块里的 <code>ThreadPoolExecutor</code>） <sup> 注2</sup> 。</p>
+<p>服务器创建一个线程池，然后进入循环，监听套接字接收客户端的连接。用 <code>submit</code> 把每一个连接的客户端分配到池中：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">pool</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">ThreadPoolExecutor</span><span class="p">(</span><span class="nx">args</span><span class="p">.</span><span class="nx">n</span><span class="p">)</span>
+<span class="nx">sockobj</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">socket</span><span class="p">.</span><span class="nx">socket</span><span class="p">(</span><span class="nx">socket</span><span class="p">.</span><span class="nx">AF_INET</span><span class="p">,</span><span class="w"> </span><span class="nx">socket</span><span class="p">.</span><span class="nx">SOCK_STREAM</span><span class="p">)</span>
+<span class="nx">sockobj</span><span class="p">.</span><span class="nx">setsockopt</span><span class="p">(</span><span class="nx">socket</span><span class="p">.</span><span class="nx">SOL_SOCKET</span><span class="p">,</span><span class="w"> </span><span class="nx">socket</span><span class="p">.</span><span class="nx">SO_REUSEADDR</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span>
+<span class="nx">sockobj</span><span class="p">.</span><span class="nx">bind</span><span class="p">((</span><span class="err">&#39;</span><span class="nx">localhost</span><span class="err">&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">args</span><span class="p">.</span><span class="nx">port</span><span class="p">))</span>
+<span class="nx">sockobj</span><span class="p">.</span><span class="nx">listen</span><span class="p">(</span><span class="mi">15</span><span class="p">)</span>
+
+<span class="nx">try</span><span class="p">:</span>
+<span class="w">    </span><span class="k">while</span><span class="w"> </span><span class="nx">True</span><span class="p">:</span>
+<span class="w">        </span><span class="nx">client_socket</span><span class="p">,</span><span class="w"> </span><span class="nx">client_address</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">sockobj</span><span class="p">.</span><span class="nx">accept</span><span class="p">()</span>
+<span class="w">        </span><span class="nx">pool</span><span class="p">.</span><span class="nx">submit</span><span class="p">(</span><span class="nx">serve_connection</span><span class="p">,</span><span class="w"> </span><span class="nx">client_socket</span><span class="p">,</span><span class="w"> </span><span class="nx">client_address</span><span class="p">)</span>
+<span class="nx">except</span><span class="w"> </span><span class="nx">KeyboardInterrupt</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nx">e</span><span class="p">:</span>
+<span class="w">    </span><span class="nx">print</span><span class="p">(</span><span class="nx">e</span><span class="p">)</span>
+<span class="w">    </span><span class="nx">sockobj</span><span class="p">.</span><span class="nx">close</span><span class="p">()</span>
+</code></pre></div>
+
+<p><code>serve_connection</code> 函数和 C 的那部分很像，与一个客户端交互，直到其断开连接，并且遵循我们的协议：</p>
+<div class="highlight"><pre><span></span><code><span class="k">Proc</span><span class="nv">essingState</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">Enum</span><span class="p">(</span><span class="s">&#39;ProcessingState&#39;</span><span class="p">,</span><span class="w"> </span><span class="s">&#39;WAIT_FOR_MSG IN_MSG&#39;</span><span class="p">)</span>
+
+<span class="nf">def</span><span class="w"> </span><span class="nv">serve_connection</span><span class="p">(</span><span class="nv">sockobj</span><span class="p">,</span><span class="w"> </span><span class="nv">client_address</span><span class="p">):</span>
+<span class="w">    </span><span class="nf">print</span><span class="p">(</span><span class="s">&#39;{0} connected&#39;</span><span class="nv">.format</span><span class="p">(</span><span class="nv">client_address</span><span class="p">))</span>
+<span class="w">    </span><span class="nf">sockobj.sendall</span><span class="p">(</span><span class="nv">b</span><span class="s">&#39;*&#39;</span><span class="p">)</span>
+<span class="w">    </span><span class="nf">state</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">ProcessingState.WAIT_FOR_MSG</span>
+
+<span class="w">    </span><span class="no">while</span><span class="w"> </span><span class="kd">True</span><span class="p">:</span>
+<span class="w">        </span><span class="nl">try:</span>
+<span class="w">            </span><span class="nf">buf</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">sockobj.recv</span><span class="p">(</span><span class="mi">1024</span><span class="p">)</span>
+<span class="w">            </span><span class="nf">if</span><span class="w"> </span><span class="nv">not</span><span class="w"> </span><span class="nv">buf</span><span class="p">:</span>
+<span class="w">                </span><span class="nf">break</span>
+<span class="w">        </span><span class="nf">except</span><span class="w"> </span><span class="nv">IOError</span><span class="w"> </span><span class="nv">as</span><span class="w"> </span><span class="nv">e</span><span class="p">:</span>
+<span class="w">            </span><span class="nf">break</span>
+<span class="w">        </span><span class="nf">for</span><span class="w"> </span><span class="nv">b</span><span class="w"> </span><span class="nv">in</span><span class="w"> </span><span class="nv">buf</span><span class="p">:</span>
+<span class="w">            </span><span class="nf">if</span><span class="w"> </span><span class="nv">state</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nv">ProcessingState.WAIT_FOR_MSG</span><span class="p">:</span>
+<span class="w">                </span><span class="nf">if</span><span class="w"> </span><span class="nv">b</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nv">ord</span><span class="p">(</span><span class="nv">b</span><span class="s">&#39;^&#39;</span><span class="p">):</span>
+<span class="w">                    </span><span class="nf">state</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">ProcessingState.IN_MSG</span>
+<span class="w">            </span><span class="nf">elif</span><span class="w"> </span><span class="nv">state</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nv">ProcessingState.IN_MSG</span><span class="p">:</span>
+<span class="w">                </span><span class="nf">if</span><span class="w"> </span><span class="nv">b</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nv">ord</span><span class="p">(</span><span class="nv">b</span><span class="s">&#39;$&#39;</span><span class="p">):</span>
+<span class="w">                    </span><span class="nf">state</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">ProcessingState.WAIT_FOR_MSG</span>
+<span class="w">                </span><span class="nl">else:</span>
+<span class="w">                    </span><span class="nf">sockobj.send</span><span class="p">(</span><span class="kt">byte</span><span class="nv">s</span><span class="p">([</span><span class="nv">b</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">]))</span>
+<span class="w">            </span><span class="nl">else:</span>
+<span class="w">                </span><span class="nf">assert</span><span class="w"> </span><span class="nv">False</span>
+
+<span class="w">    </span><span class="nf">print</span><span class="p">(</span><span class="s">&#39;{0} done&#39;</span><span class="nv">.format</span><span class="p">(</span><span class="nv">client_address</span><span class="p">))</span>
+<span class="w">    </span><span class="nf">sys.stdout.flush</span><span class="p">()</span>
+<span class="w">    </span><span class="nf">sockobj.close</span><span class="p">()</span>
+</code></pre></div>
+
+<p>来看看线程池的大小对并行访问的客户端的阻塞行为有什么样的影响。为了演示，我会运行一个池大小为 2 的线程池服务器（只生成两个线程用于响应客户端）。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python3.6<span class="w"> </span>threadpool-server.py<span class="w"> </span>-n<span class="w"> </span><span class="m">2</span>
+</code></pre></div>
+
+<p>在另外一个终端里，运行客户端模拟器，产生 3 个并发访问的客户端：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python3.6<span class="w"> </span>simple-client.py<span class="w">  </span>-n<span class="w"> </span><span class="m">3</span><span class="w"> </span>localhost<span class="w"> </span><span class="m">9090</span>
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:52,815:conn1<span class="w"> </span>connected...
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:52,827:conn0<span class="w"> </span>connected...
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:52,828:conn1<span class="w"> </span>sending<span class="w"> </span>b<span class="s1">&#39;^abc$de^abte$f&#39;</span>
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:52,828:conn0<span class="w"> </span>sending<span class="w"> </span>b<span class="s1">&#39;^abc$de^abte$f&#39;</span>
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:52,828:conn1<span class="w"> </span>received<span class="w"> </span>b<span class="s1">&#39;b&#39;</span>
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:52,828:conn0<span class="w"> </span>received<span class="w"> </span>b<span class="s1">&#39;b&#39;</span>
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:52,867:conn1<span class="w"> </span>received<span class="w"> </span>b<span class="s1">&#39;cdbcuf&#39;</span>
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:52,867:conn0<span class="w"> </span>received<span class="w"> </span>b<span class="s1">&#39;cdbcuf&#39;</span>
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:53,829:conn1<span class="w"> </span>sending<span class="w"> </span>b<span class="s1">&#39;xyz^123&#39;</span>
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:53,829:conn0<span class="w"> </span>sending<span class="w"> </span>b<span class="s1">&#39;xyz^123&#39;</span>
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:53,830:conn1<span class="w"> </span>received<span class="w"> </span>b<span class="s1">&#39;234&#39;</span>
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:53,831:conn0<span class="w"> </span>received<span class="w"> </span>b<span class="s1">&#39;2&#39;</span>
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:53,831:conn0<span class="w"> </span>received<span class="w"> </span>b<span class="s1">&#39;34&#39;</span>
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:54,831:conn1<span class="w"> </span>sending<span class="w"> </span>b<span class="s1">&#39;25$^ab0000$abab&#39;</span>
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:54,832:conn1<span class="w"> </span>received<span class="w"> </span>b<span class="s1">&#39;36bc1111&#39;</span>
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:54,832:conn0<span class="w"> </span>sending<span class="w"> </span>b<span class="s1">&#39;25$^ab0000$abab&#39;</span>
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:54,833:conn0<span class="w"> </span>received<span class="w"> </span>b<span class="s1">&#39;36bc1111&#39;</span>
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:55,032:conn1<span class="w"> </span>disconnecting
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:55,032:conn2<span class="w"> </span>connected...
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:55,033:conn2<span class="w"> </span>sending<span class="w"> </span>b<span class="s1">&#39;^abc$de^abte$f&#39;</span>
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:55,033:conn0<span class="w"> </span>disconnecting
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:55,034:conn2<span class="w"> </span>received<span class="w"> </span>b<span class="s1">&#39;b&#39;</span>
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:55,071:conn2<span class="w"> </span>received<span class="w"> </span>b<span class="s1">&#39;cdbcuf&#39;</span>
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:56,036:conn2<span class="w"> </span>sending<span class="w"> </span>b<span class="s1">&#39;xyz^123&#39;</span>
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:56,036:conn2<span class="w"> </span>received<span class="w"> </span>b<span class="s1">&#39;234&#39;</span>
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:57,037:conn2<span class="w"> </span>sending<span class="w"> </span>b<span class="s1">&#39;25$^ab0000$abab&#39;</span>
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:57,038:conn2<span class="w"> </span>received<span class="w"> </span>b<span class="s1">&#39;36bc1111&#39;</span>
+INFO:2017-09-22<span class="w"> </span><span class="m">05</span>:58:57,238:conn2<span class="w"> </span>disconnecting
+</code></pre></div>
+
+<p>回顾之前讨论的服务器行为：</p>
+<ol>
+<li>在顺序服务器中，所有的连接都是串行的。一个连接结束后，下一个连接才能开始。</li>
+<li>前面讲到的每个客户端一个线程的服务器中，所有连接都被同时接受并得到服务。</li>
+</ol>
+<p>这里可以看到一种可能的情况：两个连接同时得到服务，只有其中一个结束连接后第三个才能连接上。这就是把线程池大小设置成 2 的结果。真实用例中我们会把线程池设置的更大些，取决于机器和实际的协议。线程池的缓冲机制就能很好理解了 —— 我 <a href="http://eli.thegreenplace.net/2017/clojure-concurrency-and-blocking-with-coreasync/">几个月前</a> 更详细的介绍过这种机制，关于 Clojure 的 <code>core.async</code> 模块。</p>
+<h3>总结与展望</h3>
+<p>这篇文章讨论了在服务器中，用多线程作并发的方法。每个客户端一个线程的方法最早提出来，但是实际上却不常用，因为它并不安全。</p>
+<p>线程池就常见多了，最受欢迎的几个编程语言有良好的实现（某些编程语言，像 Python，就是在标准库中实现）。这里说的使用线程池的服务器，不会受到每个客户端一个线程的弊端。</p>
+<p>然而，线程不是处理多个客户端并行访问的唯一方法。下一节中我们会看看其它的解决方案，可以使用<em>异步处理</em>，或者<em>事件驱动</em>的编程。</p>
+<p>via: <a href="https://eli.thegreenplace.net/2017/concurrent-servers-part-2-threads/">https://eli.thegreenplace.net/2017/concurrent-servers-part-2-threads/</a></p>
+<p>作者：<a href="https://eli.thegreenplace.net/pages/about">Eli Bendersky</a> 译者：<a href="https://github.com/GitFuture">GitFuture</a> 校对：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创编译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

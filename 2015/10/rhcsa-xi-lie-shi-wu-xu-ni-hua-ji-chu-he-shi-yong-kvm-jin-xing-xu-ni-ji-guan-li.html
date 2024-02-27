@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>RHCSA 系列（十五）： 虚拟化基础和使用 KVM 进行虚拟机管理</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Gabriel Cánepa 假如你在词典中查一下单词 “ 虚拟化 （ virtualize ） ”，你将会发现它的意思是 “创造某些事物的一个虚拟物（而非真实的）”。在计算机 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/10/rhcsa-xi-lie-shi-wu-xu-ni-hua-ji-chu-he-shi-yong-kvm-jin-xing-xu-ni-ji-guan-li.html" rel="bookmark"
+           title="Permalink to RHCSA 系列（十五）： 虚拟化基础和使用 KVM 进行虚拟机管理">RHCSA 系列（十五）： 虚拟化基础和使用 KVM 进行虚拟机管理</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-10-07T10:30:00+02:00">
+                Published: Wed 07 October 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Gabriel Cánepa</p>
+<p>假如你在词典中查一下单词 “<ruby> 虚拟化 <rp>  （ </rp> <rt>  virtualize </rt> <rp>  ） </rp></ruby>”，你将会发现它的意思是 “创造某些事物的一个虚拟物（而非真实的）”。在计算机行业中，术语<ruby> 虚拟化 <rp>  （ </rp> <rt>  virtualization </rt> <rp>  ） </rp></ruby>指的是：在相同的物理（硬件）系统上，同时运行多个操作系统，且这几个系统相互隔离的<strong>可能性</strong>，而那个硬件在虚拟化架构中被称作<ruby> 宿主机 <rp>  （ </rp> <rt>  host </rt> <rp>  ） </rp></ruby>。</p>
+<p><img alt="KVM 虚拟化基础和 KVM 虚拟机管理" src="/data/attachment/album/201510/07/103003l1zq1cewee57q9je.png"></p>
+<p><em>RHCSA 系列： 虚拟化基础和使用 KVM 进行虚拟机管理 – Part 15</em></p>
+<p>通过使用虚拟机监视器（也被称为<ruby> 虚拟机管理程序 <rp>  （ </rp> <rt>  hypervisor </rt> <rp>  ） </rp></ruby>），虚拟机（被称为 guest）由底层的硬件来供给虚拟资源（举几个例子来说，如 CPU，RAM，存储介质，网络接口等）。</p>
+<p>考虑到这一点就可以清楚地看出，虚拟化的主要优点是节约成本（在设备和网络基础设施，及维护工作等方面）和显著地减少容纳所有必要硬件所需的物理空间。</p>
+<p>由于这个简单的指南不能涵盖所有的虚拟化方法，我鼓励你参考在总结部分中列出的文档，以此对这个话题做更深入的了解。</p>
+<p>请记住当前文章只是用于在 RHEL 7 中用命令行工具使用 <a href="http://www.linux-kvm.org/page/Main_Page">KVM</a> (<ruby> Kernel-based Virtual Machine <rp>  （ </rp> <rt>  基于内核的虚拟机 </rt> <rp>  ） </rp></ruby>) 学习虚拟化基础知识的一个起点，而并不是对这个话题的深入探讨。</p>
+<h3>检查硬件要求并安装软件包</h3>
+<p>为了设置虚拟化，你的 CPU 必须能够支持它。你可以使用下面的命令来查看你的系统是否满足这个要求：</p>
+<div class="highlight"><pre><span></span><code># grep -E &#39;svm|vmx&#39; /proc/cpuinfo
+</code></pre></div>
+
+<p>在下面的截图中，我们可以看到当前的系统（带有一个 AMD 的微处理器）支持虚拟化，svm 字样的存在暗示了这一点。假如我们有一个 Intel 系列的处理器，我们将会看到上面命令的结果将会出现 vmx 字样。</p>
+<p><img alt="检查 KVM 支持" src="/data/attachment/album/201510/07/103005v25u5d8d9984of6z.png"></p>
+<p><em>检查 KVM 支持</em></p>
+<p>另外，你需要在你宿主机的硬件（BIOS 或 UEFI）中开启虚拟化。</p>
+<p>现在，安装必要的软件包：</p>
+<ul>
+<li>qemu-kvm 是一个开源的虚拟机程序，为 KVM 虚拟机监视器提供硬件仿真，而 qemu-img 则提供了一个操纵磁盘镜像的命令行工具。</li>
+<li>libvirt 包含与操作系统的虚拟化功能交互的工具。</li>
+<li>libvirt-python 包含一个模块，它允许用 Python 写的应用来使用由 libvirt 提供的接口。</li>
+<li>libguestfs-tools 包含各式各样的针对虚拟机的系统管理员命令行工具。</li>
+<li>virt-install 包含针对虚拟机管理的其他命令行工具。</li>
+</ul>
+<p>命令如下：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># yum update &amp;&amp; yum install qemu-kvm qemu-img libvirt libvirt-python libguestfs-tools virt-install</span>
+</code></pre></div>
+
+<p>一旦安装完成，请确保你启动并开启了 libvirtd 服务：</p>
+<div class="highlight"><pre><span></span><code># systemctl start libvirtd.service
+# systemctl enable libvirtd.service
+</code></pre></div>
+
+<p>默认情况下，每个虚拟机将只能够与放在相同的物理服务器上的虚拟机以及宿主机自身通信。要使得虚拟机能够访问位于局域网或因特网中的其他机器，我们需要像下面这样在我们的宿主机上设置一个桥接接口（比如说 br0）：</p>
+<p>1、 添加下面的一行到我们的 NIC 主配置中（类似 <code>/etc/sysconfig/network-scripts/ifcfg-enp0s3</code> 这样的文件）：</p>
+<div class="highlight"><pre><span></span><code>BRIDGE=br0
+</code></pre></div>
+
+<p>2、 使用下面的内容（注意，你可能需要更改 IP 地址，网关地址和 DNS 信息）为 br0 创建一个配置文件（<code>/etc/sysconfig/network-scripts/ifcfg-br0</code>）：</p>
+<div class="highlight"><pre><span></span><code>DEVICE=br0
+TYPE=Bridge
+BOOTPROTO=static
+IPADDR=192.168.0.18
+NETMASK=255.255.255.0
+GATEWAY=192.168.0.1
+NM_CONTROLLED=no
+DEFROUTE=yes
+PEERDNS=yes
+PEERROUTES=yes
+IPV4_FAILURE_FATAL=no
+IPV6INIT=yes
+IPV6_AUTOCONF=yes
+IPV6_DEFROUTE=yes
+IPV6_PEERDNS=yes
+IPV6_PEERROUTES=yes
+IPV6_FAILURE_FATAL=no
+NAME=br0
+ONBOOT=yes
+DNS1=8.8.8.8
+DNS2=8.8.4.4
+</code></pre></div>
+
+<p>3、 最后在文件<code>/etc/sysctl.conf</code> 中设置：</p>
+<div class="highlight"><pre><span></span><code>net.ipv4.ip_forward = 1
+</code></pre></div>
+
+<p>来开启包转发并加载更改到当前的内核配置中：</p>
+<div class="highlight"><pre><span></span><code># sysctl -p
+</code></pre></div>
+
+<p>注意，你可能还需要告诉 firewalld 让这类的流量应当被允许通过防火墙。假如你需要这样做，记住你可以参考这个系列的 <a href="/article-6315-1.html">使用 firewalld 和 iptables 来控制网络流量</a>。</p>
+<h3>创建虚拟机镜像</h3>
+<p>默认情况下，虚拟机镜像将会被创建到 <code>/var/lib/libvirt/images</code> 中，且强烈建议你不要更改这个设定，除非你真的需要那么做且知道你在做什么，并能自己处理有关 SELinux 的设定（这个话题已经超出了本教程的讨论范畴，但你可以参考这个系列的第 13 部分 <a href="/article-6339-1.html">使用 SELinux 来进行强制访问控制</a>，假如你想更新你的知识的话）。</p>
+<p>这意味着你需要确保你在文件系统中分配了必要的空间来容纳你的虚拟机。</p>
+<p>下面的命令将使用位于 <code>/home/gacanepa/ISOs</code>目录下的 rhel-server-7.0-x86_64-dvd.iso 镜像文件和 br0 这个网桥来创建一个名为 <code>tecmint-virt01</code> 的虚拟机，它有一个虚拟 CPU，1 GB（=1024 MB）的 RAM，20 GB 的磁盘空间（由<code>/var/lib/libvirt/images/tecmint-virt01.img</code>所代表）：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># virt-install \</span>
+<span class="o">--</span><span class="n">network</span><span class="w"> </span><span class="n">bridge</span><span class="o">=</span><span class="n">br0</span>
+<span class="o">--</span><span class="n">name</span><span class="w"> </span><span class="n">tecmint</span><span class="o">-</span><span class="n">virt01</span><span class="w"> </span>\
+<span class="o">--</span><span class="n">ram</span><span class="o">=</span><span class="mi">1024</span><span class="w"> </span>\
+<span class="o">--</span><span class="n">vcpus</span><span class="o">=</span><span class="mi">1</span><span class="w"> </span>\
+<span class="o">--</span><span class="n">disk</span><span class="w"> </span><span class="n">path</span><span class="o">=/</span><span class="k">var</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">libvirt</span><span class="o">/</span><span class="n">images</span><span class="o">/</span><span class="n">tecmint</span><span class="o">-</span><span class="n">virt01</span><span class="o">.</span><span class="n">img</span><span class="p">,</span><span class="n">size</span><span class="o">=</span><span class="mi">20</span><span class="w"> </span>\
+<span class="o">--</span><span class="n">graphics</span><span class="w"> </span><span class="n">none</span><span class="w"> </span>\
+<span class="o">--</span><span class="n">cdrom</span><span class="w"> </span><span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">gacanepa</span><span class="o">/</span><span class="n">ISOs</span><span class="o">/</span><span class="n">rhel</span><span class="o">-</span><span class="n">server</span><span class="o">-</span><span class="mf">7.0</span><span class="o">-</span><span class="n">x86_64</span><span class="o">-</span><span class="n">dvd</span><span class="o">.</span><span class="n">iso</span>
+<span class="o">--</span><span class="n">extra</span><span class="o">-</span><span class="n">args</span><span class="o">=</span><span class="s2">&quot;console=tty0 console=ttyS0,115200&quot;</span>
+</code></pre></div>
+
+<p>假如安装文件位于一个 HTTP 服务器上，而不是存储在你磁盘中的镜像中，你必须将上面的 <code>-cdrom</code> 替换为 <code>-location</code>，并明确地指出在线存储仓库的地址。</p>
+<p>至于上面的 <code>–graphics none</code> 选项，它告诉安装程序只以文本模式执行安装过程。假如你使用一个 GUI 界面和一个 VNC 窗口来访问主虚拟机控制台，则可以省略这个选项。最后，使用 <code>–extra-args</code> 参数，我们将传递内核启动参数给安装程序，以此来设置一个串行的虚拟机控制台。</p>
+<p>现在，所安装的虚拟机应当可以作为一个正常的（真实的）服务来运行了。假如没有，请查看上面列出的步骤。</p>
+<h3>管理虚拟机</h3>
+<p>作为一个系统管理员，还有一些典型的管理任务需要你在虚拟机上去完成。注：下面所有的命令都需要在你的宿主机上运行：</p>
+<p><strong>1. 列出所有的虚拟机：</strong></p>
+<div class="highlight"><pre><span></span><code># virsh list --all
+</code></pre></div>
+
+<p>你必须留意上面命令输出中的虚拟机 ID（尽管上面的命令还会返回虚拟机的名称和当前的状态），因为你需要它来执行有关某个虚拟机的大多数管理任务。</p>
+<p><strong>2. 显示某个虚拟机的信息：</strong></p>
+<div class="highlight"><pre><span></span><code><span class="cp"># virsh dominfo [VM Id]</span>
+</code></pre></div>
+
+<p><strong>3. 开启，重启或停止一个虚拟机操作系统：</strong></p>
+<div class="highlight"><pre><span></span><code><span class="cp"># virsh start | reboot | shutdown [VM Id]</span>
+</code></pre></div>
+
+<p><strong>4. 假如网络无法连接且在宿主机上没有运行 X 服务器，可以使用下面的命令来访问虚拟机的串行控制台：</strong></p>
+<div class="highlight"><pre><span></span><code><span class="cp"># virsh console [VM Id]</span>
+</code></pre></div>
+
+<p><strong>注</strong>：这需要你添加一个串行控制台配置信息到 <code>/etc/grub.conf</code> 文件中（参考刚才创建虚拟机时传递给<code>-extra-args</code>选项的参数）。</p>
+<p><strong>5. 修改分配的内存或虚拟 CPU：</strong></p>
+<p>首先，关闭虚拟机：</p>
+<div class="highlight"><pre><span></span><code><span class="cp"># virsh shutdown [VM Id]</span>
+</code></pre></div>
+
+<p>为 RAM 编辑虚拟机的配置：</p>
+<div class="highlight"><pre><span></span><code><span class="cp"># virsh edit [VM Id]</span>
+</code></pre></div>
+
+<p>然后更改</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;memory&gt;</span>[内存大小，注意不要加上方括号]<span class="nt">&lt;/memory&gt;</span>
+</code></pre></div>
+
+<p>使用新的设定重启虚拟机：</p>
+<div class="highlight"><pre><span></span><code><span class="c"># virsh create /etc/libvirt/qemu/tecmint-virt01.xml</span>
+</code></pre></div>
+
+<p>最后，可以使用下面的命令来动态地改变内存的大小：</p>
+<div class="highlight"><pre><span></span><code><span class="cp"># virsh setmem [VM Id] [内存大小，这里没有括号]</span>
+</code></pre></div>
+
+<p>对于 CPU，使用：</p>
+<div class="highlight"><pre><span></span><code><span class="cp"># virsh edit [VM Id]</span>
+</code></pre></div>
+
+<p>然后更改</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;cpu&gt;</span>[CPU<span class="w"> </span>数目，这里没有括号]<span class="nt">&lt;/cpu&gt;</span>
+</code></pre></div>
+
+<p>至于更深入的命令和细节，请参考 RHEL 5 虚拟化指南（这个指南尽管有些陈旧，但包括了用于管理虚拟机的 virsh 命令的详尽清单）的第 26 章里的表 26.1。</p>
+<h3>总结</h3>
+<p>在这篇文章中，我们涵盖了在 RHEL 7 中如何使用 KVM 和虚拟化的一些基本概念，这个话题是一个广泛且令人着迷的话题。并且我希望它能成为你在随后阅读官方的 <a href="https://access.redhat.com/documentation/en-US/Red_Hat_Enterprise_Linux/7/html/Virtualization_Getting_Started_Guide/index.html">RHEL 虚拟化入门</a> 和 <a href="https://access.redhat.com/documentation/en-US/Red_Hat_Enterprise_Linux/7/html/Virtualization_Deployment_and_Administration_Guide/index.html">RHEL 虚拟化部署和管理指南</a> ，探索更高级的主题时的起点教程，并给你带来帮助。</p>
+<p>另外，为了分辨或拓展这里解释的某些概念，你还可以参考先前包含在 <a href="http://www.tecmint.com/install-and-configure-kvm-in-linux/">KVM 系列</a> 中的文章。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

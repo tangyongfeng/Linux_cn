@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>"Get your work recognized: write a brag document"</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Julia Evans 大家好！今天我和一个朋友讨论 Git 的工作原理，我们感到奇怪，Git 是如何存储你的文件的？我们知道它存储在 .git 目录 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/06/get-your-work-recognized-write-a-brag-document.html" rel="bookmark"
+           title="Permalink to "Get your work recognized: write a brag document"">"Get your work recognized: write a brag document"</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-06-28T18:46:02+00:00">
+                Published: Fri 28 June 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Julia Evans</p>
+<p><img alt="" src="/data/attachment/album/202309/16/230138n1j44qiabgplgbw4.jpg"></p>
+<p>大家好！今天我和一个朋友讨论 Git 的工作原理，我们感到奇怪，Git 是如何存储你的文件的？我们知道它存储在 <code>.git</code> 目录中，但具体到 <code>.git</code> 中的哪个位置，各个版本的历史文件又被存储在哪里呢？</p>
+<p>以这个博客为例，其文件存储在一个 Git 仓库中，其中有一个文件名为 <code>content/post/2019-06-28-brag-doc.markdown</code>。这个文件在我的 <code>.git</code> 文件夹中具体的位置在哪里？过去的文件版本又被存储在哪里？那么，就让我们通过编写一些简短的 Python 代码来探寻答案吧。</p>
+<h3>Git 把文件存储在 .git/objects 之中</h3>
+<p>你的仓库中，每一个文件的历史版本都被储存在 <code>.git/objects</code> 中。比如，对于这个博客，<code>.git/objects</code> 包含了 2700 多个文件。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>find<span class="w"> </span>.git/objects/<span class="w"> </span>-type<span class="w"> </span>f<span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l
+<span class="m">2761</span>
+</code></pre></div>
+
+<blockquote>
+<p>注意：<code>.git/objects</code> 包含的信息，不仅仅是 “仓库中每一个文件的所有先前版本”，但我们暂不详细讨论这一内容。</p>
+</blockquote>
+<p>这里是一个简短的 Python 程序（<a href="https://gist.github.com/jvns/ff884dceef7660402fe1eca697cfbf51">find-git-object.py</a>），它可以帮助我们定位在 <code>.git/objects</code> 中的特定文件的具体位置。</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">hashlib</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+
+<span class="k">def</span> <span class="nf">object_path</span><span class="p">(</span><span class="n">content</span><span class="p">):</span>
+    <span class="n">header</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;blob </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">content</span><span class="p">)</span><span class="si">}</span><span class="se">\0</span><span class="s2">&quot;</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="n">header</span><span class="o">.</span><span class="n">encode</span><span class="p">()</span> <span class="o">+</span> <span class="n">content</span>
+    <span class="n">sha1</span> <span class="o">=</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha1</span><span class="p">()</span>
+    <span class="n">sha1</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+    <span class="n">digest</span> <span class="o">=</span> <span class="n">sha1</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;.git/objects/</span><span class="si">{</span><span class="n">digest</span><span class="p">[:</span><span class="mi">2</span><span class="p">]</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">digest</span><span class="p">[</span><span class="mi">2</span><span class="p">:]</span><span class="si">}</span><span class="s2">&quot;</span>
+
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="s2">&quot;rb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">object_path</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">()))</span>
+</code></pre></div>
+
+<p>此程序的主要操作如下：</p>
+<ul>
+<li>读取文件内容</li>
+<li>计算一个头部（<code>blob 16673\0</code>），并将其与文件内容合并</li>
+<li>计算出文件的 sha1 校验和（此处为 <code>e33121a9af82dd99d6d706d037204251d41d54</code>）</li>
+<li>将这个 sha1 校验和转换为路径（如 <code>.git/objects/e3/3121a9af82dd99d6d706d037204251d41d54</code>）</li>
+</ul>
+<p>运行的方法如下：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python3<span class="w"> </span>find-git-object.py<span class="w"> </span>content/post/2019-06-28-brag-doc.markdown
+.git/objects/8a/e33121a9af82dd99d6d706d037204251d41d54
+</code></pre></div>
+
+<h3>术语解释：“内容寻址存储”</h3>
+<p>这种存储策略的术语为“<ruby> 内容寻址存储 <rt>  content addressed storage </rt></ruby>”，它指的是对象在数据库中的文件名与文件内容的哈希值相同。</p>
+<p>内容寻址存储的有趣之处就是，假设我有两份或许多份内容完全相同的文件，在 Git 的数据库中，并不会因此占用额外空间。如果内容的哈希值是 <code>aabbbbbbbbbbbbbbbbbbbbbbbbb</code>，它们都会被存储在 <code>.git/objects/aa/bbbbbbbbbbbbbbbbbbbbb</code> 中。</p>
+<h3>这些对象是如何进行编码的？</h3>
+<p>如果我尝试在 <code>.git/objects</code> 目录下查看这个文件，显示的内容似乎有一些奇怪：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cat<span class="w"> </span>.git/objects/8a/e33121a9af82dd99d6d706d037204251d41d54
+x^A&lt;8D&gt;&lt;9B&gt;<span class="o">}</span>s&lt;E3&gt;Ƒ&lt;C6&gt;&lt;EF&gt;o<span class="p">|</span>&lt;8A&gt;^Q&lt;9D&gt;&lt;EC&gt;ju&lt;<span class="m">92</span>&gt;&lt;E8&gt;&lt;DD&gt;&lt;9C&gt;&lt;9C&gt;*&lt;<span class="m">89</span>&gt;j&lt;FD&gt;^...
+</code></pre></div>
+
+<p>这是怎么回事呢？让我们来运行 <code>file</code> 命令检查一下：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>file<span class="w"> </span>.git/objects/8a/e33121a9af82dd99d6d706d037204251d41d54
+.git/objects/8a/e33121a9af82dd99d6d706d037204251d41d54:<span class="w"> </span>zlib<span class="w"> </span>compressed<span class="w"> </span>data
+</code></pre></div>
+
+<p>原来，它是压缩的！我们可以编写一个小巧的 Python 程序—— <code>decompress.py</code>，然后用 <code>zlib</code> 模块去解压这些数据：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">zlib</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="s2">&quot;rb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="n">content</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">zlib</span><span class="o">.</span><span class="n">decompress</span><span class="p">(</span><span class="n">content</span><span class="p">)</span><span class="o">.</span><span class="n">decode</span><span class="p">())</span>
+</code></pre></div>
+
+<p>让我们来解压一下看看结果：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python3<span class="w"> </span>decompress.py<span class="w"> </span>.git/objects/8a/e33121a9af82dd99d6d706d037204251d41d54
+blob<span class="w"> </span><span class="m">16673</span>---
+title:<span class="w"> </span><span class="s2">&quot;Get your work recognized: write a brag document&quot;</span>
+date:<span class="w"> </span><span class="m">2019</span>-06-28T18:46:02Z
+url:<span class="w"> </span>/blog/brag-documents/
+categories:<span class="w"> </span><span class="o">[]</span>
+...<span class="w"> </span>文件的剩余部分在此<span class="w"> </span>...
+</code></pre></div>
+
+<p>这就是博文的旧版本！如果我执行命令 <code>git checkout 026c0f52 content/post/2019-06-28-brag-doc.markdown</code> 或者 <code>git restore --source 026c0f52 content/post/2019-06-28-brag-doc.markdown</code>，我就会获取到这个版本。</p>
+<h3>这样遍历树就是 git log 的运行机制</h3>
+<p>我们刚刚经历的整个过程（找到提交、逐层遍历目录树、搜索所需文件名）看似繁琐，但实际上当我们执行 <code>git log content/post/2019-06-28-brag-doc.markdown</code> 时，背后就是这样在运行。它需要逐个检查你历史记录中的每一个提交，在每个提交中核查 <code>content/post/2019-06-28-brag-doc.markdown</code> 的版本（例如在这个案例中为 <code>3105bdd067f7db16436d2ea85463755c8a772046</code>），并查看它是否自上一提交以来有所改变。</p>
+<p>这就是为什么有时 <code>git log FILENAME</code> 会执行的有些缓慢 —— 我的这个仓库中有 3000 个提交，它需要对每个提交做大量的工作，来判断该文件是否在该提交中发生过变化。</p>
+<h3>我有多少个历史版本的文件？</h3>
+<p>目前，我在我的博客仓库中跟踪了 1530 个文件：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>git<span class="w"> </span>ls-files<span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l
+<span class="m">1530</span>
+</code></pre></div>
+
+<p>但历史文件有多少呢？我们可以列出 <code>.git/objects</code> 中所有的内容，看看有多少对象文件：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>find<span class="w"> </span>.git/objects/<span class="w"> </span>-type<span class="w"> </span>f<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-v<span class="w"> </span>pack<span class="w"> </span><span class="p">|</span><span class="w"> </span>awk<span class="w"> </span>-F/<span class="w"> </span><span class="s1">&#39;{print $3 $4}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l
+<span class="m">20135</span>
+</code></pre></div>
+
+<p>但并不是所有这些都代表过去版本的文件 —— 正如我们之前所见，许多都是提交和目录树。不过，我们可以编写一个小小的 Python 脚本 <code>find-blobs.py</code>，遍历所有对象并检查是否以 <code>blob</code> 开头：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">zlib</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+
+<span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">sys</span><span class="o">.</span><span class="n">stdin</span><span class="p">:</span>
+    <span class="n">line</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;.git/objects/</span><span class="si">{</span><span class="n">line</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">2</span><span class="p">]</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">line</span><span class="p">[</span><span class="mi">2</span><span class="p">:]</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s2">&quot;rb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">contents</span> <span class="o">=</span> <span class="n">zlib</span><span class="o">.</span><span class="n">decompress</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">())</span>
+        <span class="k">if</span> <span class="n">contents</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="sa">b</span><span class="s2">&quot;blob&quot;</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>find<span class="w"> </span>.git/objects/<span class="w"> </span>-type<span class="w"> </span>f<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-v<span class="w"> </span>pack<span class="w"> </span><span class="p">|</span><span class="w"> </span>awk<span class="w"> </span>-F/<span class="w"> </span><span class="s1">&#39;{print $3 $4}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>python3<span class="w"> </span>find-blobs.py<span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l
+<span class="m">6713</span>
+</code></pre></div>
+
+<p>于是，看起来在我的 Git 仓库中存放的旧文件版本有 <code>6713 - 1530 = 5183</code> 个，Git 会为我保存这些文件，以备我想着要恢复它们时使用。太好了！</p>
+<h3>就这些啦！</h3>
+<p>在 <a href="https://gist.github.com/jvns/ff884dceef7660402fe1eca697cfbf51">这个 gist</a> 中附上了全部的此篇文章所用代码，其实没多少。</p>
+<p>我以为我已经对 Git 的工作方式了如指掌，但我以前从未真正涉及过打包文件，所以这次探索很有趣。我也很少思考当我让 <code>git log</code> 跟踪一个文件的历史时，它实际上有多大的工作量，因此也很开心能深入研究这个。</p>
+<p>作为一个有趣的后续：我提交这篇博文后，Git 就警告我仓库中的对象太多（我猜 20,000 太多了！），并运行 <code>git gc</code> 将它们全部压缩成打包文件。所以现在我的 <code>.git/objects</code> 目录已经被压缩得十分小了：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>find<span class="w"> </span>.git/objects/<span class="w"> </span>-type<span class="w"> </span>f<span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l
+<span class="m">14</span>
+</code></pre></div>
+
+<p><em>（题图：MJ/319a396c-6f3f-4891-b051-261312c8ea9a）</em></p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

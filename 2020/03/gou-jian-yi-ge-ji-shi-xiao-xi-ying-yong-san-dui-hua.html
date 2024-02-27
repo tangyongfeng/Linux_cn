@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>构建一个即时消息应用（三）：对话</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Nicolás Parada 本文是该系列的第三篇。 第一篇：模式 第二篇：OAuth 在我们的即时消息应用中，消息表现为两个参与者对话的堆叠。如果 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2020/03/gou-jian-yi-ge-ji-shi-xiao-xi-ying-yong-san-dui-hua.html" rel="bookmark"
+           title="Permalink to 构建一个即时消息应用（三）：对话">构建一个即时消息应用（三）：对话</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2020-03-30T19:40:01+02:00">
+                Published: Mon 30 March 2020
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Nicolás Parada</p>
+<p><img alt="" src="/data/attachment/album/202003/30/193824w7xsj2ixs8frsal8.jpg"></p>
+<p>本文是该系列的第三篇。</p>
+<ul>
+<li><a href="/article-11396-1.html">第一篇：模式</a></li>
+<li><a href="/article-11510-1.html">第二篇：OAuth</a></li>
+</ul>
+<p>在我们的即时消息应用中，消息表现为两个参与者对话的堆叠。如果你想要开始一场对话，就应该向应用提供你想要交谈的用户，而当对话创建后（如果该对话此前并不存在），就可以向该对话发送消息。</p>
+<p>就前端而言，我们可能想要显示一份近期对话列表。并在此处显示对话的最后一条消息以及另一个参与者的姓名和头像。</p>
+<p>在这篇帖子中，我们将会编写一些<ruby> 端点 <rt>  endpoint </rt></ruby>来完成像“创建对话”、“获取对话列表”以及“找到单个对话”这样的任务。</p>
+<p>首先，要在主函数 <code>main()</code> 中添加下面的路由。</p>
+<div class="highlight"><pre><span></span><code>router.HandleFunc(&quot;POST&quot;, &quot;/api/conversations&quot;, requireJSON(guard(createConversation)))
+router.HandleFunc(&quot;GET&quot;, &quot;/api/conversations&quot;, guard(getConversations))
+router.HandleFunc(&quot;GET&quot;, &quot;/api/conversations/:conversationID&quot;, guard(getConversation))
+</code></pre></div>
+
+<p>这三个端点都需要进行身份验证，所以我们将会使用 <code>guard()</code> 中间件。我们也会构建一个新的中间件，用于检查请求内容是否为 JSON 格式。</p>
+<h3>JSON 请求检查中间件</h3>
+<div class="highlight"><pre><span></span><code><span class="k">func</span><span class="w"> </span><span class="n">requireJSON</span><span class="p">(</span><span class="n">handler</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">HandlerFunc</span><span class="p">)</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">HandlerFunc</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="k">func</span><span class="p">(</span><span class="n">w</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">ResponseWriter</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="o">*</span><span class="n">http</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="n">ct</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">r</span><span class="o">.</span><span class="n">Header</span><span class="o">.</span><span class="n">Get</span><span class="p">(</span><span class="s2">&quot;Content-Type&quot;</span><span class="p">);</span><span class="w"> </span><span class="o">!</span><span class="n">strings</span><span class="o">.</span><span class="n">HasPrefix</span><span class="p">(</span><span class="n">ct</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;application/json&quot;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">http</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;Content type of application/json required&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusUnsupportedMediaType</span><span class="p">)</span>
+<span class="w">            </span><span class="k">return</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="n">handler</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>如果<ruby> 请求 <rt>  request </rt></ruby>不是 JSON 格式，那么它会返回 <code>415 Unsupported Media Type</code>（不支持的媒体类型）错误。</p>
+<h3>创建对话</h3>
+<div class="highlight"><pre><span></span><code><span class="k">type</span><span class="w"> </span><span class="nx">Conversation</span><span class="w"> </span><span class="nx">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">ID</span><span class="w">                </span><span class="kt">string</span><span class="w">   </span><span class="err">`</span><span class="nx">json</span><span class="p">:</span><span class="s">&quot;id&quot;</span><span class="err">`</span>
+<span class="w">    </span><span class="nx">OtherParticipant</span><span class="w">  </span><span class="o">*</span><span class="nx">User</span><span class="w">    </span><span class="err">`</span><span class="nx">json</span><span class="p">:</span><span class="s">&quot;otherParticipant&quot;</span><span class="err">`</span>
+<span class="w">    </span><span class="nx">LastMessage</span><span class="w">       </span><span class="o">*</span><span class="nx">Message</span><span class="w"> </span><span class="err">`</span><span class="nx">json</span><span class="p">:</span><span class="s">&quot;lastMessage&quot;</span><span class="err">`</span>
+<span class="w">    </span><span class="nx">HasUnreadMessages</span><span class="w"> </span><span class="kt">bool</span><span class="w">     </span><span class="err">`</span><span class="nx">json</span><span class="p">:</span><span class="s">&quot;hasUnreadMessages&quot;</span><span class="err">`</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>就像上面的代码那样，对话中保持对另一个参与者和最后一条消息的引用，还有一个 <code>bool</code> 类型的字段，用来告知是否有未读消息。</p>
+<div class="highlight"><pre><span></span><code><span class="k">type</span><span class="w"> </span><span class="nx">Message</span><span class="w"> </span><span class="nx">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">ID</span><span class="w">             </span><span class="kt">string</span><span class="w">    </span><span class="err">`</span><span class="nx">json</span><span class="p">:</span><span class="s">&quot;id&quot;</span><span class="err">`</span>
+<span class="w">    </span><span class="nx">Content</span><span class="w">        </span><span class="kt">string</span><span class="w">    </span><span class="err">`</span><span class="nx">json</span><span class="p">:</span><span class="s">&quot;content&quot;</span><span class="err">`</span>
+<span class="w">    </span><span class="nx">UserID</span><span class="w">         </span><span class="kt">string</span><span class="w">    </span><span class="err">`</span><span class="nx">json</span><span class="p">:</span><span class="s">&quot;-&quot;</span><span class="err">`</span>
+<span class="w">    </span><span class="nx">ConversationID</span><span class="w"> </span><span class="kt">string</span><span class="w">    </span><span class="err">`</span><span class="nx">json</span><span class="p">:</span><span class="s">&quot;conversationID,omitempty&quot;</span><span class="err">`</span>
+<span class="w">    </span><span class="nx">CreatedAt</span><span class="w">      </span><span class="nx">time</span><span class="p">.</span><span class="nx">Time</span><span class="w"> </span><span class="err">`</span><span class="nx">json</span><span class="p">:</span><span class="s">&quot;createdAt&quot;</span><span class="err">`</span>
+<span class="w">    </span><span class="nx">Mine</span><span class="w">           </span><span class="kt">bool</span><span class="w">      </span><span class="err">`</span><span class="nx">json</span><span class="p">:</span><span class="s">&quot;mine&quot;</span><span class="err">`</span>
+<span class="w">    </span><span class="nx">ReceiverID</span><span class="w">     </span><span class="kt">string</span><span class="w">    </span><span class="err">`</span><span class="nx">json</span><span class="p">:</span><span class="s">&quot;-&quot;</span><span class="err">`</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>我们会在下一篇文章介绍与消息相关的内容，但由于我们这里也需要用到它，所以先定义了 <code>Message</code> 结构体。其中大多数字段与数据库表一致。我们需要使用 <code>Mine</code> 来断定消息是否属于当前已验证用户所有。一旦加入实时功能，<code>ReceiverID</code> 可以帮助我们过滤消息。</p>
+<p>接下来让我们编写 HTTP 处理程序。尽管它有些长，但也没什么好怕的。</p>
+<div class="highlight"><pre><span></span><code><span class="k">func</span><span class="w"> </span><span class="n">createConversation</span><span class="p">(</span><span class="n">w</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">ResponseWriter</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="o">*</span><span class="n">http</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">var</span><span class="w"> </span><span class="n">input</span><span class="w"> </span><span class="n">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">Username</span><span class="w"> </span><span class="n">string</span><span class="w"> </span><span class="err">`</span><span class="n">json</span><span class="p">:</span><span class="s2">&quot;username&quot;</span><span class="err">`</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="n">defer</span><span class="w"> </span><span class="n">r</span><span class="o">.</span><span class="n">Body</span><span class="o">.</span><span class="n">Close</span><span class="p">()</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">json</span><span class="o">.</span><span class="n">NewDecoder</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">Body</span><span class="p">)</span><span class="o">.</span><span class="n">Decode</span><span class="p">(</span><span class="o">&amp;</span><span class="n">input</span><span class="p">);</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">http</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="o">.</span><span class="n">Error</span><span class="p">(),</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusBadRequest</span><span class="p">)</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="n">input</span><span class="o">.</span><span class="n">Username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">strings</span><span class="o">.</span><span class="n">TrimSpace</span><span class="p">(</span><span class="n">input</span><span class="o">.</span><span class="n">Username</span><span class="p">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">input</span><span class="o">.</span><span class="n">Username</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">respond</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">Errors</span><span class="p">{</span><span class="n">map</span><span class="p">[</span><span class="n">string</span><span class="p">]</span><span class="n">string</span><span class="p">{</span>
+<span class="w">            </span><span class="s2">&quot;username&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Username required&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="p">}},</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusUnprocessableEntity</span><span class="p">)</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="n">ctx</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">r</span><span class="o">.</span><span class="n">Context</span><span class="p">()</span>
+<span class="w">    </span><span class="n">authUserID</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="o">.</span><span class="n">Value</span><span class="p">(</span><span class="n">keyAuthUserID</span><span class="p">)</span><span class="o">.</span><span class="p">(</span><span class="n">string</span><span class="p">)</span>
+
+<span class="w">    </span><span class="n">tx</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">db</span><span class="o">.</span><span class="n">BeginTx</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="n">nil</span><span class="p">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">respondError</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">fmt</span><span class="o">.</span><span class="n">Errorf</span><span class="p">(</span><span class="s2">&quot;could not begin tx: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="n">defer</span><span class="w"> </span><span class="n">tx</span><span class="o">.</span><span class="n">Rollback</span><span class="p">()</span>
+
+<span class="w">    </span><span class="k">var</span><span class="w"> </span><span class="n">otherParticipant</span><span class="w"> </span><span class="n">User</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">tx</span><span class="o">.</span><span class="n">QueryRowContext</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="err">`</span>
+<span class="w">        </span><span class="n">SELECT</span><span class="w"> </span><span class="n">id</span><span class="p">,</span><span class="w"> </span><span class="n">avatar_url</span><span class="w"> </span><span class="n">FROM</span><span class="w"> </span><span class="n">users</span><span class="w"> </span><span class="n">WHERE</span><span class="w"> </span><span class="n">username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="mi">1</span>
+<span class="w">    </span><span class="err">`</span><span class="p">,</span><span class="w"> </span><span class="n">input</span><span class="o">.</span><span class="n">Username</span><span class="p">)</span><span class="o">.</span><span class="n">Scan</span><span class="p">(</span>
+<span class="w">        </span><span class="o">&amp;</span><span class="n">otherParticipant</span><span class="o">.</span><span class="n">ID</span><span class="p">,</span>
+<span class="w">        </span><span class="o">&amp;</span><span class="n">otherParticipant</span><span class="o">.</span><span class="n">AvatarURL</span><span class="p">,</span>
+<span class="w">    </span><span class="p">);</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">sql</span><span class="o">.</span><span class="n">ErrNoRows</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">http</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;User not found&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusNotFound</span><span class="p">)</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">respondError</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">fmt</span><span class="o">.</span><span class="n">Errorf</span><span class="p">(</span><span class="s2">&quot;could not query other participant: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="n">otherParticipant</span><span class="o">.</span><span class="n">Username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">input</span><span class="o">.</span><span class="n">Username</span>
+
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">otherParticipant</span><span class="o">.</span><span class="n">ID</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">authUserID</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">http</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;Try start a conversation with someone else&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusForbidden</span><span class="p">)</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">var</span><span class="w"> </span><span class="n">conversationID</span><span class="w"> </span><span class="n">string</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">tx</span><span class="o">.</span><span class="n">QueryRowContext</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="err">`</span>
+<span class="w">        </span><span class="n">SELECT</span><span class="w"> </span><span class="n">conversation_id</span><span class="w"> </span><span class="n">FROM</span><span class="w"> </span><span class="n">participants</span><span class="w"> </span><span class="n">WHERE</span><span class="w"> </span><span class="n">user_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="mi">1</span>
+<span class="w">        </span><span class="n">INTERSECT</span>
+<span class="w">        </span><span class="n">SELECT</span><span class="w"> </span><span class="n">conversation_id</span><span class="w"> </span><span class="n">FROM</span><span class="w"> </span><span class="n">participants</span><span class="w"> </span><span class="n">WHERE</span><span class="w"> </span><span class="n">user_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="mi">2</span>
+<span class="w">    </span><span class="err">`</span><span class="p">,</span><span class="w"> </span><span class="n">authUserID</span><span class="p">,</span><span class="w"> </span><span class="n">otherParticipant</span><span class="o">.</span><span class="n">ID</span><span class="p">)</span><span class="o">.</span><span class="n">Scan</span><span class="p">(</span><span class="o">&amp;</span><span class="n">conversationID</span><span class="p">);</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">sql</span><span class="o">.</span><span class="n">ErrNoRows</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">respondError</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">fmt</span><span class="o">.</span><span class="n">Errorf</span><span class="p">(</span><span class="s2">&quot;could not query common conversation id: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">http</span><span class="o">.</span><span class="n">Redirect</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;/api/conversations/&quot;</span><span class="o">+</span><span class="n">conversationID</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusFound</span><span class="p">)</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">var</span><span class="w"> </span><span class="n">conversation</span><span class="w"> </span><span class="n">Conversation</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tx</span><span class="o">.</span><span class="n">QueryRowContext</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="err">`</span>
+<span class="w">        </span><span class="n">INSERT</span><span class="w"> </span><span class="n">INTO</span><span class="w"> </span><span class="n">conversations</span><span class="w"> </span><span class="n">DEFAULT</span><span class="w"> </span><span class="n">VALUES</span>
+<span class="w">        </span><span class="n">RETURNING</span><span class="w"> </span><span class="n">id</span>
+<span class="w">    </span><span class="err">`</span><span class="p">)</span><span class="o">.</span><span class="n">Scan</span><span class="p">(</span><span class="o">&amp;</span><span class="n">conversation</span><span class="o">.</span><span class="n">ID</span><span class="p">);</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">respondError</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">fmt</span><span class="o">.</span><span class="n">Errorf</span><span class="p">(</span><span class="s2">&quot;could not insert conversation: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">_</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tx</span><span class="o">.</span><span class="n">ExecContext</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="err">`</span>
+<span class="w">        </span><span class="n">INSERT</span><span class="w"> </span><span class="n">INTO</span><span class="w"> </span><span class="n">participants</span><span class="w"> </span><span class="p">(</span><span class="n">user_id</span><span class="p">,</span><span class="w"> </span><span class="n">conversation_id</span><span class="p">)</span><span class="w"> </span><span class="n">VALUES</span>
+<span class="w">            </span><span class="p">(</span><span class="o">$</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">$</span><span class="mi">2</span><span class="p">),</span>
+<span class="w">            </span><span class="p">(</span><span class="o">$</span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="o">$</span><span class="mi">2</span><span class="p">)</span>
+<span class="w">    </span><span class="err">`</span><span class="p">,</span><span class="w"> </span><span class="n">authUserID</span><span class="p">,</span><span class="w"> </span><span class="n">conversation</span><span class="o">.</span><span class="n">ID</span><span class="p">,</span><span class="w"> </span><span class="n">otherParticipant</span><span class="o">.</span><span class="n">ID</span><span class="p">);</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">respondError</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">fmt</span><span class="o">.</span><span class="n">Errorf</span><span class="p">(</span><span class="s2">&quot;could not insert participants: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tx</span><span class="o">.</span><span class="n">Commit</span><span class="p">();</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">respondError</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">fmt</span><span class="o">.</span><span class="n">Errorf</span><span class="p">(</span><span class="s2">&quot;could not commit tx to create conversation: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="n">conversation</span><span class="o">.</span><span class="n">OtherParticipant</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">&amp;</span><span class="n">otherParticipant</span>
+
+<span class="w">    </span><span class="n">respond</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">conversation</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusCreated</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>在此端点，你会向 <code>/api/conversations</code> 发送 POST 请求，请求的 JSON 主体中包含要对话的用户的用户名。</p>
+<p>因此，首先需要将请求主体解析成包含用户名的结构。然后，校验用户名不能为空。</p>
+<div class="highlight"><pre><span></span><code><span class="n">type</span><span class="w"> </span><span class="n">Errors</span><span class="w"> </span><span class="n">struct</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">Errors</span><span class="w"> </span><span class="k">map</span><span class="o">[</span><span class="n">string</span><span class="o">]</span><span class="n">string</span><span class="w"> </span><span class="err">`</span><span class="nl">json</span><span class="p">:</span><span class="ss">&quot;errors&quot;</span><span class="err">`</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<p>这是错误消息的结构体 <code>Errors</code>，它仅仅是一个映射。如果输入空用户名，你就会得到一段带有 <code>422 Unprocessable Entity</code>（无法处理的实体）错误消息的 JSON 。</p>
+<div class="highlight"><pre><span></span><code>{
+    &quot;errors&quot;: {
+        &quot;username&quot;: &quot;Username required&quot;
+    }
+}
+</code></pre></div>
+
+<p>然后，我们开始执行 SQL 事务。收到的仅仅是用户名，但事实上，我们需要知道实际的用户 ID 。因此，事务的第一项内容是查询另一个参与者的 ID 和头像。如果找不到该用户，我们将会返回 <code>404 Not Found</code>（未找到） 错误。另外，如果找到的用户恰好和“当前已验证用户”相同，我们应该返回 <code>403 Forbidden</code>（拒绝处理）错误。这是由于对话只应当在两个不同的用户之间发起，而不能是同一个。</p>
+<p>然后，我们试图找到这两个用户所共有的对话，所以需要使用 <code>INTERSECT</code> 语句。如果存在，只需要通过 <code>/api/conversations/{conversationID}</code> 重定向到该对话并将其返回。</p>
+<p>如果未找到共有的对话，我们需要创建一个新的对话并添加指定的两个参与者。最后，我们 <code>COMMIT</code> 该事务并使用新创建的对话进行响应。</p>
+<h3>获取对话列表</h3>
+<p>端点 <code>/api/conversations</code> 将获取当前已验证用户的所有对话。</p>
+<div class="highlight"><pre><span></span><code><span class="k">func</span><span class="w"> </span><span class="n">getConversations</span><span class="p">(</span><span class="n">w</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">ResponseWriter</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="o">*</span><span class="n">http</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">ctx</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">r</span><span class="o">.</span><span class="n">Context</span><span class="p">()</span>
+<span class="w">    </span><span class="n">authUserID</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="o">.</span><span class="n">Value</span><span class="p">(</span><span class="n">keyAuthUserID</span><span class="p">)</span><span class="o">.</span><span class="p">(</span><span class="n">string</span><span class="p">)</span>
+
+<span class="w">    </span><span class="n">rows</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">db</span><span class="o">.</span><span class="n">QueryContext</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="err">`</span>
+<span class="w">        </span><span class="n">SELECT</span>
+<span class="w">            </span><span class="n">conversations</span><span class="o">.</span><span class="n">id</span><span class="p">,</span>
+<span class="w">            </span><span class="n">auth_user</span><span class="o">.</span><span class="n">messages_read_at</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">messages</span><span class="o">.</span><span class="n">created_at</span><span class="w"> </span><span class="n">AS</span><span class="w"> </span><span class="n">has_unread_messages</span><span class="p">,</span>
+<span class="w">            </span><span class="n">messages</span><span class="o">.</span><span class="n">id</span><span class="p">,</span>
+<span class="w">            </span><span class="n">messages</span><span class="o">.</span><span class="n">content</span><span class="p">,</span>
+<span class="w">            </span><span class="n">messages</span><span class="o">.</span><span class="n">created_at</span><span class="p">,</span>
+<span class="w">            </span><span class="n">messages</span><span class="o">.</span><span class="n">user_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="mi">1</span><span class="w"> </span><span class="n">AS</span><span class="w"> </span><span class="n">mine</span><span class="p">,</span>
+<span class="w">            </span><span class="n">other_users</span><span class="o">.</span><span class="n">id</span><span class="p">,</span>
+<span class="w">            </span><span class="n">other_users</span><span class="o">.</span><span class="n">username</span><span class="p">,</span>
+<span class="w">            </span><span class="n">other_users</span><span class="o">.</span><span class="n">avatar_url</span>
+<span class="w">        </span><span class="n">FROM</span><span class="w"> </span><span class="n">conversations</span>
+<span class="w">        </span><span class="n">INNER</span><span class="w"> </span><span class="n">JOIN</span><span class="w"> </span><span class="n">messages</span><span class="w"> </span><span class="n">ON</span><span class="w"> </span><span class="n">conversations</span><span class="o">.</span><span class="n">last_message_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">messages</span><span class="o">.</span><span class="n">id</span>
+<span class="w">        </span><span class="n">INNER</span><span class="w"> </span><span class="n">JOIN</span><span class="w"> </span><span class="n">participants</span><span class="w"> </span><span class="n">other_participants</span>
+<span class="w">            </span><span class="n">ON</span><span class="w"> </span><span class="n">other_participants</span><span class="o">.</span><span class="n">conversation_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">conversations</span><span class="o">.</span><span class="n">id</span>
+<span class="w">                </span><span class="n">AND</span><span class="w"> </span><span class="n">other_participants</span><span class="o">.</span><span class="n">user_id</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="o">$</span><span class="mi">1</span>
+<span class="w">        </span><span class="n">INNER</span><span class="w"> </span><span class="n">JOIN</span><span class="w"> </span><span class="n">users</span><span class="w"> </span><span class="n">other_users</span><span class="w"> </span><span class="n">ON</span><span class="w"> </span><span class="n">other_participants</span><span class="o">.</span><span class="n">user_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">other_users</span><span class="o">.</span><span class="n">id</span>
+<span class="w">        </span><span class="n">INNER</span><span class="w"> </span><span class="n">JOIN</span><span class="w"> </span><span class="n">participants</span><span class="w"> </span><span class="n">auth_user</span>
+<span class="w">            </span><span class="n">ON</span><span class="w"> </span><span class="n">auth_user</span><span class="o">.</span><span class="n">conversation_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">conversations</span><span class="o">.</span><span class="n">id</span>
+<span class="w">                </span><span class="n">AND</span><span class="w"> </span><span class="n">auth_user</span><span class="o">.</span><span class="n">user_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="mi">1</span>
+<span class="w">        </span><span class="n">ORDER</span><span class="w"> </span><span class="n">BY</span><span class="w"> </span><span class="n">messages</span><span class="o">.</span><span class="n">created_at</span><span class="w"> </span><span class="n">DESC</span>
+<span class="w">    </span><span class="err">`</span><span class="p">,</span><span class="w"> </span><span class="n">authUserID</span><span class="p">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">respondError</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">fmt</span><span class="o">.</span><span class="n">Errorf</span><span class="p">(</span><span class="s2">&quot;could not query conversations: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="n">defer</span><span class="w"> </span><span class="n">rows</span><span class="o">.</span><span class="n">Close</span><span class="p">()</span>
+
+<span class="w">    </span><span class="n">conversations</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">make</span><span class="p">([]</span><span class="n">Conversation</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="n">rows</span><span class="o">.</span><span class="n">Next</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">var</span><span class="w"> </span><span class="n">conversation</span><span class="w"> </span><span class="n">Conversation</span>
+<span class="w">        </span><span class="k">var</span><span class="w"> </span><span class="n">lastMessage</span><span class="w"> </span><span class="n">Message</span>
+<span class="w">        </span><span class="k">var</span><span class="w"> </span><span class="n">otherParticipant</span><span class="w"> </span><span class="n">User</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rows</span><span class="o">.</span><span class="n">Scan</span><span class="p">(</span>
+<span class="w">            </span><span class="o">&amp;</span><span class="n">conversation</span><span class="o">.</span><span class="n">ID</span><span class="p">,</span>
+<span class="w">            </span><span class="o">&amp;</span><span class="n">conversation</span><span class="o">.</span><span class="n">HasUnreadMessages</span><span class="p">,</span>
+<span class="w">            </span><span class="o">&amp;</span><span class="n">lastMessage</span><span class="o">.</span><span class="n">ID</span><span class="p">,</span>
+<span class="w">            </span><span class="o">&amp;</span><span class="n">lastMessage</span><span class="o">.</span><span class="n">Content</span><span class="p">,</span>
+<span class="w">            </span><span class="o">&amp;</span><span class="n">lastMessage</span><span class="o">.</span><span class="n">CreatedAt</span><span class="p">,</span>
+<span class="w">            </span><span class="o">&amp;</span><span class="n">lastMessage</span><span class="o">.</span><span class="n">Mine</span><span class="p">,</span>
+<span class="w">            </span><span class="o">&amp;</span><span class="n">otherParticipant</span><span class="o">.</span><span class="n">ID</span><span class="p">,</span>
+<span class="w">            </span><span class="o">&amp;</span><span class="n">otherParticipant</span><span class="o">.</span><span class="n">Username</span><span class="p">,</span>
+<span class="w">            </span><span class="o">&amp;</span><span class="n">otherParticipant</span><span class="o">.</span><span class="n">AvatarURL</span><span class="p">,</span>
+<span class="w">        </span><span class="p">);</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">respondError</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">fmt</span><span class="o">.</span><span class="n">Errorf</span><span class="p">(</span><span class="s2">&quot;could not scan conversation: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">            </span><span class="k">return</span>
+<span class="w">        </span><span class="p">}</span>
+
+<span class="w">        </span><span class="n">conversation</span><span class="o">.</span><span class="n">LastMessage</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">&amp;</span><span class="n">lastMessage</span>
+<span class="w">        </span><span class="n">conversation</span><span class="o">.</span><span class="n">OtherParticipant</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">&amp;</span><span class="n">otherParticipant</span>
+<span class="w">        </span><span class="n">conversations</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">append</span><span class="p">(</span><span class="n">conversations</span><span class="p">,</span><span class="w"> </span><span class="n">conversation</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rows</span><span class="o">.</span><span class="n">Err</span><span class="p">();</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">respondError</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">fmt</span><span class="o">.</span><span class="n">Errorf</span><span class="p">(</span><span class="s2">&quot;could not iterate over conversations: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="n">respond</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">conversations</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusOK</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>该处理程序仅对数据库进行查询。它通过一些联接来查询对话表……首先，从消息表中获取最后一条消息。然后依据“ID 与当前已验证用户不同”的条件，从参与者表找到对话的另一个参与者。然后联接到用户表以获取该用户的用户名和头像。最后，再次联接参与者表，并以相反的条件从该表中找出参与对话的另一个用户，其实就是当前已验证用户。我们会对比消息中的 <code>messages_read_at</code> 和 <code>created_at</code> 两个字段，以确定对话中是否存在未读消息。然后，我们通过 <code>user_id</code> 字段来判定该消息是否属于“我”（指当前已验证用户）。</p>
+<p>注意，此查询过程假定对话中只有两个用户参与，它也仅仅适用于这种情况。另外,该设计也不很适用于需要显示未读消息数量的情况。如果需要显示未读消息的数量，我认为可以在 <code>participants</code> 表上添加一个<code>unread_messages_count</code> <code>INT</code> 字段，并在每次创建新消息的时候递增它，如果用户已读则重置该字段。</p>
+<p>接下来需要遍历每一条记录，通过扫描每一个存在的对话来建立一个<ruby> 对话切片 <rt>  slice of conversations </rt></ruby>并在最后进行响应。</p>
+<h3>找到单个对话</h3>
+<p>端点 <code>/api/conversations/{conversationID}</code> 会根据 ID 对单个对话进行响应。</p>
+<div class="highlight"><pre><span></span><code><span class="k">func</span><span class="w"> </span><span class="n">getConversation</span><span class="p">(</span><span class="n">w</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">ResponseWriter</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="o">*</span><span class="n">http</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">ctx</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">r</span><span class="o">.</span><span class="n">Context</span><span class="p">()</span>
+<span class="w">    </span><span class="n">authUserID</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="o">.</span><span class="n">Value</span><span class="p">(</span><span class="n">keyAuthUserID</span><span class="p">)</span><span class="o">.</span><span class="p">(</span><span class="n">string</span><span class="p">)</span>
+<span class="w">    </span><span class="n">conversationID</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">way</span><span class="o">.</span><span class="n">Param</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;conversationID&quot;</span><span class="p">)</span>
+
+<span class="w">    </span><span class="k">var</span><span class="w"> </span><span class="n">conversation</span><span class="w"> </span><span class="n">Conversation</span>
+<span class="w">    </span><span class="k">var</span><span class="w"> </span><span class="n">otherParticipant</span><span class="w"> </span><span class="n">User</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">db</span><span class="o">.</span><span class="n">QueryRowContext</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="err">`</span>
+<span class="w">        </span><span class="n">SELECT</span>
+<span class="w">            </span><span class="n">IFNULL</span><span class="p">(</span><span class="n">auth_user</span><span class="o">.</span><span class="n">messages_read_at</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">messages</span><span class="o">.</span><span class="n">created_at</span><span class="p">,</span><span class="w"> </span><span class="bp">false</span><span class="p">)</span><span class="w"> </span><span class="n">AS</span><span class="w"> </span><span class="n">has_unread_messages</span><span class="p">,</span>
+<span class="w">            </span><span class="n">other_users</span><span class="o">.</span><span class="n">id</span><span class="p">,</span>
+<span class="w">            </span><span class="n">other_users</span><span class="o">.</span><span class="n">username</span><span class="p">,</span>
+<span class="w">            </span><span class="n">other_users</span><span class="o">.</span><span class="n">avatar_url</span>
+<span class="w">        </span><span class="n">FROM</span><span class="w"> </span><span class="n">conversations</span>
+<span class="w">        </span><span class="n">LEFT</span><span class="w"> </span><span class="n">JOIN</span><span class="w"> </span><span class="n">messages</span><span class="w"> </span><span class="n">ON</span><span class="w"> </span><span class="n">conversations</span><span class="o">.</span><span class="n">last_message_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">messages</span><span class="o">.</span><span class="n">id</span>
+<span class="w">        </span><span class="n">INNER</span><span class="w"> </span><span class="n">JOIN</span><span class="w"> </span><span class="n">participants</span><span class="w"> </span><span class="n">other_participants</span>
+<span class="w">            </span><span class="n">ON</span><span class="w"> </span><span class="n">other_participants</span><span class="o">.</span><span class="n">conversation_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">conversations</span><span class="o">.</span><span class="n">id</span>
+<span class="w">                </span><span class="n">AND</span><span class="w"> </span><span class="n">other_participants</span><span class="o">.</span><span class="n">user_id</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="o">$</span><span class="mi">1</span>
+<span class="w">        </span><span class="n">INNER</span><span class="w"> </span><span class="n">JOIN</span><span class="w"> </span><span class="n">users</span><span class="w"> </span><span class="n">other_users</span><span class="w"> </span><span class="n">ON</span><span class="w"> </span><span class="n">other_participants</span><span class="o">.</span><span class="n">user_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">other_users</span><span class="o">.</span><span class="n">id</span>
+<span class="w">        </span><span class="n">INNER</span><span class="w"> </span><span class="n">JOIN</span><span class="w"> </span><span class="n">participants</span><span class="w"> </span><span class="n">auth_user</span>
+<span class="w">            </span><span class="n">ON</span><span class="w"> </span><span class="n">auth_user</span><span class="o">.</span><span class="n">conversation_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">conversations</span><span class="o">.</span><span class="n">id</span>
+<span class="w">                </span><span class="n">AND</span><span class="w"> </span><span class="n">auth_user</span><span class="o">.</span><span class="n">user_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="mi">1</span>
+<span class="w">        </span><span class="n">WHERE</span><span class="w"> </span><span class="n">conversations</span><span class="o">.</span><span class="n">id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="mi">2</span>
+<span class="w">    </span><span class="err">`</span><span class="p">,</span><span class="w"> </span><span class="n">authUserID</span><span class="p">,</span><span class="w"> </span><span class="n">conversationID</span><span class="p">)</span><span class="o">.</span><span class="n">Scan</span><span class="p">(</span>
+<span class="w">        </span><span class="o">&amp;</span><span class="n">conversation</span><span class="o">.</span><span class="n">HasUnreadMessages</span><span class="p">,</span>
+<span class="w">        </span><span class="o">&amp;</span><span class="n">otherParticipant</span><span class="o">.</span><span class="n">ID</span><span class="p">,</span>
+<span class="w">        </span><span class="o">&amp;</span><span class="n">otherParticipant</span><span class="o">.</span><span class="n">Username</span><span class="p">,</span>
+<span class="w">        </span><span class="o">&amp;</span><span class="n">otherParticipant</span><span class="o">.</span><span class="n">AvatarURL</span><span class="p">,</span>
+<span class="w">    </span><span class="p">);</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">sql</span><span class="o">.</span><span class="n">ErrNoRows</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">http</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;Conversation not found&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusNotFound</span><span class="p">)</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">respondError</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">fmt</span><span class="o">.</span><span class="n">Errorf</span><span class="p">(</span><span class="s2">&quot;could not query conversation: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="n">conversation</span><span class="o">.</span><span class="n">ID</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">conversationID</span>
+<span class="w">    </span><span class="n">conversation</span><span class="o">.</span><span class="n">OtherParticipant</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">&amp;</span><span class="n">otherParticipant</span>
+
+<span class="w">    </span><span class="n">respond</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">conversation</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusOK</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这里的查询与之前有点类似。尽管我们并不关心最后一条消息的显示问题，并因此忽略了与之相关的一些字段，但是我们需要根据这条消息来判断对话中是否存在未读消息。此时，我们使用 <code>LEFT JOIN</code> 来代替 <code>INNER JOIN</code>，因为 <code>last_message_id</code> 字段是 <code>NULLABLE</code>（可以为空）的；而其他情况下，我们无法得到任何记录。基于同样的理由，我们在 <code>has_unread_messages</code> 的比较中使用了 <code>IFNULL</code> 语句。最后，我们按 ID 进行过滤。</p>
+<p>如果查询没有返回任何记录，我们的响应会返回 <code>404 Not Found</code> 错误，否则响应将会返回 <code>200 OK</code> 以及找到的对话。</p>
+<p>via: <a href="https://nicolasparada.netlify.com/posts/go-messenger-conversations/">https://nicolasparada.netlify.com/posts/go-messenger-conversations/</a></p>
+<p>作者：<a href="https://nicolasparada.netlify.com/">Nicolás Parada</a> 选题：<a href="https://github.com/lujun9972">lujun9972</a> 译者：<a href="https://github.com/PsiACE">PsiACE</a> 校对：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创编译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

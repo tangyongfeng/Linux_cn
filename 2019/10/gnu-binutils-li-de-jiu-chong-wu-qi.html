@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>GNU binutils 里的九种武器</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Gaurav Kamathe 二进制分析是计算机行业中最被低估的技能。 想象一下，在无法访问软件的源代码时，但仍然能够理解软件的实现 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/10/gnu-binutils-li-de-jiu-chong-wu-qi.html" rel="bookmark"
+           title="Permalink to GNU binutils 里的九种武器">GNU binutils 里的九种武器</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-10-10T11:54:54+02:00">
+                Published: Thu 10 October 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Gaurav Kamathe</p>
+<blockquote>
+<p>二进制分析是计算机行业中最被低估的技能。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/201910/10/115409g9nkdm2omutduw7u.jpg"></p>
+<p>想象一下，在无法访问软件的源代码时，但仍然能够理解软件的实现方式，在其中找到漏洞，并且更厉害的是还能修复错误。所有这些都是在只有二进制文件时做到的。这听起来就像是超能力，对吧？</p>
+<p>你也可以拥有这样的超能力，GNU 二进制实用程序（binutils）就是一个很好的起点。<a href="https://en.wikipedia.org/wiki/GNU_Binutils">GNU binutils</a> 是一个二进制工具集，默认情况下所有 Linux 发行版中都会安装这些二进制工具。</p>
+<p>二进制分析是计算机行业中最被低估的技能。它主要由恶意软件分析师、反向工程师和使用底层软件的人使用。</p>
+<p>本文探讨了 binutils 可用的一些工具。我使用的是 RHEL，但是这些示例应该在任何 Linux 发行版上可以运行。</p>
+<div class="highlight"><pre><span></span><code>[~]# cat /etc/redhat-release 
+Red Hat Enterprise Linux Server release 7.6 (Maipo)
+[~]# 
+[~]# uname -r
+3.10.0-957.el7.x86_64
+[~]# 
+</code></pre></div>
+
+<p>请注意，某些打包命令（例如 <code>rpm</code>）在基于 Debian 的发行版中可能不可用，因此请使用等效的 <code>dpkg</code> 命令替代。</p>
+<h3>软件开发的基础知识</h3>
+<p>在开源世界中，我们很多人都专注于源代码形式的软件。当软件的源代码随时可用时，很容易获得源代码的副本，打开喜欢的编辑器，喝杯咖啡，然后就可以开始探索了。</p>
+<p>但是源代码不是在 CPU 上执行的代码，在 CPU 上执行的是二进制或者说是机器语言指令。二进制或可执行文件是编译源代码时获得的。熟练的调试人员深谙通常这种差异。</p>
+<h3>编译的基础知识</h3>
+<p>在深入研究 binutils 软件包本身之前，最好先了解编译的基础知识。</p>
+<p>编译是将程序从某种编程语言（如 C/C++）的源代码（文本形式）转换为机器代码的过程。</p>
+<p>机器代码是 CPU（或一般而言，硬件）可以理解的 1 和 0 的序列，因此可以由 CPU 执行或运行。该机器码以特定格式保存到文件，通常称为可执行文件或二进制文件。在 Linux（和使用 <a href="https://www.freebsd.org/doc/handbook/linuxemu.html">Linux 兼容二进制</a>的 BSD）上，这称为 <a href="https://en.wikipedia.org/wiki/Executable_and_Linkable_Format">ELF</a>（<ruby> 可执行和可链接格式 <rt>  Executable and Linkable Format </rt></ruby>）。</p>
+<p>在生成给定的源文件的可执行文件或二进制文件之前，编译过程将经历一系列复杂的步骤。以这个源程序（C 代码）为例。打开你喜欢的编辑器，然后键入以下程序：</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;stdio.h&gt;</span>
+
+<span class="kt">int</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;Hello World</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h4>步骤 1：用 cpp 预处理</h4>
+<p><a href="https://en.wikipedia.org/wiki/C_preprocessor">C 预处理程序（cpp）</a>用于扩展所有宏并将头文件包含进来。在此示例中，头文件 <code>stdio.h</code> 将被包含在源代码中。<code>stdio.h</code> 是一个头文件，其中包含有关程序内使用的 <code>printf</code> 函数的信息。对源代码运行 <code>cpp</code>，其结果指令保存在名为 <code>hello.i</code> 的文件中。可以使用文本编辑器打开该文件以查看其内容。打印 “hello world” 的源代码在该文件的底部。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="n">hello</span><span class="p">.</span><span class="n">c</span>
+<span class="n">#include</span><span class="w"> </span><span class="o">&lt;</span><span class="n">stdio</span><span class="p">.</span><span class="n">h</span><span class="o">&gt;</span>
+
+<span class="nc">int</span><span class="w"> </span><span class="n">main</span><span class="p">(</span><span class="n">void</span><span class="p">)</span>
+<span class="err">{</span>
+<span class="w">  </span><span class="n">printf</span><span class="p">(</span><span class="ss">&quot;Hello World\n&quot;</span><span class="p">);</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="err">}</span>
+<span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span>
+<span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">cpp</span><span class="w"> </span><span class="n">hello</span><span class="p">.</span><span class="n">c</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">hello</span><span class="p">.</span><span class="n">i</span>
+<span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span>
+<span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">ls</span><span class="w"> </span><span class="o">-</span><span class="n">lrt</span>
+<span class="n">total</span><span class="w"> </span><span class="mi">24</span>
+<span class="o">-</span><span class="n">rw</span><span class="o">-</span><span class="n">r</span><span class="o">--</span><span class="n">r</span><span class="o">--</span><span class="p">.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="mi">76</span><span class="w"> </span><span class="n">Sep</span><span class="w"> </span><span class="mi">13</span><span class="w"> </span><span class="mi">03</span><span class="err">:</span><span class="mi">20</span><span class="w"> </span><span class="n">hello</span><span class="p">.</span><span class="n">c</span>
+<span class="o">-</span><span class="n">rw</span><span class="o">-</span><span class="n">r</span><span class="o">--</span><span class="n">r</span><span class="o">--</span><span class="p">.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="mi">16877</span><span class="w"> </span><span class="n">Sep</span><span class="w"> </span><span class="mi">13</span><span class="w"> </span><span class="mi">03</span><span class="err">:</span><span class="mi">22</span><span class="w"> </span><span class="n">hello</span><span class="p">.</span><span class="n">i</span>
+<span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span>
+</code></pre></div>
+
+<h4>步骤 2：用 gcc 编译</h4>
+<p>在此阶段，无需创建目标文件就将步骤 1 中生成的预处理源代码转换为汇编语言指令。这个阶段使用 <a href="https://gcc.gnu.org/onlinedocs/gcc/">GNU 编译器集合（gcc）</a>。对 <code>hello.i</code> 文件运行带有 <code>-S</code> 选项的 <code>gcc</code> 命令后，它将创建一个名为 <code>hello.s</code> 的新文件。该文件包含该 C 程序的汇编语言指令。</p>
+<p>你可以使用任何编辑器或 <code>cat</code> 命令查看其内容。</p>
+<div class="highlight"><pre><span></span><code><span class="err">[</span><span class="nf">testdir</span><span class="p">]</span><span class="c1">#</span>
+<span class="err">[</span><span class="nf">testdir</span><span class="p">]</span><span class="c1"># gcc -Wall -S hello.i</span>
+<span class="err">[</span><span class="nf">testdir</span><span class="p">]</span><span class="c1">#</span>
+<span class="err">[</span><span class="nf">testdir</span><span class="p">]</span><span class="c1"># ls -l</span>
+<span class="nf">total</span><span class="w"> </span><span class="mi">28</span>
+<span class="err">-</span><span class="nf">rw-r--r--.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">root</span><span class="w"> </span><span class="no">root</span><span class="w"> </span><span class="mi">76</span><span class="w"> </span><span class="no">Sep</span><span class="w"> </span><span class="mi">13</span><span class="w"> </span><span class="mi">03</span><span class="p">:</span><span class="mi">20</span><span class="w"> </span><span class="no">hello.c</span>
+<span class="err">-</span><span class="nf">rw-r--r--.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">root</span><span class="w"> </span><span class="no">root</span><span class="w"> </span><span class="mi">16877</span><span class="w"> </span><span class="no">Sep</span><span class="w"> </span><span class="mi">13</span><span class="w"> </span><span class="mi">03</span><span class="p">:</span><span class="mi">22</span><span class="w"> </span><span class="no">hello.i</span>
+<span class="err">-</span><span class="nf">rw-r--r--.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">root</span><span class="w"> </span><span class="no">root</span><span class="w"> </span><span class="mi">448</span><span class="w"> </span><span class="no">Sep</span><span class="w"> </span><span class="mi">13</span><span class="w"> </span><span class="mi">03</span><span class="p">:</span><span class="mi">25</span><span class="w"> </span><span class="no">hello.s</span>
+<span class="err">[</span><span class="nf">testdir</span><span class="p">]</span><span class="c1">#</span>
+<span class="err">[</span><span class="nf">testdir</span><span class="p">]</span><span class="c1"># cat hello.s</span>
+<span class="na">.file</span><span class="w"> </span><span class="s">&quot;hello.c&quot;</span>
+<span class="na">.section</span><span class="w"> </span><span class="no">.rodata</span>
+<span class="nl">.LC0:</span>
+<span class="na">.string</span><span class="w"> </span><span class="s">&quot;Hello World&quot;</span>
+<span class="na">.text</span>
+<span class="na">.globl</span><span class="w"> </span><span class="no">main</span>
+<span class="na">.type</span><span class="w"> </span><span class="no">main</span><span class="p">,</span><span class="w"> </span><span class="na">@function</span>
+<span class="nl">main:</span>
+<span class="nl">.LFB0:</span>
+<span class="na">.cfi_startproc</span>
+<span class="nf">pushq</span><span class="w"> </span><span class="nv">%rbp</span>
+<span class="na">.cfi_def_cfa_offset</span><span class="w"> </span><span class="mi">16</span>
+<span class="na">.cfi_offset</span><span class="w"> </span><span class="mi">6</span><span class="p">,</span><span class="w"> </span><span class="mi">-16</span>
+<span class="nf">movq</span><span class="w"> </span><span class="nv">%rsp</span><span class="p">,</span><span class="w"> </span><span class="nv">%rbp</span>
+<span class="na">.cfi_def_cfa_register</span><span class="w"> </span><span class="mi">6</span>
+<span class="nf">movl</span><span class="w"> </span><span class="no">$.LC0</span><span class="p">,</span><span class="w"> </span><span class="nv">%edi</span>
+<span class="nf">call</span><span class="w"> </span><span class="no">puts</span>
+<span class="nf">movl</span><span class="w"> </span><span class="no">$0</span><span class="p">,</span><span class="w"> </span><span class="nv">%eax</span>
+<span class="nf">popq</span><span class="w"> </span><span class="nv">%rbp</span>
+<span class="na">.cfi_def_cfa</span><span class="w"> </span><span class="mi">7</span><span class="p">,</span><span class="w"> </span><span class="mi">8</span>
+<span class="nf">ret</span>
+<span class="na">.cfi_endproc</span>
+<span class="nl">.LFE0:</span>
+<span class="na">.size</span><span class="w"> </span><span class="no">main</span><span class="p">,</span><span class="w"> </span><span class="no">.-main</span>
+<span class="na">.ident</span><span class="w"> </span><span class="s">&quot;GCC: (GNU) 4.8.5 20150623 (Red Hat 4.8.5-36)&quot;</span>
+<span class="na">.section</span><span class="w"> </span><span class="no">.note.GNU-stack</span><span class="p">,</span><span class="s">&quot;&quot;</span><span class="p">,</span><span class="na">@progbits</span>
+<span class="err">[</span><span class="nf">testdir</span><span class="p">]</span><span class="c1">#</span>
+</code></pre></div>
+
+<h4>步骤 3：用 as 汇编</h4>
+<p>汇编器的目的是将汇编语言指令转换为机器语言代码，并生成扩展名为 <code>.o</code> 的目标文件。此阶段使用默认情况下在所有 Linux 平台上都可用的 GNU 汇编器。</p>
+<div class="highlight"><pre><span></span><code><span class="n">testdir</span><span class="err">]#</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">hello</span><span class="p">.</span><span class="n">s</span><span class="w"> </span><span class="o">-</span><span class="n">o</span><span class="w"> </span><span class="n">hello</span><span class="p">.</span><span class="n">o</span>
+<span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span>
+<span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">ls</span><span class="w"> </span><span class="o">-</span><span class="n">l</span>
+<span class="n">total</span><span class="w"> </span><span class="mi">32</span>
+<span class="o">-</span><span class="n">rw</span><span class="o">-</span><span class="n">r</span><span class="o">--</span><span class="n">r</span><span class="o">--</span><span class="p">.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="mi">76</span><span class="w"> </span><span class="n">Sep</span><span class="w"> </span><span class="mi">13</span><span class="w"> </span><span class="mi">03</span><span class="err">:</span><span class="mi">20</span><span class="w"> </span><span class="n">hello</span><span class="p">.</span><span class="n">c</span>
+<span class="o">-</span><span class="n">rw</span><span class="o">-</span><span class="n">r</span><span class="o">--</span><span class="n">r</span><span class="o">--</span><span class="p">.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="mi">16877</span><span class="w"> </span><span class="n">Sep</span><span class="w"> </span><span class="mi">13</span><span class="w"> </span><span class="mi">03</span><span class="err">:</span><span class="mi">22</span><span class="w"> </span><span class="n">hello</span><span class="p">.</span><span class="n">i</span>
+<span class="o">-</span><span class="n">rw</span><span class="o">-</span><span class="n">r</span><span class="o">--</span><span class="n">r</span><span class="o">--</span><span class="p">.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="mi">1496</span><span class="w"> </span><span class="n">Sep</span><span class="w"> </span><span class="mi">13</span><span class="w"> </span><span class="mi">03</span><span class="err">:</span><span class="mi">39</span><span class="w"> </span><span class="n">hello</span><span class="p">.</span><span class="n">o</span>
+<span class="o">-</span><span class="n">rw</span><span class="o">-</span><span class="n">r</span><span class="o">--</span><span class="n">r</span><span class="o">--</span><span class="p">.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="mi">448</span><span class="w"> </span><span class="n">Sep</span><span class="w"> </span><span class="mi">13</span><span class="w"> </span><span class="mi">03</span><span class="err">:</span><span class="mi">25</span><span class="w"> </span><span class="n">hello</span><span class="p">.</span><span class="n">s</span>
+<span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span>
+</code></pre></div>
+
+<p>现在，你有了第一个 ELF 格式的文件；但是，还不能执行它。稍后，你将看到“<ruby> 目标文件 <rt>  object file </rt></ruby>”和“<ruby> 可执行文件 <rt>  executable file </rt></ruby>”之间的区别。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="k">file</span><span class="w"> </span><span class="n">hello</span><span class="p">.</span><span class="n">o</span>
+<span class="n">hello</span><span class="p">.</span><span class="nl">o</span><span class="p">:</span><span class="w"> </span><span class="n">ELF</span><span class="w"> </span><span class="mi">64</span><span class="o">-</span><span class="nc">bit</span><span class="w"> </span><span class="n">LSB</span><span class="w"> </span><span class="n">relocatable</span><span class="p">,</span><span class="w"> </span><span class="n">x86</span><span class="o">-</span><span class="mi">64</span><span class="p">,</span><span class="w"> </span><span class="n">version</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">(</span><span class="n">SYSV</span><span class="p">),</span><span class="w"> </span><span class="ow">not</span><span class="w"> </span><span class="n">stripped</span>
+</code></pre></div>
+
+<h4>步骤 4：用 ld 链接</h4>
+<p>这是编译的最后阶段，将目标文件链接以创建可执行文件。可执行文件通常需要外部函数，这些外部函数通常来自系统库（<code>libc</code>）。</p>
+<p>你可以使用 <code>ld</code> 命令直接调用链接器；但是，此命令有些复杂。相反，你可以使用带有 <code>-v</code>（详细）标志的 <code>gcc</code> 编译器，以了解链接是如何发生的。（使用 <code>ld</code> 命令进行链接作为一个练习，你可以自行探索。）</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">gcc</span><span class="w"> </span><span class="o">-</span><span class="n">v</span><span class="w"> </span><span class="n">hello</span><span class="p">.</span><span class="n">o</span>
+<span class="k">Using</span><span class="w"> </span><span class="n">built</span><span class="o">-</span><span class="ow">in</span><span class="w"> </span><span class="n">specs</span><span class="p">.</span>
+<span class="n">COLLECT_GCC</span><span class="o">=</span><span class="n">gcc</span>
+<span class="n">COLLECT_LTO_WRAPPER</span><span class="o">=/</span><span class="n">usr</span><span class="o">/</span><span class="n">libexec</span><span class="o">/</span><span class="n">gcc</span><span class="o">/</span><span class="n">x86_64</span><span class="o">-</span><span class="n">redhat</span><span class="o">-</span><span class="n">linux</span><span class="o">/</span><span class="mf">4.8.5</span><span class="o">/</span><span class="n">lto</span><span class="o">-</span><span class="n">wrapper</span>
+<span class="nl">Target</span><span class="p">:</span><span class="w"> </span><span class="n">x86_64</span><span class="o">-</span><span class="n">redhat</span><span class="o">-</span><span class="n">linux</span>
+<span class="n">Configured</span><span class="w"> </span><span class="k">with</span><span class="err">:</span><span class="w"> </span><span class="p">..</span><span class="o">/</span><span class="n">configure</span><span class="w"> </span><span class="o">--</span><span class="k">prefix</span><span class="o">=/</span><span class="n">usr</span><span class="w"> </span><span class="o">--</span><span class="n">mandir</span><span class="o">=/</span><span class="n">usr</span><span class="o">/</span><span class="n">share</span><span class="o">/</span><span class="n">man</span><span class="w"> </span><span class="o">[</span><span class="n">...</span><span class="o">]</span><span class="w"> </span><span class="o">--</span><span class="n">build</span><span class="o">=</span><span class="n">x86_64</span><span class="o">-</span><span class="n">redhat</span><span class="o">-</span><span class="n">linux</span>
+<span class="n">Thread</span><span class="w"> </span><span class="nl">model</span><span class="p">:</span><span class="w"> </span><span class="n">posix</span>
+<span class="n">gcc</span><span class="w"> </span><span class="n">version</span><span class="w"> </span><span class="mf">4.8.5</span><span class="w"> </span><span class="mi">20150623</span><span class="w"> </span><span class="p">(</span><span class="n">Red</span><span class="w"> </span><span class="n">Hat</span><span class="w"> </span><span class="mf">4.8.5</span><span class="o">-</span><span class="mi">36</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="n">GCC</span><span class="p">)</span>
+<span class="n">COMPILER_PATH</span><span class="o">=/</span><span class="n">usr</span><span class="o">/</span><span class="n">libexec</span><span class="o">/</span><span class="n">gcc</span><span class="o">/</span><span class="n">x86_64</span><span class="o">-</span><span class="n">redhat</span><span class="o">-</span><span class="n">linux</span><span class="o">/</span><span class="mf">4.8.5</span><span class="o">/</span><span class="err">:</span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">libexec</span><span class="o">/</span><span class="n">gcc</span><span class="o">/</span><span class="n">x86_64</span><span class="o">-</span><span class="n">redhat</span><span class="o">-</span><span class="n">linux</span><span class="o">/</span><span class="mf">4.8.5</span><span class="o">/</span><span class="err">:</span><span class="o">[</span><span class="n">...</span><span class="o">]</span><span class="err">:</span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">gcc</span><span class="o">/</span><span class="n">x86_64</span><span class="o">-</span><span class="n">redhat</span><span class="o">-</span><span class="n">linux</span><span class="o">/</span>
+<span class="n">LIBRARY_PATH</span><span class="o">=/</span><span class="n">usr</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">gcc</span><span class="o">/</span><span class="n">x86_64</span><span class="o">-</span><span class="n">redhat</span><span class="o">-</span><span class="n">linux</span><span class="o">/</span><span class="mf">4.8.5</span><span class="o">/</span><span class="err">:</span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">gcc</span><span class="o">/</span><span class="n">x86_64</span><span class="o">-</span><span class="n">redhat</span><span class="o">-</span><span class="n">linux</span><span class="o">/</span><span class="mf">4.8.5</span><span class="o">/</span><span class="p">..</span><span class="o">/</span><span class="p">..</span><span class="o">/</span><span class="p">..</span><span class="o">/</span><span class="p">..</span><span class="o">/</span><span class="n">lib64</span><span class="o">/</span><span class="err">:</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="p">..</span><span class="o">/</span><span class="n">lib64</span><span class="o">/</span><span class="err">:</span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="p">..</span><span class="o">/</span><span class="n">lib64</span><span class="o">/</span><span class="err">:</span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">gcc</span><span class="o">/</span><span class="n">x86_64</span><span class="o">-</span><span class="n">redhat</span><span class="o">-</span><span class="n">linux</span><span class="o">/</span><span class="mf">4.8.5</span><span class="o">/</span><span class="p">..</span><span class="o">/</span><span class="p">..</span><span class="o">/</span><span class="p">..</span><span class="o">/</span><span class="err">:</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="err">:</span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span>
+<span class="n">COLLECT_GCC_OPTIONS</span><span class="o">=</span><span class="s1">&#39;-v&#39;</span><span class="w"> </span><span class="s1">&#39;-mtune=generic&#39;</span><span class="w"> </span><span class="s1">&#39;-march=x86-64&#39;</span>
+<span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">libexec</span><span class="o">/</span><span class="n">gcc</span><span class="o">/</span><span class="n">x86_64</span><span class="o">-</span><span class="n">redhat</span><span class="o">-</span><span class="n">linux</span><span class="o">/</span><span class="mf">4.8.5</span><span class="o">/</span><span class="n">collect2</span><span class="w"> </span><span class="o">--</span><span class="n">build</span><span class="o">-</span><span class="n">id</span><span class="w"> </span><span class="o">--</span><span class="k">no</span><span class="o">-</span><span class="k">add</span><span class="o">-</span><span class="n">needed</span><span class="w"> </span><span class="o">--</span><span class="n">eh</span><span class="o">-</span><span class="n">frame</span><span class="o">-</span><span class="n">hdr</span><span class="w"> </span><span class="o">--</span><span class="n">hash</span><span class="o">-</span><span class="n">style</span><span class="o">=</span><span class="n">gnu</span><span class="w"> </span><span class="o">[</span><span class="n">...</span><span class="o">]/</span><span class="p">..</span><span class="o">/</span><span class="p">..</span><span class="o">/</span><span class="p">..</span><span class="o">/</span><span class="p">..</span><span class="o">/</span><span class="n">lib64</span><span class="o">/</span><span class="n">crtn</span><span class="p">.</span><span class="n">o</span>
+<span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span>
+</code></pre></div>
+
+<p>运行此命令后，你应该看到一个名为 <code>a.out</code> 的可执行文件：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">ls</span><span class="w"> </span><span class="o">-</span><span class="n">l</span>
+<span class="n">total</span><span class="w"> </span><span class="mi">44</span>
+<span class="o">-</span><span class="n">rwxr</span><span class="o">-</span><span class="n">xr</span><span class="o">-</span><span class="n">x</span><span class="p">.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="mi">8440</span><span class="w"> </span><span class="n">Sep</span><span class="w"> </span><span class="mi">13</span><span class="w"> </span><span class="mi">03</span><span class="err">:</span><span class="mi">45</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">out</span>
+<span class="o">-</span><span class="n">rw</span><span class="o">-</span><span class="n">r</span><span class="o">--</span><span class="n">r</span><span class="o">--</span><span class="p">.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="mi">76</span><span class="w"> </span><span class="n">Sep</span><span class="w"> </span><span class="mi">13</span><span class="w"> </span><span class="mi">03</span><span class="err">:</span><span class="mi">20</span><span class="w"> </span><span class="n">hello</span><span class="p">.</span><span class="n">c</span>
+<span class="o">-</span><span class="n">rw</span><span class="o">-</span><span class="n">r</span><span class="o">--</span><span class="n">r</span><span class="o">--</span><span class="p">.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="mi">16877</span><span class="w"> </span><span class="n">Sep</span><span class="w"> </span><span class="mi">13</span><span class="w"> </span><span class="mi">03</span><span class="err">:</span><span class="mi">22</span><span class="w"> </span><span class="n">hello</span><span class="p">.</span><span class="n">i</span>
+<span class="o">-</span><span class="n">rw</span><span class="o">-</span><span class="n">r</span><span class="o">--</span><span class="n">r</span><span class="o">--</span><span class="p">.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="mi">1496</span><span class="w"> </span><span class="n">Sep</span><span class="w"> </span><span class="mi">13</span><span class="w"> </span><span class="mi">03</span><span class="err">:</span><span class="mi">39</span><span class="w"> </span><span class="n">hello</span><span class="p">.</span><span class="n">o</span>
+<span class="o">-</span><span class="n">rw</span><span class="o">-</span><span class="n">r</span><span class="c1">--r--. 1 root root 448 Sep 13 03:25 hello.s</span>
+</code></pre></div>
+
+<p>对 <code>a.out</code> 运行 <code>file</code> 命令，结果表明它确实是 ELF 可执行文件：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="k">file</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">out</span>
+<span class="n">a</span><span class="p">.</span><span class="k">out</span><span class="err">:</span><span class="w"> </span><span class="n">ELF</span><span class="w"> </span><span class="mi">64</span><span class="o">-</span><span class="nc">bit</span><span class="w"> </span><span class="n">LSB</span><span class="w"> </span><span class="n">executable</span><span class="p">,</span><span class="w"> </span><span class="n">x86</span><span class="o">-</span><span class="mi">64</span><span class="p">,</span><span class="w"> </span><span class="n">version</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">(</span><span class="n">SYSV</span><span class="p">),</span><span class="w"> </span><span class="n">dynamically</span><span class="w"> </span><span class="n">linked</span><span class="w"> </span><span class="p">(</span><span class="n">uses</span><span class="w"> </span><span class="n">shared</span><span class="w"> </span><span class="n">libs</span><span class="p">),</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">GNU</span><span class="o">/</span><span class="n">Linux</span><span class="w"> </span><span class="mf">2.6.32</span><span class="p">,</span><span class="w"> </span><span class="n">BuildID</span><span class="o">[</span><span class="n">sha1</span><span class="o">]=</span><span class="mf">48e4</span><span class="n">c11901d54d4bf1b6e3826baf18215e4255e5</span><span class="p">,</span><span class="w"> </span><span class="ow">not</span><span class="w"> </span><span class="n">stripped</span>
+</code></pre></div>
+
+<p>运行该可执行文件，看看它是否如源代码所示工作：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="p">.</span><span class="o">/</span><span class="n">a</span><span class="p">.</span><span class="k">out</span><span class="w"> </span><span class="n">Hello</span><span class="w"> </span><span class="n">World</span>
+</code></pre></div>
+
+<p>工作了！在幕后发生了很多事情它才在屏幕上打印了 “Hello World”。想象一下在更复杂的程序中会发生什么。</p>
+<h3>探索 binutils 工具</h3>
+<p>上面这个练习为使用 binutils 软件包中的工具提供了良好的背景。我的系统带有 binutils 版本 2.27-34；你的 Linux 发行版上的版本可能有所不同。</p>
+<div class="highlight"><pre><span></span><code>[~]# rpm -qa | grep binutils 
+binutils-2.27-34.base.el7.x86_64
+</code></pre></div>
+
+<p>binutils 软件包中提供了以下工具：</p>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="o">~</span><span class="p">]</span><span class="err">#</span><span class="w"> </span><span class="nx">rpm</span><span class="w"> </span><span class="o">-</span><span class="nx">ql</span><span class="w"> </span><span class="nx">binutils</span><span class="o">-</span><span class="m m-Double">2.27</span><span class="o">-</span><span class="mi">34</span><span class="p">.</span><span class="kd">base</span><span class="p">.</span><span class="nx">el7</span><span class="p">.</span><span class="nx">x86_64</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nx">grep</span><span class="w"> </span><span class="nx">bin</span><span class="o">/</span>
+<span class="o">/</span><span class="nx">usr</span><span class="o">/</span><span class="nx">bin</span><span class="o">/</span><span class="nx">addr2line</span>
+<span class="o">/</span><span class="nx">usr</span><span class="o">/</span><span class="nx">bin</span><span class="o">/</span><span class="nx">ar</span>
+<span class="o">/</span><span class="nx">usr</span><span class="o">/</span><span class="nx">bin</span><span class="o">/</span><span class="k">as</span>
+<span class="o">/</span><span class="nx">usr</span><span class="o">/</span><span class="nx">bin</span><span class="o">/</span><span class="nx">c</span><span class="o">++</span><span class="nx">filt</span>
+<span class="o">/</span><span class="nx">usr</span><span class="o">/</span><span class="nx">bin</span><span class="o">/</span><span class="nx">dwp</span>
+<span class="o">/</span><span class="nx">usr</span><span class="o">/</span><span class="nx">bin</span><span class="o">/</span><span class="nx">elfedit</span>
+<span class="o">/</span><span class="nx">usr</span><span class="o">/</span><span class="nx">bin</span><span class="o">/</span><span class="nx">gprof</span>
+<span class="o">/</span><span class="nx">usr</span><span class="o">/</span><span class="nx">bin</span><span class="o">/</span><span class="nx">ld</span>
+<span class="o">/</span><span class="nx">usr</span><span class="o">/</span><span class="nx">bin</span><span class="o">/</span><span class="nx">ld</span><span class="p">.</span><span class="nx">bfd</span>
+<span class="o">/</span><span class="nx">usr</span><span class="o">/</span><span class="nx">bin</span><span class="o">/</span><span class="nx">ld</span><span class="p">.</span><span class="nx">gold</span>
+<span class="o">/</span><span class="nx">usr</span><span class="o">/</span><span class="nx">bin</span><span class="o">/</span><span class="nx">nm</span>
+<span class="o">/</span><span class="nx">usr</span><span class="o">/</span><span class="nx">bin</span><span class="o">/</span><span class="nx">objcopy</span>
+<span class="o">/</span><span class="nx">usr</span><span class="o">/</span><span class="nx">bin</span><span class="o">/</span><span class="nx">objdump</span>
+<span class="o">/</span><span class="nx">usr</span><span class="o">/</span><span class="nx">bin</span><span class="o">/</span><span class="nx">ranlib</span>
+<span class="o">/</span><span class="nx">usr</span><span class="o">/</span><span class="nx">bin</span><span class="o">/</span><span class="nx">readelf</span>
+<span class="o">/</span><span class="nx">usr</span><span class="o">/</span><span class="nx">bin</span><span class="o">/</span><span class="nx">size</span>
+<span class="o">/</span><span class="nx">usr</span><span class="o">/</span><span class="nx">bin</span><span class="o">/</span><span class="nx">strings</span>
+<span class="o">/</span><span class="nx">usr</span><span class="o">/</span><span class="nx">bin</span><span class="o">/</span><span class="nx">strip</span>
+</code></pre></div>
+
+<p>上面的编译练习已经探索了其中的两个工具：用作汇编器的 <code>as</code> 命令，用作链接器的 <code>ld</code> 命令。继续阅读以了解上述 GNU binutils 软件包工具中的其他七个。</p>
+<h4>readelf：显示 ELF 文件信息</h4>
+<p>上面的练习提到了术语“目标文件”和“可执行文件”。使用该练习中的文件，通过带有 <code>-h</code>（标题）选项的 <code>readelf</code> 命令，以将文件的 ELF 标题转储到屏幕上。请注意，以 <code>.o</code> 扩展名结尾的目标文件显示为 <code>Type: REL (Relocatable file)</code>（可重定位文件）：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">readelf</span><span class="w"> </span><span class="o">-</span><span class="n">h</span><span class="w"> </span><span class="n">hello</span><span class="p">.</span><span class="n">o</span>
+<span class="n">ELF</span><span class="w"> </span><span class="nl">Header</span><span class="p">:</span>
+<span class="nl">Magic</span><span class="p">:</span><span class="w"> </span><span class="mi">7</span><span class="n">f</span><span class="w"> </span><span class="mi">45</span><span class="w"> </span><span class="mi">4</span><span class="n">c</span><span class="w"> </span><span class="mi">46</span><span class="w"> </span><span class="mi">02</span><span class="w"> </span><span class="mi">01</span><span class="w"> </span><span class="mi">01</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="o">[</span><span class="n">...</span><span class="o">]</span>
+<span class="o">[</span><span class="n">...</span><span class="o">]</span>
+<span class="nl">Type</span><span class="p">:</span><span class="w"> </span><span class="n">REL</span><span class="w"> </span><span class="p">(</span><span class="n">Relocatable</span><span class="w"> </span><span class="k">file</span><span class="p">)</span>
+<span class="o">[</span><span class="n">...</span><span class="o">]</span>
+</code></pre></div>
+
+<p>如果尝试执行此目标文件，会收到一条错误消息，指出无法执行。这仅表示它尚不具备在 CPU 上执行所需的信息。</p>
+<p>请记住，你首先需要使用 <code>chmod</code> 命令在对象文件上添加 <code>x</code>（可执行位），否则你将得到“权限被拒绝”的错误。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="p">.</span><span class="o">/</span><span class="n">hello</span><span class="p">.</span><span class="n">o</span>
+<span class="nl">bash</span><span class="p">:</span><span class="w"> </span><span class="p">.</span><span class="o">/</span><span class="n">hello</span><span class="p">.</span><span class="nl">o</span><span class="p">:</span><span class="w"> </span><span class="n">Permission</span><span class="w"> </span><span class="n">denied</span>
+<span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">chmod</span><span class="w"> </span><span class="o">+</span><span class="n">x</span><span class="w"> </span><span class="p">.</span><span class="o">/</span><span class="n">hello</span><span class="p">.</span><span class="n">o</span>
+<span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span>
+<span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="p">.</span><span class="o">/</span><span class="n">hello</span><span class="p">.</span><span class="n">o</span>
+<span class="nl">bash</span><span class="p">:</span><span class="w"> </span><span class="p">.</span><span class="o">/</span><span class="n">hello</span><span class="p">.</span><span class="nl">o</span><span class="p">:</span><span class="w"> </span><span class="n">cannot</span><span class="w"> </span><span class="k">execute</span><span class="w"> </span><span class="nc">binary</span><span class="w"> </span><span class="k">file</span>
+</code></pre></div>
+
+<p>如果对 <code>a.out</code> 文件尝试相同的命令，则会看到其类型为 <code>EXEC (Executable file)</code>（可执行文件）。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">readelf</span><span class="w"> </span><span class="o">-</span><span class="n">h</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">out</span>
+<span class="n">ELF</span><span class="w"> </span><span class="nl">Header</span><span class="p">:</span>
+<span class="nl">Magic</span><span class="p">:</span><span class="w"> </span><span class="mi">7</span><span class="n">f</span><span class="w"> </span><span class="mi">45</span><span class="w"> </span><span class="mi">4</span><span class="n">c</span><span class="w"> </span><span class="mi">46</span><span class="w"> </span><span class="mi">02</span><span class="w"> </span><span class="mi">01</span><span class="w"> </span><span class="mi">01</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span>
+<span class="k">Class</span><span class="err">:</span><span class="w"> </span><span class="n">ELF64</span>
+<span class="o">[</span><span class="n">...</span><span class="o">]</span><span class="w"> </span><span class="nl">Type</span><span class="p">:</span><span class="w"> </span><span class="k">EXEC</span><span class="w"> </span><span class="p">(</span><span class="n">Executable</span><span class="w"> </span><span class="k">file</span><span class="p">)</span>
+</code></pre></div>
+
+<p>如上所示，该文件可以直接由 CPU 执行：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="p">.</span><span class="o">/</span><span class="n">a</span><span class="p">.</span><span class="k">out</span><span class="w"> </span><span class="n">Hello</span><span class="w"> </span><span class="n">World</span>
+</code></pre></div>
+
+<p><code>readelf</code> 命令可提供有关二进制文件的大量信息。在这里，它会告诉你它是 ELF 64 位格式，这意味着它只能在 64 位 CPU 上执行，而不能在 32 位 CPU 上运行。它还告诉你它应在 X86-64（Intel/AMD）架构上执行。该二进制文件的入口点是地址 <code>0x400430</code>，它就是 C 源程序中 <code>main</code> 函数的地址。</p>
+<p>在你知道的其他系统二进制文件上尝试一下 <code>readelf</code> 命令，例如 <code>ls</code>。请注意，在 RHEL 8 或 Fedora 30 及更高版本的系统上，由于安全原因改用了<ruby> 位置无关可执行文件 <rt>  position independent executable </rt></ruby>（<a href="https://en.wikipedia.org/wiki/Position-independent_code#Position-independent_executables">PIE</a>），因此你的输出（尤其是 <code>Type:</code>）可能会有所不同。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">readelf</span><span class="w"> </span><span class="o">-</span><span class="n">h</span><span class="w"> </span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">ls</span>
+<span class="n">ELF</span><span class="w"> </span><span class="nl">Header</span><span class="p">:</span>
+<span class="nl">Magic</span><span class="p">:</span><span class="w"> </span><span class="mi">7</span><span class="n">f</span><span class="w"> </span><span class="mi">45</span><span class="w"> </span><span class="mi">4</span><span class="n">c</span><span class="w"> </span><span class="mi">46</span><span class="w"> </span><span class="mi">02</span><span class="w"> </span><span class="mi">01</span><span class="w"> </span><span class="mi">01</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span>
+<span class="k">Class</span><span class="err">:</span><span class="w"> </span><span class="n">ELF64</span>
+<span class="k">Data</span><span class="err">:</span><span class="w"> </span><span class="mi">2</span><span class="err">&#39;</span><span class="n">s</span><span class="w"> </span><span class="n">complement</span><span class="p">,</span><span class="w"> </span><span class="n">little</span><span class="w"> </span><span class="n">endian</span>
+<span class="nl">Version</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">(</span><span class="k">current</span><span class="p">)</span>
+<span class="n">OS</span><span class="o">/</span><span class="nl">ABI</span><span class="p">:</span><span class="w"> </span><span class="n">UNIX</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="k">System</span><span class="w"> </span><span class="n">V</span>
+<span class="n">ABI</span><span class="w"> </span><span class="nl">Version</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="nl">Type</span><span class="p">:</span><span class="w"> </span><span class="k">EXEC</span><span class="w"> </span><span class="p">(</span><span class="n">Executable</span><span class="w"> </span><span class="k">file</span><span class="p">)</span>
+</code></pre></div>
+
+<p>使用 <code>ldd</code> 命令了解 <code>ls</code> 命令所依赖的系统库，如下所示：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">ldd</span><span class="w"> </span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">ls</span>
+<span class="n">linux</span><span class="o">-</span><span class="n">vdso</span><span class="p">.</span><span class="n">so</span><span class="mf">.1</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">(</span><span class="mh">0x00007ffd7d746000</span><span class="p">)</span>
+<span class="n">libselinux</span><span class="p">.</span><span class="n">so</span><span class="mf">.1</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="o">/</span><span class="n">lib64</span><span class="o">/</span><span class="n">libselinux</span><span class="p">.</span><span class="n">so</span><span class="mf">.1</span><span class="w"> </span><span class="p">(</span><span class="mh">0x00007f060daca000</span><span class="p">)</span>
+<span class="n">libcap</span><span class="p">.</span><span class="n">so</span><span class="mf">.2</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="o">/</span><span class="n">lib64</span><span class="o">/</span><span class="n">libcap</span><span class="p">.</span><span class="n">so</span><span class="mf">.2</span><span class="w"> </span><span class="p">(</span><span class="mh">0x00007f060d8c5000</span><span class="p">)</span>
+<span class="n">libacl</span><span class="p">.</span><span class="n">so</span><span class="mf">.1</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="o">/</span><span class="n">lib64</span><span class="o">/</span><span class="n">libacl</span><span class="p">.</span><span class="n">so</span><span class="mf">.1</span><span class="w"> </span><span class="p">(</span><span class="mh">0x00007f060d6bc000</span><span class="p">)</span>
+<span class="n">libc</span><span class="p">.</span><span class="n">so</span><span class="mf">.6</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="o">/</span><span class="n">lib64</span><span class="o">/</span><span class="n">libc</span><span class="p">.</span><span class="n">so</span><span class="mf">.6</span><span class="w"> </span><span class="p">(</span><span class="mh">0x00007f060d2ef000</span><span class="p">)</span>
+<span class="n">libpcre</span><span class="p">.</span><span class="n">so</span><span class="mf">.1</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="o">/</span><span class="n">lib64</span><span class="o">/</span><span class="n">libpcre</span><span class="p">.</span><span class="n">so</span><span class="mf">.1</span><span class="w"> </span><span class="p">(</span><span class="mh">0x00007f060d08d000</span><span class="p">)</span>
+<span class="n">libdl</span><span class="p">.</span><span class="n">so</span><span class="mf">.2</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="o">/</span><span class="n">lib64</span><span class="o">/</span><span class="n">libdl</span><span class="p">.</span><span class="n">so</span><span class="mf">.2</span><span class="w"> </span><span class="p">(</span><span class="mh">0x00007f060ce89000</span><span class="p">)</span>
+<span class="o">/</span><span class="n">lib64</span><span class="o">/</span><span class="n">ld</span><span class="o">-</span><span class="n">linux</span><span class="o">-</span><span class="n">x86</span><span class="o">-</span><span class="mf">64.</span><span class="n">so</span><span class="mf">.2</span><span class="w"> </span><span class="p">(</span><span class="mh">0x00007f060dcf1000</span><span class="p">)</span>
+<span class="n">libattr</span><span class="p">.</span><span class="n">so</span><span class="mf">.1</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="o">/</span><span class="n">lib64</span><span class="o">/</span><span class="n">libattr</span><span class="p">.</span><span class="n">so</span><span class="mf">.1</span><span class="w"> </span><span class="p">(</span><span class="mh">0x00007f060cc84000</span><span class="p">)</span>
+<span class="n">libpthread</span><span class="p">.</span><span class="n">so</span><span class="mf">.0</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="o">/</span><span class="n">lib64</span><span class="o">/</span><span class="n">libpthread</span><span class="p">.</span><span class="n">so</span><span class="mf">.0</span><span class="w"> </span><span class="p">(</span><span class="mh">0x00007f060ca68000</span><span class="p">)</span>
+</code></pre></div>
+
+<p>对 <code>libc</code> 库文件运行 <code>readelf</code> 以查看它是哪种文件。正如它指出的那样，它是一个 <code>DYN (Shared object file)</code>（共享对象文件），这意味着它不能直接执行；必须由内部使用了该库提供的任何函数的可执行文件使用它。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">readelf</span><span class="w"> </span><span class="o">-</span><span class="n">h</span><span class="w"> </span><span class="o">/</span><span class="n">lib64</span><span class="o">/</span><span class="n">libc</span><span class="p">.</span><span class="n">so</span><span class="mf">.6</span>
+<span class="n">ELF</span><span class="w"> </span><span class="nl">Header</span><span class="p">:</span>
+<span class="nl">Magic</span><span class="p">:</span><span class="w"> </span><span class="mi">7</span><span class="n">f</span><span class="w"> </span><span class="mi">45</span><span class="w"> </span><span class="mi">4</span><span class="n">c</span><span class="w"> </span><span class="mi">46</span><span class="w"> </span><span class="mi">02</span><span class="w"> </span><span class="mi">01</span><span class="w"> </span><span class="mi">01</span><span class="w"> </span><span class="mi">03</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span>
+<span class="k">Class</span><span class="err">:</span><span class="w"> </span><span class="n">ELF64</span>
+<span class="k">Data</span><span class="err">:</span><span class="w"> </span><span class="mi">2</span><span class="err">&#39;</span><span class="n">s</span><span class="w"> </span><span class="n">complement</span><span class="p">,</span><span class="w"> </span><span class="n">little</span><span class="w"> </span><span class="n">endian</span>
+<span class="nl">Version</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">(</span><span class="k">current</span><span class="p">)</span>
+<span class="n">OS</span><span class="o">/</span><span class="nl">ABI</span><span class="p">:</span><span class="w"> </span><span class="n">UNIX</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">GNU</span>
+<span class="n">ABI</span><span class="w"> </span><span class="nl">Version</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="nl">Type</span><span class="p">:</span><span class="w"> </span><span class="n">DYN</span><span class="w"> </span><span class="p">(</span><span class="n">Shared</span><span class="w"> </span><span class="k">object</span><span class="w"> </span><span class="k">file</span><span class="p">)</span>
+</code></pre></div>
+
+<h4>size：列出节的大小和全部大小</h4>
+<p><code>size</code> 命令仅适用于目标文件和可执行文件，因此，如果尝试在简单的 ASCII 文件上运行它，则会抛出错误，提示“文件格式无法识别”。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">echo</span><span class="w"> </span><span class="ss">&quot;test&quot;</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">file1</span>
+<span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="n">file1</span>
+<span class="n">test</span>
+<span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="k">file</span><span class="w"> </span><span class="n">file1</span>
+<span class="nl">file1</span><span class="p">:</span><span class="w"> </span><span class="nf">ASCII</span><span class="w"> </span><span class="nc">text</span>
+<span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="k">size</span><span class="w"> </span><span class="n">file1</span>
+<span class="k">size</span><span class="err">:</span><span class="w"> </span><span class="nl">file1</span><span class="p">:</span><span class="w"> </span><span class="k">File</span><span class="w"> </span><span class="nf">format</span><span class="w"> </span><span class="ow">not</span><span class="w"> </span><span class="n">recognized</span>
+</code></pre></div>
+
+<p>现在，在上面的练习中，对目标文件和可执行文件运行 <code>size</code> 命令。请注意，根据 <code>size</code> 命令的输出可以看出，可执行文件（<code>a.out</code>）的信息要比目标文件（<code>hello.o</code>）多得多：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="k">size</span><span class="w"> </span><span class="n">hello</span><span class="p">.</span><span class="n">o</span>
+<span class="nc">text</span><span class="w"> </span><span class="k">data</span><span class="w"> </span><span class="n">bss</span><span class="w"> </span><span class="k">dec</span><span class="w"> </span><span class="n">hex</span><span class="w"> </span><span class="n">filename</span>
+<span class="mi">89</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="mi">89</span><span class="w"> </span><span class="mi">59</span><span class="w"> </span><span class="n">hello</span><span class="p">.</span><span class="n">o</span>
+<span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="k">size</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">out</span>
+<span class="nc">text</span><span class="w"> </span><span class="k">data</span><span class="w"> </span><span class="n">bss</span><span class="w"> </span><span class="k">dec</span><span class="w"> </span><span class="n">hex</span><span class="w"> </span><span class="n">filename</span>
+<span class="mi">1194</span><span class="w"> </span><span class="mi">540</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="mi">1738</span><span class="w"> </span><span class="mi">6</span><span class="n">ca</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">out</span>
+</code></pre></div>
+
+<p>但是这里的 <code>text</code>、<code>data</code> 和 <code>bss</code> 节是什么意思？</p>
+<p><code>text</code> 节是指二进制文件的代码部分，其中包含所有可执行指令。<code>data</code> 节是所有初始化数据所在的位置，<code>bss</code> 节是所有未初始化数据的存储位置。（LCTT 译注：一般来说，在静态的映像文件中，各个部分称之为<ruby> 节 <rt>  section </rt></ruby>，而在运行时的各个部分称之为<ruby> 段 <rt>  segment </rt></ruby>，有时统称为段。）</p>
+<p>比较其他一些可用的系统二进制文件的 <code>size</code> 结果。</p>
+<p>对于 <code>ls</code> 命令：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="k">size</span><span class="w"> </span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">ls</span>
+<span class="nc">text</span><span class="w"> </span><span class="k">data</span><span class="w"> </span><span class="n">bss</span><span class="w"> </span><span class="k">dec</span><span class="w"> </span><span class="n">hex</span><span class="w"> </span><span class="n">filename</span>
+<span class="mi">103119</span><span class="w"> </span><span class="mi">4768</span><span class="w"> </span><span class="mi">3360</span><span class="w"> </span><span class="mi">111247</span><span class="w"> </span><span class="mi">1</span><span class="n">b28f</span><span class="w"> </span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">ls</span>
+</code></pre></div>
+
+<p>只需查看 <code>size</code> 命令的输出，你就可以看到 <code>gcc</code> 和 <code>gdb</code> 是比 <code>ls</code> 大得多的程序：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="k">size</span><span class="w"> </span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">gcc</span>
+<span class="nc">text</span><span class="w"> </span><span class="k">data</span><span class="w"> </span><span class="n">bss</span><span class="w"> </span><span class="k">dec</span><span class="w"> </span><span class="n">hex</span><span class="w"> </span><span class="n">filename</span>
+<span class="mi">755549</span><span class="w"> </span><span class="mi">8464</span><span class="w"> </span><span class="mi">81856</span><span class="w"> </span><span class="mi">845869</span><span class="w"> </span><span class="n">ce82d</span><span class="w"> </span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">gcc</span>
+<span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="k">size</span><span class="w"> </span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">gdb</span>
+<span class="nc">text</span><span class="w"> </span><span class="k">data</span><span class="w"> </span><span class="n">bss</span><span class="w"> </span><span class="k">dec</span><span class="w"> </span><span class="n">hex</span><span class="w"> </span><span class="n">filename</span>
+<span class="mi">6650433</span><span class="w"> </span><span class="mi">90842</span><span class="w"> </span><span class="mi">152280</span><span class="w"> </span><span class="mi">6893555</span><span class="w"> </span><span class="mi">692</span><span class="n">ff3</span><span class="w"> </span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">gdb</span>
+</code></pre></div>
+
+<h4>strings：打印文件中的可打印字符串</h4>
+<p>在 <code>strings</code> 命令中添加 <code>-d</code> 标志以仅显示 <code>data</code> 节中的可打印字符通常很有用。</p>
+<p><code>hello.o</code> 是一个目标文件，其中包含打印出 <code>Hello World</code> 文本的指令。因此，<code>strings</code> 命令的唯一输出是 <code>Hello World</code>。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">strings</span><span class="w"> </span><span class="o">-</span><span class="n">d</span><span class="w"> </span><span class="n">hello</span><span class="p">.</span><span class="n">o</span><span class="w"> </span>
+<span class="n">Hello</span><span class="w"> </span><span class="n">World</span>
+</code></pre></div>
+
+<p>另一方面，在 <code>a.out</code>（可执行文件）上运行 <code>strings</code> 会显示在链接阶段该二进制文件中包含的其他信息：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">strings</span><span class="w"> </span><span class="o">-</span><span class="n">d</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">out</span>
+<span class="o">/</span><span class="n">lib64</span><span class="o">/</span><span class="n">ld</span><span class="o">-</span><span class="n">linux</span><span class="o">-</span><span class="n">x86</span><span class="o">-</span><span class="mf">64.</span><span class="n">so</span><span class="mf">.2</span>
+<span class="err">!</span><span class="o">^</span><span class="n">BU</span>
+<span class="n">libc</span><span class="p">.</span><span class="n">so</span><span class="mf">.6</span>
+<span class="n">puts</span>
+<span class="n">__libc_start_main</span>
+<span class="n">__gmon_start__</span>
+<span class="n">GLIBC_2</span><span class="mf">.2.5</span>
+<span class="n">UH</span><span class="o">-</span><span class="mi">0</span>
+<span class="n">UH</span><span class="o">-</span><span class="mi">0</span>
+<span class="o">=</span><span class="p">(</span>
+<span class="err">[]</span><span class="n">A</span><span class="err">\</span><span class="n">A</span><span class="err">]</span><span class="n">A</span><span class="o">^</span><span class="n">A_</span>
+<span class="n">Hello</span><span class="w"> </span><span class="n">World</span>
+<span class="p">;</span><span class="o">*</span><span class="mi">3</span><span class="err">$&quot;</span>
+</code></pre></div>
+
+<h4>objdump：显示目标文件信息</h4>
+<p>另一个可以从二进制文件中转储机器语言指令的 binutils 工具称为 <code>objdump</code>。使用 <code>-d</code> 选项，可从二进制文件中反汇编出所有汇编指令。</p>
+<p>回想一下，编译是将源代码指令转换为机器代码的过程。机器代码仅由 1 和 0 组成，人类难以阅读。因此，它有助于将机器代码表示为汇编语言指令。汇编语言是什么样的？请记住，汇编语言是特定于体系结构的；由于我使用的是 Intel（x86-64）架构，因此如果你使用 ARM 架构编译相同的程序，指令将有所不同。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">objdump</span><span class="w"> </span><span class="o">-</span><span class="n">d</span><span class="w"> </span><span class="n">hello</span><span class="p">.</span><span class="n">o</span>
+<span class="n">hello</span><span class="p">.</span><span class="nl">o</span><span class="p">:</span><span class="w"> </span><span class="k">file</span><span class="w"> </span><span class="nf">format</span><span class="w"> </span><span class="n">elf64</span><span class="o">-</span><span class="n">x86</span><span class="o">-</span><span class="mi">64</span>
+<span class="n">Disassembly</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="k">section</span><span class="w"> </span><span class="p">.</span><span class="nc">text</span><span class="err">:</span>
+<span class="mi">0000000000000000</span>
+<span class="err">:</span>
+<span class="mi">0</span><span class="err">:</span><span class="w">  </span><span class="mi">55</span><span class="w">              </span><span class="n">push</span><span class="w"> </span><span class="o">%</span><span class="n">rbp</span>
+<span class="mi">1</span><span class="err">:</span><span class="w">  </span><span class="mi">48</span><span class="w"> </span><span class="mi">89</span><span class="w"> </span><span class="n">e5</span><span class="w">        </span><span class="n">mov</span><span class="w"> </span><span class="o">%</span><span class="n">rsp</span><span class="p">,</span><span class="o">%</span><span class="n">rbp</span>
+<span class="mi">4</span><span class="err">:</span><span class="w">  </span><span class="n">bf</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w">  </span><span class="n">mov</span><span class="w"> </span><span class="err">$</span><span class="mh">0x0</span><span class="p">,</span><span class="o">%</span><span class="n">edi</span>
+<span class="mi">9</span><span class="err">:</span><span class="w">  </span><span class="n">e8</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w">  </span><span class="n">callq</span><span class="w"> </span><span class="n">e</span>
+
+<span class="nl">e</span><span class="p">:</span><span class="w">  </span><span class="n">b8</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w">  </span><span class="n">mov</span><span class="w"> </span><span class="err">$</span><span class="mh">0x0</span><span class="p">,</span><span class="o">%</span><span class="n">eax</span>
+<span class="mi">13</span><span class="err">:</span><span class="w"> </span><span class="mi">5</span><span class="n">d</span><span class="w">              </span><span class="n">pop</span><span class="w"> </span><span class="o">%</span><span class="n">rbp</span>
+<span class="mi">14</span><span class="err">:</span><span class="w"> </span><span class="n">c3</span><span class="w">              </span><span class="n">retq</span>
+</code></pre></div>
+
+<p>该输出乍一看似乎令人生畏，但请花一点时间来理解它，然后再继续。回想一下，<code>.text</code> 节包含所有的机器代码指令。汇编指令可以在第四列中看到（即 <code>push</code>、<code>mov</code>、<code>callq</code>、<code>pop</code>、<code>retq</code> 等）。这些指令作用于寄存器，寄存器是 CPU 内置的存储器位置。本示例中的寄存器是 <code>rbp</code>、<code>rsp</code>、<code>edi</code>、<code>eax</code> 等，并且每个寄存器都有特殊的含义。</p>
+<p>现在对可执行文件（<code>a.out</code>）运行 <code>objdump</code> 并查看得到的内容。可执行文件的 <code>objdump</code> 的输出可能很大，因此我使用 <code>grep</code> 命令将其缩小到 <code>main</code> 函数：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">objdump</span><span class="w"> </span><span class="o">-</span><span class="n">d</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">out</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="o">-</span><span class="n">A</span><span class="w"> </span><span class="mi">9</span><span class="w"> </span><span class="n">main</span><span class="err">\</span><span class="o">&gt;</span>
+<span class="mi">000000000040051</span><span class="n">d</span>
+<span class="err">:</span>
+<span class="mi">40051</span><span class="nl">d</span><span class="p">:</span><span class="w"> </span><span class="mi">55</span><span class="w">              </span><span class="n">push</span><span class="w"> </span><span class="o">%</span><span class="n">rbp</span>
+<span class="mi">40051</span><span class="nl">e</span><span class="p">:</span><span class="w"> </span><span class="mi">48</span><span class="w"> </span><span class="mi">89</span><span class="w"> </span><span class="n">e5</span><span class="w">        </span><span class="n">mov</span><span class="w"> </span><span class="o">%</span><span class="n">rsp</span><span class="p">,</span><span class="o">%</span><span class="n">rbp</span>
+<span class="mi">400521</span><span class="err">:</span><span class="w"> </span><span class="n">bf</span><span class="w"> </span><span class="n">d0</span><span class="w"> </span><span class="mi">05</span><span class="w"> </span><span class="mi">40</span><span class="w"> </span><span class="mi">00</span><span class="w">  </span><span class="n">mov</span><span class="w"> </span><span class="err">$</span><span class="mh">0x4005d0</span><span class="p">,</span><span class="o">%</span><span class="n">edi</span>
+<span class="mi">400526</span><span class="err">:</span><span class="w"> </span><span class="n">e8</span><span class="w"> </span><span class="n">d5</span><span class="w"> </span><span class="n">fe</span><span class="w"> </span><span class="n">ff</span><span class="w"> </span><span class="n">ff</span><span class="w">  </span><span class="n">callq</span><span class="w"> </span><span class="mi">400400</span>
+<span class="mi">40052</span><span class="nl">b</span><span class="p">:</span><span class="w"> </span><span class="n">b8</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w">  </span><span class="n">mov</span><span class="w"> </span><span class="err">$</span><span class="mh">0x0</span><span class="p">,</span><span class="o">%</span><span class="n">eax</span>
+<span class="mi">400530</span><span class="err">:</span><span class="w"> </span><span class="mi">5</span><span class="n">d</span><span class="w">              </span><span class="n">pop</span><span class="w"> </span><span class="o">%</span><span class="n">rbp</span>
+<span class="mi">400531</span><span class="err">:</span><span class="w"> </span><span class="n">c3</span><span class="w">              </span><span class="n">retq</span>
+</code></pre></div>
+
+<p>请注意，这些指令与目标文件 <code>hello.o</code> 相似，但是其中包含一些其他信息：</p>
+<ul>
+<li>目标文件 <code>hello.o</code> 具有以下指令：<code>callq e</code></li>
+<li>可执行文件 <code>a.out</code> 由以下指令组成，该指令带有一个地址和函数：<code>callq 400400 &lt;puts@plt&gt;</code> 上面的汇编指令正在调用 <code>puts</code> 函数。请记住，你在源代码中使用了一个 <code>printf</code> 函数。编译器插入了对 <code>puts</code> 库函数的调用，以将 <code>Hello World</code> 输出到屏幕。</li>
+</ul>
+<p>查看 <code>put</code> 上方一行的说明：</p>
+<ul>
+<li>目标文件 <code>hello.o</code> 有个指令 <code>mov</code>：<code>mov $0x0,%edi</code></li>
+<li>可执行文件 <code>a.out</code> 的 <code>mov</code> 指令带有实际地址（<code>$0x4005d0</code>）而不是 <code>$0x0</code>：<code>mov $0x4005d0,%edi</code></li>
+</ul>
+<p>该指令将二进制文件中地址 <code>$0x4005d0</code> 处存在的内容移动到名为 <code>edi</code> 的寄存器中。</p>
+<p>这个存储位置的内容中还能是别的什么吗？是的，你猜对了：它就是文本 <code>Hello, World</code>。你是如何确定的？</p>
+<p><code>readelf</code> 命令使你可以将二进制文件（<code>a.out</code>）的任何节转储到屏幕上。以下要求它将 <code>.rodata</code>（这是只读数据）转储到屏幕上：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">readelf</span><span class="w"> </span><span class="o">-</span><span class="n">x</span><span class="w"> </span><span class="p">.</span><span class="n">rodata</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">out</span>
+
+<span class="n">Hex</span><span class="w"> </span><span class="k">dump</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="k">section</span><span class="w"> </span><span class="s1">&#39;.rodata&#39;</span><span class="err">:</span>
+<span class="mh">0x004005c0</span><span class="w"> </span><span class="mi">01000200</span><span class="w"> </span><span class="mi">00000000</span><span class="w"> </span><span class="mi">00000000</span><span class="w"> </span><span class="mi">00000000</span><span class="w"> </span><span class="p">....</span>
+<span class="mh">0x004005d0</span><span class="w"> </span><span class="mi">48656</span><span class="n">c6c</span><span class="w"> </span><span class="mi">6</span><span class="n">f20576f</span><span class="w"> </span><span class="mi">726</span><span class="n">c6400</span><span class="w"> </span><span class="n">Hello</span><span class="w"> </span><span class="n">World</span><span class="p">.</span>
+</code></pre></div>
+
+<p>你可以在右侧看到文本 <code>Hello World</code>，在左侧可以看到其二进制格式的地址。它是否与你在上面的 <code>mov</code> 指令中看到的地址匹配？是的，确实匹配。</p>
+<h4>strip：从目标文件中剥离符号</h4>
+<p>该命令通常用于在将二进制文件交付给客户之前减小二进制文件的大小。</p>
+<p>请记住，由于重要信息已从二进制文件中删除，因此它会妨碍调试。但是，这个二进制文件可以完美地执行。</p>
+<p>对 <code>a.out</code> 可执行文件运行该命令，并注意会发生什么。首先，通过运行以下命令确保二进制文件没有被剥离（<code>not stripped</code>）：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="k">file</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">out</span>
+<span class="n">a</span><span class="p">.</span><span class="k">out</span><span class="err">:</span><span class="w"> </span><span class="n">ELF</span><span class="w"> </span><span class="mi">64</span><span class="o">-</span><span class="nc">bit</span><span class="w"> </span><span class="n">LSB</span><span class="w"> </span><span class="n">executable</span><span class="p">,</span><span class="w"> </span><span class="n">x86</span><span class="o">-</span><span class="mi">64</span><span class="p">,</span><span class="w"> </span><span class="o">[</span><span class="n">......</span><span class="o">]</span><span class="w"> </span><span class="ow">not</span><span class="w"> </span><span class="n">stripped</span>
+</code></pre></div>
+
+<p>另外，在运行 <code>strip</code> 命令之前，请记下二进制文件中最初的字节数：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">du</span><span class="w"> </span><span class="o">-</span><span class="n">b</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">out</span>
+<span class="mi">8440</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">out</span>
+</code></pre></div>
+
+<p>现在对该可执行文件运行 <code>strip</code> 命令，并使用 <code>file</code> 命令以确保正常完成：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">strip</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">out</span>
+<span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="k">file</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">out</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">out</span><span class="err">:</span><span class="w"> </span><span class="n">ELF</span><span class="w"> </span><span class="mi">64</span><span class="o">-</span><span class="nc">bit</span><span class="w"> </span><span class="n">LSB</span><span class="w"> </span><span class="n">executable</span><span class="p">,</span><span class="w"> </span><span class="n">x86</span><span class="o">-</span><span class="mi">64</span><span class="p">,</span><span class="w"> </span><span class="o">[</span><span class="n">......</span><span class="o">]</span><span class="w"> </span><span class="n">stripped</span>
+</code></pre></div>
+
+<p>剥离该二进制文件后，此小程序的大小从之前的 <code>8440</code> 字节减小为 <code>6296</code> 字节。对于这样小的一个程序都能有这么大的空间节省，难怪大型程序经常被剥离。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">du</span><span class="w"> </span><span class="o">-</span><span class="n">b</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">out</span><span class="w"> </span>
+<span class="mi">6296</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">out</span>
+</code></pre></div>
+
+<h4>addr2line：转换地址到文件名和行号</h4>
+<p><code>addr2line</code> 工具只是在二进制文件中查找地址，并将其与 C 源代码程序中的行进行匹配。很酷，不是吗？</p>
+<p>为此编写另一个测试程序；只是这一次确保使用 <code>gcc</code> 的 <code>-g</code> 标志进行编译，这将为二进制文件添加其它调试信息，并包含有助于调试的行号（由源代码中提供）：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="o">-</span><span class="n">n</span><span class="w"> </span><span class="n">atest</span><span class="p">.</span><span class="n">c</span>
+<span class="mi">1</span><span class="w">  </span><span class="n">#include</span><span class="w"> </span><span class="o">&lt;</span><span class="n">stdio</span><span class="p">.</span><span class="n">h</span><span class="o">&gt;</span>
+<span class="mi">2</span>
+<span class="mi">3</span><span class="w">  </span><span class="nc">int</span><span class="w"> </span><span class="n">globalvar</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">100</span><span class="p">;</span>
+<span class="mi">4</span>
+<span class="mi">5</span><span class="w">  </span><span class="nc">int</span><span class="w"> </span><span class="n">function1</span><span class="p">(</span><span class="n">void</span><span class="p">)</span>
+<span class="mi">6</span><span class="w">  </span><span class="err">{</span>
+<span class="mi">7</span><span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="ss">&quot;Within function1\n&quot;</span><span class="p">);</span>
+<span class="mi">8</span><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="mi">9</span><span class="w">  </span><span class="err">}</span>
+<span class="mi">10</span>
+<span class="mi">11</span><span class="w"> </span><span class="nc">int</span><span class="w"> </span><span class="n">function2</span><span class="p">(</span><span class="n">void</span><span class="p">)</span>
+<span class="mi">12</span><span class="w"> </span><span class="err">{</span>
+<span class="mi">13</span><span class="w">   </span><span class="n">printf</span><span class="p">(</span><span class="ss">&quot;Within function2\n&quot;</span><span class="p">);</span>
+<span class="mi">14</span><span class="w">   </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="mi">15</span><span class="w"> </span><span class="err">}</span>
+<span class="mi">16</span>
+<span class="mi">17</span><span class="w"> </span><span class="nc">int</span><span class="w"> </span><span class="n">main</span><span class="p">(</span><span class="n">void</span><span class="p">)</span>
+<span class="mi">18</span><span class="w"> </span><span class="err">{</span>
+<span class="mi">19</span><span class="w">   </span><span class="n">function1</span><span class="p">();</span>
+<span class="mi">20</span><span class="w">   </span><span class="n">function2</span><span class="p">();</span>
+<span class="mi">21</span><span class="w">   </span><span class="n">printf</span><span class="p">(</span><span class="ss">&quot;Within main\n&quot;</span><span class="p">);</span>
+<span class="mi">22</span><span class="w">   </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="mi">23</span><span class="w"> </span><span class="err">}</span>
+</code></pre></div>
+
+<p>用 <code>-g</code> 标志编译并执行它。正如预期：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">gcc</span><span class="w"> </span><span class="o">-</span><span class="n">g</span><span class="w"> </span><span class="n">atest</span><span class="p">.</span><span class="n">c</span>
+<span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="p">.</span><span class="o">/</span><span class="n">a</span><span class="p">.</span><span class="k">out</span>
+<span class="k">Within</span><span class="w"> </span><span class="n">function1</span>
+<span class="k">Within</span><span class="w"> </span><span class="n">function2</span>
+<span class="k">Within</span><span class="w"> </span><span class="n">main</span>
+</code></pre></div>
+
+<p>现在使用 <code>objdump</code> 来标识函数开始的内存地址。你可以使用 <code>grep</code> 命令来过滤出所需的特定行。函数的地址在下面突出显示（<code>55 push %rbp</code> 前的地址）：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">objdump</span><span class="w"> </span><span class="o">-</span><span class="n">d</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">out</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="o">-</span><span class="n">A</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="o">-</span><span class="n">E</span><span class="w"> </span><span class="s1">&#39;main&gt;:|function1&gt;:|function2&gt;:&#39;</span>
+<span class="mi">000000000040051</span><span class="n">d</span><span class="w"> </span><span class="err">:</span>
+<span class="mi">40051</span><span class="nl">d</span><span class="p">:</span><span class="w"> </span><span class="mi">55</span><span class="w"> </span><span class="n">push</span><span class="w"> </span><span class="o">%</span><span class="n">rbp</span>
+<span class="mi">40051</span><span class="nl">e</span><span class="p">:</span><span class="w"> </span><span class="mi">48</span><span class="w"> </span><span class="mi">89</span><span class="w"> </span><span class="n">e5</span><span class="w"> </span><span class="n">mov</span><span class="w"> </span><span class="o">%</span><span class="n">rsp</span><span class="p">,</span><span class="o">%</span><span class="n">rbp</span>
+<span class="o">--</span>
+<span class="mi">0000000000400532</span><span class="w"> </span><span class="err">:</span>
+<span class="mi">400532</span><span class="err">:</span><span class="w"> </span><span class="mi">55</span><span class="w"> </span><span class="n">push</span><span class="w"> </span><span class="o">%</span><span class="n">rbp</span>
+<span class="mi">400533</span><span class="err">:</span><span class="w"> </span><span class="mi">48</span><span class="w"> </span><span class="mi">89</span><span class="w"> </span><span class="n">e5</span><span class="w"> </span><span class="n">mov</span><span class="w"> </span><span class="o">%</span><span class="n">rsp</span><span class="p">,</span><span class="o">%</span><span class="n">rbp</span>
+<span class="o">--</span>
+<span class="mi">0000000000400547</span>
+<span class="err">:</span>
+<span class="mi">400547</span><span class="err">:</span><span class="w"> </span><span class="mi">55</span><span class="w"> </span><span class="n">push</span><span class="w"> </span><span class="o">%</span><span class="n">rbp</span>
+<span class="mi">400548</span><span class="err">:</span><span class="w"> </span><span class="mi">48</span><span class="w"> </span><span class="mi">89</span><span class="w"> </span><span class="n">e5</span><span class="w"> </span><span class="n">mov</span><span class="w"> </span><span class="o">%</span><span class="n">rsp</span><span class="p">,</span><span class="o">%</span><span class="n">rbp</span>
+</code></pre></div>
+
+<p>现在，使用 <code>addr2line</code> 工具从二进制文件中的这些地址映射到 C 源代码匹配的地址：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">addr2line</span><span class="w"> </span><span class="o">-</span><span class="n">e</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">out</span><span class="w"> </span><span class="mi">40051</span><span class="n">d</span>
+<span class="o">/</span><span class="n">tmp</span><span class="o">/</span><span class="n">testdir</span><span class="o">/</span><span class="n">atest</span><span class="p">.</span><span class="nl">c</span><span class="p">:</span><span class="mi">6</span>
+<span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span>
+<span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">addr2line</span><span class="w"> </span><span class="o">-</span><span class="n">e</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">out</span><span class="w"> </span><span class="mi">400532</span>
+<span class="o">/</span><span class="n">tmp</span><span class="o">/</span><span class="n">testdir</span><span class="o">/</span><span class="n">atest</span><span class="p">.</span><span class="nl">c</span><span class="p">:</span><span class="mi">12</span>
+<span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span>
+<span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">addr2line</span><span class="w"> </span><span class="o">-</span><span class="n">e</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">out</span><span class="w"> </span><span class="mi">400547</span>
+<span class="o">/</span><span class="n">tmp</span><span class="o">/</span><span class="n">testdir</span><span class="o">/</span><span class="n">atest</span><span class="p">.</span><span class="nl">c</span><span class="p">:</span><span class="mi">18</span>
+</code></pre></div>
+
+<p>它说 <code>40051d</code> 从源文件 <code>atest.c</code> 中的第 <code>6</code> 行开始，这是 <code>function1</code> 的起始大括号（<code>{</code>）开始的行。<code>function2</code> 和 <code>main</code> 的输出也匹配。</p>
+<h4>nm：列出目标文件的符号</h4>
+<p>使用上面的 C 程序测试 <code>nm</code> 工具。使用 <code>gcc</code> 快速编译并执行它。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">gcc</span><span class="w"> </span><span class="n">atest</span><span class="p">.</span><span class="n">c</span>
+<span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="p">.</span><span class="o">/</span><span class="n">a</span><span class="p">.</span><span class="k">out</span>
+<span class="k">Within</span><span class="w"> </span><span class="n">function1</span>
+<span class="k">Within</span><span class="w"> </span><span class="n">function2</span>
+<span class="k">Within</span><span class="w"> </span><span class="n">main</span>
+</code></pre></div>
+
+<p>现在运行 <code>nm</code> 和 <code>grep</code> 获取有关函数和变量的信息：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">nm</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">out</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="o">-</span><span class="n">Ei</span><span class="w"> </span><span class="s1">&#39;function|main|globalvar&#39;</span>
+<span class="mi">000000000040051</span><span class="n">d</span><span class="w"> </span><span class="n">T</span><span class="w"> </span><span class="n">function1</span>
+<span class="mi">0000000000400532</span><span class="w"> </span><span class="n">T</span><span class="w"> </span><span class="n">function2</span>
+<span class="mi">000000000060102</span><span class="n">c</span><span class="w"> </span><span class="n">D</span><span class="w"> </span><span class="n">globalvar</span>
+<span class="n">U</span><span class="w"> </span><span class="n">__libc_start_main</span><span class="nb">@@GLIBC_2</span><span class="mf">.2.5</span>
+<span class="mi">0000000000400547</span><span class="w"> </span><span class="n">T</span><span class="w"> </span><span class="n">main</span>
+</code></pre></div>
+
+<p>你可以看到函数被标记为 <code>T</code>，它表示 <code>text</code> 节中的符号，而变量标记为 <code>D</code>，表示初始化的 <code>data</code> 节中的符号。</p>
+<p>想象一下在没有源代码的二进制文件上运行此命令有多大用处？这使你可以窥视内部并了解使用了哪些函数和变量。当然，除非二进制文件已被剥离，这种情况下它们将不包含任何符号，因此 <code>nm</code> 就命令不会很有用，如你在此处看到的：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">strip</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">out</span>
+<span class="o">[</span><span class="n">testdir</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">nm</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">out</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="o">-</span><span class="n">Ei</span><span class="w"> </span><span class="s1">&#39;function|main|globalvar&#39;</span>
+<span class="nl">nm</span><span class="p">:</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">out</span><span class="err">:</span><span class="w"> </span><span class="k">no</span><span class="w"> </span><span class="n">symbols</span>
+</code></pre></div>
+
+<h3>结论</h3>
+<p>GNU binutils 工具为有兴趣分析二进制文件的人提供了许多选项，这只是它们可以为你做的事情的冰山一角。请阅读每种工具的手册页，以了解有关它们以及如何使用它们的更多信息。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>开发一个 Linux 调试器（三）：寄存器和内存</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Simon Brand 上一篇博文中我们给调试器添加了一个简单的地址断点。这次，我们将添加读写寄存器和内存的功能，这将使我们 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/07/kai-fa-yi-ge-linux-diao-shi-qi-san-ji-cun-qi-he-nei-cun.html" rel="bookmark"
+           title="Permalink to 开发一个 Linux 调试器（三）：寄存器和内存">开发一个 Linux 调试器（三）：寄存器和内存</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-07-04T08:08:00+02:00">
+                Published: Tue 04 July 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Simon Brand</p>
+<p><img alt="" src="/data/attachment/album/201707/03/231153g7abc3nedej477u8.jpg"></p>
+<p>上一篇博文中我们给调试器添加了一个简单的地址断点。这次，我们将添加读写寄存器和内存的功能，这将使我们能够使用我们的程序计数器、观察状态和改变程序的行为。</p>
+<h3>系列文章索引</h3>
+<p>随着后面文章的发布，这些链接会逐渐生效。</p>
+<ol>
+<li><a href="/article-8626-1.html">准备环境</a></li>
+<li><a href="/article-8645-1.html">断点</a></li>
+<li><a href="https://blog.tartanllama.xyz/c++/2017/03/31/writing-a-linux-debugger-registers/">寄存器和内存</a></li>
+<li><a href="https://blog.tartanllama.xyz/c++/2017/04/05/writing-a-linux-debugger-elf-dwarf/">Elves 和 dwarves</a></li>
+<li><a href="https://blog.tartanllama.xyz/c++/2017/04/24/writing-a-linux-debugger-source-signal/">源码和信号</a></li>
+<li><a href="https://blog.tartanllama.xyz/c++/2017/05/06/writing-a-linux-debugger-dwarf-step/">源码级逐步执行</a></li>
+<li>源码级断点</li>
+<li>调用栈展开</li>
+<li>读取变量</li>
+<li>下一步</li>
+</ol>
+<h3>注册我们的寄存器</h3>
+<p>在我们真正读取任何寄存器之前，我们需要告诉调试器一些关于我们的目标平台的信息，这里是 x86<em>64 平台。除了多组通用和专用目的寄存器，x86</em>64 还提供浮点和向量寄存器。为了简化，我将跳过后两种寄存器，但是你如果喜欢的话也可以选择支持它们。x86_64 也允许你像访问 32、16 或者 8 位寄存器那样访问一些 64 位寄存器，但我只会介绍 64 位寄存器。由于这些简化，对于每个寄存器我们只需要它的名称、它的 DWARF 寄存器编号以及 <code>ptrace</code> 返回结构体中的存储地址。我使用范围枚举引用这些寄存器，然后我列出了一个全局寄存器描述符数组，其中元素顺序和 <code>ptrace</code> 中寄存器结构体相同。</p>
+<div class="highlight"><pre><span></span><code><span class="k">enum</span><span class="w"> </span><span class="k">class</span><span class="w"> </span><span class="n">reg</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">rax</span><span class="p">,</span><span class="w"> </span><span class="n">rbx</span><span class="p">,</span><span class="w"> </span><span class="n">rcx</span><span class="p">,</span><span class="w"> </span><span class="n">rdx</span><span class="p">,</span>
+<span class="w">    </span><span class="n">rdi</span><span class="p">,</span><span class="w"> </span><span class="n">rsi</span><span class="p">,</span><span class="w"> </span><span class="n">rbp</span><span class="p">,</span><span class="w"> </span><span class="n">rsp</span><span class="p">,</span>
+<span class="w">    </span><span class="n">r8</span><span class="p">,</span><span class="w">  </span><span class="n">r9</span><span class="p">,</span><span class="w">  </span><span class="n">r10</span><span class="p">,</span><span class="w"> </span><span class="n">r11</span><span class="p">,</span>
+<span class="w">    </span><span class="n">r12</span><span class="p">,</span><span class="w"> </span><span class="n">r13</span><span class="p">,</span><span class="w"> </span><span class="n">r14</span><span class="p">,</span><span class="w"> </span><span class="n">r15</span><span class="p">,</span>
+<span class="w">    </span><span class="n">rip</span><span class="p">,</span><span class="w"> </span><span class="n">rflags</span><span class="p">,</span><span class="w">    </span><span class="n">cs</span><span class="p">,</span>
+<span class="w">    </span><span class="n">orig_rax</span><span class="p">,</span><span class="w"> </span><span class="n">fs_base</span><span class="p">,</span>
+<span class="w">    </span><span class="n">gs_base</span><span class="p">,</span>
+<span class="w">    </span><span class="n">fs</span><span class="p">,</span><span class="w"> </span><span class="n">gs</span><span class="p">,</span><span class="w"> </span><span class="n">ss</span><span class="p">,</span><span class="w"> </span><span class="n">ds</span><span class="p">,</span><span class="w"> </span><span class="n">es</span>
+<span class="p">};</span>
+
+<span class="n">constexpr</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">size_t</span><span class="w"> </span><span class="n">n_registers</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">27</span><span class="p">;</span>
+
+<span class="n">struct</span><span class="w"> </span><span class="n">reg_descriptor</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">reg</span><span class="w"> </span><span class="n">r</span><span class="p">;</span>
+<span class="w">    </span><span class="nb nb-Type">int</span><span class="w"> </span><span class="n">dwarf_r</span><span class="p">;</span>
+<span class="w">    </span><span class="n">std</span><span class="p">::</span><span class="n">string</span><span class="w"> </span><span class="n">name</span><span class="p">;</span>
+<span class="p">};</span>
+
+<span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">array</span><span class="o">&lt;</span><span class="n">reg_descriptor</span><span class="p">,</span><span class="w"> </span><span class="n">n_registers</span><span class="o">&gt;</span><span class="w"> </span><span class="n">g_register_descriptors</span><span class="w"> </span><span class="p">{{</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">r15</span><span class="p">,</span><span class="w"> </span><span class="mi">15</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;r15&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">r14</span><span class="p">,</span><span class="w"> </span><span class="mi">14</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;r14&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">r13</span><span class="p">,</span><span class="w"> </span><span class="mi">13</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;r13&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">r12</span><span class="p">,</span><span class="w"> </span><span class="mi">12</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;r12&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">rbp</span><span class="p">,</span><span class="w"> </span><span class="mi">6</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;rbp&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">rbx</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;rbx&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">r11</span><span class="p">,</span><span class="w"> </span><span class="mi">11</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;r11&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">r10</span><span class="p">,</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;r10&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">r9</span><span class="p">,</span><span class="w"> </span><span class="mi">9</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;r9&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">r8</span><span class="p">,</span><span class="w"> </span><span class="mi">8</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;r8&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">rax</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;rax&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">rcx</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;rcx&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">rdx</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;rdx&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">rsi</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;rsi&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">rdi</span><span class="p">,</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;rdi&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">orig_rax</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;orig_rax&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">rip</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;rip&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">cs</span><span class="p">,</span><span class="w"> </span><span class="mi">51</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;cs&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">rflags</span><span class="p">,</span><span class="w"> </span><span class="mi">49</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;eflags&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">rsp</span><span class="p">,</span><span class="w"> </span><span class="mi">7</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;rsp&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">ss</span><span class="p">,</span><span class="w"> </span><span class="mi">52</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;ss&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">fs_base</span><span class="p">,</span><span class="w"> </span><span class="mi">58</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;fs_base&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">gs_base</span><span class="p">,</span><span class="w"> </span><span class="mi">59</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;gs_base&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">ds</span><span class="p">,</span><span class="w"> </span><span class="mi">53</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;ds&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">es</span><span class="p">,</span><span class="w"> </span><span class="mi">50</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;es&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">fs</span><span class="p">,</span><span class="w"> </span><span class="mi">54</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;fs&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">reg</span><span class="p">::</span><span class="n">gs</span><span class="p">,</span><span class="w"> </span><span class="mi">55</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;gs&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="p">}};</span>
+</code></pre></div>
+
+<p>如果你想自己看看的话，你通常可以在 <code>/usr/include/sys/user.h</code> 找到寄存器数据结构，另外 DWARF 寄存器编号取自 <a href="https://www.uclibc.org/docs/psABI-x86_64.pdf">System V x86_64 ABI</a>。</p>
+<p>现在我们可以编写一堆函数来和寄存器交互。我们希望可以读取寄存器、写入数据、根据 DWARF 寄存器编号获取值，以及通过名称查找寄存器，反之类似。让我们先从实现 <code>get_register_value</code> 开始：</p>
+<div class="highlight"><pre><span></span><code><span class="n">uint64_t</span><span class="w"> </span><span class="n">get_register_value</span><span class="p">(</span><span class="n">pid_t</span><span class="w"> </span><span class="n">pid</span><span class="p">,</span><span class="w"> </span><span class="kt">reg</span><span class="w"> </span><span class="n">r</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">user_regs_struct</span><span class="w"> </span><span class="n">regs</span><span class="p">;</span>
+<span class="w">    </span><span class="n">ptrace</span><span class="p">(</span><span class="n">PTRACE_GETREGS</span><span class="p">,</span><span class="w"> </span><span class="n">pid</span><span class="p">,</span><span class="w"> </span><span class="n">nullptr</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">regs</span><span class="p">);</span>
+<span class="w">    </span><span class="c1">//...</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><code>ptrace</code> 使得我们可以轻易获得我们想要的数据。我们只需要构造一个 <code>user_regs_struct</code> 实例并把它和 <code>PTRACE_GETREGS</code> 请求传递给 <code>ptrace</code>。</p>
+<p>现在根据要请求的寄存器，我们要读取 <code>regs</code>。我们可以写一个很大的 switch 语句，但由于我们 <code>g_register_descriptors</code> 表的布局顺序和 <code>user_regs_struct</code> 相同，我们只需要搜索寄存器描述符的索引，然后作为 <code>uint64_t</code> 数组访问 <code>user_regs_struct</code> 就行。（你也可以重新排序 <code>reg</code> 枚举变量，然后使用索引把它们转换为底层类型，但第一次我就使用这种方式编写，它能正常工作，我也就懒得改它了。）</p>
+<div class="highlight"><pre><span></span><code><span class="w">        </span><span class="n">auto</span><span class="w"> </span><span class="n">it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nl">std</span><span class="p">:</span><span class="err">:</span><span class="n">find_if</span><span class="p">(</span><span class="k">begin</span><span class="p">(</span><span class="n">g_register_descriptors</span><span class="p">),</span><span class="w"> </span><span class="k">end</span><span class="p">(</span><span class="n">g_register_descriptors</span><span class="p">),</span>
+<span class="w">                               </span><span class="o">[</span><span class="n">r</span><span class="o">]</span><span class="p">(</span><span class="n">auto</span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">rd</span><span class="p">)</span><span class="w"> </span><span class="err">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">rd</span><span class="p">.</span><span class="n">r</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">r</span><span class="p">;</span><span class="w"> </span><span class="err">}</span><span class="p">);</span>
+
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="o">*</span><span class="p">(</span><span class="n">reinterpret_cast</span><span class="o">&lt;</span><span class="n">uint64_t</span><span class="o">*&gt;</span><span class="p">(</span><span class="o">&amp;</span><span class="n">regs</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="n">it</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="k">begin</span><span class="p">(</span><span class="n">g_register_descriptors</span><span class="p">)));</span>
+</code></pre></div>
+
+<p>到 <code>uint64_t</code> 的转换是安全的，因为 <code>user_regs_struct</code> 是一个标准布局类型，但我认为指针算术技术上是<ruby> 未定义的行为 <rt>  undefined behavior </rt></ruby>。当前没有编译器会对此产生警告，我也懒得修改，但是如果你想保持最严格的正确性，那就写一个大的 switch 语句。</p>
+<p><code>set_register_value</code> 非常类似，我们只是写入该位置并在最后写回寄存器：</p>
+<div class="highlight"><pre><span></span><code><span class="n">void</span><span class="w"> </span><span class="n">set_register_value</span><span class="p">(</span><span class="n">pid_t</span><span class="w"> </span><span class="n">pid</span><span class="p">,</span><span class="w"> </span><span class="n">reg</span><span class="w"> </span><span class="n">r</span><span class="p">,</span><span class="w"> </span><span class="n">uint64_t</span><span class="w"> </span><span class="k">value</span><span class="p">)</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">user_regs_struct</span><span class="w"> </span><span class="n">regs</span><span class="p">;</span>
+<span class="w">    </span><span class="n">ptrace</span><span class="p">(</span><span class="n">PTRACE_GETREGS</span><span class="p">,</span><span class="w"> </span><span class="n">pid</span><span class="p">,</span><span class="w"> </span><span class="n">nullptr</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">regs</span><span class="p">);</span>
+<span class="w">    </span><span class="n">auto</span><span class="w"> </span><span class="n">it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nl">std</span><span class="p">:</span><span class="err">:</span><span class="n">find_if</span><span class="p">(</span><span class="k">begin</span><span class="p">(</span><span class="n">g_register_descriptors</span><span class="p">),</span><span class="w"> </span><span class="k">end</span><span class="p">(</span><span class="n">g_register_descriptors</span><span class="p">),</span>
+<span class="w">                           </span><span class="o">[</span><span class="n">r</span><span class="o">]</span><span class="p">(</span><span class="n">auto</span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">rd</span><span class="p">)</span><span class="w"> </span><span class="err">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">rd</span><span class="p">.</span><span class="n">r</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">r</span><span class="p">;</span><span class="w"> </span><span class="err">}</span><span class="p">);</span>
+
+<span class="w">    </span><span class="o">*</span><span class="p">(</span><span class="n">reinterpret_cast</span><span class="o">&lt;</span><span class="n">uint64_t</span><span class="o">*&gt;</span><span class="p">(</span><span class="o">&amp;</span><span class="n">regs</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="n">it</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="k">begin</span><span class="p">(</span><span class="n">g_register_descriptors</span><span class="p">)))</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">value</span><span class="p">;</span>
+<span class="w">    </span><span class="n">ptrace</span><span class="p">(</span><span class="n">PTRACE_SETREGS</span><span class="p">,</span><span class="w"> </span><span class="n">pid</span><span class="p">,</span><span class="w"> </span><span class="n">nullptr</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">regs</span><span class="p">);</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<p>下一步是通过 DWARF 寄存器编号查找。这次我会真正检查一个错误条件以防我们得到一些奇怪的 DWARF 信息。</p>
+<div class="highlight"><pre><span></span><code><span class="n">uint64_t</span><span class="w"> </span><span class="n">get_register_value_from_dwarf_register</span><span class="w"> </span><span class="p">(</span><span class="n">pid_t</span><span class="w"> </span><span class="n">pid</span><span class="p">,</span><span class="w"> </span><span class="n">unsigned</span><span class="w"> </span><span class="n">regnum</span><span class="p">)</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">auto</span><span class="w"> </span><span class="n">it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nl">std</span><span class="p">:</span><span class="err">:</span><span class="n">find_if</span><span class="p">(</span><span class="k">begin</span><span class="p">(</span><span class="n">g_register_descriptors</span><span class="p">),</span><span class="w"> </span><span class="k">end</span><span class="p">(</span><span class="n">g_register_descriptors</span><span class="p">),</span>
+<span class="w">                           </span><span class="o">[</span><span class="n">regnum</span><span class="o">]</span><span class="p">(</span><span class="n">auto</span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">rd</span><span class="p">)</span><span class="w"> </span><span class="err">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">rd</span><span class="p">.</span><span class="n">dwarf_r</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">regnum</span><span class="p">;</span><span class="w"> </span><span class="err">}</span><span class="p">);</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">it</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="k">end</span><span class="p">(</span><span class="n">g_register_descriptors</span><span class="p">))</span><span class="w"> </span><span class="err">{</span>
+<span class="w">        </span><span class="k">throw</span><span class="w"> </span><span class="nl">std</span><span class="p">:</span><span class="err">:</span><span class="n">out_of_range</span><span class="err">{</span><span class="ss">&quot;Unknown dwarf register&quot;</span><span class="err">}</span><span class="p">;</span>
+<span class="w">    </span><span class="err">}</span>
+
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">get_register_value</span><span class="p">(</span><span class="n">pid</span><span class="p">,</span><span class="w"> </span><span class="n">it</span><span class="o">-&gt;</span><span class="n">r</span><span class="p">);</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<p>就快完成啦，现在我们已经有了寄存器名称查找：</p>
+<div class="highlight"><pre><span></span><code><span class="nl">std</span><span class="p">:</span><span class="err">:</span><span class="n">string</span><span class="w"> </span><span class="n">get_register_name</span><span class="p">(</span><span class="n">reg</span><span class="w"> </span><span class="n">r</span><span class="p">)</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">auto</span><span class="w"> </span><span class="n">it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nl">std</span><span class="p">:</span><span class="err">:</span><span class="n">find_if</span><span class="p">(</span><span class="k">begin</span><span class="p">(</span><span class="n">g_register_descriptors</span><span class="p">),</span><span class="w"> </span><span class="k">end</span><span class="p">(</span><span class="n">g_register_descriptors</span><span class="p">),</span>
+<span class="w">                           </span><span class="o">[</span><span class="n">r</span><span class="o">]</span><span class="p">(</span><span class="n">auto</span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">rd</span><span class="p">)</span><span class="w"> </span><span class="err">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">rd</span><span class="p">.</span><span class="n">r</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">r</span><span class="p">;</span><span class="w"> </span><span class="err">}</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">it</span><span class="o">-&gt;</span><span class="n">name</span><span class="p">;</span>
+<span class="err">}</span>
+
+<span class="n">reg</span><span class="w"> </span><span class="n">get_register_from_name</span><span class="p">(</span><span class="n">const</span><span class="w"> </span><span class="nl">std</span><span class="p">:</span><span class="err">:</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">name</span><span class="p">)</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">auto</span><span class="w"> </span><span class="n">it</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nl">std</span><span class="p">:</span><span class="err">:</span><span class="n">find_if</span><span class="p">(</span><span class="k">begin</span><span class="p">(</span><span class="n">g_register_descriptors</span><span class="p">),</span><span class="w"> </span><span class="k">end</span><span class="p">(</span><span class="n">g_register_descriptors</span><span class="p">),</span>
+<span class="w">                           </span><span class="o">[</span><span class="n">name</span><span class="o">]</span><span class="p">(</span><span class="n">auto</span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">rd</span><span class="p">)</span><span class="w"> </span><span class="err">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">rd</span><span class="p">.</span><span class="n">name</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">name</span><span class="p">;</span><span class="w"> </span><span class="err">}</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">it</span><span class="o">-&gt;</span><span class="n">r</span><span class="p">;</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<p>最后我们会添加一个简单的帮助函数用于导出所有寄存器的内容：</p>
+<div class="highlight"><pre><span></span><code><span class="nb nb-Type">void</span><span class="w"> </span><span class="n">debugger</span><span class="p">::</span><span class="n">dump_registers</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">rd</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">g_register_descriptors</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">std</span><span class="p">::</span><span class="n">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">rd</span><span class="o">.</span><span class="n">name</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s2">&quot; 0x&quot;</span>
+<span class="w">                  </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">setfill</span><span class="p">(</span><span class="s1">&#39;0&#39;</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">setw</span><span class="p">(</span><span class="mi">16</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">hex</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">get_register_value</span><span class="p">(</span><span class="n">m_pid</span><span class="p">,</span><span class="w"> </span><span class="n">rd</span><span class="o">.</span><span class="n">r</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">endl</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>正如你看到的，iostreams 有非常精确的接口用于美观地输出十六进制数据（啊哈哈哈哈哈哈）。如果你喜欢你也可以通过 I/O 操纵器来摆脱这种混乱。</p>
+<p>这些已经足够支持我们在调试器接下来的部分轻松地处理寄存器，所以我们现在可以把这些添加到我们的用户界面。</p>
+<h3>显示我们的寄存器</h3>
+<p>这里我们要做的就是给 <code>handle_command</code> 函数添加一个命令。通过下面的代码，用户可以输入 <code>register read rax</code>、 <code>register write rax 0x42</code> 以及类似的语句。</p>
+<div class="highlight"><pre><span></span><code><span class="w">    </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">is_prefix</span><span class="p">(</span><span class="n">command</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;register&quot;</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">is_prefix</span><span class="p">(</span><span class="n">args</span><span class="p">[</span><span class="mh">1</span><span class="p">],</span><span class="w"> </span><span class="s">&quot;dump&quot;</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">dump_registers</span><span class="p">();</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">is_prefix</span><span class="p">(</span><span class="n">args</span><span class="p">[</span><span class="mh">1</span><span class="p">],</span><span class="w"> </span><span class="s">&quot;read&quot;</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">std</span><span class="o">::</span><span class="n">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">get_register_value</span><span class="p">(</span><span class="n">m_pid</span><span class="p">,</span><span class="w"> </span><span class="n">get_register_from_name</span><span class="p">(</span><span class="n">args</span><span class="p">[</span><span class="mh">2</span><span class="p">]))</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">is_prefix</span><span class="p">(</span><span class="n">args</span><span class="p">[</span><span class="mh">1</span><span class="p">],</span><span class="w"> </span><span class="s">&quot;write&quot;</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">std</span><span class="o">::</span><span class="k">string</span><span class="w"> </span><span class="n">val</span><span class="w"> </span><span class="p">{</span><span class="n">args</span><span class="p">[</span><span class="mh">3</span><span class="p">],</span><span class="w"> </span><span class="mh">2</span><span class="p">};</span><span class="w"> </span><span class="c1">//assume 0xVAL</span>
+<span class="w">            </span><span class="n">set_register_value</span><span class="p">(</span><span class="n">m_pid</span><span class="p">,</span><span class="w"> </span><span class="n">get_register_from_name</span><span class="p">(</span><span class="n">args</span><span class="p">[</span><span class="mh">2</span><span class="p">]),</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">stol</span><span class="p">(</span><span class="n">val</span><span class="p">,</span><span class="w"> </span><span class="mh">0</span><span class="p">,</span><span class="w"> </span><span class="mh">16</span><span class="p">));</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+</code></pre></div>
+
+<h3>接下来做什么？</h3>
+<p>设置断点的时候我们已经读取和写入内存，因此我们只需要添加一些函数用于隐藏 <code>ptrace</code> 调用。</p>
+<div class="highlight"><pre><span></span><code><span class="nx">uint64_t</span><span class="w"> </span><span class="nx">debugger</span><span class="o">::</span><span class="nx">read_memory</span><span class="p">(</span><span class="nx">uint64_t</span><span class="w"> </span><span class="nx">address</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">ptrace</span><span class="p">(</span><span class="nx">PTRACE_PEEKDATA</span><span class="p">,</span><span class="w"> </span><span class="nx">m_pid</span><span class="p">,</span><span class="w"> </span><span class="nx">address</span><span class="p">,</span><span class="w"> </span><span class="nx">nullptr</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="nx">void</span><span class="w"> </span><span class="nx">debugger</span><span class="o">::</span><span class="nx">write_memory</span><span class="p">(</span><span class="nx">uint64_t</span><span class="w"> </span><span class="nx">address</span><span class="p">,</span><span class="w"> </span><span class="nx">uint64_t</span><span class="w"> </span><span class="nx">value</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">ptrace</span><span class="p">(</span><span class="nx">PTRACE_POKEDATA</span><span class="p">,</span><span class="w"> </span><span class="nx">m_pid</span><span class="p">,</span><span class="w"> </span><span class="nx">address</span><span class="p">,</span><span class="w"> </span><span class="nx">value</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>你可能想要添加支持一次读取或者写入多个字节，你可以在每次希望读取另一个字节时通过递增地址来实现。如果你需要的话，你也可以使用 <a href="http://man7.org/linux/man-pages/man2/process_vm_readv.2.html"><code>process_vm_readv</code> 和 <code>process_vm_writev</code></a> 或 <code>/proc/&lt;pid&gt;/mem</code> 代替 <code>ptrace</code>。</p>
+<p>现在我们会给我们的用户界面添加命令：</p>
+<div class="highlight"><pre><span></span><code><span class="w">    </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="p">(</span><span class="nx">is_prefix</span><span class="p">(</span><span class="nx">command</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;memory&quot;</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">std</span><span class="o">::</span><span class="kt">string</span><span class="w"> </span><span class="kd">addr</span><span class="w"> </span><span class="p">{</span><span class="nx">args</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span><span class="w"> </span><span class="mi">2</span><span class="p">};</span><span class="w"> </span><span class="c1">//assume 0xADDRESS</span>
+
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">is_prefix</span><span class="p">(</span><span class="nx">args</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span><span class="w"> </span><span class="s">&quot;read&quot;</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nx">std</span><span class="o">::</span><span class="nx">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="nx">std</span><span class="o">::</span><span class="nx">hex</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="nx">read_memory</span><span class="p">(</span><span class="nx">std</span><span class="o">::</span><span class="nx">stol</span><span class="p">(</span><span class="kd">addr</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">16</span><span class="p">))</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="nx">std</span><span class="o">::</span><span class="nx">endl</span><span class="p">;</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">is_prefix</span><span class="p">(</span><span class="nx">args</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span><span class="w"> </span><span class="s">&quot;write&quot;</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nx">std</span><span class="o">::</span><span class="kt">string</span><span class="w"> </span><span class="nx">val</span><span class="w"> </span><span class="p">{</span><span class="nx">args</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span><span class="w"> </span><span class="mi">2</span><span class="p">};</span><span class="w"> </span><span class="c1">//assume 0xVAL</span>
+<span class="w">            </span><span class="nx">write_memory</span><span class="p">(</span><span class="nx">std</span><span class="o">::</span><span class="nx">stol</span><span class="p">(</span><span class="kd">addr</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">16</span><span class="p">),</span><span class="w"> </span><span class="nx">std</span><span class="o">::</span><span class="nx">stol</span><span class="p">(</span><span class="nx">val</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">16</span><span class="p">));</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+</code></pre></div>
+
+<h3>给 <code>continue_execution</code> 打补丁</h3>
+<p>在我们测试我们的更改之前，我们现在可以实现一个更健全的 <code>continue_execution</code> 版本。由于我们可以获取程序计数器，我们可以检查我们的断点映射来判断我们是否处于一个断点。如果是的话，我们可以停用断点并在继续之前跳过它。</p>
+<p>为了清晰和简洁起见，首先我们要添加一些帮助函数：</p>
+<div class="highlight"><pre><span></span><code><span class="n">uint64_t</span><span class="w"> </span><span class="n">debugger</span><span class="o">::</span><span class="n">get_pc</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">get_register_value</span><span class="p">(</span><span class="n">m_pid</span><span class="p">,</span><span class="w"> </span><span class="kt">reg</span><span class="o">::</span><span class="n">rip</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="k">void</span><span class="w"> </span><span class="n">debugger</span><span class="o">::</span><span class="n">set_pc</span><span class="p">(</span><span class="n">uint64_t</span><span class="w"> </span><span class="n">pc</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">set_register_value</span><span class="p">(</span><span class="n">m_pid</span><span class="p">,</span><span class="w"> </span><span class="kt">reg</span><span class="o">::</span><span class="n">rip</span><span class="p">,</span><span class="w"> </span><span class="n">pc</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>然后我们可以编写函数来跳过断点：</p>
+<div class="highlight"><pre><span></span><code><span class="n">void</span><span class="w"> </span><span class="nl">debugger</span><span class="p">:</span><span class="err">:</span><span class="n">step_over_breakpoint</span><span class="p">()</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="o">//</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">because</span><span class="w"> </span><span class="n">execution</span><span class="w"> </span><span class="n">will</span><span class="w"> </span><span class="k">go</span><span class="w"> </span><span class="n">past</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">breakpoint</span>
+<span class="w">    </span><span class="n">auto</span><span class="w"> </span><span class="n">possible_breakpoint_location</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">get_pc</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">m_breakpoints</span><span class="p">.</span><span class="nf">count</span><span class="p">(</span><span class="n">possible_breakpoint_location</span><span class="p">))</span><span class="w"> </span><span class="err">{</span>
+<span class="w">        </span><span class="n">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">bp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m_breakpoints</span><span class="o">[</span><span class="n">possible_breakpoint_location</span><span class="o">]</span><span class="p">;</span>
+
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">bp</span><span class="p">.</span><span class="n">is_enabled</span><span class="p">())</span><span class="w"> </span><span class="err">{</span>
+<span class="w">            </span><span class="n">auto</span><span class="w"> </span><span class="n">previous_instruction_address</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">possible_breakpoint_location</span><span class="p">;</span>
+<span class="w">            </span><span class="n">set_pc</span><span class="p">(</span><span class="n">previous_instruction_address</span><span class="p">);</span>
+
+<span class="w">            </span><span class="n">bp</span><span class="p">.</span><span class="n">disable</span><span class="p">();</span>
+<span class="w">            </span><span class="n">ptrace</span><span class="p">(</span><span class="n">PTRACE_SINGLESTEP</span><span class="p">,</span><span class="w"> </span><span class="n">m_pid</span><span class="p">,</span><span class="w"> </span><span class="n">nullptr</span><span class="p">,</span><span class="w"> </span><span class="n">nullptr</span><span class="p">);</span>
+<span class="w">            </span><span class="n">wait_for_signal</span><span class="p">();</span>
+<span class="w">            </span><span class="n">bp</span><span class="p">.</span><span class="n">enable</span><span class="p">();</span>
+<span class="w">        </span><span class="err">}</span>
+<span class="w">    </span><span class="err">}</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<p>首先我们检查当前程序计算器的值是否设置了一个断点。如果有，首先我们把执行返回到断点之前，停用它，跳过原来的指令，再重新启用断点。</p>
+<p><code>wait_for_signal</code> 封装了我们常用的 <code>waitpid</code> 模式：</p>
+<div class="highlight"><pre><span></span><code><span class="nb nb-Type">void</span><span class="w"> </span><span class="n">debugger</span><span class="p">::</span><span class="n">wait_for_signal</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nb nb-Type">int</span><span class="w"> </span><span class="n">wait_status</span><span class="p">;</span>
+<span class="w">    </span><span class="n">auto</span><span class="w"> </span><span class="n">options</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">    </span><span class="n">waitpid</span><span class="p">(</span><span class="n">m_pid</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">wait_status</span><span class="p">,</span><span class="w"> </span><span class="n">options</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>最后我们像下面这样重写 <code>continue_execution</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="nb nb-Type">void</span><span class="w"> </span><span class="n">debugger</span><span class="p">::</span><span class="n">continue_execution</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">step_over_breakpoint</span><span class="p">();</span>
+<span class="w">    </span><span class="n">ptrace</span><span class="p">(</span><span class="n">PTRACE_CONT</span><span class="p">,</span><span class="w"> </span><span class="n">m_pid</span><span class="p">,</span><span class="w"> </span><span class="n">nullptr</span><span class="p">,</span><span class="w"> </span><span class="n">nullptr</span><span class="p">);</span>
+<span class="w">    </span><span class="n">wait_for_signal</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3>测试效果</h3>
+<p>现在我们可以读取和修改寄存器了，我们可以对我们的 hello world 程序做一些有意思的更改。类似第一次测试，再次尝试在 <code>call</code> 指令处设置断点然后从那里继续执行。你可以看到输出了 <code>Hello world</code>。现在是有趣的部分，在输出调用后设一个断点、继续、将 <code>call</code> 参数设置代码的地址写入程序计数器（<code>rip</code>）并继续。由于程序计数器操纵，你应该再次看到输出了 <code>Hello world</code>。为了以防你不确定在哪里设置断点，下面是我上一篇博文中的 <code>objdump</code> 输出：</p>
+<div class="highlight"><pre><span></span><code><span class="mf">0000000000400936</span><span class="w"> </span><span class="o">&lt;</span><span class="n">main</span><span class="o">&gt;</span><span class="p">:</span>
+<span class="w">  </span><span class="mf">400936</span><span class="p">:</span><span class="w">   </span><span class="mf">55</span><span class="w">                      </span><span class="n">push</span><span class="w">   </span><span class="n">rbp</span>
+<span class="w">  </span><span class="mf">400937</span><span class="p">:</span><span class="w">   </span><span class="mf">48</span><span class="w"> </span><span class="mf">89</span><span class="w"> </span><span class="n">e5</span><span class="w">                </span><span class="n">mov</span><span class="w">    </span><span class="n">rbp</span><span class="p">,</span><span class="n">rsp</span>
+<span class="w">  </span><span class="mf">40093</span><span class="n">a</span><span class="p">:</span><span class="w">   </span><span class="n">be</span><span class="w"> </span><span class="mf">35</span><span class="w"> </span><span class="mf">0</span><span class="n">a</span><span class="w"> </span><span class="mf">40</span><span class="w"> </span><span class="mf">00</span><span class="w">          </span><span class="n">mov</span><span class="w">    </span><span class="n">esi</span><span class="p">,</span><span class="mf">0</span><span class="n">x400a35</span>
+<span class="w">  </span><span class="mf">40093</span><span class="n">f</span><span class="p">:</span><span class="w">   </span><span class="n">bf</span><span class="w"> </span><span class="mf">60</span><span class="w"> </span><span class="mf">10</span><span class="w"> </span><span class="mf">60</span><span class="w"> </span><span class="mf">00</span><span class="w">          </span><span class="n">mov</span><span class="w">    </span><span class="n">edi</span><span class="p">,</span><span class="mf">0</span><span class="n">x601060</span>
+<span class="w">  </span><span class="mf">400944</span><span class="p">:</span><span class="w">   </span><span class="n">e8</span><span class="w"> </span><span class="n">d7</span><span class="w"> </span><span class="n">fe</span><span class="w"> </span><span class="n">ff</span><span class="w"> </span><span class="n">ff</span><span class="w">          </span><span class="n">call</span><span class="w">   </span><span class="mf">400820</span><span class="w"> </span><span class="o">&lt;</span><span class="n">_ZStlsISt11char_traitsIcEERSt13basic_ostreamIcT_ES5_PKc</span><span class="err">@</span><span class="n">plt</span><span class="o">&gt;</span>
+<span class="w">  </span><span class="mf">400949</span><span class="p">:</span><span class="w">   </span><span class="n">b8</span><span class="w"> </span><span class="mf">00</span><span class="w"> </span><span class="mf">00</span><span class="w"> </span><span class="mf">00</span><span class="w"> </span><span class="mf">00</span><span class="w">          </span><span class="n">mov</span><span class="w">    </span><span class="n">eax</span><span class="p">,</span><span class="mf">0</span><span class="n">x0</span>
+<span class="w">  </span><span class="mf">40094</span><span class="n">e</span><span class="p">:</span><span class="w">   </span><span class="mf">5</span><span class="n">d</span><span class="w">                      </span><span class="n">pop</span><span class="w">    </span><span class="n">rbp</span>
+<span class="w">  </span><span class="mf">40094</span><span class="n">f</span><span class="p">:</span><span class="w">   </span><span class="n">c3</span><span class="w">                      </span><span class="n">ret</span>
+</code></pre></div>
+
+<p>你要将程序计数器移回 <code>0x40093a</code> 以便正确设置 <code>esi</code> 和 <code>edi</code> 寄存器。</p>
+<p>在下一篇博客中，我们会第一次接触到 DWARF 信息并给我们的调试器添加一系列逐步调试的功能。之后，我们会有一个功能工具，它能逐步执行代码、在想要的地方设置断点、修改数据以及其它。一如以往，如果你有任何问题请留下你的评论！</p>
+<p>你可以在<a href="https://github.com/TartanLlama/minidbg/tree/tut_registers">这里</a>找到这篇博文的代码。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

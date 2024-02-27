@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在 Linux 下使用 TCP 封装器来加强网络服务安全</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Gabriel Cánepa 在这篇文章中，我们将会讲述什么是 TCP 封装器 （ TCP wrappers ） 以及如何在一台 Linux 服务器上配置他们来限制网络服务的权限 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2016/11/zai-linux-xia-shi-yong-tcp-feng-zhuang-qi-lai-jia-qiang-wang-luo-fu-wu-an-quan.html" rel="bookmark"
+           title="Permalink to 在 Linux 下使用 TCP 封装器来加强网络服务安全">在 Linux 下使用 TCP 封装器来加强网络服务安全</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2016-11-11T10:24:00+01:00">
+                Published: Fri 11 November 2016
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Gabriel Cánepa</p>
+<p>在这篇文章中，我们将会讲述什么是 <ruby> TCP 封装器 <rp>  （ </rp> <rt>  TCP wrappers </rt> <rp>  ） </rp></ruby>以及如何在一台 Linux 服务器上配置他们来<a href="/article-7719-1.html">限制网络服务的权限</a>。在开始之前，我们必须澄清 TCP 封装器并不能消除对于正确<a href="/article-4425-1.html">配置防火墙</a>的需要。</p>
+<p>就这一点而言，你可以把这个工具看作是一个<a href="/article-3966-1.html">基于主机的访问控制列表</a>，而且并不能作为你的系统的<a href="http://www.tecmint.com/linux-server-hardening-security-tips/">终极安全措施</a>。通过使用一个防火墙和 TCP 封装器，而不是只偏爱其中的一个，你将会确保你的服务不会被出现单点故障。</p>
+<p><img alt="" src="/data/attachment/album/201611/11/102405n1zpux1ezn00q91u.jpg"></p>
+<h3>正确理解 hosts.allow 和 hosts.deny 文件</h3>
+<p>当一个网络请求到达你的主机的时候，TCP 封装器会使用 <code>hosts.allow</code> 和 <code>hosts.deny</code> （按照这样的顺序）来决定客户端是否应该被允许使用一个提供的服务。.</p>
+<p>在默认情况下，这些文件内容是空的，或者被注释掉，或者根本不存在。所以，任何请求都会被允许通过 TCP 过滤器而且你的系统被置于依靠防火墙来提供所有的保护。因为这并不是我们想要的。由于在一开始我们就介绍过的原因，清确保下面两个文件都存在：</p>
+<div class="highlight"><pre><span></span><code># ls -l /etc/hosts.allow /etc/hosts.deny
+</code></pre></div>
+
+<p>两个文件的编写语法规则是一样的：</p>
+<div class="highlight"><pre><span></span><code>&lt;services&gt; : &lt;clients&gt; [: &lt;option1&gt; : &lt;option2&gt; : ...]
+</code></pre></div>
+
+<p>在文件中，</p>
+<ol>
+<li><code>services</code> 指当前规则对应的服务，是一个逗号分割的列表。</li>
+<li><code>clients</code> 指被规则影响的主机名或者 IP 地址，逗号分割的。下面的通配符也可以接受：<ol>
+<li><code>ALL</code> 表示所有事物，应用于<code>clients</code>和<code>services</code>。</li>
+<li><code>LOCAL</code> 表示匹配在正式域名中没有完全限定主机名（FQDN）的机器，例如 <code>localhost</code>。</li>
+<li><code>KNOWN</code> 表示主机名，主机地址，或者用户是已知的（即可以通过 DNS 或其它服务解析到）。</li>
+<li><code>UNKNOWN</code> 和 <code>KNOWN</code> 相反。</li>
+<li><code>PARANOID</code> 如果进行反向 DNS 查找彼此返回了不同的地址，那么连接就会被断开（首先根据 IP 去解析主机名，然后根据主机名去获得 IP 地址）。</li>
+</ol>
+</li>
+<li>最后，一个冒号分割的动作列表表示了当一个规则被触发的时候会采取什么操作。</li>
+</ol>
+<p>你应该记住 <code>/etc/hosts.allow</code> 文件中允许一个服务接入的规则要优先于 <code>/etc/hosts.deny</code> 中的规则。另外还有，如果两个规则应用于同一个服务，只有第一个规则会被纳入考虑。</p>
+<p>不幸的是，不是所有的网络服务都支持 TCP 过滤器，为了查看一个给定的服务是否支持他们，可以执行以下命令：</p>
+<div class="highlight"><pre><span></span><code># ldd /path/to/binary | grep libwrap
+</code></pre></div>
+
+<p>如果以上命令执行以后得到了以下结果，那么它就可以支持 TCP 过滤器，<code>sshd</code> 和 <code>vsftpd</code> 作为例子，输出如下所示。</p>
+<p><img alt="Find Supported Services in TCP Wrapper" src="/data/attachment/album/201611/11/102419o0r0kzmn82oh8zil.png"></p>
+<p><em>查找 TCP 过滤器支持的服务</em></p>
+<h3>如何使用 TCP 过滤器来限制服务的权限</h3>
+<p>当你编辑 <code>/etc/hosts.allow</code> 和 <code>/etc/hosts.deny</code> 的时候，确保你在最后一个非空行后面通过回车键来添加一个新的行。</p>
+<p>为了使得 <a href="http://www.tecmint.com/block-ssh-and-ftp-access-to-specific-ip-and-network-range/">SSH 和 FTP</a> 服务只允许 <code>localhost</code> 和 <code>192.168.0.102</code> 并且拒绝所有其他用户，在 <code>/etc/hosts.deny</code> 添加如下内容：</p>
+<div class="highlight"><pre><span></span><code>sshd,vsftpd : ALL
+ALL : ALL
+</code></pre></div>
+
+<p>而且在 <code>/etc/hosts.allow</code> 文件中添加如下内容：</p>
+<div class="highlight"><pre><span></span><code>sshd,vsftpd : 192.168.0.102,LOCAL
+</code></pre></div>
+
+<p>这些更改会立刻生效并且不需要重新启动。</p>
+<p>在下图中你会看到，在最后一行中删掉 <code>LOCAL</code> 后，FTP 服务器会对于 <code>localhost</code> 不可用。在我们添加了通配符以后，服务又变得可用了。</p>
+<p><img alt="确认 FTP 权限 " src="/data/attachment/album/201611/11/102419y5ap6tae6wpptn8p.png"></p>
+<p><em>确认 FTP 权限</em></p>
+<p>为了允许所有服务对于主机名中含有 <code>example.com</code> 都可用，在 <code>hosts.allow</code> 中添加如下一行：</p>
+<div class="highlight"><pre><span></span><code>ALL : .example.com
+</code></pre></div>
+
+<p>而为了禁止 <code>10.0.1.0/24</code> 的机器访问 <code>vsftpd</code> 服务，在 <code>hosts.deny</code> 文件中添加如下一行：</p>
+<div class="highlight"><pre><span></span><code><span class="n">vsftpd</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="mf">10.0</span><span class="o">.</span><span class="mi">1</span><span class="o">.</span>
+</code></pre></div>
+
+<p>在最后的两个例子中，注意到客户端列表每行开头和结尾的<strong>点</strong>。这是用来表示 “所有名字或者 IP 中含有那个字符串的主机或客户端”</p>
+<p>这篇文章对你有用吗？你有什么问题或者评论吗？请你尽情在下面留言交流。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

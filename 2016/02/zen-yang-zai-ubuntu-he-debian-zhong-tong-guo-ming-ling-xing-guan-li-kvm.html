@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>怎样在 ubuntu 和 debian 中通过命令行管理 KVM</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Dan Nanni 有很多不同的方式去管理运行在 KVM 管理程序上的虚拟机。例如，virt-manager 就是一个流行的基于图形界面的前端虚拟机管 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2016/02/zen-yang-zai-ubuntu-he-debian-zhong-tong-guo-ming-ling-xing-guan-li-kvm.html" rel="bookmark"
+           title="Permalink to 怎样在 ubuntu 和 debian 中通过命令行管理 KVM">怎样在 ubuntu 和 debian 中通过命令行管理 KVM</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2016-02-28T20:03:39+01:00">
+                Published: Sun 28 February 2016
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Dan Nanni</p>
+<p>有很多不同的方式去管理运行在 KVM 管理程序上的虚拟机。例如，virt-manager 就是一个流行的基于图形界面的前端虚拟机管理工具。然而，如果你想要在没有图形窗口的服务器环境下使用 KVM ，那么基于图形界面的解决方案显然是行不通的。事实上，你可以单纯使用包装了 kvm 命令行脚本的命令行来管理 KVM 虚拟机。作为替代方案，你可以使用 virsh 这个容易使用的命令行程序来管理客户虚拟机。在 virsh 中，它通过和 libvirtd 服务通信来达到控制虚拟机的目的，而 libvirtd 可以控制多个不同的虚拟机管理器，包括 KVM，Xen，QEMU，LXC 和 OpenVZ。</p>
+<p><img alt="" src="/data/attachment/album/201602/28/200036phbmnmhngnoprb1h.jpg"></p>
+<p>当你想要对虚拟机的前期准备和后期管理实现自动化操作时，像 virsh 这样的命令行管理工具是非常有用的。同样，virsh 支持多个管理器也就意味着你可以通过相同的 virsh 接口去管理不同的虚拟机管理器。</p>
+<p>在这篇文章中，我会示范<strong>怎样在 ubuntu 和 debian 上通过使用 virsh 命令行去运行 KVM</strong>。</p>
+<h3>第一步：确认你的硬件平台支持虚拟化</h3>
+<p>第一步，首先要确认你的 CPU 支持硬件虚拟化扩展（e.g.，Intel VT 或者 AMD-V)，这是 KVM 对硬件的要求。下面的命令可以检查硬件是否支持虚拟化。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>egrep<span class="w"> </span><span class="s1">&#39;(vmx|svm)&#39;</span><span class="w"> </span>--color<span class="w"> </span>/proc/cpuinfo
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/201602/28/200342gxyd6m6c11lrrcmc.jpg"></p>
+<p>如果在输出中不包含 vmx 或者 svm 标识，那么就意味着你的 cpu 不支持硬件虚拟化。因此你不能在你的机器上使用 KVM 。确认了 cpu 支持 vmx 或者 svm 之后，接下来开始安装 KVM。</p>
+<p>对于 KVM 来说，它不要求运行在拥有 64 位内核系统的主机上，但是通常我们会推荐在 64 位系统的主机上面运行 KVM。</p>
+<h3>第二步：安装KVM</h3>
+<p>使用 <code>apt-get</code> 安装 KVM 和相关的用户空间工具。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>qemu-kvm<span class="w"> </span>libvirt-bin
+</code></pre></div>
+
+<p>安装期间，libvirtd 用户组（在 debian 上是 libvirtd-qemu 用户组）将会被创建，并且你的用户 id 将会被自动添加到该组中。这样做的目的是让你可以以一个普通用户而不是 root 用户的身份去管理虚拟机。你可以使用 <code>id</code> 命令来确认这一点，下面将会告诉你怎么去显示你的组 id：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>id<span class="w"> </span>&lt;your-userID&gt;
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/201602/28/200342yvgrl3gxlxfzhfxr.jpg"></p>
+<p>如果因为某些原因，libvirt（在 debian 中是 libvirt-qemu）没有在你的组 id 中被找到，你也可以手动将你自己添加到对应的组中，如下所示：</p>
+<p>在 ubuntu 上：</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">adduser</span><span class="w"> </span><span class="o">[</span><span class="n">youruserID</span><span class="o">]</span><span class="w"> </span><span class="n">libvirtd</span>
+</code></pre></div>
+
+<p>在 debian 上：</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">adduser</span><span class="w"> </span><span class="o">[</span><span class="n">youruserID</span><span class="o">]</span><span class="w"> </span><span class="n">libvirt</span><span class="o">-</span><span class="n">qemu</span>
+</code></pre></div>
+
+<p>按照如下命令重新载入更新后的组成员关系。如果要求输入密码，那么输入你的登陆密码即可。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>su<span class="w"> </span>-l<span class="w"> </span><span class="nv">$USER</span>
+</code></pre></div>
+
+<p>这时，你应该可以以普通用户的身份去执行 virsh 了。做一个如下所示的测试，这个命令将会以列表的形式列出可用的虚拟机（当前的列表是空的）。如果你没有遇到权限问题，那意味着到目前为止一切都是正常的。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>virsh<span class="w"> </span>list
+</code></pre></div>
+
+<h3>第三步：配置桥接网络</h3>
+<p>为了使 KVM 虚拟机能够访问外部网络，一种方法是通过在 KVM 宿主机上创建 Linux 桥来实现。创建之后的桥能够将虚拟机的虚拟网卡和宿主机的物理网卡连接起来，因此，虚拟机能够发送和接收由物理网卡传输的数据包。这种方式叫做网络桥接。</p>
+<p>下面将告诉你如何创建并且配置网桥，我们创建一个网桥称它为 br0。</p>
+<p>首先，安装一个必需的包，然后用命令行创建一个网桥。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>bridge-utils
+<span class="w">    </span>$<span class="w"> </span>sudo<span class="w"> </span>brctl<span class="w"> </span>addbr<span class="w"> </span>br0
+</code></pre></div>
+
+<p>下一步就是配置已经创建好的网桥，即修改位于 <code>/etc/network/interfaces</code> 的配置文件。我们需要将该桥接网卡设置成开机启动。为了修改该配置文件，你需要关闭你的操作系统上的网络管理器（如果你在使用它的话）。跟随<a href="http://xmodulo.com/disable-network-manager-linux.html">操作指南</a>的说明去关闭网络管理器。</p>
+<p>关闭网络管理器之后，接下来就是通过修改配置文件来配置网桥了。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span>auto eth0
+    #iface eth0 inet dhcp
+
+    auto br0
+    iface br0 inet dhcp
+            bridge_ports eth0
+            bridge_stp off
+            bridge_fd 0
+            bridge_maxwait 0
+</code></pre></div>
+
+<p>在上面的配置中，我假设 eth0 是主要网卡，它也是连接到外网的网卡，同样，我假设 eth0 将会通过 DHCP 协议自动获取 ip 地址。注意，之前在 <code>/etc/network/interfaces</code> 中还没有对 eth0 进行任何配置。桥接网卡 br0 引用了 eth0 的配置，而 eth0 也会受到 br0 的制约。</p>
+<p>重启网络服务，并确认网桥已经被成功的配置好。如果成功的话，br0 的 ip 地址将会是 eth0 自动分配的 ip 地址，而且 eth0 不会被分配任何 ip 地址。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>/etc/init.d/networking<span class="w"> </span>restart
+<span class="w">    </span>$<span class="w"> </span>ifconfig
+</code></pre></div>
+
+<p>如果因为某些原因，eth0 仍然保留了之前分配给了 br0 的 ip 地址，那么你可能必须手动删除 eth0 的 ip 地址。</p>
+<p><img alt="" src="/data/attachment/album/201602/28/200342n1i126c4b2ae992v.jpg"></p>
+<h3>第四步：用命令行创建一个虚拟机</h3>
+<p>对于虚拟机来说，它的配置信息被存储在它对应的xml文件中。因此，创建一个虚拟机的第一步就是准备一个与虚拟机对应的 xml 文件。</p>
+<p>下面是一个示例 xml 文件，你可以根据需要手动修改它。</p>
+<div class="highlight"><pre><span></span><code><span class="w">    </span><span class="nt">&lt;domain</span><span class="w"> </span><span class="na">type=</span><span class="s">&#39;kvm&#39;</span><span class="nt">&gt;</span>
+<span class="w">      </span><span class="nt">&lt;name&gt;</span>alice<span class="nt">&lt;/name&gt;</span>
+<span class="w">      </span><span class="nt">&lt;uuid&gt;</span>f5b8c05b-9c7a-3211-49b9-2bd635f7e2aa<span class="nt">&lt;/uuid&gt;</span>
+<span class="w">      </span><span class="nt">&lt;memory&gt;</span>1048576<span class="nt">&lt;/memory&gt;</span>
+<span class="w">      </span><span class="nt">&lt;currentMemory&gt;</span>1048576<span class="nt">&lt;/currentMemory&gt;</span>
+<span class="w">      </span><span class="nt">&lt;vcpu&gt;</span>1<span class="nt">&lt;/vcpu&gt;</span>
+<span class="w">      </span><span class="nt">&lt;os&gt;</span>
+<span class="w">        </span><span class="nt">&lt;type&gt;</span>hvm<span class="nt">&lt;/type&gt;</span>
+<span class="w">        </span><span class="nt">&lt;boot</span><span class="w"> </span><span class="na">dev=</span><span class="s">&#39;cdrom&#39;</span><span class="nt">/&gt;</span>
+<span class="w">      </span><span class="nt">&lt;/os&gt;</span>
+<span class="w">      </span><span class="nt">&lt;features&gt;</span>
+<span class="w">        </span><span class="nt">&lt;acpi/&gt;</span>
+<span class="w">      </span><span class="nt">&lt;/features&gt;</span>
+<span class="w">      </span><span class="nt">&lt;clock</span><span class="w"> </span><span class="na">offset=</span><span class="s">&#39;utc&#39;</span><span class="nt">/&gt;</span>
+<span class="w">      </span><span class="nt">&lt;on_poweroff&gt;</span>destroy<span class="nt">&lt;/on_poweroff&gt;</span>
+<span class="w">      </span><span class="nt">&lt;on_reboot&gt;</span>restart<span class="nt">&lt;/on_reboot&gt;</span>
+<span class="w">      </span><span class="nt">&lt;on_crash&gt;</span>destroy<span class="nt">&lt;/on_crash&gt;</span>
+<span class="w">      </span><span class="nt">&lt;devices&gt;</span>
+<span class="w">        </span><span class="nt">&lt;emulator&gt;</span>/usr/bin/kvm<span class="nt">&lt;/emulator&gt;</span>
+<span class="w">        </span><span class="nt">&lt;disk</span><span class="w"> </span><span class="na">type=</span><span class="s">&quot;file&quot;</span><span class="w"> </span><span class="na">device=</span><span class="s">&quot;disk&quot;</span><span class="nt">&gt;</span>
+<span class="w">          </span><span class="nt">&lt;driver</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;qemu&quot;</span><span class="w"> </span><span class="na">type=</span><span class="s">&quot;raw&quot;</span><span class="nt">/&gt;</span>
+<span class="w">          </span><span class="nt">&lt;source</span><span class="w"> </span><span class="na">file=</span><span class="s">&quot;/home/dev/images/alice.img&quot;</span><span class="nt">/&gt;</span>
+<span class="w">          </span><span class="nt">&lt;target</span><span class="w"> </span><span class="na">dev=</span><span class="s">&quot;vda&quot;</span><span class="w"> </span><span class="na">bus=</span><span class="s">&quot;virtio&quot;</span><span class="nt">/&gt;</span>
+<span class="w">          </span><span class="nt">&lt;address</span><span class="w"> </span><span class="na">type=</span><span class="s">&quot;pci&quot;</span><span class="w"> </span><span class="na">domain=</span><span class="s">&quot;0x0000&quot;</span><span class="w"> </span><span class="na">bus=</span><span class="s">&quot;0x00&quot;</span><span class="w"> </span><span class="na">slot=</span><span class="s">&quot;0x04&quot;</span><span class="w"> </span><span class="na">function=</span><span class="s">&quot;0x0&quot;</span><span class="nt">/&gt;</span>
+<span class="w">        </span><span class="nt">&lt;/disk&gt;</span>
+<span class="w">        </span><span class="nt">&lt;disk</span><span class="w"> </span><span class="na">type=</span><span class="s">&quot;file&quot;</span><span class="w"> </span><span class="na">device=</span><span class="s">&quot;cdrom&quot;</span><span class="nt">&gt;</span>
+<span class="w">          </span><span class="nt">&lt;driver</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;qemu&quot;</span><span class="w"> </span><span class="na">type=</span><span class="s">&quot;raw&quot;</span><span class="nt">/&gt;</span>
+<span class="w">          </span><span class="nt">&lt;source</span><span class="w"> </span><span class="na">file=</span><span class="s">&quot;/home/dev/iso/CentOS-6.5-x86_64-minimal.iso&quot;</span><span class="nt">/&gt;</span>
+<span class="w">          </span><span class="nt">&lt;target</span><span class="w"> </span><span class="na">dev=</span><span class="s">&quot;hdc&quot;</span><span class="w"> </span><span class="na">bus=</span><span class="s">&quot;ide&quot;</span><span class="nt">/&gt;</span>
+<span class="w">          </span><span class="nt">&lt;readonly/&gt;</span>
+<span class="w">          </span><span class="nt">&lt;address</span><span class="w"> </span><span class="na">type=</span><span class="s">&quot;drive&quot;</span><span class="w"> </span><span class="na">controller=</span><span class="s">&quot;0&quot;</span><span class="w"> </span><span class="na">bus=</span><span class="s">&quot;1&quot;</span><span class="w"> </span><span class="na">target=</span><span class="s">&quot;0&quot;</span><span class="w"> </span><span class="na">unit=</span><span class="s">&quot;0&quot;</span><span class="nt">/&gt;</span>
+<span class="w">        </span><span class="nt">&lt;/disk&gt;</span>
+<span class="w">        </span><span class="nt">&lt;interface</span><span class="w"> </span><span class="na">type=</span><span class="s">&#39;bridge&#39;</span><span class="nt">&gt;</span>
+<span class="w">          </span><span class="nt">&lt;source</span><span class="w"> </span><span class="na">bridge=</span><span class="s">&#39;br0&#39;</span><span class="nt">/&gt;</span>
+<span class="w">          </span><span class="nt">&lt;mac</span><span class="w"> </span><span class="na">address=</span><span class="s">&quot;00:00:A3:B0:56:10&quot;</span><span class="nt">/&gt;</span>
+<span class="w">        </span><span class="nt">&lt;/interface&gt;</span>
+<span class="w">        </span><span class="nt">&lt;controller</span><span class="w"> </span><span class="na">type=</span><span class="s">&quot;ide&quot;</span><span class="w"> </span><span class="na">index=</span><span class="s">&quot;0&quot;</span><span class="nt">&gt;</span>
+<span class="w">          </span><span class="nt">&lt;address</span><span class="w"> </span><span class="na">type=</span><span class="s">&quot;pci&quot;</span><span class="w"> </span><span class="na">domain=</span><span class="s">&quot;0x0000&quot;</span><span class="w"> </span><span class="na">bus=</span><span class="s">&quot;0x00&quot;</span><span class="w"> </span><span class="na">slot=</span><span class="s">&quot;0x01&quot;</span><span class="w"> </span><span class="na">function=</span><span class="s">&quot;0x1&quot;</span><span class="nt">/&gt;</span>
+<span class="w">        </span><span class="nt">&lt;/controller&gt;</span>
+<span class="w">        </span><span class="nt">&lt;input</span><span class="w"> </span><span class="na">type=</span><span class="s">&#39;mouse&#39;</span><span class="w"> </span><span class="na">bus=</span><span class="s">&#39;ps2&#39;</span><span class="nt">/&gt;</span>
+<span class="w">        </span><span class="nt">&lt;graphics</span><span class="w"> </span><span class="na">type=</span><span class="s">&#39;vnc&#39;</span><span class="w"> </span><span class="na">port=</span><span class="s">&#39;-1&#39;</span><span class="w"> </span><span class="na">autoport=</span><span class="s">&quot;yes&quot;</span><span class="w"> </span><span class="na">listen=</span><span class="s">&#39;0.0.0.0&#39;</span><span class="nt">/&gt;</span>
+<span class="w">        </span><span class="nt">&lt;console</span><span class="w"> </span><span class="na">type=</span><span class="s">&#39;pty&#39;</span><span class="nt">&gt;</span>
+<span class="w">          </span><span class="nt">&lt;target</span><span class="w"> </span><span class="na">port=</span><span class="s">&#39;0&#39;</span><span class="nt">/&gt;</span>
+<span class="w">        </span><span class="nt">&lt;/console&gt;</span>
+<span class="w">      </span><span class="nt">&lt;/devices&gt;</span>
+<span class="w">    </span><span class="nt">&lt;/domain&gt;</span>
+</code></pre></div>
+
+<p>上面的主机xml配置文件定义了如下的虚拟机内容。</p>
+<ul>
+<li>1GB内存，一个虚拟cpu和一个硬件驱动</li>
+<li>磁盘镜像：<code>/home/dev/images/alice.img</code></li>
+<li>从 CD-ROM 引导（<code>/home/dev/iso/CentOS-6.5-x86_64-minomal.iso</code>）</li>
+<li>网络：一个桥接到 br0 的虚拟网卡</li>
+<li>通过 VNC 远程访问</li>
+</ul>
+<p><code>&lt;uuid&gt;&lt;/uuid&gt;</code> 中的 UUID 字符串可以随机生成。为了得到一个随机的 uuid 字符串，你可能需要使用 uuid 命令行工具。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>uuid
+$<span class="w"> </span>uuid
+</code></pre></div>
+
+<p>生成一个主机 xml 配置文件的方式就是通过一个已经存在的虚拟机来导出它的 xml 配置文件。如下所示。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>virsh<span class="w"> </span>dumpxml<span class="w"> </span>alice<span class="w"> </span>&gt;<span class="w"> </span>bob.xml
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/201602/28/200343qk3x3da3szkvfez0.jpg"></p>
+<h3>第五步：使用命令行启动虚拟机</h3>
+<p>在启动虚拟机之前，我们需要创建它的初始磁盘镜像。为此，你需要使用 qemu-img 命令来生成一个 qemu-kvm 镜像。下面的命令将会创建 10 GB 大小的空磁盘，并且它是 qcow2 格式的。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>qemu-img<span class="w"> </span>create<span class="w"> </span>-f<span class="w"> </span>qcow2<span class="w"> </span>/home/dev/images/alice.img<span class="w"> </span>10G
+</code></pre></div>
+
+<p>使用 qcow2 格式的磁盘镜像的好处就是它在创建之初并不会给它分配全部大小磁盘容量（这里是 10 GB），而是随着虚拟机中文件的增加而逐渐增大。因此，它对空间的使用更加有效。</p>
+<p>现在，你可以通过使用之前创建的 xml 配置文件启动你的虚拟机了。下面的命令将会创建一个虚拟机，然后自动启动它。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>virsh<span class="w"> </span>create<span class="w"> </span>alice.xml
+Domain<span class="w"> </span>alice<span class="w"> </span>created<span class="w"> </span>from<span class="w"> </span>alice.xml
+</code></pre></div>
+
+<p><strong>注意</strong>: 如果你对一个已经存在的虚拟机执行了了上面的命令，那么这个操作将会在没有任何警告的情况下抹去那个已经存在的虚拟机的全部信息。如果你已经创建了一个虚拟机，你可能会使用下面的命令来启动虚拟机。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>virsh<span class="w"> </span>start<span class="w"> </span>alice.xml
+</code></pre></div>
+
+<p>使用如下命令确认一个新的虚拟机已经被创建并成功的被启动。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>virsh<span class="w"> </span>list
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code> Id    Name                           State
+----------------------------------------------------
+ 3     alice                          running
+</code></pre></div>
+
+<p>同样，使用如下命令确认你的虚拟机的虚拟网卡已经被成功的添加到了你先前创建的 br0 网桥中。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>brctl<span class="w"> </span>show
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/201602/28/200343zm9z8cg32igls631.jpg"></p>
+<h3>远程连接虚拟机</h3>
+<p>为了远程访问一个正在运行的虚拟机的控制台，你可以使用VNC客户端。</p>
+<p>首先，你需要使用如下命令找出用于虚拟机的VNC端口号。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>netstat<span class="w"> </span>-nap<span class="w"> </span><span class="p">|</span><span class="w"> </span>egrep<span class="w"> </span><span class="s1">&#39;(kvm|qemu)&#39;</span>
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/201602/28/200343u8h9v62hpnz6ptyj.jpg"></p>
+<p>在这个例子中，用于 alice 虚拟机的 VNC 端口号是 5900。 然后启动一个VNC客户端，连接到一个端口号为5900的VNC服务器。在我们的例子中，虚拟机支持由CentOS光盘文件启动。</p>
+<p><img alt="" src="/data/attachment/album/201602/28/200344jq1isyi11c0b0npg.jpg"></p>
+<h3>使用 virsh 管理虚拟机</h3>
+<p>下面列出了 virsh 命令的常规用法：</p>
+<p>创建客户机并且启动虚拟机：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>virsh<span class="w"> </span>create<span class="w"> </span>alice.xml
+</code></pre></div>
+
+<p>停止虚拟机并且删除客户机：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>virsh<span class="w"> </span>destroy<span class="w"> </span>alice
+</code></pre></div>
+
+<p>关闭虚拟机（不用删除它）：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>virsh<span class="w"> </span>shutdown<span class="w"> </span>alice
+</code></pre></div>
+
+<p>暂停虚拟机：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>virsh<span class="w"> </span><span class="nb">suspend</span><span class="w"> </span>alice
+</code></pre></div>
+
+<p>恢复虚拟机：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>virsh<span class="w"> </span>resume<span class="w"> </span>alice
+</code></pre></div>
+
+<p>访问正在运行的虚拟机的控制台：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>virsh<span class="w"> </span>console<span class="w"> </span>alice
+</code></pre></div>
+
+<p>设置虚拟机开机启动：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>virsh<span class="w"> </span>autostart<span class="w"> </span>alice
+</code></pre></div>
+
+<p>查看虚拟机的详细信息：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>virsh<span class="w"> </span>dominfo<span class="w"> </span>alice
+</code></pre></div>
+
+<p>编辑虚拟机的配置文件：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>virsh<span class="w"> </span>edit<span class="w"> </span>alice
+</code></pre></div>
+
+<p>上面的这个命令将会使用一个默认的编辑器来调用主机配置文件。该配置文件中的任何改变都将自动被libvirt验证其正确性。</p>
+<p>你也可以在一个virsh会话中管理虚拟机。下面的命令会创建并进入到一个virsh会话中：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>virsh
+</code></pre></div>
+
+<p>在 virsh 提示中，你可以使用任何 virsh 命令。</p>
+<p><img alt="" src="/data/attachment/album/201602/28/200344hggy37q00mg8b7lq.jpg"></p>
+<h3>问题处理</h3>
+<ol>
+<li>我在创建虚拟机的时候遇到了一个错误：</li>
+</ol>
+<p>error: internal error: no supported architecture for os type 'hvm'</p>
+<p>如果你的硬件不支持虚拟化的话你可能就会遇到这个错误。（例如，Intel VT或者AMD-V），这是运行KVM所必需的。如果你遇到了这个错误，而你的cpu支持虚拟化，那么这里可以给你一些可用的解决方案：</p>
+<p>首先，检查你的内核模块是否丢失。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>lsmod<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>kvm
+</code></pre></div>
+
+<p>如果内核模块没有加载，你必须按照如下方式加载它。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>modprobe<span class="w"> </span>kvm_intel<span class="w"> </span><span class="o">(</span><span class="k">for</span><span class="w"> </span>Intel<span class="w"> </span>processor<span class="o">)</span>
+$<span class="w"> </span>sudo<span class="w"> </span>modprobe<span class="w"> </span>kvm_amd<span class="w"> </span><span class="o">(</span><span class="k">for</span><span class="w"> </span>AMD<span class="w"> </span>processor<span class="o">)</span>
+</code></pre></div>
+
+<p>第二个解决方案就是添加 <code>--connect qemu:///system</code> 参数到 <code>virsh</code> 命令中，如下所示。当你正在你的硬件平台上使用超过一个虚拟机管理器的时候就需要添加这个参数（例如，VirtualBox，VMware）。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>virsh<span class="w"> </span>--connect<span class="w"> </span>qemu:///system<span class="w"> </span>create<span class="w"> </span>alice.xml
+</code></pre></div>
+
+<ol>
+<li>当我试着访问我的虚拟机的登陆控制台的时候遇到了错误：</li>
+</ol>
+<div class="highlight"><pre><span></span><code> $ virsh console alice
+ error: internal error: cannot find character device &lt;null&gt;
+</code></pre></div>
+
+<p>这个错误发生的原因是你没有在你的虚拟机配置文件中定义控制台设备。在 xml 文件中加上下面的内部设备部分即可。</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;console</span><span class="w"> </span><span class="na">type=</span><span class="s">&#39;pty&#39;</span><span class="nt">&gt;</span>
+<span class="w">  </span><span class="nt">&lt;target</span><span class="w"> </span><span class="na">port=</span><span class="s">&#39;0&#39;</span><span class="nt">/&gt;</span>
+<span class="nt">&lt;/console&gt;</span>
+</code></pre></div>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

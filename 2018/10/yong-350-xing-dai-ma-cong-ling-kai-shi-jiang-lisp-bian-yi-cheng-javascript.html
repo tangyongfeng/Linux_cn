@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>用 350 行代码从零开始，将 Lisp 编译成 JavaScript</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Gil Mizrahi 我们将会在本篇文章中看到从零开始实现的编译器，将简单的类 LISP 计算语言编译成 JavaScript。完整的源代码在 这里。 我们 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/10/yong-350-xing-dai-ma-cong-ling-kai-shi-jiang-lisp-bian-yi-cheng-javascript.html" rel="bookmark"
+           title="Permalink to 用 350 行代码从零开始，将 Lisp 编译成 JavaScript">用 350 行代码从零开始，将 Lisp 编译成 JavaScript</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-10-31T10:18:10+01:00">
+                Published: Wed 31 October 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Gil Mizrahi</p>
+<p><img alt="" src="/data/attachment/album/201810/31/101755m9sy6j1zdhzh9gh2.jpg"></p>
+<p>我们将会在本篇文章中看到从零开始实现的编译器，将简单的类 LISP 计算语言编译成 JavaScript。完整的源代码在 <a href="https://gist.github.com/soupi/d4ff0727ccb739045fad6cdf533ca7dd">这里</a>。</p>
+<p>我们将会：</p>
+<ol>
+<li>自定义语言，并用它编写一个简单的程序</li>
+<li>实现一个简单的解析器组合器</li>
+<li>为该语言实现一个解析器</li>
+<li>为该语言实现一个美观的打印器</li>
+<li>为我们的用途定义 JavaScript 的一个子集</li>
+<li>实现代码转译器，将代码转译成我们定义的 JavaScript 子集</li>
+<li>把所有东西整合在一起</li>
+</ol>
+<p>开始吧！</p>
+<h3>1、定义语言</h3>
+<p>Lisp 族语言最迷人的地方在于，它们的语法就是树状表示的，这就是这门语言很容易解析的原因。我们很快就能接触到它。但首先让我们把自己的语言定义好。关于我们语言的语法的范式（BNF）描述如下：</p>
+<div class="highlight"><pre><span></span><code><span class="nv">program</span><span class="w"> </span><span class="o">::=</span><span class="w"> </span><span class="nv">expr</span>
+<span class="nv">expr</span><span class="w"> </span><span class="o">::=</span><span class="w"> </span><span class="o">&lt;</span><span class="nv">integer</span><span class="o">&gt;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="o">&lt;</span><span class="nv">name</span><span class="o">&gt;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="p">([</span><span class="o">&lt;</span><span class="nv">expr</span><span class="o">&gt;</span><span class="p">])</span>
+</code></pre></div>
+
+<p>基本上，我们可以在该语言的最顶层定义表达式并对其进行运算。表达式由一个整数（比如 <code>5</code>）、一个变量（比如 <code>x</code>）或者一个表达式列表（比如 <code>(add x 1)</code>）组成。</p>
+<p>整数对应它本身的值，变量对应它在当前环境中绑定的值，表达式列表对应一个函数调用，该列表的第一个参数是相应的函数，剩下的表达式是传递给这个函数的参数。</p>
+<p>该语言中，我们保留一些内建的特殊形式，这样我们就能做一些更有意思的事情：</p>
+<ul>
+<li><code>let</code> 表达式使我们可以在它的 <code>body</code> 环境中引入新的变量。语法如下：</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="nv">let</span><span class="w"> </span><span class="o">::=</span><span class="w"> </span><span class="p">(</span><span class="nf">let</span><span class="w"> </span><span class="p">([</span><span class="o">&lt;</span><span class="nv">letarg</span><span class="o">&gt;</span><span class="p">])</span><span class="w"> </span><span class="o">&lt;</span><span class="nv">body</span><span class="o">&gt;</span><span class="p">)</span>
+<span class="nv">letargs</span><span class="w"> </span><span class="o">::=</span><span class="w"> </span><span class="p">(</span><span class="o">&lt;</span><span class="nv">name</span><span class="o">&gt;</span><span class="w"> </span><span class="o">&lt;</span><span class="nv">expr</span><span class="o">&gt;</span><span class="p">)</span>
+<span class="nv">body</span><span class="w"> </span><span class="o">::=</span><span class="w"> </span><span class="o">&lt;</span><span class="nv">expr</span><span class="o">&gt;</span>
+</code></pre></div>
+
+<ul>
+<li><code>lambda</code> 表达式：也就是匿名函数定义。语法如下：</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="nv">lambda</span><span class="w"> </span><span class="o">::=</span><span class="w"> </span><span class="p">(</span><span class="nf">lambda</span><span class="w"> </span><span class="p">([</span><span class="o">&lt;</span><span class="nv">name</span><span class="o">&gt;</span><span class="p">])</span><span class="w"> </span><span class="o">&lt;</span><span class="nv">body</span><span class="o">&gt;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>还有一些内建函数： <code>add</code>、<code>mul</code>、<code>sub</code>、<code>div</code> 和 <code>print</code>。</p>
+<p>让我们看看用我们这门语言编写的入门示例程序：</p>
+<div class="highlight"><pre><span></span><code>(let
+  ((compose
+    (lambda (f g)
+      (lambda (x) (f (g x)))))
+  (square
+    (lambda (x) (mul x x)))
+  (add1
+    (lambda (x) (add x 1))))
+  (print ((compose square add1) 5)))
+</code></pre></div>
+
+<p>这个程序定义了 3 个函数：<code>compose</code>、<code>square</code> 和 <code>add1</code>。然后将计算结果的值 <code>((compose square add1) 5)</code> 输出出来。</p>
+<p>我相信了解这门语言，这些信息就足够了。开始实现它吧。</p>
+<p>在 Haskell 中，我们可以这样定义语言：</p>
+<div class="highlight"><pre><span></span><code><span class="n">type</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">String</span>
+
+<span class="k">data</span><span class="w"> </span><span class="n">Expr</span>
+<span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="n">ATOM</span><span class="w"> </span><span class="n">Atom</span>
+<span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="n">LIST</span><span class="w"> </span><span class="o">[</span><span class="n">Expr</span><span class="o">]</span>
+<span class="w">    </span><span class="n">deriving</span><span class="w"> </span><span class="p">(</span><span class="n">Eq</span><span class="p">,</span><span class="w"> </span><span class="k">Read</span><span class="p">,</span><span class="w"> </span><span class="n">Show</span><span class="p">)</span>
+
+<span class="k">data</span><span class="w"> </span><span class="n">Atom</span>
+<span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="nc">Int</span><span class="w"> </span><span class="nc">Int</span>
+<span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="n">Symbol</span><span class="w"> </span><span class="n">Name</span>
+<span class="w">    </span><span class="n">deriving</span><span class="w"> </span><span class="p">(</span><span class="n">Eq</span><span class="p">,</span><span class="w"> </span><span class="k">Read</span><span class="p">,</span><span class="w"> </span><span class="n">Show</span><span class="p">)</span>
+</code></pre></div>
+
+<p>我们可以解析用该语言用 <code>Expr</code> 定义的程序。而且，这里我们添加了新数据类型 <code>Eq</code>、<code>Read</code> 和 <code>Show</code> 等实例用于测试和调试。你能够在 REPL 中使用这些数据类型，验证它们确实有用。</p>
+<p>我们不在语法中定义 <code>lambda</code>、<code>let</code> 或其它的内建函数，原因在于，当前情况下我们没必要用到这些东西。这些函数仅仅是 <code>LIST</code> （表达式列表）的更加特殊的用例。所以我决定将它放到后面的部分。</p>
+<p>一般来说你想要在抽象语法中定义这些特殊用例 —— 用于改进错误信息、禁用静态分析和优化等等，但在这里我们不会这样做，对我们来说这些已经足够了。</p>
+<p>另一件你想做的事情可能是在语法中添加一些注释信息。比如定位：<code>Expr</code> 是来自哪个文件的，具体到这个文件的哪一行哪一列。你可以在后面的阶段中使用这一特性，打印出错误定位，即使它们不是处于解析阶段。</p>
+<ul>
+<li>练习 1：添加一个 <code>Program</code> 数据类型，可以按顺序包含多个 <code>Expr</code></li>
+<li>练习 2：向语法树中添加一个定位注解。</li>
+</ul>
+<h3>2、实现一个简单的解析器组合库</h3>
+<p>我们要做的第一件事情是定义一个<ruby> 嵌入式领域专用语言 <rt>  Embedded Domain Specific Language </rt></ruby>（EDSL），我们会用它来定义我们的语言解析器。这常常被称为解析器组合库。我们做这件事完全是出于学习的目的，Haskell 里有很好的解析库，在实际构建软件或者进行实验时，你应该使用它们。<a href="https://mrkkrp.github.io/megaparsec/">megaparsec</a> 就是这样的一个库。</p>
+<p>首先我们来谈谈解析库的实现的思路。本质上，我们的解析器就是一个函数，接受一些输入，可能会读取输入的一些或全部内容，然后返回解析出来的值和无法解析的输入部分，或者在解析失败时抛出异常。我们把它写出来。</p>
+<div class="highlight"><pre><span></span><code><span class="nx">newtype</span><span class="w"> </span><span class="nx">Parser</span><span class="w"> </span><span class="nx">a</span>
+<span class="w">  </span><span class="p">=</span><span class="w"> </span><span class="nx">Parser</span><span class="w"> </span><span class="p">(</span><span class="nx">ParseString</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nx">Either</span><span class="w"> </span><span class="nx">ParseError</span><span class="w"> </span><span class="p">(</span><span class="nx">a</span><span class="p">,</span><span class="w"> </span><span class="nx">ParseString</span><span class="p">))</span>
+
+<span class="nx">data</span><span class="w"> </span><span class="nx">ParseString</span>
+<span class="w">  </span><span class="p">=</span><span class="w"> </span><span class="nx">ParseString</span><span class="w"> </span><span class="nx">Name</span><span class="w"> </span><span class="p">(</span><span class="nx">Int</span><span class="p">,</span><span class="w"> </span><span class="nx">Int</span><span class="p">)</span><span class="w"> </span><span class="nx">String</span>
+
+<span class="nx">data</span><span class="w"> </span><span class="nx">ParseError</span>
+<span class="w">  </span><span class="p">=</span><span class="w"> </span><span class="nx">ParseError</span><span class="w"> </span><span class="nx">ParseString</span><span class="w"> </span><span class="nx">Error</span>
+
+<span class="k">type</span><span class="w"> </span><span class="nx">Error</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">String</span>
+</code></pre></div>
+
+<p>这里我们定义了三个主要的新类型。</p>
+<p>第一个，<code>Parser a</code> 是之前讨论的解析函数。</p>
+<p>第二个，<code>ParseString</code> 是我们的输入或携带的状态。它有三个重要的部分：</p>
+<ul>
+<li><code>Name</code>: 这是源的名字</li>
+<li><code>(Int, Int)</code>: 这是源的当前位置</li>
+<li><code>String</code>: 这是等待解析的字符串</li>
+</ul>
+<p>第三个，<code>ParseError</code> 包含了解析器的当前状态和一个错误信息。</p>
+<p>现在我们想让这个解析器更灵活，我们将会定义一些常用类型的实例。这些实例让我们能够将小巧的解析器和复杂的解析器结合在一起（因此它的名字叫做 “解析器组合器”）。</p>
+<p>第一个是 <code>Functor</code> 实例。我们需要 <code>Functor</code> 实例，因为我们要能够对解析值应用函数从而使用不同的解析器。当我们定义自己语言的解析器时，我们将会看到关于它的示例。</p>
+<div class="highlight"><pre><span></span><code><span class="n">instance</span><span class="w"> </span><span class="n">Functor</span><span class="w"> </span><span class="n">Parser</span><span class="w"> </span><span class="n">where</span>
+<span class="w">  </span><span class="n">fmap</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="p">(</span><span class="n">Parser</span><span class="w"> </span><span class="n">parser</span><span class="p">)</span><span class="w"> </span><span class="o">=</span>
+<span class="w">    </span><span class="n">Parser</span><span class="w"> </span><span class="p">(</span><span class="err">\</span><span class="n">str</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="kr">first</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="o">&lt;</span><span class="err">$</span><span class="o">&gt;</span><span class="w"> </span><span class="n">parser</span><span class="w"> </span><span class="n">str</span><span class="p">)</span>
+</code></pre></div>
+
+<p>第二个是 <code>Applicative</code> 实例。该实例的常见用例是在多个解析器中实现一个纯函数。</p>
+<div class="highlight"><pre><span></span><code><span class="n">instance</span><span class="w"> </span><span class="n">Applicative</span><span class="w"> </span><span class="n">Parser</span><span class="w"> </span><span class="n">where</span>
+<span class="w">  </span><span class="n">pure</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nf">Parser </span><span class="p">(</span>\<span class="n">str</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nf">Right </span><span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="n">str</span><span class="p">))</span>
+<span class="w">  </span><span class="p">(</span><span class="n">Parser</span><span class="w"> </span><span class="n">p1</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;*&gt;</span><span class="w"> </span><span class="p">(</span><span class="n">Parser</span><span class="w"> </span><span class="n">p2</span><span class="p">)</span><span class="w"> </span><span class="o">=</span>
+<span class="w">    </span><span class="n">Parser</span><span class="w"> </span><span class="o">$</span>
+<span class="w">      </span>\<span class="n">str</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nf">do</span>
+<span class="nf">        </span><span class="p">(</span><span class="n">f</span><span class="p">,</span><span class="w"> </span><span class="n">rest</span><span class="p">)</span><span class="w">  </span><span class="o">&lt;-</span><span class="w"> </span><span class="n">p1</span><span class="w"> </span><span class="nf">str</span>
+<span class="nf">        </span><span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="n">rest</span><span class="s">&#39;) &lt;- p2 rest</span>
+<span class="s">        pure (f x, rest&#39;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>（注意：我们还会实现一个 Monad 实例，这样我们才能使用符号）</p>
+<p>第三个是 <code>Alternative</code> 实例。万一前面的解析器解析失败了，我们要能够提供一个备用的解析器。</p>
+<div class="highlight"><pre><span></span><code><span class="k">instance</span><span class="w"> </span><span class="n">Alternative</span><span class="w"> </span><span class="k">Parser</span><span class="w"> </span><span class="k">where</span>
+<span class="w">  </span><span class="k">empty</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">Parser</span><span class="w"> </span><span class="p">(</span><span class="n n-Quoted">`throwErr`</span><span class="w"> </span><span class="s2">&quot;Failed consuming input&quot;</span><span class="p">)</span>
+<span class="w">  </span><span class="p">(</span><span class="k">Parser</span><span class="w"> </span><span class="n">p1</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;|&gt;</span><span class="w"> </span><span class="p">(</span><span class="k">Parser</span><span class="w"> </span><span class="n">p2</span><span class="p">)</span><span class="w"> </span><span class="o">=</span>
+<span class="w">    </span><span class="k">Parser</span><span class="w"> </span><span class="n">$</span>
+<span class="w">      </span><span class="err">\</span><span class="n">pstr</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="k">case</span><span class="w"> </span><span class="n">p1</span><span class="w"> </span><span class="n">pstr</span><span class="w"> </span><span class="k">of</span>
+<span class="w">        </span><span class="k">Right</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="k">Right</span><span class="w"> </span><span class="n">result</span>
+<span class="w">        </span><span class="k">Left</span><span class="w">  </span><span class="n">_</span><span class="w">      </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">p2</span><span class="w"> </span><span class="n">pstr</span>
+</code></pre></div>
+
+<p>第四个是 <code>Monad</code> 实例。这样我们就能链接解析器。</p>
+<div class="highlight"><pre><span></span><code><span class="nv">instance</span><span class="w"> </span><span class="nv">Monad</span><span class="w"> </span><span class="nv">Parser</span><span class="w"> </span><span class="nf">where</span>
+<span class="w">  </span><span class="p">(</span><span class="nv">Parser</span><span class="w"> </span><span class="nv">p1</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;&gt;=</span><span class="w"> </span><span class="nv">f</span><span class="w"> </span><span class="o">=</span>
+<span class="w">    </span><span class="nv">Parser</span><span class="w"> </span><span class="p">$</span>
+<span class="w">     </span>\<span class="nv">str</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nv">case</span><span class="w"> </span><span class="nv">p1</span><span class="w"> </span><span class="nv">str</span><span class="w"> </span><span class="nv">of</span>
+<span class="w">       </span><span class="nv">Left</span><span class="w"> </span><span class="nv">err</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nv">Left</span><span class="w"> </span><span class="nv">err</span>
+<span class="w">       </span><span class="nf">Right</span><span class="w"> </span><span class="p">(</span><span class="nv">rs</span><span class="p">,</span><span class="w"> </span><span class="nv">rest</span><span class="p">)</span><span class="w"> </span><span class="o">-&gt;</span>
+<span class="w">         </span><span class="nv">case</span><span class="w"> </span><span class="nv">f</span><span class="w"> </span><span class="nv">rs</span><span class="w"> </span><span class="nv">of</span>
+<span class="w">           </span><span class="nv">Parser</span><span class="w"> </span><span class="nv">parser</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nv">parser</span><span class="w"> </span><span class="nv">rest</span>
+</code></pre></div>
+
+<p>接下来，让我们定义一种的方式，用于运行解析器和防止失败的助手函数：</p>
+<div class="highlight"><pre><span></span><code>runParser :: String -&gt; String -&gt; Parser a -&gt; Either ParseError (a, ParseString)
+runParser name str (Parser parser) = parser $ ParseString name (0,0) str
+
+throwErr :: ParseString -&gt; String -&gt; Either ParseError a
+throwErr ps@(ParseString name (row,col) _) errMsg =
+  Left $ ParseError ps $ unlines
+    [ &quot;*** &quot; ++ name ++ &quot;: &quot; ++ errMsg
+    , &quot;* On row &quot; ++ show row ++ &quot;, column &quot; ++ show col ++ &quot;.&quot;
+    ]
+</code></pre></div>
+
+<p>现在我们将会开始实现组合器，这是 EDSL 的 API，也是它的核心。</p>
+<p>首先，我们会定义 <code>oneOf</code>。如果输入列表中的字符后面还有字符的话，<code>oneOf</code> 将会成功，否则就会失败。</p>
+<div class="highlight"><pre><span></span><code><span class="n">oneOf</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="o">[</span><span class="n">Char</span><span class="o">]</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">Parser</span><span class="w"> </span><span class="nc">Char</span>
+<span class="n">oneOf</span><span class="w"> </span><span class="n">chars</span><span class="w"> </span><span class="o">=</span>
+<span class="w">  </span><span class="n">Parser</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="err">\</span><span class="k">case</span>
+<span class="w">    </span><span class="n">ps</span><span class="err">@</span><span class="p">(</span><span class="n">ParseString</span><span class="w"> </span><span class="n">name</span><span class="w"> </span><span class="p">(</span><span class="k">row</span><span class="p">,</span><span class="w"> </span><span class="n">col</span><span class="p">)</span><span class="w"> </span><span class="nf">str</span><span class="p">)</span><span class="w"> </span><span class="o">-&gt;</span>
+<span class="w">      </span><span class="k">case</span><span class="w"> </span><span class="nf">str</span><span class="w"> </span><span class="k">of</span>
+<span class="w">        </span><span class="err">[]</span><span class="w">     </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">throwErr</span><span class="w"> </span><span class="n">ps</span><span class="w"> </span><span class="ss">&quot;Cannot read character of empty string&quot;</span>
+<span class="w">        </span><span class="p">(</span><span class="nl">c</span><span class="p">:</span><span class="n">cs</span><span class="p">)</span><span class="w"> </span><span class="o">-&gt;</span>
+<span class="w">          </span><span class="k">if</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="err">`</span><span class="n">elem</span><span class="err">`</span><span class="w"> </span><span class="n">chars</span>
+<span class="w">          </span><span class="k">then</span><span class="w"> </span><span class="nf">Right</span><span class="w"> </span><span class="p">(</span><span class="n">c</span><span class="p">,</span><span class="w"> </span><span class="n">ParseString</span><span class="w"> </span><span class="n">name</span><span class="w"> </span><span class="p">(</span><span class="k">row</span><span class="p">,</span><span class="w"> </span><span class="n">col</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="n">cs</span><span class="p">)</span>
+<span class="w">          </span><span class="k">else</span><span class="w"> </span><span class="n">throwErr</span><span class="w"> </span><span class="n">ps</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">unlines</span><span class="w"> </span><span class="o">[</span><span class="n">&quot;Unexpected character &quot; ++ [c</span><span class="o">]</span><span class="p">,</span><span class="w"> </span><span class="ss">&quot;Expecting one of: &quot;</span><span class="w"> </span><span class="o">++</span><span class="w"> </span><span class="n">show</span><span class="w"> </span><span class="n">chars</span><span class="err">]</span>
+</code></pre></div>
+
+<p><code>optional</code> 将会抛出异常，停止解析器。失败时它仅仅会返回 <code>Nothing</code>。</p>
+<div class="highlight"><pre><span></span><code><span class="nv">optional</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="nv">Parser</span><span class="w"> </span><span class="nv">a</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nf">Parser</span><span class="w"> </span><span class="p">(</span><span class="nv">Maybe</span><span class="w"> </span><span class="nv">a</span><span class="p">)</span>
+<span class="nf">optional</span><span class="w"> </span><span class="p">(</span><span class="nv">Parser</span><span class="w"> </span><span class="nv">parser</span><span class="p">)</span><span class="w"> </span><span class="o">=</span>
+<span class="w">  </span><span class="nv">Parser</span><span class="w"> </span><span class="p">$</span>
+<span class="w">    </span>\<span class="nv">pstr</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nv">case</span><span class="w"> </span><span class="nv">parser</span><span class="w"> </span><span class="nv">pstr</span><span class="w"> </span><span class="nv">of</span>
+<span class="w">      </span><span class="nv">Left</span><span class="w"> </span><span class="nv">_</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nf">Right</span><span class="w"> </span><span class="p">(</span><span class="nv">Nothing</span><span class="p">,</span><span class="w"> </span><span class="nv">pstr</span><span class="p">)</span>
+<span class="w">      </span><span class="nf">Right</span><span class="w"> </span><span class="p">(</span><span class="nv">x</span><span class="p">,</span><span class="w"> </span><span class="nv">rest</span><span class="p">)</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nf">Right</span><span class="w"> </span><span class="p">(</span><span class="nv">Just</span><span class="w"> </span><span class="nv">x</span><span class="p">,</span><span class="w"> </span><span class="nv">rest</span><span class="p">)</span>
+</code></pre></div>
+
+<p><code>many</code> 将会试着重复运行解析器，直到失败。当它完成的时候，会返回成功运行的解析器列表。<code>many1</code> 做的事情是一样的，但解析失败时它至少会抛出一次异常。</p>
+<div class="highlight"><pre><span></span><code><span class="n">many</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="n">Parser</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">Parser</span><span class="w"> </span><span class="o">[</span><span class="n">a</span><span class="o">]</span>
+<span class="n">many</span><span class="w"> </span><span class="n">parser</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">go</span><span class="w"> </span><span class="err">[]</span>
+<span class="w">  </span><span class="k">where</span><span class="w"> </span><span class="k">go</span><span class="w"> </span><span class="n">cs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">parser</span><span class="w"> </span><span class="o">&gt;&gt;=</span><span class="w"> </span><span class="err">\</span><span class="n">c</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="k">go</span><span class="w"> </span><span class="p">(</span><span class="nl">c</span><span class="p">:</span><span class="n">cs</span><span class="p">))</span><span class="w"> </span><span class="o">&lt;|&gt;</span><span class="w"> </span><span class="n">pure</span><span class="w"> </span><span class="p">(</span><span class="nf">reverse</span><span class="w"> </span><span class="n">cs</span><span class="p">)</span>
+
+<span class="n">many1</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="n">Parser</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">Parser</span><span class="w"> </span><span class="o">[</span><span class="n">a</span><span class="o">]</span>
+<span class="n">many1</span><span class="w"> </span><span class="n">parser</span><span class="w"> </span><span class="o">=</span>
+<span class="w">  </span><span class="p">(</span><span class="err">:</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;</span><span class="err">$</span><span class="o">&gt;</span><span class="w"> </span><span class="n">parser</span><span class="w"> </span><span class="o">&lt;*&gt;</span><span class="w"> </span><span class="n">many</span><span class="w"> </span><span class="n">parser</span>
+</code></pre></div>
+
+<p>下面的这些解析器通过我们定义的组合器来实现一些特殊的解析器：</p>
+<div class="highlight"><pre><span></span><code><span class="nc">char</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="nc">Char</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">Parser</span><span class="w"> </span><span class="nc">Char</span>
+<span class="nc">char</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">oneOf</span><span class="w"> </span><span class="o">[</span><span class="n">c</span><span class="o">]</span>
+
+<span class="n">string</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="n">String</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">Parser</span><span class="w"> </span><span class="n">String</span>
+<span class="n">string</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">traverse</span><span class="w"> </span><span class="nc">char</span>
+
+<span class="nf">space</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="n">Parser</span><span class="w"> </span><span class="nc">Char</span>
+<span class="nf">space</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">oneOf</span><span class="w"> </span><span class="ss">&quot; \n&quot;</span>
+
+<span class="n">spaces</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="n">Parser</span><span class="w"> </span><span class="n">String</span>
+<span class="n">spaces</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">many</span><span class="w"> </span><span class="nf">space</span>
+
+<span class="n">spaces1</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="n">Parser</span><span class="w"> </span><span class="n">String</span>
+<span class="n">spaces1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">many1</span><span class="w"> </span><span class="nf">space</span>
+
+<span class="n">withSpaces</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="n">Parser</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">Parser</span><span class="w"> </span><span class="n">a</span>
+<span class="n">withSpaces</span><span class="w"> </span><span class="n">parser</span><span class="w"> </span><span class="o">=</span>
+<span class="w">  </span><span class="n">spaces</span><span class="w"> </span><span class="o">*&gt;</span><span class="w"> </span><span class="n">parser</span><span class="w"> </span><span class="o">&lt;*</span><span class="w"> </span><span class="n">spaces</span>
+
+<span class="n">parens</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="n">Parser</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">Parser</span><span class="w"> </span><span class="n">a</span>
+<span class="n">parens</span><span class="w"> </span><span class="n">parser</span><span class="w"> </span><span class="o">=</span>
+<span class="w">     </span><span class="p">(</span><span class="n">withSpaces</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="nc">char</span><span class="w"> </span><span class="s1">&#39;(&#39;</span><span class="p">)</span>
+<span class="w">  </span><span class="o">*&gt;</span><span class="w"> </span><span class="n">withSpaces</span><span class="w"> </span><span class="n">parser</span>
+<span class="w">  </span><span class="o">&lt;*</span><span class="w"> </span><span class="p">(</span><span class="n">spaces</span><span class="w"> </span><span class="o">*&gt;</span><span class="w"> </span><span class="nc">char</span><span class="w"> </span><span class="s1">&#39;)&#39;</span><span class="p">)</span>
+
+<span class="n">sepBy</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="n">Parser</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">Parser</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">Parser</span><span class="w"> </span><span class="o">[</span><span class="n">b</span><span class="o">]</span>
+<span class="n">sepBy</span><span class="w"> </span><span class="n">sep</span><span class="w"> </span><span class="n">parser</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">do</span>
+<span class="w">  </span><span class="n">frst</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="n">optional</span><span class="w"> </span><span class="n">parser</span>
+<span class="w">  </span><span class="n">rest</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="n">many</span><span class="w"> </span><span class="p">(</span><span class="n">sep</span><span class="w"> </span><span class="o">*&gt;</span><span class="w"> </span><span class="n">parser</span><span class="p">)</span>
+<span class="w">  </span><span class="n">pure</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">maybe</span><span class="w"> </span><span class="n">rest</span><span class="w"> </span><span class="p">(</span><span class="err">:</span><span class="n">rest</span><span class="p">)</span><span class="w"> </span><span class="n">frst</span>
+</code></pre></div>
+
+<p>现在为该门语言定义解析器所需要的所有东西都有了。</p>
+<ul>
+<li>练习 ：实现一个 EOF（end of file/input，即文件或输入终止符）解析器组合器。</li>
+</ul>
+<h3>3、为我们的语言实现解析器</h3>
+<p>我们会用自顶而下的方法定义解析器。</p>
+<div class="highlight"><pre><span></span><code><span class="n">parseExpr</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="n">Parser</span><span class="w"> </span><span class="n">Expr</span>
+<span class="n">parseExpr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fmap</span><span class="w"> </span><span class="n">ATOM</span><span class="w"> </span><span class="n">parseAtom</span><span class="w"> </span><span class="o">&lt;|&gt;</span><span class="w"> </span><span class="n">fmap</span><span class="w"> </span><span class="n">LIST</span><span class="w"> </span><span class="n">parseList</span>
+
+<span class="n">parseList</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="n">Parser</span><span class="w"> </span><span class="o">[</span><span class="n">Expr</span><span class="o">]</span>
+<span class="n">parseList</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">parens</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">sepBy</span><span class="w"> </span><span class="n">spaces1</span><span class="w"> </span><span class="n">parseExpr</span>
+
+<span class="n">parseAtom</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="n">Parser</span><span class="w"> </span><span class="n">Atom</span>
+<span class="n">parseAtom</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">parseSymbol</span><span class="w"> </span><span class="o">&lt;|&gt;</span><span class="w"> </span><span class="n">parseInt</span>
+
+<span class="n">parseSymbol</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="n">Parser</span><span class="w"> </span><span class="n">Atom</span>
+<span class="n">parseSymbol</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fmap</span><span class="w"> </span><span class="n">Symbol</span><span class="w"> </span><span class="nf">parseName</span>
+</code></pre></div>
+
+<p>注意到这四个函数是在我们这门语言中属于高阶描述。这解释了为什么 Haskell 执行解析工作这么棒。在定义完高级部分后，我们还需要定义低级别的 <code>parseName</code> 和 <code>parseInt</code>。</p>
+<p>我们能在这门语言中用什么字符作为名字呢？用小写的字母、数字和下划线吧，而且名字的第一个字符必须是字母。</p>
+<div class="highlight"><pre><span></span><code><span class="n">parseName</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="n">Parser</span><span class="w"> </span><span class="n">Name</span>
+<span class="n">parseName</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">do</span>
+<span class="w">  </span><span class="n">c</span><span class="w">  </span><span class="o">&lt;-</span><span class="w"> </span><span class="n">oneOf</span><span class="w"> </span><span class="p">[</span><span class="s">&#39;a&#39;</span><span class="n">..</span><span class="s">&#39;z&#39;</span><span class="p">]</span>
+<span class="w">  </span><span class="n">cs</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="n">many</span><span class="w"> </span><span class="o">$</span><span class="w"> </span><span class="n">oneOf</span><span class="w"> </span><span class="o">$</span><span class="w"> </span><span class="p">[</span><span class="s">&#39;a&#39;</span><span class="n">..</span><span class="s">&#39;z&#39;</span><span class="p">]</span><span class="w"> </span><span class="o">++</span><span class="w"> </span><span class="s">&quot;0123456789&quot;</span><span class="w"> </span><span class="o">++</span><span class="w"> </span><span class="s">&quot;_&quot;</span>
+<span class="w">  </span><span class="nf">pure </span><span class="p">(</span><span class="n">c</span><span class="o">:</span><span class="n">cs</span><span class="p">)</span>
+</code></pre></div>
+
+<p>整数是一系列数字，数字前面可能有负号 <code>-</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="n">parseInt</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="n">Parser</span><span class="w"> </span><span class="n">Atom</span>
+<span class="n">parseInt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">do</span>
+<span class="w">  </span><span class="n">sign</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="n">optional</span><span class="w"> </span><span class="o">$</span><span class="w"> </span><span class="n">char</span><span class="w"> </span><span class="s">&#39;-&#39;</span>
+<span class="w">  </span><span class="n">num</span><span class="w">  </span><span class="o">&lt;-</span><span class="w"> </span><span class="n">many1</span><span class="w"> </span><span class="o">$</span><span class="w"> </span><span class="n">oneOf</span><span class="w"> </span><span class="s">&quot;0123456789&quot;</span>
+<span class="w">  </span><span class="n">let</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">read</span><span class="w"> </span><span class="o">$</span><span class="w"> </span><span class="n">maybe</span><span class="w"> </span><span class="nf">num </span><span class="p">(</span><span class="o">:</span><span class="n">num</span><span class="p">)</span><span class="w"> </span><span class="n">sign</span><span class="w"> </span><span class="n">of</span>
+<span class="w">  </span><span class="n">pure</span><span class="w"> </span><span class="o">$</span><span class="w"> </span><span class="n">Int</span><span class="w"> </span><span class="n">result</span>
+</code></pre></div>
+
+<p>最后，我们会定义用来运行解析器的函数，返回值可能是一个 <code>Expr</code> 或者是一条错误信息。</p>
+<div class="highlight"><pre><span></span><code><span class="n">runExprParser</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="kt">String</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">Either</span><span class="w"> </span><span class="kt">String</span><span class="w"> </span><span class="n">Expr</span>
+<span class="n">runExprParser</span><span class="w"> </span><span class="n">name</span><span class="w"> </span><span class="n">str</span><span class="w"> </span><span class="o">=</span>
+<span class="w">  </span><span class="kr">case</span><span class="w"> </span><span class="n">runParser</span><span class="w"> </span><span class="n">name</span><span class="w"> </span><span class="n">str</span><span class="w"> </span><span class="p">(</span><span class="n">withSpaces</span><span class="w"> </span><span class="n">parseExpr</span><span class="p">)</span><span class="w"> </span><span class="kr">of</span>
+<span class="w">    </span><span class="kr">Left</span><span class="w"> </span><span class="p">(</span><span class="n">ParseError</span><span class="w"> </span><span class="n">_</span><span class="w"> </span><span class="n">errMsg</span><span class="p">)</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="kr">Left</span><span class="w"> </span><span class="n">errMsg</span>
+<span class="w">    </span><span class="kr">Right</span><span class="w"> </span><span class="p">(</span><span class="n">result</span><span class="p">,</span><span class="w"> </span><span class="n">_</span><span class="p">)</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="kr">Right</span><span class="w"> </span><span class="n">result</span>
+</code></pre></div>
+
+<ul>
+<li>练习 1 ：为第一节中定义的 <code>Program</code> 类型编写一个解析器</li>
+<li>练习 2 ：用 Applicative 的形式重写 <code>parseName</code></li>
+<li>练习 3 ：<code>parseInt</code> 可能出现溢出情况，找到处理它的方法，不要用 <code>read</code>。</li>
+</ul>
+<h3>4、为这门语言实现一个更好看的输出器</h3>
+<p>我们还想做一件事，将我们的程序以源代码的形式打印出来。这对完善错误信息很有用。</p>
+<div class="highlight"><pre><span></span><code><span class="nv">printExpr</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="nv">Expr</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nv">String</span>
+<span class="nv">printExpr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">printExpr</span><span class="o">&#39;</span><span class="w"> </span><span class="nv">False</span><span class="w"> </span><span class="mi">0</span>
+
+<span class="nv">printAtom</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="nv">Atom</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nv">String</span>
+<span class="nv">printAtom</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>\<span class="nv">case</span>
+<span class="w">  </span><span class="nv">Symbol</span><span class="w"> </span><span class="nv">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nv">s</span>
+<span class="w">  </span><span class="nv">Int</span><span class="w"> </span><span class="nv">i</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nv">show</span><span class="w"> </span><span class="nv">i</span>
+
+<span class="nv">printExpr</span><span class="o">&#39;</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="nv">Bool</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nv">Int</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nv">Expr</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nv">String</span>
+<span class="nv">printExpr</span><span class="o">&#39;</span><span class="w"> </span><span class="k">do</span><span class="no">ind</span><span class="nv">ent</span><span class="w"> </span><span class="nv">level</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>\<span class="nv">case</span>
+<span class="w">  </span><span class="nv">ATOM</span><span class="w"> </span><span class="nv">a</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="no">ind</span><span class="nf">ent</span><span class="w"> </span><span class="p">(</span><span class="nv">bool</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="nv">level</span><span class="w"> </span><span class="k">do</span><span class="no">ind</span><span class="nv">ent</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nv">printAtom</span><span class="w"> </span><span class="nv">a</span><span class="p">)</span>
+<span class="w">  </span><span class="nf">LIST</span><span class="w"> </span><span class="p">(</span><span class="nv">e</span><span class="o">:</span><span class="nv">es</span><span class="p">)</span><span class="w"> </span><span class="o">-&gt;</span>
+<span class="w">    </span><span class="no">ind</span><span class="nf">ent</span><span class="w"> </span><span class="p">(</span><span class="nv">bool</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="nv">level</span><span class="w"> </span><span class="k">do</span><span class="no">ind</span><span class="nv">ent</span><span class="p">)</span><span class="w"> </span><span class="p">$</span>
+<span class="w">      </span><span class="nv">concat</span>
+<span class="w">        </span><span class="p">[</span><span class="w"> </span><span class="s">&quot;(&quot;</span>
+<span class="w">        </span><span class="p">,</span><span class="w"> </span><span class="nv">printExpr</span><span class="o">&#39;</span><span class="w"> </span><span class="nf">False</span><span class="w"> </span><span class="p">(</span><span class="nv">level</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="nv">e</span>
+<span class="w">        </span><span class="p">,</span><span class="w"> </span><span class="nv">bool</span><span class="w"> </span><span class="s">&quot;\n&quot;</span><span class="w"> </span><span class="s">&quot;&quot;</span><span class="w"> </span><span class="p">(</span><span class="nv">null</span><span class="w"> </span><span class="nv">es</span><span class="p">)</span>
+<span class="w">        </span><span class="p">,</span><span class="w"> </span><span class="nv">intercalate</span><span class="w"> </span><span class="s">&quot;\n&quot;</span><span class="w"> </span><span class="p">$</span><span class="w"> </span><span class="nf">map</span><span class="w"> </span><span class="p">(</span><span class="nv">printExpr</span><span class="o">&#39;</span><span class="w"> </span><span class="nf">True</span><span class="w"> </span><span class="p">(</span><span class="nv">level</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">))</span><span class="w"> </span><span class="nv">es</span>
+<span class="w">        </span><span class="p">,</span><span class="w"> </span><span class="s">&quot;)&quot;</span>
+<span class="w">        </span><span class="p">]</span>
+
+<span class="no">ind</span><span class="nv">ent</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="nv">Int</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nv">String</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nv">String</span>
+<span class="no">ind</span><span class="nv">ent</span><span class="w"> </span><span class="nv">tabs</span><span class="w"> </span><span class="nv">e</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nf">concat</span><span class="w"> </span><span class="p">(</span><span class="nv">replicate</span><span class="w"> </span><span class="nv">tabs</span><span class="w"> </span><span class="s">&quot;  &quot;</span><span class="p">)</span><span class="w"> </span><span class="o">++</span><span class="w"> </span><span class="nv">e</span>
+</code></pre></div>
+
+<ul>
+<li>练习 ：为第一节中定义的 <code>Program</code> 类型编写一个美观的输出器</li>
+</ul>
+<p>好，目前为止我们写了近 200 行代码，这些代码一般叫做编译器的前端。我们还要写大概 150 行代码，用来执行三个额外的任务：我们需要根据需求定义一个 JS 的子集，定义一个将我们的语言转译成这个子集的转译器，最后把所有东西整合在一起。开始吧。</p>
+<h3>5、根据需求定义 JavaScript 的子集</h3>
+<p>首先，我们要定义将要使用的 JavaScript 的子集：</p>
+<div class="highlight"><pre><span></span><code><span class="k">data</span><span class="w"> </span><span class="n">JSExpr</span>
+<span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="n">JSInt</span><span class="w"> </span><span class="nc">Int</span>
+<span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="n">JSSymbol</span><span class="w"> </span><span class="n">Name</span>
+<span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="n">JSBinOp</span><span class="w"> </span><span class="n">JSBinOp</span><span class="w"> </span><span class="n">JSExpr</span><span class="w"> </span><span class="n">JSExpr</span>
+<span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="n">JSLambda</span><span class="w"> </span><span class="o">[</span><span class="n">Name</span><span class="o">]</span><span class="w"> </span><span class="n">JSExpr</span>
+<span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="n">JSFunCall</span><span class="w"> </span><span class="n">JSExpr</span><span class="w"> </span><span class="o">[</span><span class="n">JSExpr</span><span class="o">]</span>
+<span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="n">JSReturn</span><span class="w"> </span><span class="n">JSExpr</span>
+<span class="w">    </span><span class="n">deriving</span><span class="w"> </span><span class="p">(</span><span class="n">Eq</span><span class="p">,</span><span class="w"> </span><span class="n">Show</span><span class="p">,</span><span class="w"> </span><span class="k">Read</span><span class="p">)</span>
+
+<span class="n">type</span><span class="w"> </span><span class="n">JSBinOp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">String</span>
+</code></pre></div>
+
+<p>这个数据类型表示 JavaScript 表达式。我们有两个原子类型 <code>JSInt</code> 和 <code>JSSymbol</code>，它们是由我们这个语言中的 <code>Atom</code> 转译来的，我们用 <code>JSBinOp</code> 来表示二元操作，比如 <code>+</code> 或 <code>*</code>，用 <code>JSLambda</code> 来表示匿名函数，和我们语言中的 <code>lambda expression（lambda 表达式）</code> 一样，我们将会用 <code>JSFunCall</code> 来调用函数，用 <code>let</code> 来引入新名字，用 <code>JSReturn</code> 从函数中返回值，在 JavaScript 中是需要返回值的。</p>
+<p><code>JSExpr</code> 类型是对 JavaScript 表达式的 <strong>抽象表示</strong>。我们会把自己语言中表达式的抽象表示 <code>Expr</code> 转译成 JavaScript 表达式的抽象表示 <code>JSExpr</code>。但为了实现这个功能，我们需要实现 <code>JSExpr</code> ，并从这个抽象表示中生成 JavaScript 代码。我们将通过递归匹配 <code>JSExpr</code> 实现，将 JS 代码当作 <code>String</code> 来输出。这和我们在 <code>printExpr</code> 中做的基本上是一样的。我们还会追踪元素的作用域，这样我们才可以用合适的方式缩进生成的代码。</p>
+<div class="highlight"><pre><span></span><code><span class="n">printJSOp</span><span class="w"> </span><span class="p">::</span><span class="w"> </span><span class="n">JSBinOp</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nb nb-Type">String</span>
+<span class="n">printJSOp</span><span class="w"> </span><span class="n">op</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">op</span>
+
+<span class="n">printJSExpr</span><span class="w"> </span><span class="p">::</span><span class="w"> </span><span class="n">Bool</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">Int</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">JSExpr</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nb nb-Type">String</span>
+<span class="n">printJSExpr</span><span class="w"> </span><span class="n">doindent</span><span class="w"> </span><span class="n">tabs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>\<span class="n">case</span>
+<span class="w">  </span><span class="n">JSInt</span><span class="w">    </span><span class="n">i</span><span class="w">     </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">show</span><span class="w"> </span><span class="n">i</span>
+<span class="w">  </span><span class="n">JSSymbol</span><span class="w"> </span><span class="n">name</span><span class="w">  </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">name</span>
+<span class="w">  </span><span class="n">JSLambda</span><span class="w"> </span><span class="n">vars</span><span class="w"> </span><span class="n">expr</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="p">(</span><span class="k">if</span><span class="w"> </span><span class="n">doindent</span><span class="w"> </span><span class="n">then</span><span class="w"> </span><span class="n">indent</span><span class="w"> </span><span class="n">tabs</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="n">id</span><span class="p">)</span><span class="w"> </span><span class="o">$</span><span class="w"> </span><span class="n">unlines</span>
+<span class="w">    </span><span class="p">[</span><span class="s2">&quot;function(&quot;</span><span class="w"> </span><span class="o">++</span><span class="w"> </span><span class="n">intercalate</span><span class="w"> </span><span class="s2">&quot;, &quot;</span><span class="w"> </span><span class="n">vars</span><span class="w"> </span><span class="o">++</span><span class="w"> </span><span class="s2">&quot;) {&quot;</span>
+<span class="w">    </span><span class="p">,</span><span class="n">indent</span><span class="w"> </span><span class="p">(</span><span class="n">tabs</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="o">$</span><span class="w"> </span><span class="n">printJSExpr</span><span class="w"> </span><span class="n">False</span><span class="w"> </span><span class="p">(</span><span class="n">tabs</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="n">expr</span>
+<span class="w">    </span><span class="p">]</span><span class="w"> </span><span class="o">++</span><span class="w"> </span><span class="n">indent</span><span class="w"> </span><span class="n">tabs</span><span class="w"> </span><span class="s2">&quot;}&quot;</span>
+<span class="w">  </span><span class="n">JSBinOp</span><span class="w">  </span><span class="n">op</span><span class="w"> </span><span class="n">e1</span><span class="w"> </span><span class="n">e2</span><span class="w">  </span><span class="o">-&gt;</span><span class="w"> </span><span class="s2">&quot;(&quot;</span><span class="w"> </span><span class="o">++</span><span class="w"> </span><span class="n">printJSExpr</span><span class="w"> </span><span class="n">False</span><span class="w"> </span><span class="n">tabs</span><span class="w"> </span><span class="n">e1</span><span class="w"> </span><span class="o">++</span><span class="w"> </span><span class="s2">&quot; &quot;</span><span class="w"> </span><span class="o">++</span><span class="w"> </span><span class="n">printJSOp</span><span class="w"> </span><span class="n">op</span><span class="w"> </span><span class="o">++</span><span class="w"> </span><span class="s2">&quot; &quot;</span><span class="w"> </span><span class="o">++</span><span class="w"> </span><span class="n">printJSExpr</span><span class="w"> </span><span class="n">False</span><span class="w"> </span><span class="n">tabs</span><span class="w"> </span><span class="n">e2</span><span class="w"> </span><span class="o">++</span><span class="w"> </span><span class="s2">&quot;)&quot;</span>
+<span class="w">  </span><span class="n">JSFunCall</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="n">exprs</span><span class="w">  </span><span class="o">-&gt;</span><span class="w"> </span><span class="s2">&quot;(&quot;</span><span class="w"> </span><span class="o">++</span><span class="w"> </span><span class="n">printJSExpr</span><span class="w"> </span><span class="n">False</span><span class="w"> </span><span class="n">tabs</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="o">++</span><span class="w"> </span><span class="s2">&quot;)(&quot;</span><span class="w"> </span><span class="o">++</span><span class="w"> </span><span class="n">intercalate</span><span class="w"> </span><span class="s2">&quot;, &quot;</span><span class="w"> </span><span class="p">(</span><span class="n">fmap</span><span class="w"> </span><span class="p">(</span><span class="n">printJSExpr</span><span class="w"> </span><span class="n">False</span><span class="w"> </span><span class="n">tabs</span><span class="p">)</span><span class="w"> </span><span class="n">exprs</span><span class="p">)</span><span class="w"> </span><span class="o">++</span><span class="w"> </span><span class="s2">&quot;)&quot;</span>
+<span class="w">  </span><span class="n">JSReturn</span><span class="w"> </span><span class="n">expr</span><span class="w">      </span><span class="o">-&gt;</span><span class="w"> </span><span class="p">(</span><span class="k">if</span><span class="w"> </span><span class="n">doindent</span><span class="w"> </span><span class="n">then</span><span class="w"> </span><span class="n">indent</span><span class="w"> </span><span class="n">tabs</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="n">id</span><span class="p">)</span><span class="w"> </span><span class="o">$</span><span class="w"> </span><span class="s2">&quot;return &quot;</span><span class="w"> </span><span class="o">++</span><span class="w"> </span><span class="n">printJSExpr</span><span class="w"> </span><span class="n">False</span><span class="w"> </span><span class="n">tabs</span><span class="w"> </span><span class="n">expr</span><span class="w"> </span><span class="o">++</span><span class="w"> </span><span class="s2">&quot;;&quot;</span>
+</code></pre></div>
+
+<ul>
+<li>练习 1 ：添加 <code>JSProgram</code> 类型，它可以包含多个 <code>JSExpr</code> ，然后创建一个叫做 <code>printJSExprProgram</code> 的函数来生成代码。</li>
+<li>练习 2 ：添加 <code>JSExpr</code> 的新类型：<code>JSIf</code>，并为其生成代码。</li>
+</ul>
+<h3>6、实现到我们定义的 JavaScript 子集的代码转译器</h3>
+<p>我们快做完了。这一节将会创建函数，将 <code>Expr</code> 转译成 <code>JSExpr</code>。</p>
+<p>基本思想很简单，我们会将 <code>ATOM</code> 转译成 <code>JSSymbol</code> 或者 <code>JSInt</code>，然后会将 <code>LIST</code> 转译成一个函数调用或者转译的特例。</p>
+<div class="highlight"><pre><span></span><code><span class="n">type</span><span class="w"> </span><span class="n">TransError</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">String</span>
+
+<span class="n">translateToJS</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="n">Expr</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">Either</span><span class="w"> </span><span class="n">TransError</span><span class="w"> </span><span class="n">JSExpr</span>
+<span class="n">translateToJS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">\</span><span class="k">case</span>
+<span class="w">  </span><span class="n">ATOM</span><span class="w"> </span><span class="p">(</span><span class="n">Symbol</span><span class="w"> </span><span class="n">s</span><span class="p">)</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">pure</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">JSSymbol</span><span class="w"> </span><span class="n">s</span>
+<span class="w">  </span><span class="n">ATOM</span><span class="w"> </span><span class="p">(</span><span class="nc">Int</span><span class="w"> </span><span class="n">i</span><span class="p">)</span><span class="w">    </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">pure</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">JSInt</span><span class="w"> </span><span class="n">i</span>
+<span class="w">  </span><span class="n">LIST</span><span class="w"> </span><span class="n">xs</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">translateList</span><span class="w"> </span><span class="n">xs</span>
+
+<span class="n">translateList</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="o">[</span><span class="n">Expr</span><span class="o">]</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">Either</span><span class="w"> </span><span class="n">TransError</span><span class="w"> </span><span class="n">JSExpr</span>
+<span class="n">translateList</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">\</span><span class="k">case</span>
+<span class="w">  </span><span class="err">[]</span><span class="w">     </span><span class="o">-&gt;</span><span class="w"> </span><span class="nf">Left</span><span class="w"> </span><span class="ss">&quot;translating empty list&quot;</span>
+<span class="w">  </span><span class="n">ATOM</span><span class="w"> </span><span class="p">(</span><span class="n">Symbol</span><span class="w"> </span><span class="n">s</span><span class="p">)</span><span class="err">:</span><span class="n">xs</span>
+<span class="w">    </span><span class="o">|</span><span class="w"> </span><span class="n">Just</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="n">lookup</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="n">builtins</span><span class="w"> </span><span class="o">-&gt;</span>
+<span class="w">      </span><span class="n">f</span><span class="w"> </span><span class="n">xs</span>
+<span class="w">  </span><span class="nl">f</span><span class="p">:</span><span class="n">xs</span><span class="w"> </span><span class="o">-&gt;</span>
+<span class="w">    </span><span class="n">JSFunCall</span><span class="w"> </span><span class="o">&lt;</span><span class="err">$</span><span class="o">&gt;</span><span class="w"> </span><span class="n">translateToJS</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="o">&lt;*&gt;</span><span class="w"> </span><span class="n">traverse</span><span class="w"> </span><span class="n">translateToJS</span><span class="w"> </span><span class="n">xs</span>
+</code></pre></div>
+
+<p><code>builtins</code> 是一系列要转译的特例，就像 <code>lambada</code> 和 <code>let</code>。每一种情况都可以获得一系列参数，验证它是否合乎语法规范，然后将其转译成等效的 <code>JSExpr</code>。</p>
+<div class="highlight"><pre><span></span><code><span class="n">type</span><span class="w"> </span><span class="n">Builtin</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="o">[</span><span class="n">Expr</span><span class="o">]</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">Either</span><span class="w"> </span><span class="n">TransError</span><span class="w"> </span><span class="n">JSExpr</span>
+<span class="n">type</span><span class="w"> </span><span class="n">Builtins</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">[</span><span class="n">(Name, Builtin)</span><span class="o">]</span>
+
+<span class="n">builtins</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="n">Builtins</span>
+<span class="n">builtins</span><span class="w"> </span><span class="o">=</span>
+<span class="w">  </span><span class="o">[</span><span class="n">(&quot;lambda&quot;, transLambda)</span>
+<span class="n">  ,(&quot;let&quot;, transLet)</span>
+<span class="n">  ,(&quot;add&quot;, transBinOp &quot;add&quot; &quot;+&quot;)</span>
+<span class="n">  ,(&quot;mul&quot;, transBinOp &quot;mul&quot; &quot;*&quot;)</span>
+<span class="n">  ,(&quot;sub&quot;, transBinOp &quot;sub&quot; &quot;-&quot;)</span>
+<span class="n">  ,(&quot;div&quot;, transBinOp &quot;div&quot; &quot;/&quot;)</span>
+<span class="n">  ,(&quot;print&quot;, transPrint)</span>
+<span class="n">  </span><span class="o">]</span>
+</code></pre></div>
+
+<p>我们这种情况，会将内建的特殊形式当作特殊的、非第一类的进行对待，因此不可能将它们当作第一类函数。</p>
+<p>我们会把 Lambda 表达式转译成一个匿名函数：</p>
+<div class="highlight"><pre><span></span><code><span class="n">transLambda</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="o">[</span><span class="n">Expr</span><span class="o">]</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">Either</span><span class="w"> </span><span class="n">TransError</span><span class="w"> </span><span class="n">JSExpr</span>
+<span class="n">transLambda</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">\</span><span class="k">case</span>
+<span class="w">  </span><span class="o">[</span><span class="n">LIST vars, body</span><span class="o">]</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">do</span>
+<span class="w">    </span><span class="n">vars</span><span class="s1">&#39; &lt;- traverse fromSymbol vars</span>
+<span class="s1">    JSLambda vars&#39;</span><span class="w"> </span><span class="o">&lt;</span><span class="err">$</span><span class="o">&gt;</span><span class="w"> </span><span class="p">(</span><span class="n">JSReturn</span><span class="w"> </span><span class="o">&lt;</span><span class="err">$</span><span class="o">&gt;</span><span class="w"> </span><span class="n">translateToJS</span><span class="w"> </span><span class="n">body</span><span class="p">)</span>
+
+<span class="w">  </span><span class="n">vars</span><span class="w"> </span><span class="o">-&gt;</span>
+<span class="w">    </span><span class="nf">Left</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">unlines</span>
+<span class="w">      </span><span class="o">[</span><span class="n">&quot;Syntax error: unexpected arguments for lambda.&quot;</span>
+<span class="n">      ,&quot;expecting 2 arguments, the first is the list of vars and the second is the body of the lambda.&quot;</span>
+<span class="n">      ,&quot;In expression: &quot; ++ show (LIST $ ATOM (Symbol &quot;lambda&quot;) : vars)</span>
+<span class="n">      </span><span class="o">]</span>
+
+<span class="n">fromSymbol</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="n">Expr</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">Either</span><span class="w"> </span><span class="n">String</span><span class="w"> </span><span class="n">Name</span>
+<span class="n">fromSymbol</span><span class="w"> </span><span class="p">(</span><span class="n">ATOM</span><span class="w"> </span><span class="p">(</span><span class="n">Symbol</span><span class="w"> </span><span class="n">s</span><span class="p">))</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nf">Right</span><span class="w"> </span><span class="n">s</span>
+<span class="n">fromSymbol</span><span class="w"> </span><span class="n">e</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nf">Left</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="ss">&quot;cannot bind value to non symbol type: &quot;</span><span class="w"> </span><span class="o">++</span><span class="w"> </span><span class="n">show</span><span class="w"> </span><span class="n">e</span>
+</code></pre></div>
+
+<p>我们会将 <code>let</code> 转译成带有相关名字参数的函数定义，然后带上参数调用函数，因此会在这一作用域中引入变量：</p>
+<div class="highlight"><pre><span></span><code><span class="n">transLet</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="o">[</span><span class="n">Expr</span><span class="o">]</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">Either</span><span class="w"> </span><span class="n">TransError</span><span class="w"> </span><span class="n">JSExpr</span>
+<span class="n">transLet</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">\</span><span class="k">case</span>
+<span class="w">  </span><span class="o">[</span><span class="n">LIST binds, body</span><span class="o">]</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">do</span>
+<span class="w">    </span><span class="p">(</span><span class="n">vars</span><span class="p">,</span><span class="w"> </span><span class="n">vals</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="n">letParams</span><span class="w"> </span><span class="n">binds</span>
+<span class="w">    </span><span class="n">vars</span><span class="s1">&#39; &lt;- traverse fromSymbol vars</span>
+<span class="s1">    JSFunCall . JSLambda vars&#39;</span><span class="w"> </span><span class="o">&lt;</span><span class="err">$</span><span class="o">&gt;</span><span class="w"> </span><span class="p">(</span><span class="n">JSReturn</span><span class="w"> </span><span class="o">&lt;</span><span class="err">$</span><span class="o">&gt;</span><span class="w"> </span><span class="n">translateToJS</span><span class="w"> </span><span class="n">body</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;*&gt;</span><span class="w"> </span><span class="n">traverse</span><span class="w"> </span><span class="n">translateToJS</span><span class="w"> </span><span class="n">vals</span>
+<span class="w">   </span><span class="k">where</span>
+<span class="w">    </span><span class="n">letParams</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="o">[</span><span class="n">Expr</span><span class="o">]</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">Either</span><span class="w"> </span><span class="n">Error</span><span class="w"> </span><span class="p">(</span><span class="o">[</span><span class="n">Expr</span><span class="o">]</span><span class="p">,</span><span class="o">[</span><span class="n">Expr</span><span class="o">]</span><span class="p">)</span>
+<span class="w">    </span><span class="n">letParams</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">\</span><span class="k">case</span>
+<span class="w">      </span><span class="err">[]</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">pure</span><span class="w"> </span><span class="p">(</span><span class="err">[]</span><span class="p">,</span><span class="err">[]</span><span class="p">)</span>
+<span class="w">      </span><span class="n">LIST</span><span class="w"> </span><span class="o">[</span><span class="n">x,y</span><span class="o">]</span><span class="w"> </span><span class="err">:</span><span class="w"> </span><span class="n">rest</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="p">((</span><span class="nl">x</span><span class="p">:)</span><span class="w"> </span><span class="o">***</span><span class="w"> </span><span class="p">(</span><span class="nl">y</span><span class="p">:))</span><span class="w"> </span><span class="o">&lt;</span><span class="err">$</span><span class="o">&gt;</span><span class="w"> </span><span class="n">letParams</span><span class="w"> </span><span class="n">rest</span>
+<span class="w">      </span><span class="n">x</span><span class="w"> </span><span class="err">:</span><span class="w"> </span><span class="n">_</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nf">Left</span><span class="w"> </span><span class="p">(</span><span class="ss">&quot;Unexpected argument in let list in expression:\n&quot;</span><span class="w"> </span><span class="o">++</span><span class="w"> </span><span class="n">printExpr</span><span class="w"> </span><span class="n">x</span><span class="p">)</span>
+
+<span class="w">  </span><span class="n">vars</span><span class="w"> </span><span class="o">-&gt;</span>
+<span class="w">    </span><span class="nf">Left</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">unlines</span>
+<span class="w">      </span><span class="o">[</span><span class="n">&quot;Syntax error: unexpected arguments for let.&quot;</span>
+<span class="n">      ,&quot;expecting 2 arguments, the first is the list of var/val pairs and the second is the let body.&quot;</span>
+<span class="n">      ,&quot;In expression:\n&quot; ++ printExpr (LIST $ ATOM (Symbol &quot;let&quot;) : vars)</span>
+<span class="n">      </span><span class="o">]</span>
+</code></pre></div>
+
+<p>我们会将可以在多个参数之间执行的操作符转译成一系列二元操作符。比如：<code>(add 1 2 3)</code> 将会变成 <code>1 + (2 + 3)</code>。</p>
+<div class="highlight"><pre><span></span><code><span class="n">transBinOp</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="o">[</span><span class="n">Expr</span><span class="o">]</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">Either</span><span class="w"> </span><span class="n">TransError</span><span class="w"> </span><span class="n">JSExpr</span>
+<span class="n">transBinOp</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="n">_</span><span class="w"> </span><span class="err">[]</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="nf">Left</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="ss">&quot;Syntax error: &#39;&quot;</span><span class="w"> </span><span class="o">++</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="o">++</span><span class="w"> </span><span class="ss">&quot;&#39; expected at least 1 argument, got: 0&quot;</span>
+<span class="n">transBinOp</span><span class="w"> </span><span class="n">_</span><span class="w"> </span><span class="n">_</span><span class="w"> </span><span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="n">translateToJS</span><span class="w"> </span><span class="n">x</span>
+<span class="n">transBinOp</span><span class="w"> </span><span class="n">_</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="n">list</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">foldl1</span><span class="w"> </span><span class="p">(</span><span class="n">JSBinOp</span><span class="w"> </span><span class="n">f</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;</span><span class="err">$</span><span class="o">&gt;</span><span class="w"> </span><span class="n">traverse</span><span class="w"> </span><span class="n">translateToJS</span><span class="w"> </span><span class="n">list</span>
+</code></pre></div>
+
+<p>然后我们会将 <code>print</code> 转换成对 <code>console.log</code> 的调用。</p>
+<div class="highlight"><pre><span></span><code><span class="n">transPrint</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="o">[</span><span class="n">Expr</span><span class="o">]</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">Either</span><span class="w"> </span><span class="n">TransError</span><span class="w"> </span><span class="n">JSExpr</span>
+<span class="n">transPrint</span><span class="w"> </span><span class="o">[</span><span class="n">expr</span><span class="o">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">JSFunCall</span><span class="w"> </span><span class="p">(</span><span class="n">JSSymbol</span><span class="w"> </span><span class="ss">&quot;console.log&quot;</span><span class="p">)</span><span class="w"> </span><span class="p">.</span><span class="w"> </span><span class="p">(</span><span class="err">:[]</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;</span><span class="err">$</span><span class="o">&gt;</span><span class="w"> </span><span class="n">translateToJS</span><span class="w"> </span><span class="n">expr</span>
+<span class="n">transPrint</span><span class="w"> </span><span class="n">xs</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="nf">Left</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="ss">&quot;Syntax error. print expected 1 arguments, got: &quot;</span><span class="w"> </span><span class="o">++</span><span class="w"> </span><span class="n">show</span><span class="w"> </span><span class="p">(</span><span class="n">length</span><span class="w"> </span><span class="n">xs</span><span class="p">)</span>
+</code></pre></div>
+
+<p>注意，如果我们将这些代码当作 <code>Expr</code> 的特例进行解析，那我们就可能会跳过语法验证。</p>
+<ul>
+<li>练习 1 ：将 <code>Program</code> 转译成 <code>JSProgram</code></li>
+<li>练习 2 ：为 <code>if Expr Expr Expr</code> 添加一个特例，并将它转译成你在上一次练习中实现的 <code>JSIf</code> 条件语句。</li>
+</ul>
+<h3>7、把所有东西整合到一起</h3>
+<p>最终，我们将会把所有东西整合到一起。我们会：</p>
+<ol>
+<li>读取文件</li>
+<li>将文件解析成 <code>Expr</code></li>
+<li>将文件转译成 <code>JSExpr</code></li>
+<li>将 JavaScript 代码发送到标准输出流</li>
+</ol>
+<p>我们还会启用一些用于测试的标志位：</p>
+<ul>
+<li><code>--e</code> 将进行解析并打印出表达式的抽象表示（<code>Expr</code>）</li>
+<li><code>--pp</code> 将进行解析，美化输出</li>
+<li><code>--jse</code> 将进行解析、转译、并打印出生成的 JS 表达式（<code>JSExpr</code>）的抽象表示</li>
+<li><code>--ppc</code> 将进行解析，美化输出并进行编译</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="n">main</span><span class="w"> </span><span class="o">::</span><span class="w"> </span><span class="n">IO</span><span class="w"> </span><span class="p">()</span>
+<span class="n">main</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">getArgs</span><span class="w"> </span><span class="o">&gt;&gt;=</span><span class="w"> </span><span class="err">\</span><span class="k">case</span>
+<span class="w">  </span><span class="o">[</span><span class="n">file</span><span class="o">]</span><span class="w"> </span><span class="o">-&gt;</span>
+<span class="w">    </span><span class="n">printCompile</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="n">readFile</span><span class="w"> </span><span class="k">file</span>
+<span class="w">  </span><span class="o">[</span><span class="n">&quot;--e&quot;,file</span><span class="o">]</span><span class="w"> </span><span class="o">-&gt;</span>
+<span class="w">    </span><span class="n">either</span><span class="w"> </span><span class="n">putStrLn</span><span class="w"> </span><span class="k">print</span><span class="w"> </span><span class="p">.</span><span class="w"> </span><span class="n">runExprParser</span><span class="w"> </span><span class="ss">&quot;--e&quot;</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="n">readFile</span><span class="w"> </span><span class="k">file</span>
+<span class="w">  </span><span class="o">[</span><span class="n">&quot;--pp&quot;,file</span><span class="o">]</span><span class="w"> </span><span class="o">-&gt;</span>
+<span class="w">    </span><span class="n">either</span><span class="w"> </span><span class="n">putStrLn</span><span class="w"> </span><span class="p">(</span><span class="n">putStrLn</span><span class="w"> </span><span class="p">.</span><span class="w"> </span><span class="n">printExpr</span><span class="p">)</span><span class="w"> </span><span class="p">.</span><span class="w"> </span><span class="n">runExprParser</span><span class="w"> </span><span class="ss">&quot;--pp&quot;</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="n">readFile</span><span class="w"> </span><span class="k">file</span>
+<span class="w">  </span><span class="o">[</span><span class="n">&quot;--jse&quot;,file</span><span class="o">]</span><span class="w"> </span><span class="o">-&gt;</span>
+<span class="w">    </span><span class="n">either</span><span class="w"> </span><span class="k">print</span><span class="w"> </span><span class="p">(</span><span class="n">either</span><span class="w"> </span><span class="n">putStrLn</span><span class="w"> </span><span class="k">print</span><span class="w"> </span><span class="p">.</span><span class="w"> </span><span class="n">translateToJS</span><span class="p">)</span><span class="w"> </span><span class="p">.</span><span class="w"> </span><span class="n">runExprParser</span><span class="w"> </span><span class="ss">&quot;--jse&quot;</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="n">readFile</span><span class="w"> </span><span class="k">file</span>
+<span class="w">  </span><span class="o">[</span><span class="n">&quot;--ppc&quot;,file</span><span class="o">]</span><span class="w"> </span><span class="o">-&gt;</span>
+<span class="w">    </span><span class="n">either</span><span class="w"> </span><span class="n">putStrLn</span><span class="w"> </span><span class="p">(</span><span class="n">either</span><span class="w"> </span><span class="n">putStrLn</span><span class="w"> </span><span class="n">putStrLn</span><span class="p">)</span><span class="w"> </span><span class="p">.</span><span class="w"> </span><span class="n">fmap</span><span class="w"> </span><span class="p">(</span><span class="n">compile</span><span class="w"> </span><span class="p">.</span><span class="w"> </span><span class="n">printExpr</span><span class="p">)</span><span class="w"> </span><span class="p">.</span><span class="w"> </span><span class="n">runExprParser</span><span class="w"> </span><span class="ss">&quot;--ppc&quot;</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="n">readFile</span><span class="w"> </span><span class="k">file</span>
+<span class="w">  </span><span class="n">_</span><span class="w"> </span><span class="o">-&gt;</span>
+<span class="w">    </span><span class="n">putStrLn</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">unlines</span>
+<span class="w">      </span><span class="o">[</span><span class="n">&quot;Usage: runghc Main.hs [ --e, --pp, --jse, --ppc </span><span class="o">]</span><span class="w"> </span><span class="o">&lt;</span><span class="n">filename</span><span class="o">&gt;</span><span class="ss">&quot;</span>
+<span class="ss">      ,&quot;</span><span class="o">--</span><span class="n">e</span><span class="w">     </span><span class="k">print</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">Expr</span><span class="ss">&quot;</span>
+<span class="ss">      ,&quot;</span><span class="o">--</span><span class="n">pp</span><span class="w">    </span><span class="n">pretty</span><span class="w"> </span><span class="k">print</span><span class="w"> </span><span class="n">Expr</span><span class="ss">&quot;</span>
+<span class="ss">      ,&quot;</span><span class="o">--</span><span class="n">jse</span><span class="w">   </span><span class="k">print</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">JSExpr</span><span class="ss">&quot;</span>
+<span class="ss">      ,&quot;</span><span class="o">--</span><span class="n">ppc</span><span class="w">   </span><span class="n">pretty</span><span class="w"> </span><span class="k">print</span><span class="w"> </span><span class="n">Expr</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="k">then</span><span class="w"> </span><span class="n">compile</span><span class="ss">&quot;</span>
+<span class="ss">      ]</span>
+
+<span class="ss">printCompile :: String -&gt; IO ()</span>
+<span class="ss">printCompile = either putStrLn putStrLn . compile</span>
+
+<span class="ss">compile :: String -&gt; Either Error String</span>
+<span class="ss">compile str = printJSExpr False 0 &lt;$&gt; (translateToJS =&lt;&lt; runExprParser &quot;</span><span class="n">compile</span><span class="err">&quot;</span><span class="w"> </span><span class="nf">str</span><span class="p">)</span>
+</code></pre></div>
+
+<p>大功告成。将自己的语言编译到 JS 子集的编译器已经完成了。再说一次，你可以在 <a href="https://gist.github.com/soupi/d4ff0727ccb739045fad6cdf533ca7dd">这里</a> 看到完整的源文件。</p>
+<p>用我们的编译器运行第一节的示例，产生的 JavaScript 代码如下：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>runhaskell<span class="w"> </span>Lisp.hs<span class="w"> </span>example.lsp
+<span class="o">(</span><span class="k">function</span><span class="o">(</span>compose,<span class="w"> </span>square,<span class="w"> </span>add1<span class="o">)</span><span class="w"> </span><span class="o">{</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="o">(</span>console.log<span class="o">)(((</span>compose<span class="o">)(</span>square,<span class="w"> </span>add1<span class="o">))(</span><span class="m">5</span><span class="o">))</span><span class="p">;</span>
+<span class="o">})(</span><span class="k">function</span><span class="o">(</span>f,<span class="w"> </span>g<span class="o">)</span><span class="w"> </span><span class="o">{</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="k">function</span><span class="o">(</span>x<span class="o">)</span><span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="o">(</span>f<span class="o">)((</span>g<span class="o">)(</span>x<span class="o">))</span><span class="p">;</span>
+<span class="w">  </span><span class="o">}</span><span class="p">;</span>
+<span class="o">}</span>,<span class="w"> </span><span class="k">function</span><span class="o">(</span>x<span class="o">)</span><span class="w"> </span><span class="o">{</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="o">(</span>x<span class="w"> </span>*<span class="w"> </span>x<span class="o">)</span><span class="p">;</span>
+<span class="o">}</span>,<span class="w"> </span><span class="k">function</span><span class="o">(</span>x<span class="o">)</span><span class="w"> </span><span class="o">{</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="o">(</span>x<span class="w"> </span>+<span class="w"> </span><span class="m">1</span><span class="o">)</span><span class="p">;</span>
+<span class="o">})</span>
+</code></pre></div>
+
+<p>如果你在自己电脑上安装了 node.js，你可以用以下命令运行这段代码：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>runhaskell<span class="w"> </span>Lisp.hs<span class="w"> </span>example.lsp<span class="w"> </span><span class="p">|</span><span class="w"> </span>node<span class="w"> </span>-p
+<span class="m">36</span>
+undefined
+</code></pre></div>
+
+<ul>
+<li>最终练习 : 编译有多个表达式的程序而非仅编译一个表达式。</li>
+</ul>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>通过 docker-compose 进行快速原型设计</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Alex Ellis 在这篇文章中，我们将考察一个 Node.js 开发原型，该原型用于从英国三个主要折扣网店查找“Raspberry PI Zero”的库存。 我写好了 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2016/11/tong-guo-docker-compose-jin-xing-kuai-su-yuan-xing-she-ji.html" rel="bookmark"
+           title="Permalink to 通过 docker-compose 进行快速原型设计">通过 docker-compose 进行快速原型设计</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2016-11-08T11:14:00+01:00">
+                Published: Tue 08 November 2016
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Alex Ellis</p>
+<p>在这篇文章中，我们将考察一个 Node.js 开发原型，该原型用于从英国三个主要折扣网店查找“Raspberry PI Zero”的库存。</p>
+<p>我写好了代码，然后经过一晚的鼓捣把它部署在 Aure 上的 Ubuntu 虚拟机上。Docker 和 docker-compose 工具使得部署和更新过程非常快。</p>
+<p><img alt="" src="/data/attachment/album/201611/08/111444sa8fbkk442xx0k09.jpg"></p>
+<h3>还记得链接指令（link）吗？</h3>
+<p>如果你已经阅读过 <a href="http://blog.alexellis.io/handsondocker">Hands-on Docker tutorial</a>，那么你应该已经可以使用命令行链接 Docker 容器。通过命令行将 Node.js 的计数器链接到 Redis 服务器，其命令可能如下所示：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>-P<span class="w"> </span>--name<span class="w"> </span>redis1
+$<span class="w"> </span>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>hit_counter<span class="w"> </span>-p<span class="w"> </span><span class="m">3000</span>:3000<span class="w"> </span>--link<span class="w"> </span>redis1:redis
+</code></pre></div>
+
+<p>现在假设你的应用程序分为三层：</p>
+<ul>
+<li>Web 前端</li>
+<li>处理长时间运行任务的批处理层</li>
+<li>Redis 或者 mongo 数据库</li>
+</ul>
+<p>通过<code>--link</code>的显式链接只是管理几个容器是可以的，但是可能会因为我们向应用程序添加更多层或容器而失控。</p>
+<h3>加入 docker-compose</h3>
+<p><img alt="" src="/data/attachment/album/201611/08/111459z96ycryjjyqlq7c2.png"></p>
+<p><em>Docker Compose logo</em></p>
+<p>docker-compose 工具是标准 Docker 工具箱的一部分，也可以单独下载。 它提供了一组丰富的功能，通过纯文本 YAML 文件配置所有应用程序的部件。</p>
+<p>上面的例子看起来像这样：</p>
+<div class="highlight"><pre><span></span><code>version: &quot;2.0&quot;
+services:
+  redis1:
+    image: redis
+  hit_counter:
+    build: ./hit_counter
+    ports:
+     <span class="k">-</span> 3000:3000
+</code></pre></div>
+
+<p>从 Docker 1.10 开始，我们可以利用网络覆盖（network overlays）来帮助我们在多个主机上进行扩展。 在此之前，链接仅能工作在单个主机上。 <code>docker-compose scale</code> 命令可以用来在需要时带来更多的计算能力。</p>
+<blockquote>
+<p>查看 docker.com 上的 <a href="https://docs.docker.com/compose/compose-file/">docker-compose</a> 参考</p>
+</blockquote>
+<h3>真实工作示例：Raspberry PI 库存警示</h3>
+<p><img alt="" src="/data/attachment/album/201611/08/111459mn5l72lckj7nm8cz.jpg"></p>
+<p><em>新的 Raspberry PI Zero v1.3 图片，由 Pimoroni 提供</em></p>
+<p>Raspberry PI Zero 嗡嗡作响 - 它是一个极小的微型计算机，具有 1GHz CPU 和 512MB RAM，可以运行完整的Linux、Docker、Node.js、Ruby 和其他许多流行的开源工具。 PI Zero 最好的优点之一就是它成本只有 5 美元。 这也意味着它销售的速度非常之快。</p>
+<p><em>如果你想在 PI 上尝试 Docker 和 Swarm，请查看下面的教程：<a href="http://blog.alexellis.io/dockerswarm-pizero/">Docker Swarm on the PI Zero</a></em></p>
+<h3>原始网站：whereismypizero.com</h3>
+<p>我发现一个网页，它使用屏幕抓取以找出 4-5 个最受欢迎的折扣网店是否有库存。</p>
+<ul>
+<li>网站包含静态 HTML 网页</li>
+<li>向每个折扣网店发出一个 XMLHttpRequest 访问 /public/api/</li>
+<li>服务器向每个网店发出 HTTP 请求并执行抓屏</li>
+</ul>
+<p>每一次对 /public/api/ 的调用，其执行花 3 秒钟，而使用 Apache Bench（ab），我每秒只能完成 0.25 个请求。</p>
+<h3>重新发明轮子</h3>
+<p>零售商似乎并不介意 whereismypizero.com 抓取他们的网站的商品库存信息，所以我开始从头写一个类似的工具。 我尝试通过缓存和解耦 web 层来处理更多的抓取请求。 Redis 是执行这项工作的完美工具。 它允许我设置一个自动过期的键/值对（即一个简单的缓存），还可以通过 pub/sub 在 Node.js 进程之间传输消息。</p>
+<blockquote>
+<p>复刻或者追踪放在 github 上的代码: <a href="https://github.com/alexellis/pi_zero_stock">alexellis/pi<em>zero</em>stock</a></p>
+</blockquote>
+<p>如果之前使用过 Node.js，你肯定知道它是单线程的，并且任何 CPU 密集型任务，如解析 HTML 或 JSON 都可能导致速度放缓。一种缓解这种情况的方法是使用一个工作进程和 Redis 消息通道作为它和 web 层之间的连接组织。</p>
+<ul>
+<li>Web 层<ul>
+<li>使用 200 代表缓冲命中（该商店的 Redis 键存在）</li>
+<li>使用 202 代表高速缓存未命中（该商店的 Redis 键不存在，因此发出消息）</li>
+<li>因为我们只是读一个 Redis 键，响应时间非常快。</li>
+</ul>
+</li>
+<li>库存抓取器<ul>
+<li>执行 HTTP 请求</li>
+<li>用于在不同类型的网店上抓屏</li>
+<li>更新 Redis 键的缓存失效时间为 60 秒</li>
+<li>另外，锁定一个 Redis 键，以防止对网店过多的 HTTP 请求。</li>
+</ul>
+</li>
+</ul>
+<div class="highlight"><pre><span></span><code>version: &quot;2.0&quot;  
+services:  
+  web:
+    build: ./web/
+    ports:
+     <span class="k">-</span> &quot;3000:3000&quot;
+  stock_fetch:
+    build: ./stock_fetch/
+  redis:
+    image: redis
+</code></pre></div>
+
+<p><em>来自示例的 docker-compose.yml 文件</em></p>
+<p>一旦本地正常工作，再向 Azure 的 Ubuntu 16.04 镜像云部署就轻车熟路，只花了不到 5 分钟。 我登录、克隆仓库并键入<code>docker-compose up -d</code>， 这就是所有的工作 - 快速实现整个系统的原型不会比这几个步骤更多。 任何人（包括 whereismypizero.com 的所有者）只需两行命令就可以部署新解决方案：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/alexellis/pi_zero_stock
+$<span class="w"> </span>docker-compose<span class="w"> </span>up<span class="w"> </span>-d
+</code></pre></div>
+
+<p>更新网站很容易，只需要一个<code>git pull</code>命令，然后执行<code>docker-compose up -d</code>命令，该命令需要带上<code>--build</code>参数。</p>
+<p>如果你仍然手动链接你的 Docker 容器，请自己或使用如下我的代码尝试 Docker Compose：</p>
+<blockquote>
+<p>复刻或者追踪在 github 上的代码： <a href="https://github.com/alexellis/pi_zero_stock">alexellis/pi<em>zero</em>stock</a></p>
+</blockquote>
+<h3>一睹测试网站芳容</h3>
+<p>目前测试网站使用 docker-compose 部署：<a href="http://stockalert.alexellis.io/">stockalert.alexellis.io</a></p>
+<p><img alt="" src="/data/attachment/album/201611/08/111500zsbew23e32no2e88.png"></p>
+<p><em>预览于 2016 年 5 月 16 日</em></p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

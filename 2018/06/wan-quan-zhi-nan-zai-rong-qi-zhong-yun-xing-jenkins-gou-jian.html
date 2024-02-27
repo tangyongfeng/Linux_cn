@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>完全指南：在容器中运行 Jenkins 构建</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Balazs Szeti 容器应用程序平台能够动态地启动具有资源限制的独立容器，从而改变了运行 CI/CD 任务的方式。 现今，由于 Docker 和 Kubernetes …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/06/wan-quan-zhi-nan-zai-rong-qi-zhong-yun-xing-jenkins-gou-jian.html" rel="bookmark"
+           title="Permalink to 完全指南：在容器中运行 Jenkins 构建">完全指南：在容器中运行 Jenkins 构建</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-06-13T11:15:05+02:00">
+                Published: Wed 13 June 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Balazs Szeti</p>
+<blockquote>
+<p>容器应用程序平台能够动态地启动具有资源限制的独立容器，从而改变了运行 CI/CD 任务的方式。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/201806/13/111450vsyhlo44rtszsp57.jpg"></p>
+<p>现今，由于 <a href="https://opensource.com/resources/what-docker">Docker</a> 和 <a href="https://opensource.com/resources/what-is-kubernetes">Kubernetes</a>（K8S）提供了可扩展、可管理的应用平台，将应用运行在容器中的实践已经被企业广泛接受。近些年势头很猛的<a href="https://martinfowler.com/articles/microservices.html">微服务架构</a>也很适合用容器实现。</p>
+<p>容器应用平台可以动态启动指定资源配额、互相隔离的容器，这是其最主要的优势之一。让我们看看这会对我们运行<ruby> 持续集成/持续部署 <rt>  continuous integration/continuous development </rt></ruby>（CI/CD）任务的方式产生怎样的改变。</p>
+<p>构建并打包应用需要一定的环境，要求能够下载源代码、使用相关依赖及已经安装构建工具。作为构建的一部分，运行单元及组件测试可能会用到本地端口或需要运行第三方应用（如数据库及消息中间件等）。另外，我们一般定制化多台构建服务器，每台执行一种指定类型的构建任务。为方便测试，我们维护一些实例专门用于运行第三方应用（或者试图在构建服务器上启动这些第三方应用），避免并行运行构建任务导致结果互相干扰。为 CI/CD 环境定制化构建服务器是一项繁琐的工作，而且随着开发团队使用的开发平台或其版本变更，会需要大量的构建服务器用于不同的任务。</p>
+<p>一旦我们有了容器管理平台（自建或在云端），将资源密集型的 CI/CD 任务在动态生成的容器中执行是比较合理的。在这种方案中，每个构建任务运行在独立启动并配置的构建环境中。构建过程中，构建任务的测试环节可以任意使用隔离环境中的可用资源；此外，我们也可以在辅助容器中启动一个第三方应用，只在构建任务生命周期中为测试提供服务。</p>
+<p>听上去不错，让我们在现实环境中实践一下。</p>
+<p>注：本文基于现实中已有的解决方案，即一个在 <a href="https://www.openshift.com/">Red Hat OpenShift</a> v3.7 集群上运行的项目。OpenShift 是企业级的 Kubernetes 版本，故这些实践也适用于 K8S 集群。如果愿意尝试，可以下载 <a href="https://developers.redhat.com/products/cdk/overview/">Red Hat CDK</a>，运行 <code>jenkins-ephemeral</code> 或 <code>jenkins-persistent</code> <a href="https://github.com/openshift/origin/tree/master/examples/jenkins">模板</a>在 OpenShift 上创建定制化好的 Jenkins 管理节点。</p>
+<h3>解决方案概述</h3>
+<p>在 OpenShift 容器中执行 CI/CD 任务（构建和测试等） 的方案基于<a href="https://wiki.jenkins.io/display/JENKINS/Distributed+builds">分布式 Jenkins 构建</a>，具体如下：</p>
+<ul>
+<li>我们需要一个 Jenkins 主节点；可以运行在集群中，也可以是外部提供</li>
+<li>支持 Jenkins 特性和插件，以便已有项目仍可使用</li>
+<li>可以用 Jenkins GUI 配置、运行任务或查看任务输出</li>
+<li>如果你愿意编码，也可以使用 <a href="https://jenkins.io/doc/book/pipeline/">Jenkins Pipeline</a></li>
+</ul>
+<p>从技术角度来看，运行任务的动态容器是 Jenkins 代理节点。当构建启动时，首先是一个新节点启动，通过 Jenkins 主节点的 JNLP（5000 端口） 告知就绪状态。在代理节点启动并提取构建任务之前，构建任务处于排队状态。就像通常 Jenkins 代理服务器那样，构建输出会送达主节点；不同的是，构建完成后代理节点容器会自动关闭。</p>
+<p><img alt="" src="/data/attachment/album/201806/13/111509vvojkvzo4rvjv0dr.png"></p>
+<p>不同类型的构建任务（例如 Java、 NodeJS、 Python等）对应不同的代理节点。这并不新奇，之前也是使用标签来限制哪些代理节点可以运行指定的构建任务。启动用于构建任务的 Jenkins 代理节点容器需要配置参数，具体如下：</p>
+<ul>
+<li>用于启动容器的 Docker 镜像</li>
+<li>资源限制</li>
+<li>环境变量</li>
+<li>挂载的卷</li>
+</ul>
+<p>这里用到的关键组件是 <a href="https://github.com/jenkinsci/kubernetes-plugin">Jenkins Kubernetes 插件</a>。该插件（通过使用一个服务账号） 与 K8S 集群交互，可以启动和关闭代理节点。在插件的配置管理中，多种代理节点类型表现为多种 Kubernetes pod 模板，它们通过项目标签对应。</p>
+<p>这些<a href="https://access.redhat.com/containers/#/search/jenkins%2520slave">代理节点镜像</a>以开箱即用的方式提供（也有 <a href="https://hub.docker.com/search/?isAutomated=0&amp;isOfficial=0&amp;page=1&amp;pullCount=0&amp;q=openshift+jenkins+slave+&amp;starCount=0">CentOS7</a> 系统的版本）：</p>
+<ul>
+<li><a href="https://github.com/openshift/jenkins/tree/master/slave-base">jenkins-slave-base-rhel7</a>：基础镜像，启动与 Jenkins 主节点连接的代理节点；其中 Java 堆大小根据容器内容设置</li>
+<li><a href="https://github.com/openshift/jenkins/tree/master/slave-maven">jenkins-slave-maven-rhel7</a>：用于 Maven 和 Gradle 构建的镜像（从基础镜像扩展）</li>
+<li><a href="https://github.com/openshift/jenkins/tree/master/slave-nodejs">jenkins-slave-nodejs-rhel7</a>：包含 NodeJS4 工具的镜像（从基础镜像扩展）</li>
+</ul>
+<p>注意：本解决方案与 OpenShift 中的 <a href="https://docs.openshift.com/container-platform/3.7/architecture/core_concepts/builds_and_image_streams.html#source-build">Source-to-Image（S2I）</a> 构建无关，虽然后者也可以用于某些特定的 CI/CD 任务。</p>
+<h3>入门学习资料</h3>
+<p>有很多不错的博客和文档介绍了如何在 OpenShift 上执行 Jenkins 构建。不妨从下面这些开始：</p>
+<ul>
+<li><a href="https://docs.openshift.com/container-platform/3.7/using_images/other_images/jenkins.html">OpenShift Jenkins</a> 镜像文档及 <a href="https://github.com/openshift/jenkins">源代码</a></li>
+<li>网络播客：<a href="https://blog.openshift.com/cicd-with-openshift/">基于 OpenShift 的 CI/CD</a></li>
+<li><a href="http://v1.uncontained.io/playbooks/continuous_delivery/external-jenkins-integration.html">外部 Jenkins 集成</a> 剧本</li>
+</ul>
+<p>阅读这些博客和文档有助于完整的理解本解决方案。在本文中，我们主要关注具体实践中遇到的各类问题。</p>
+<h3>构建我的应用</h3>
+<p>作为<a href="https://github.com/bszeti/camel-springboot/tree/master/camel-rest-complex">示例项目</a>，我们选取了包含如下构建步骤的 Java 项目：</p>
+<ul>
+<li><strong>代码源：</strong> 从一个 Git 代码库中获取项目代码</li>
+<li><strong>使用 Maven 编译：</strong> 依赖可从内部仓库获取，(不妨使用 Apache Nexus） 镜像自外部 Maven 仓库</li>
+<li><strong>发布成品：</strong> 将编译好的 JAR 上传至内部仓库</li>
+</ul>
+<p>在 CI/CD 过程中，我们需要与 Git 和 Nexus 交互，故 Jenkins 任务需要能够访问这些系统。这要求参数配置和已存储凭证可以在下列位置进行管理：</p>
+<ul>
+<li><strong>在 Jenkins 中：</strong> 我们可以在 Jenkins 中添加凭证，通过 Git 插件能够对项目添加和使用文件（使用容器不会改变操作）</li>
+<li><strong>在 OpenShift 中：</strong> 使用 ConfigMap 和 Secret 对象，以文件或环境变量的形式附加到 Jenkins 代理容器中</li>
+<li><strong>在高度定制化的 Docker 容器中：</strong> 镜像是定制化的，已包含完成特定类型构建的全部特性；从一个代理镜像进行扩展即可得到。</li>
+</ul>
+<p>你可以按自己的喜好选择一种实现方式，甚至你最终可能混用多种实现方式。下面我们采用第二种实现方式，即首选在 OpenShift 中管理参数配置。使用 Kubernetes 插件配置来定制化 Maven 代理容器，包括设置环境变量和映射文件等。</p>
+<p>注意：对于 Kubernetes 插件 v1.0 版，由于 <a href="https://issues.jenkins-ci.org/browse/JENKINS-47112">bug</a>，在 UI 界面增加环境变量并不生效。可以升级插件，或（作为变通方案） 直接修改 <code>config.xml</code> 文件并重启 Jenkins。</p>
+<h3>从 Git 获取源代码</h3>
+<p>从公共 Git 仓库获取源代码很容易。但对于私有 Git 仓库，不仅需要认证操作，客户端还需要信任服务器以便建立安全连接。一般而言，通过两种协议获取源代码：</p>
+<ul>
+<li>HTTPS：验证通过用户名/密码完成。Git 服务器的 SSL 证书必须被代理节点信任，这仅在证书被自建 CA 签名时才需要特别注意。</li>
+</ul>
+<div class="highlight"><pre><span></span><code>git clone https://git.mycompany.com:443/myapplication.git
+</code></pre></div>
+
+<ul>
+<li>SSH：验证通过私钥完成。如果服务器的公钥指纹出现在 <code>known_hosts</code> 文件中，那么该服务器是被信任的。</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="n">git</span><span class="w"> </span><span class="n">clone</span><span class="w"> </span><span class="nl">ssh</span><span class="p">:</span><span class="o">//</span><span class="n">git</span><span class="nv">@git</span><span class="p">.</span><span class="n">mycompany</span><span class="p">.</span><span class="nl">com</span><span class="p">:</span><span class="mi">22</span><span class="o">/</span><span class="n">myapplication</span><span class="p">.</span><span class="n">git</span>
+</code></pre></div>
+
+<p>对于手动操作，使用用户名/密码通过 HTTP 方式下载源代码是可行的；但对于自动构建而言，SSH 是更佳的选择。</p>
+<h4>通过 SSH 方式使用 Git</h4>
+<p>要通过 SSH 方式下载源代码，我们需要保证代理容器与 Git 的 SSH 端口之间可以建立 SSH 连接。首先，我们需要创建一个私钥-公钥对。使用如下命令生成：</p>
+<div class="highlight"><pre><span></span><code>ssh keygen -t rsa -b 2048 -f my-git-ssh -N &#39;&#39;
+</code></pre></div>
+
+<p>命令生成的私钥位于 <code>my-git-ssh</code> 文件中（口令为空），对应的公钥位于 <code>my-git-ssh.pub</code> 文件中。将公钥添加至 Git 服务器的对应用户下（推荐使用“服务账号”）；网页界面一般支持公钥上传。为建立 SSH 连接，我们还需要在代理容器上配置两个文件：</p>
+<ul>
+<li>私钥文件位于 <code>~/.ssh/id_rsa</code></li>
+<li>服务器的公钥位于 <code>~/.ssh/known_hosts</code>。要实现这一点，运行 <code>ssh git.mycompany.com</code> 并接受服务器指纹，系统会在 <code>~/.ssh/known_hosts</code> 文件中增加一行。这样需求得到了满足。</li>
+</ul>
+<p>将 <code>id_rsa</code> 对应的私钥和 <code>known_hosts</code> 对应的公钥保存到一个 OpenShift 的 secret（或 ConfigMap） 对象中。</p>
+<div class="highlight"><pre><span></span><code><span class="n">apiVersion</span><span class="o">:</span><span class="w"> </span><span class="n">v1</span>
+<span class="n">kind</span><span class="o">:</span><span class="w"> </span><span class="n">Secret</span>
+<span class="n">metadata</span><span class="o">:</span>
+<span class="w">  </span><span class="n">name</span><span class="o">:</span><span class="w"> </span><span class="n">mygit</span><span class="o">-</span><span class="n">ssh</span>
+<span class="n">stringData</span><span class="o">:</span>
+<span class="w">  </span><span class="n">id_rsa</span><span class="o">:</span><span class="w"> </span><span class="o">|-</span>
+<span class="w">    </span><span class="o">-----</span><span class="n">BEGIN</span><span class="w"> </span><span class="n">RSA</span><span class="w"> </span><span class="n">PRIVATE</span><span class="w"> </span><span class="n">KEY</span><span class="o">-----</span>
+<span class="w">    </span><span class="o">...</span>
+<span class="w">    </span><span class="o">-----</span><span class="n">END</span><span class="w"> </span><span class="n">RSA</span><span class="w"> </span><span class="n">PRIVATE</span><span class="w"> </span><span class="n">KEY</span><span class="o">-----</span>
+<span class="w">  </span><span class="n">known_hosts</span><span class="o">:</span><span class="w"> </span><span class="o">|-</span>
+<span class="w">    </span><span class="n">git</span><span class="o">.</span><span class="na">mycompany</span><span class="o">.</span><span class="na">com</span><span class="w"> </span><span class="n">ecdsa</span><span class="o">-</span><span class="n">sha2</span><span class="o">-</span><span class="n">nistp256</span><span class="w"> </span><span class="n">AAA</span><span class="o">...</span>
+</code></pre></div>
+
+<p>在 Kubernetes 插件中将 secret 对象配置为卷，挂载到 <code>/home/jenkins/.ssh/</code>，供 Maven pod 使用。secret 中的每个对象对应挂载目录的一个文件，文件名与 key 名称相符。我们可以使用 UI（管理 Jenkins / 配置 / 云 / Kubernetes），也可以直接编辑 Jenkins 配置文件 <code>/var/lib/jenkins/config.xml</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;org.csanchez.jenkins.plugins.kubernetes.PodTemplate&gt;</span>
+<span class="nt">&lt;name&gt;</span>maven<span class="nt">&lt;/name&gt;</span>
+...
+<span class="w">  </span><span class="nt">&lt;volumes&gt;</span>
+<span class="w">    </span><span class="nt">&lt;org.csanchez.jenkins.plugins.kubernetes.volumes.SecretVolume&gt;</span>
+<span class="w">      </span><span class="nt">&lt;mountPath&gt;</span>/home/jenkins/.ssh<span class="nt">&lt;/mountPath&gt;</span>
+<span class="w">      </span><span class="nt">&lt;secretName&gt;</span>mygit-ssh<span class="nt">&lt;/secretName&gt;</span>
+<span class="w">    </span><span class="nt">&lt;/org.csanchez.jenkins.plugins.kubernetes.volumes.SecretVolume&gt;</span>
+<span class="w">  </span><span class="nt">&lt;/volumes&gt;</span>
+</code></pre></div>
+
+<p>此时，在代理节点上运行的任务应该可以通过 SSH 方式从 Git 代码库获取源代码。</p>
+<p>注：我们也可以在 <code>~/.ssh/config</code> 文件中自定义 SSH 连接。例如，如果你不想处理 <code>known_hosts</code> 或私钥位于其它挂载目录中：</p>
+<div class="highlight"><pre><span></span><code>Host git.mycompany.com
+   StrictHostKeyChecking no
+   IdentityFile /home/jenkins/.config/git-secret/ssh-privatekey
+</code></pre></div>
+
+<h4>通过 HTTP 方式使用 Git</h4>
+<p>如果你选择使用 HTTP 方式下载，在指定的 <a href="https://git-scm.com/docs/git-credential-store/1.8.2">Git-credential-store</a> 文件中添加用户名/密码：</p>
+<ul>
+<li>例如，在一个 OpenShift secret 对象中增加 <code>/home/jenkins/.config/git-secret/credentials</code> 文件对应，其中每个站点对应文件中的一行:</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="nl">https</span><span class="p">:</span><span class="o">//</span><span class="nl">username</span><span class="p">:</span><span class="n">password</span><span class="nv">@git</span><span class="p">.</span><span class="n">mycompany</span><span class="p">.</span><span class="n">com</span>
+<span class="nl">https</span><span class="p">:</span><span class="o">//</span><span class="k">user</span><span class="err">:</span><span class="n">pass</span><span class="nv">@github</span><span class="p">.</span><span class="n">com</span>
+</code></pre></div>
+
+<ul>
+<li>在 <a href="https://git-scm.com/docs/git-config/1.8.2">git-config</a> 配置中启用该文件，其中配置文件默认路径为 <code>/home/jenkins/.config/git/config</code>：</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="k">[credential]</span>
+<span class="w">  </span><span class="na">helper</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">store --file=/home/jenkins/.config/git-secret/credentials</span>
+</code></pre></div>
+
+<p>如果 Git 服务使用了自有 CA 签名的证书，为代理容器设置环境变量 <code>GIT_SSL_NO_VERIFY=true</code> 是最便捷的方式。更恰当的解决方案包括如下两步：</p>
+<ul>
+<li>利用 ConfigMap 将自有 CA 的公钥映射到一个路径下的文件中，例如 <code>/usr/ca/myTrustedCA.pem</code>）。</li>
+<li>通过环境变量 <code>GIT_SSL_CAINFO=/usr/ca/myTrustedCA.pem</code> 或上面提到的 <code>git-config</code> 文件的方式，将证书路径告知 Git。</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="k">[http &quot;https://git.mycompany.com&quot;]</span>
+<span class="w">    </span><span class="na">sslCAInfo</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">/usr/ca/myTrustedCA.pem</span>
+</code></pre></div>
+
+<p>注：在 OpenShift v3.7 及早期版本中，ConfigMap 及 secret 的挂载点之间<a href="https://bugzilla.redhat.com/show_bug.cgi?id=1430322">不能相互覆盖</a>，故我们不能同时映射 <code>/home/jenkins</code> 和 <code>/home/jenkins/dir</code>。因此，上面的代码中并没有使用常见的文件路径。预计 OpenShift v3.9 版本会修复这个问题。</p>
+<h3>Maven</h3>
+<p>要完成 Maven 构建，一般需要完成如下两步：</p>
+<ul>
+<li>建立一个社区 Maven 库（例如 Apache Nexus），充当外部库的代理。将其当作镜像使用。</li>
+<li>这个内部库可能提供 HTTPS 服务，其中使用自建 CA 签名的证书。</li>
+</ul>
+<p>对于容器中运行构建的实践而言，使用内部 Maven 库是非常关键的，因为容器启动后并没有本地库或缓存，这导致每次构建时 Maven 都下载全部的 Jar 文件。在本地网络使用内部代理库下载明显快于从因特网下载。</p>
+<p><a href="https://github.com/openshift/jenkins/tree/master/slave-maven">Maven Jenkins 代理</a>镜像允许配置环境变量，指定代理的 URL。在 Kubernetes 插件的容器模板中设置如下：</p>
+<div class="highlight"><pre><span></span><code>MAVEN_MIRROR_URL=https://nexus.mycompany.com/repository/maven-public
+</code></pre></div>
+
+<p>构建好的成品（JAR） 也应该保存到库中，可以是上面提到的用于提供依赖的镜像库，也可以是其它库。Maven 完成 <code>deploy</code> 操作需要在 <code>pom.xml</code> 的<a href="https://maven.apache.org/pom.html#Distribution_Management">分发管理</a> 下配置库 URL，这与代理镜像无关。</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;project</span><span class="w"> </span><span class="err">...</span><span class="nt">&gt;</span>
+<span class="nt">&lt;distributionManagement&gt;</span>
+<span class="w"> </span><span class="nt">&lt;snapshotRepository&gt;</span>
+<span class="w">  </span><span class="nt">&lt;id&gt;</span>mynexus<span class="nt">&lt;/id&gt;</span>
+<span class="w">  </span><span class="nt">&lt;url&gt;</span>https://nexus.mycompany.com/repository/maven-snapshots/<span class="nt">&lt;/url&gt;</span>
+<span class="w"> </span><span class="nt">&lt;/snapshotRepository&gt;</span>
+<span class="w"> </span><span class="nt">&lt;repository&gt;</span>
+<span class="w">  </span><span class="nt">&lt;id&gt;</span>mynexus<span class="nt">&lt;/id&gt;</span>
+<span class="w">  </span><span class="nt">&lt;url&gt;</span>https://nexus.mycompany.com/repository/maven-releases/<span class="nt">&lt;/url&gt;</span>
+<span class="w"> </span><span class="nt">&lt;/repository&gt;</span>
+<span class="nt">&lt;/distributionManagement&gt;</span>
+</code></pre></div>
+
+<p>上传成品可能涉及认证。在这种情况下，在 <code>settings.xml</code> 中配置的用户名/密码要与 <code>pom.xml</code> 文件中的对应的服务器 <code>id</code> 下的设置匹配。我们可以使用 OpenShift secret 将包含 URL、用户名和密码的完整 <code>settings.xml</code> 映射到 Maven Jenkins 代理容器中。另外，也可以使用环境变量。具体如下：</p>
+<ul>
+<li>利用 secret 为容器添加环境变量：</li>
+</ul>
+<div class="highlight"><pre><span></span><code>MAVEN_SERVER_USERNAME=admin
+MAVEN_SERVER_PASSWORD=admin123
+</code></pre></div>
+
+<ul>
+<li>利用 config map 将 <code>settings.xml</code> 挂载至 <code>/home/jenkins/.m2/settings.xml</code>：</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;settings</span> <span class="err">...</span><span class="nt">&gt;</span>
+<span class="nt">&lt;mirrors&gt;</span>
+<span class="nt">&lt;mirror&gt;</span>
+<span class="nt">&lt;mirrorOf&gt;</span>external:*<span class="nt">&lt;/mirrorOf&gt;</span>
+<span class="nt">&lt;url&gt;</span><span class="cp">${</span><span class="n">env</span><span class="o">.</span><span class="n">MAVEN_MIRROR_URL</span><span class="cp">}</span><span class="nt">&lt;/url&gt;</span>
+<span class="nt">&lt;id&gt;</span>mirror<span class="nt">&lt;/id&gt;</span>
+<span class="nt">&lt;/mirror&gt;</span>
+<span class="nt">&lt;/mirrors&gt;</span>
+<span class="nt">&lt;servers&gt;</span>
+<span class="nt">&lt;server&gt;</span>
+<span class="nt">&lt;id&gt;</span>mynexus<span class="nt">&lt;/id&gt;</span>
+<span class="nt">&lt;username&gt;</span><span class="cp">${</span><span class="n">env</span><span class="o">.</span><span class="n">MAVEN_SERVER_USERNAME</span><span class="cp">}</span><span class="nt">&lt;/username&gt;</span>
+<span class="nt">&lt;password&gt;</span><span class="cp">${</span><span class="n">env</span><span class="o">.</span><span class="n">MAVEN_SERVER_PASSWORD</span><span class="cp">}</span><span class="nt">&lt;/password&gt;</span>
+<span class="nt">&lt;/server&gt;</span>
+<span class="nt">&lt;/servers&gt;</span>
+<span class="nt">&lt;/settings&gt;</span>
+</code></pre></div>
+
+<p>禁用交互模式（即，使用批处理模式） 可以忽略下载日志，一种方式是在 Maven 命令中增加 <code>-B</code> 参数，另一种方式是在 <code>settings.xml</code> 配置文件中增加 <code>&lt;interactiveMode&gt;false&lt;/interactiveMode&gt;</code> 配置。</p>
+<p>如果 Maven 库的 HTTPS 服务使用自建 CA 签名的证书，我们需要使用 <a href="https://docs.oracle.com/javase/8/docs/technotes/tools/unix/keytool.html">keytool</a> 工具创建一个将 CA 公钥添加至信任列表的 Java KeyStore。在 OpenShift 中使用 ConfigMap 将这个 Keystore 上传。使用 <code>oc</code> 命令基于文件创建一个 ConfigMap：</p>
+<div class="highlight"><pre><span></span><code><span class="n">oc create configmap maven-settings --from-file=settings.xml=settings.xml --from-</span>
+<span class="n">file=myTruststore.jks=myTruststore.jks</span>
+</code></pre></div>
+
+<p>将这个 ConfigMap 挂载至 Jenkins 代理容器。在本例中我们使用 <code>/home/jenkins/.m2</code> 目录，但这仅仅是因为配置文件 <code>settings.xml</code> 也对应这个 ConfigMap。KeyStore 可以放置在任意路径下。</p>
+<p>接着在容器环境变量 <code>MAVEN_OPTS</code> 中设置 Java 参数，以便让 Maven 对应的 Java 进程使用该文件：</p>
+<div class="highlight"><pre><span></span><code>MAVEN_OPTS=
+-Djavax.net.ssl.trustStore=/home/jenkins/.m2/myTruststore.jks
+-Djavax.net.ssl.trustStorePassword=changeit
+</code></pre></div>
+
+<h3>内存使用量</h3>
+<p>这可能是最重要的一部分设置，如果没有正确的设置最大内存，我们会遇到间歇性构建失败，虽然每个组件都似乎工作正常。</p>
+<p>如果没有在 Java 命令行中设置堆大小，在容器中运行 Java 可能导致高内存使用量的报错。JVM <a href="https://developers.redhat.com/blog/2017/03/14/java-inside-docker/">可以利用全部的宿主机内存</a>，而不是使用容器内存现在并相应设置<a href="https://docs.oracle.com/javase/8/docs/technotes/guides/vm/gctuning/parallel.html#default_heap_size">默认的堆大小</a>。这通常会超过容器的内存资源总额，故当 Java 进程为堆分配过多内存时，OpenShift 会直接杀掉容器。</p>
+<p>虽然 <code>jenkins-slave-base</code> 镜像包含一个内建<a href="https://github.com/openshift/jenkins/blob/master/slave-base/contrib/bin/run-jnlp-client">脚本设置堆最大为</a>容器内存的一半（可以通过环境变量 <code>CONTAINER_HEAP_PERCENT=0.50</code> 修改），但这只适用于 Jenkins 代理节点中的 Java 进程。在 Maven 构建中，还有其它重要的 Java 进程运行：</p>
+<ul>
+<li><code>mvn</code> 命令本身就是一个 Java 工具。</li>
+<li><a href="http://maven.apache.org/surefire/maven-surefire-plugin/examples/fork-options-and-parallel-execution.html">Maven Surefire 插件</a> 默认派生一个 JVM 用于运行单元测试。</li>
+</ul>
+<p>总结一下，容器中同时运行着三个重要的 Java 进程，预估内存使用量以避免 pod 被误杀是很重要的。每个进程都有不同的方式设置 JVM 参数：</p>
+<ul>
+<li>我们在上面提到了 Jenkins 代理容器堆最大值的计算方法，但我们显然不应该让代理容器使用如此大的堆，毕竟还有两个 JVM 需要使用内存。对于 Jenkins 代理容器，可以设置 <code>JAVA_OPTS</code>。</li>
+<li><code>mvn</code> 工具被 Jenkins 任务调用。设置 <code>MAVEN_OPTS</code> 可以用于自定义这类 Java 进程。</li>
+<li>Maven <code>surefire</code> 插件滋生的用于单元测试的 JVM 可以通过 Maven <a href="http://maven.apache.org/surefire/maven-surefire-plugin/test-mojo.html#argLine">argLine</a> 属性自定义。可以在 <code>pom.xml</code> 或 <code>settings.xml</code> 的某个配置文件中设置，也可以直接在 <code>maven</code> 命令参数 <code>MAVEN_OPS</code> 中增加 <code>-DargLine=…</code>。</li>
+</ul>
+<p>下面例子给出 Maven 代理容器环境变量设置方法：</p>
+<div class="highlight"><pre><span></span><code>JAVA_OPTS=-Xms64m<span class="w"> </span>-Xmx64m
+MAVEN_OPTS=-Xms128m<span class="w"> </span>-Xmx128m<span class="w"> </span>-DargLine=<span class="cp">${</span><span class="n">env</span><span class="o">.</span><span class="n">SUREFIRE_OPTS</span><span class="cp">}</span>
+SUREFIRE_OPTS=-Xms256m<span class="w"> </span>-Xmx256m
+</code></pre></div>
+
+<p>我们的测试环境是具有 1024Mi 内存限额的代理容器，使用上述参数可以正常构建一个 SpringBoot 应用并进行单元测试。测试环境使用的资源相对较小，对于复杂的 Maven 项目和对应的单元测试，我们需要更大的堆大小及更大的容器内存限额。</p>
+<p>注：Java8 进程的实际内存使用量包括“堆大小 + 元数据 + 堆外内存”，因此内存使用量会明显高于设置的最大堆大小。在我们上面的测试环境中，三个 Java 进程使用了超过 900Mi 的内存。可以在容器内查看进程的 RSS 内存使用情况，命令如下：<code>ps -e -o pid,user,rss,comm,args</code>。</p>
+<p>Jenkins 代理镜像同时安装了 JDK 64 位和 32 位版本。对于 <code>mvn</code> 和 <code>surefire</code>，默认使用 64 位版本 JVM。为减低内存使用量，只要 <code>-Xmx</code> 不超过 1.5 GB，强制使用 32 位 JVM 都是有意义的。</p>
+<div class="highlight"><pre><span></span><code>JAVA_HOME=/usr/lib/jvm/Java-1.8.0-openjdk-1.8.0.161–0.b14.el7_4.i386
+</code></pre></div>
+
+<p>注意到我们可以在 <code>JAVA_TOOL_OPTIONS</code> 环境变量中设置 Java 参数，每个 JVM 启动时都会读取该参数。<code>JAVA_OPTS</code> 和 <code>MAVEN_OPTS</code> 中的参数会覆盖 <code>JAVA_TOOL_OPTIONS</code> 中的对应值，故我们可以不使用 <code>argLine</code>，实现对 Java 进程同样的堆配置：</p>
+<div class="highlight"><pre><span></span><code>JAVA_OPTS=-Xms64m -Xmx64m
+MAVEN_OPTS=-Xms128m -Xmx128m
+JAVA_TOOL_OPTIONS=-Xms256m -Xmx256m
+</code></pre></div>
+
+<p>但缺点是每个 JVM 的日志中都会显示 <code>Picked up JAVA_TOOL_OPTIONS:</code>，这可能让人感到迷惑。</p>
+<h3>Jenkins 流水线</h3>
+<p>完成上述配置，我们应该已经可以完成一次成功的构建。我们可以获取源代码，下载依赖，运行单元测试并将成品上传到我们的库中。我们可以通过创建一个 Jenkins 流水线项目来完成上述操作。</p>
+<div class="highlight"><pre><span></span><code><span class="n">pipeline</span><span class="w"> </span><span class="err">{</span>
+<span class="w">  </span><span class="cm">/* Which container to bring up for the build. Pick one of the templates configured in Kubernetes plugin. */</span>
+<span class="w">  </span><span class="n">agent</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">label</span><span class="w"> </span><span class="s1">&#39;maven&#39;</span>
+<span class="w">  </span><span class="err">}</span>
+
+<span class="w">  </span><span class="n">stages</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">stage</span><span class="p">(</span><span class="s1">&#39;Pull Source&#39;</span><span class="p">)</span><span class="w"> </span><span class="err">{</span>
+<span class="w">      </span><span class="n">steps</span><span class="w"> </span><span class="err">{</span>
+<span class="w">        </span><span class="n">git</span><span class="w"> </span><span class="nl">url</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;ssh://git@git.mycompany.com:22/myapplication.git&#39;</span><span class="p">,</span><span class="w"> </span><span class="nl">branch</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;master&#39;</span>
+<span class="w">      </span><span class="err">}</span>
+<span class="w">    </span><span class="err">}</span>
+<span class="w">    </span><span class="n">stage</span><span class="p">(</span><span class="s1">&#39;Unit Tests&#39;</span><span class="p">)</span><span class="w"> </span><span class="err">{</span>
+<span class="w">      </span><span class="n">steps</span><span class="w"> </span><span class="err">{</span>
+<span class="w">        </span><span class="n">sh</span><span class="w"> </span><span class="s1">&#39;mvn test&#39;</span>
+<span class="w">      </span><span class="err">}</span>
+<span class="w">    </span><span class="err">}</span>
+<span class="w">    </span><span class="n">stage</span><span class="p">(</span><span class="s1">&#39;Deploy to Nexus&#39;</span><span class="p">)</span><span class="w"> </span><span class="err">{</span>
+<span class="w">      </span><span class="n">steps</span><span class="w"> </span><span class="err">{</span>
+<span class="w">        </span><span class="n">sh</span><span class="w"> </span><span class="s1">&#39;mvn deploy -DskipTests&#39;</span>
+<span class="w">      </span><span class="err">}</span>
+<span class="w">    </span><span class="err">}</span>
+<span class="w">  </span><span class="err">}</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<p>当然，对应真实项目，CI/CD 流水线不仅仅完成 Maven 构建，还可以部署到开发环境，运行集成测试，提升至更接近于生产的环境等。上面给出的学习资料中有执行这些操作的案例。</p>
+<h3>多容器</h3>
+<p>一个 pod 可以运行多个容器，每个容器有单独的资源限制。这些容器共享网络接口，故我们可以从 <code>localhost</code> 访问已启动的服务，但我们需要考虑端口冲突的问题。在一个 Kubernetes pod 模板中，每个容器的环境变量是单独设置的，但挂载的卷是统一的。</p>
+<p>当一个外部服务需要单元测试且嵌入式方案无法工作（例如，数据库、消息中间件等） 时，可以启动多个容器。在这种情况下，第二个容器会随着 Jenkins 代理容器启停。</p>
+<p>查看 Jenkins <code>config.xml</code> 片段，其中我们启动了一个辅助的 <code>httpbin</code> 服务用于 Maven 构建：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;org.csanchez.jenkins.plugins.kubernetes.PodTemplate&gt;</span>
+<span class="w">  </span><span class="nt">&lt;name&gt;</span>maven<span class="nt">&lt;/name&gt;</span>
+<span class="w">  </span><span class="nt">&lt;volumes&gt;</span>
+<span class="w">    </span>...
+<span class="w">  </span><span class="nt">&lt;/volumes&gt;</span>
+<span class="w">  </span><span class="nt">&lt;containers&gt;</span>
+<span class="w">    </span><span class="nt">&lt;org.csanchez.jenkins.plugins.kubernetes.ContainerTemplate&gt;</span>
+<span class="w">      </span><span class="nt">&lt;name&gt;</span>jnlp<span class="nt">&lt;/name&gt;</span>
+<span class="w">      </span><span class="nt">&lt;image&gt;</span>registry.access.redhat.com/openshift3/jenkins-slave-maven-rhel7:v3.7<span class="nt">&lt;/image&gt;</span>
+<span class="w">      </span><span class="nt">&lt;resourceLimitCpu&gt;</span>500m<span class="nt">&lt;/resourceLimitCpu&gt;</span>
+<span class="w">      </span><span class="nt">&lt;resourceLimitMemory&gt;</span>1024Mi<span class="nt">&lt;/resourceLimitMemory&gt;</span>
+<span class="w">      </span><span class="nt">&lt;envVars&gt;</span>
+<span class="w">      </span>...
+<span class="w">      </span><span class="nt">&lt;/envVars&gt;</span><span class="w">        </span>
+<span class="w">      </span>...
+<span class="w">    </span><span class="nt">&lt;/org.csanchez.jenkins.plugins.kubernetes.ContainerTemplate&gt;</span>
+<span class="w">    </span><span class="nt">&lt;org.csanchez.jenkins.plugins.kubernetes.ContainerTemplate&gt;</span>
+<span class="w">      </span><span class="nt">&lt;name&gt;</span>httpbin<span class="nt">&lt;/name&gt;</span>
+<span class="w">      </span><span class="nt">&lt;image&gt;</span>citizenstig/httpbin<span class="nt">&lt;/image&gt;</span>
+<span class="w">      </span><span class="nt">&lt;resourceLimitCpu&gt;&lt;/resourceLimitCpu&gt;</span>
+<span class="w">      </span><span class="nt">&lt;resourceLimitMemory&gt;</span>256Mi<span class="nt">&lt;/resourceLimitMemory&gt;</span>
+<span class="w">      </span><span class="nt">&lt;envVars/&gt;</span>
+<span class="w">      </span>...
+<span class="w">    </span><span class="nt">&lt;/org.csanchez.jenkins.plugins.kubernetes.ContainerTemplate&gt;</span>
+<span class="w">  </span><span class="nt">&lt;/containers&gt;</span>
+<span class="w">  </span><span class="nt">&lt;envVars/&gt;</span>
+<span class="nt">&lt;/org.csanchez.jenkins.plugins.kubernetes.PodTemplate&gt;</span>
+</code></pre></div>
+
+<h3>总结</h3>
+<p>作为总结，我们查看上面已描述配置的 Jenkins <code>config.xml</code> 对应创建的 OpenShift 资源以及 Kubernetes 插件的配置。</p>
+<div class="highlight"><pre><span></span><code><span class="nl">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="n">v1</span>
+<span class="nl">kind</span><span class="p">:</span><span class="w"> </span><span class="n">List</span>
+<span class="nl">metadata</span><span class="p">:</span><span class="w"> </span><span class="err">{}</span>
+<span class="nl">items</span><span class="p">:</span>
+<span class="o">-</span><span class="w"> </span><span class="nl">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="n">v1</span>
+<span class="w">  </span><span class="nl">kind</span><span class="p">:</span><span class="w"> </span><span class="n">ConfigMap</span>
+<span class="w">  </span><span class="nl">metadata</span><span class="p">:</span>
+<span class="w">    </span><span class="nl">name</span><span class="p">:</span><span class="w"> </span><span class="n">git</span><span class="o">-</span><span class="n">config</span>
+<span class="w">  </span><span class="k">data</span><span class="err">:</span>
+<span class="w">    </span><span class="nl">config</span><span class="p">:</span><span class="w"> </span><span class="o">|</span>
+<span class="w">      </span><span class="o">[</span><span class="n">credential</span><span class="o">]</span>
+<span class="w">          </span><span class="n">helper</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">store</span><span class="w"> </span><span class="o">--</span><span class="k">file</span><span class="o">=/</span><span class="n">home</span><span class="o">/</span><span class="n">jenkins</span><span class="o">/</span><span class="p">.</span><span class="n">config</span><span class="o">/</span><span class="n">git</span><span class="o">-</span><span class="n">secret</span><span class="o">/</span><span class="n">credentials</span>
+<span class="w">      </span><span class="o">[</span><span class="n">http &quot;http://git.mycompany.com&quot;</span><span class="o">]</span>
+<span class="w">          </span><span class="n">sslCAInfo</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">jenkins</span><span class="o">/</span><span class="p">.</span><span class="n">config</span><span class="o">/</span><span class="n">git</span><span class="o">/</span><span class="n">myTrustedCA</span><span class="p">.</span><span class="n">pem</span>
+<span class="w">    </span><span class="n">myTrustedCA</span><span class="p">.</span><span class="nl">pem</span><span class="p">:</span><span class="w"> </span><span class="o">|-</span>
+<span class="w">      </span><span class="o">-----</span><span class="k">BEGIN</span><span class="w"> </span><span class="n">CERTIFICATE</span><span class="o">-----</span>
+<span class="w">      </span><span class="n">MIIDVzCCAj</span><span class="o">+</span><span class="n">gAwIBAgIJAN0sC</span><span class="p">...</span>
+<span class="w">      </span><span class="o">-----</span><span class="k">END</span><span class="w"> </span><span class="n">CERTIFICATE</span><span class="o">-----</span>
+<span class="o">-</span><span class="w"> </span><span class="nl">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="n">v1</span>
+<span class="w">  </span><span class="nl">kind</span><span class="p">:</span><span class="w"> </span><span class="n">Secret</span>
+<span class="w">  </span><span class="nl">metadata</span><span class="p">:</span>
+<span class="w">    </span><span class="nl">name</span><span class="p">:</span><span class="w"> </span><span class="n">git</span><span class="o">-</span><span class="n">secret</span>
+<span class="w">  </span><span class="nl">stringData</span><span class="p">:</span>
+<span class="w">    </span><span class="n">ssh</span><span class="o">-</span><span class="nl">privatekey</span><span class="p">:</span><span class="w"> </span><span class="o">|-</span>
+<span class="w">      </span><span class="o">-----</span><span class="k">BEGIN</span><span class="w"> </span><span class="n">RSA</span><span class="w"> </span><span class="n">PRIVATE</span><span class="w"> </span><span class="k">KEY</span><span class="o">-----</span>
+<span class="w">      </span><span class="p">...</span>
+<span class="w">      </span><span class="o">-----</span><span class="k">END</span><span class="w"> </span><span class="n">RSA</span><span class="w"> </span><span class="n">PRIVATE</span><span class="w"> </span><span class="k">KEY</span><span class="o">-----</span>
+<span class="w">    </span><span class="nl">credentials</span><span class="p">:</span><span class="w"> </span><span class="o">|-</span>
+<span class="w">      </span><span class="nl">https</span><span class="p">:</span><span class="o">//</span><span class="nl">username</span><span class="p">:</span><span class="n">password</span><span class="nv">@git</span><span class="p">.</span><span class="n">mycompany</span><span class="p">.</span><span class="n">com</span>
+<span class="w">      </span><span class="nl">https</span><span class="p">:</span><span class="o">//</span><span class="k">user</span><span class="err">:</span><span class="n">pass</span><span class="nv">@github</span><span class="p">.</span><span class="n">com</span>
+<span class="o">-</span><span class="w"> </span><span class="nl">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="n">v1</span>
+<span class="w">  </span><span class="nl">kind</span><span class="p">:</span><span class="w"> </span><span class="n">ConfigMap</span>
+<span class="w">  </span><span class="nl">metadata</span><span class="p">:</span>
+<span class="w">    </span><span class="nl">name</span><span class="p">:</span><span class="w"> </span><span class="n">git</span><span class="o">-</span><span class="n">ssh</span>
+<span class="w">  </span><span class="k">data</span><span class="err">:</span>
+<span class="w">    </span><span class="nl">config</span><span class="p">:</span><span class="w"> </span><span class="o">|-</span>
+<span class="w">      </span><span class="k">Host</span><span class="w"> </span><span class="n">git</span><span class="p">.</span><span class="n">mycompany</span><span class="p">.</span><span class="n">com</span>
+<span class="w">        </span><span class="n">StrictHostKeyChecking</span><span class="w"> </span><span class="n">yes</span>
+<span class="w">        </span><span class="n">IdentityFile</span><span class="w"> </span><span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">jenkins</span><span class="o">/</span><span class="p">.</span><span class="n">config</span><span class="o">/</span><span class="n">git</span><span class="o">-</span><span class="n">secret</span><span class="o">/</span><span class="n">ssh</span><span class="o">-</span><span class="n">privatekey</span>
+<span class="w">    </span><span class="nl">known_hosts</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;[git.mycompany.com]:22 ecdsa-sha2-nistp256 AAAdn7...&#39;</span>
+<span class="o">-</span><span class="w"> </span><span class="nl">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="n">v1</span>
+<span class="w">  </span><span class="nl">kind</span><span class="p">:</span><span class="w"> </span><span class="n">Secret</span>
+<span class="w">  </span><span class="nl">metadata</span><span class="p">:</span>
+<span class="w">    </span><span class="nl">name</span><span class="p">:</span><span class="w"> </span><span class="n">maven</span><span class="o">-</span><span class="n">secret</span>
+<span class="w">  </span><span class="nl">stringData</span><span class="p">:</span>
+<span class="w">    </span><span class="nl">username</span><span class="p">:</span><span class="w"> </span><span class="k">admin</span>
+<span class="w">    </span><span class="nl">password</span><span class="p">:</span><span class="w"> </span><span class="n">admin123</span>
+</code></pre></div>
+
+<p>基于文件创建另一个 ConfigMap：</p>
+<div class="highlight"><pre><span></span><code><span class="n">oc create configmap maven-settings --from-file=settings.xml=settings.xml </span>
+<span class="n">--from-file=myTruststore.jks=myTruststore.jks</span>
+</code></pre></div>
+
+<p>Kubernetes 插件配置如下：</p>
+<div class="highlight"><pre><span></span><code><span class="o">&lt;?</span><span class="n">xml</span><span class="w"> </span><span class="n">version</span><span class="o">=</span><span class="err">&#39;</span><span class="mf">1.0</span><span class="err">&#39;</span><span class="w"> </span><span class="n">encoding</span><span class="o">=</span><span class="err">&#39;</span><span class="n">UTF</span><span class="mi">-8</span><span class="err">&#39;</span><span class="o">?&gt;</span>
+<span class="o">&lt;</span><span class="n">hudson</span><span class="o">&gt;</span>
+<span class="p">...</span>
+<span class="w">  </span><span class="o">&lt;</span><span class="n">clouds</span><span class="o">&gt;</span>
+<span class="w">    </span><span class="o">&lt;</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">KubernetesCloud</span><span class="w"> </span><span class="n">plugin</span><span class="o">=</span><span class="s">&quot;kubernetes@1.0&quot;</span><span class="o">&gt;</span>
+<span class="w">      </span><span class="o">&lt;</span><span class="n">name</span><span class="o">&gt;</span><span class="n">openshift</span><span class="o">&lt;/</span><span class="n">name</span><span class="o">&gt;</span>
+<span class="w">      </span><span class="o">&lt;</span><span class="n">defaultsProviderTemplate</span><span class="o">&gt;&lt;/</span><span class="n">defaultsProviderTemplate</span><span class="o">&gt;</span>
+<span class="w">      </span><span class="o">&lt;</span><span class="n">templates</span><span class="o">&gt;</span>
+<span class="w">        </span><span class="o">&lt;</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">PodTemplate</span><span class="o">&gt;</span>
+<span class="w">          </span><span class="o">&lt;</span><span class="n">inheritFrom</span><span class="o">&gt;&lt;/</span><span class="n">inheritFrom</span><span class="o">&gt;</span>
+<span class="w">          </span><span class="o">&lt;</span><span class="n">name</span><span class="o">&gt;</span><span class="n">maven</span><span class="o">&lt;/</span><span class="n">name</span><span class="o">&gt;</span>
+<span class="w">          </span><span class="o">&lt;</span><span class="n">namespace</span><span class="o">&gt;&lt;/</span><span class="n">namespace</span><span class="o">&gt;</span>
+<span class="w">          </span><span class="o">&lt;</span><span class="n">privileged</span><span class="o">&gt;</span><span class="nb">false</span><span class="o">&lt;/</span><span class="n">privileged</span><span class="o">&gt;</span>
+<span class="w">          </span><span class="o">&lt;</span><span class="n">alwaysPullImage</span><span class="o">&gt;</span><span class="nb">false</span><span class="o">&lt;/</span><span class="n">alwaysPullImage</span><span class="o">&gt;</span>
+<span class="w">          </span><span class="o">&lt;</span><span class="n">instanceCap</span><span class="o">&gt;</span><span class="mi">2147483647</span><span class="o">&lt;/</span><span class="n">instanceCap</span><span class="o">&gt;</span>
+<span class="w">          </span><span class="o">&lt;</span><span class="n">slaveConnectTimeout</span><span class="o">&gt;</span><span class="mi">100</span><span class="o">&lt;/</span><span class="n">slaveConnectTimeout</span><span class="o">&gt;</span>
+<span class="w">          </span><span class="o">&lt;</span><span class="n">idleMinutes</span><span class="o">&gt;</span><span class="mi">0</span><span class="o">&lt;/</span><span class="n">idleMinutes</span><span class="o">&gt;</span>
+<span class="w">          </span><span class="o">&lt;</span><span class="n">label</span><span class="o">&gt;</span><span class="n">maven</span><span class="o">&lt;/</span><span class="n">label</span><span class="o">&gt;</span>
+<span class="w">          </span><span class="o">&lt;</span><span class="n">serviceAccount</span><span class="o">&gt;</span><span class="n">jenkins37</span><span class="o">&lt;/</span><span class="n">serviceAccount</span><span class="o">&gt;</span>
+<span class="w">          </span><span class="o">&lt;</span><span class="n">nodeSelector</span><span class="o">&gt;&lt;/</span><span class="n">nodeSelector</span><span class="o">&gt;</span>
+<span class="w">          </span><span class="o">&lt;</span><span class="n">nodeUsageMode</span><span class="o">&gt;</span><span class="n">NORMAL</span><span class="o">&lt;/</span><span class="n">nodeUsageMode</span><span class="o">&gt;</span>
+<span class="w">          </span><span class="o">&lt;</span><span class="n">customWorkspaceVolumeEnabled</span><span class="o">&gt;</span><span class="nb">false</span><span class="o">&lt;/</span><span class="n">customWorkspaceVolumeEnabled</span><span class="o">&gt;</span>
+<span class="w">          </span><span class="o">&lt;</span><span class="n">workspaceVolume</span><span class="w"> </span><span class="k">class</span><span class="o">=</span><span class="s">&quot;org.csanchez.jenkins.plugins.kubernetes.volumes.workspace.EmptyDirWorkspaceVolume&quot;</span><span class="o">&gt;</span>
+<span class="w">            </span><span class="o">&lt;</span><span class="n">memory</span><span class="o">&gt;</span><span class="nb">false</span><span class="o">&lt;/</span><span class="n">memory</span><span class="o">&gt;</span>
+<span class="w">          </span><span class="o">&lt;/</span><span class="n">workspaceVolume</span><span class="o">&gt;</span>
+<span class="w">          </span><span class="o">&lt;</span><span class="n">volumes</span><span class="o">&gt;</span>
+<span class="w">            </span><span class="o">&lt;</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">volumes</span><span class="p">.</span><span class="n">SecretVolume</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">mountPath</span><span class="o">&gt;/</span><span class="n">home</span><span class="o">/</span><span class="n">jenkins</span><span class="o">/</span><span class="p">.</span><span class="n">config</span><span class="o">/</span><span class="n">git</span><span class="o">-</span><span class="n">secret</span><span class="o">&lt;/</span><span class="n">mountPath</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">secretName</span><span class="o">&gt;</span><span class="n">git</span><span class="o">-</span><span class="n">secret</span><span class="o">&lt;/</span><span class="n">secretName</span><span class="o">&gt;</span>
+<span class="w">            </span><span class="o">&lt;/</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">volumes</span><span class="p">.</span><span class="n">SecretVolume</span><span class="o">&gt;</span>
+<span class="w">            </span><span class="o">&lt;</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">volumes</span><span class="p">.</span><span class="n">ConfigMapVolume</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">mountPath</span><span class="o">&gt;/</span><span class="n">home</span><span class="o">/</span><span class="n">jenkins</span><span class="o">/</span><span class="p">.</span><span class="n">ssh</span><span class="o">&lt;/</span><span class="n">mountPath</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">configMapName</span><span class="o">&gt;</span><span class="n">git</span><span class="o">-</span><span class="n">ssh</span><span class="o">&lt;/</span><span class="n">configMapName</span><span class="o">&gt;</span>
+<span class="w">            </span><span class="o">&lt;/</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">volumes</span><span class="p">.</span><span class="n">ConfigMapVolume</span><span class="o">&gt;</span>
+<span class="w">            </span><span class="o">&lt;</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">volumes</span><span class="p">.</span><span class="n">ConfigMapVolume</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">mountPath</span><span class="o">&gt;/</span><span class="n">home</span><span class="o">/</span><span class="n">jenkins</span><span class="o">/</span><span class="p">.</span><span class="n">config</span><span class="o">/</span><span class="n">git</span><span class="o">&lt;/</span><span class="n">mountPath</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">configMapName</span><span class="o">&gt;</span><span class="n">git</span><span class="o">-</span><span class="n">config</span><span class="o">&lt;/</span><span class="n">configMapName</span><span class="o">&gt;</span>
+<span class="w">            </span><span class="o">&lt;/</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">volumes</span><span class="p">.</span><span class="n">ConfigMapVolume</span><span class="o">&gt;</span>
+<span class="w">            </span><span class="o">&lt;</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">volumes</span><span class="p">.</span><span class="n">ConfigMapVolume</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">mountPath</span><span class="o">&gt;/</span><span class="n">home</span><span class="o">/</span><span class="n">jenkins</span><span class="o">/</span><span class="p">.</span><span class="n">m2</span><span class="o">&lt;/</span><span class="n">mountPath</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">configMapName</span><span class="o">&gt;</span><span class="n">maven</span><span class="o">-</span><span class="n">settings</span><span class="o">&lt;/</span><span class="n">configMapName</span><span class="o">&gt;</span>
+<span class="w">            </span><span class="o">&lt;/</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">volumes</span><span class="p">.</span><span class="n">ConfigMapVolume</span><span class="o">&gt;</span>
+<span class="w">          </span><span class="o">&lt;/</span><span class="n">volumes</span><span class="o">&gt;</span>
+<span class="w">          </span><span class="o">&lt;</span><span class="n">containers</span><span class="o">&gt;</span>
+<span class="w">            </span><span class="o">&lt;</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">ContainerTemplate</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">name</span><span class="o">&gt;</span><span class="n">jnlp</span><span class="o">&lt;/</span><span class="n">name</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">image</span><span class="o">&gt;</span><span class="n">registry</span><span class="p">.</span><span class="n">access</span><span class="p">.</span><span class="n">redhat</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">openshift3</span><span class="o">/</span><span class="n">jenkins</span><span class="o">-</span><span class="n">slave</span><span class="o">-</span><span class="n">maven</span><span class="o">-</span><span class="n">rhel7</span><span class="o">:</span><span class="n">v3</span><span class="mf">.7</span><span class="o">&lt;/</span><span class="n">image</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">privileged</span><span class="o">&gt;</span><span class="nb">false</span><span class="o">&lt;/</span><span class="n">privileged</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">alwaysPullImage</span><span class="o">&gt;</span><span class="nb">false</span><span class="o">&lt;/</span><span class="n">alwaysPullImage</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">workingDir</span><span class="o">&gt;/</span><span class="n">tmp</span><span class="o">&lt;/</span><span class="n">workingDir</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">command</span><span class="o">&gt;&lt;/</span><span class="n">command</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">args</span><span class="o">&gt;</span><span class="n">$</span><span class="p">{</span><span class="n">computer</span><span class="p">.</span><span class="n">jnlpmac</span><span class="p">}</span><span class="w"> </span><span class="n">$</span><span class="p">{</span><span class="n">computer</span><span class="p">.</span><span class="n">name</span><span class="p">}</span><span class="o">&lt;/</span><span class="n">args</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">ttyEnabled</span><span class="o">&gt;</span><span class="nb">false</span><span class="o">&lt;/</span><span class="n">ttyEnabled</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">resourceRequestCpu</span><span class="o">&gt;</span><span class="mi">500</span><span class="n">m</span><span class="o">&lt;/</span><span class="n">resourceRequestCpu</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">resourceRequestMemory</span><span class="o">&gt;</span><span class="mi">1024</span><span class="n">Mi</span><span class="o">&lt;/</span><span class="n">resourceRequestMemory</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">resourceLimitCpu</span><span class="o">&gt;</span><span class="mi">500</span><span class="n">m</span><span class="o">&lt;/</span><span class="n">resourceLimitCpu</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">resourceLimitMemory</span><span class="o">&gt;</span><span class="mi">1024</span><span class="n">Mi</span><span class="o">&lt;/</span><span class="n">resourceLimitMemory</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">envVars</span><span class="o">&gt;</span>
+<span class="w">                </span><span class="o">&lt;</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">ContainerEnvVar</span><span class="o">&gt;</span>
+<span class="w">                  </span><span class="o">&lt;</span><span class="n">key</span><span class="o">&gt;</span><span class="n">JAVA_HOME</span><span class="o">&lt;/</span><span class="n">key</span><span class="o">&gt;</span>
+<span class="w">                  </span><span class="o">&lt;</span><span class="n">value</span><span class="o">&gt;/</span><span class="n">usr</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">jvm</span><span class="o">/</span><span class="n">java</span><span class="mf">-1.8.0</span><span class="o">-</span><span class="n">openjdk</span><span class="mf">-1.8.0.161-0.</span><span class="n">b14</span><span class="p">.</span><span class="n">el7_4</span><span class="p">.</span><span class="n">i386</span><span class="o">&lt;/</span><span class="n">value</span><span class="o">&gt;</span>
+<span class="w">                </span><span class="o">&lt;/</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">ContainerEnvVar</span><span class="o">&gt;</span>
+<span class="w">                </span><span class="o">&lt;</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">ContainerEnvVar</span><span class="o">&gt;</span>
+<span class="w">                  </span><span class="o">&lt;</span><span class="n">key</span><span class="o">&gt;</span><span class="n">JAVA_OPTS</span><span class="o">&lt;/</span><span class="n">key</span><span class="o">&gt;</span>
+<span class="w">                  </span><span class="o">&lt;</span><span class="n">value</span><span class="o">&gt;-</span><span class="n">Xms64m</span><span class="w"> </span><span class="o">-</span><span class="n">Xmx64m</span><span class="o">&lt;/</span><span class="n">value</span><span class="o">&gt;</span>
+<span class="w">                </span><span class="o">&lt;/</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">ContainerEnvVar</span><span class="o">&gt;</span>
+<span class="w">                </span><span class="o">&lt;</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">ContainerEnvVar</span><span class="o">&gt;</span>
+<span class="w">                  </span><span class="o">&lt;</span><span class="n">key</span><span class="o">&gt;</span><span class="n">MAVEN_OPTS</span><span class="o">&lt;/</span><span class="n">key</span><span class="o">&gt;</span>
+<span class="w">                  </span><span class="o">&lt;</span><span class="n">value</span><span class="o">&gt;-</span><span class="n">Xms128m</span><span class="w"> </span><span class="o">-</span><span class="n">Xmx128m</span><span class="w"> </span><span class="o">-</span><span class="n">DargLine</span><span class="o">=</span><span class="n">$</span><span class="p">{</span><span class="n">env</span><span class="p">.</span><span class="n">SUREFIRE_OPTS</span><span class="p">}</span><span class="w"> </span><span class="o">-</span><span class="n">Djavax</span><span class="p">.</span><span class="n">net</span><span class="p">.</span><span class="n">ssl</span><span class="p">.</span><span class="n">trustStore</span><span class="o">=/</span><span class="n">home</span><span class="o">/</span><span class="n">jenkins</span><span class="o">/</span><span class="p">.</span><span class="n">m2</span><span class="o">/</span><span class="n">myTruststore</span><span class="p">.</span><span class="n">jks</span><span class="w"> </span><span class="o">-</span><span class="n">Djavax</span><span class="p">.</span><span class="n">net</span><span class="p">.</span><span class="n">ssl</span><span class="p">.</span><span class="n">trustStorePassword</span><span class="o">=</span><span class="n">changeit</span><span class="o">&lt;/</span><span class="n">value</span><span class="o">&gt;</span>
+<span class="w">                </span><span class="o">&lt;/</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">ContainerEnvVar</span><span class="o">&gt;</span>
+<span class="w">                </span><span class="o">&lt;</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">ContainerEnvVar</span><span class="o">&gt;</span>
+<span class="w">                  </span><span class="o">&lt;</span><span class="n">key</span><span class="o">&gt;</span><span class="n">SUREFIRE_OPTS</span><span class="o">&lt;/</span><span class="n">key</span><span class="o">&gt;</span>
+<span class="w">                  </span><span class="o">&lt;</span><span class="n">value</span><span class="o">&gt;-</span><span class="n">Xms256m</span><span class="w"> </span><span class="o">-</span><span class="n">Xmx256m</span><span class="o">&lt;/</span><span class="n">value</span><span class="o">&gt;</span>
+<span class="w">                </span><span class="o">&lt;/</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">ContainerEnvVar</span><span class="o">&gt;</span>
+<span class="w">                </span><span class="o">&lt;</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">ContainerEnvVar</span><span class="o">&gt;</span>
+<span class="w">                  </span><span class="o">&lt;</span><span class="n">key</span><span class="o">&gt;</span><span class="n">MAVEN_MIRROR_URL</span><span class="o">&lt;/</span><span class="n">key</span><span class="o">&gt;</span>
+<span class="w">                  </span><span class="o">&lt;</span><span class="n">value</span><span class="o">&gt;</span><span class="n">https</span><span class="o">:</span><span class="c1">//nexus.mycompany.com/repository/maven-public&lt;/value&gt;</span>
+<span class="w">                </span><span class="o">&lt;/</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">ContainerEnvVar</span><span class="o">&gt;</span>
+<span class="w">                </span><span class="o">&lt;</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">model</span><span class="p">.</span><span class="n">SecretEnvVar</span><span class="o">&gt;</span>
+<span class="w">                  </span><span class="o">&lt;</span><span class="n">key</span><span class="o">&gt;</span><span class="n">MAVEN_SERVER_USERNAME</span><span class="o">&lt;/</span><span class="n">key</span><span class="o">&gt;</span>
+<span class="w">                  </span><span class="o">&lt;</span><span class="n">secretName</span><span class="o">&gt;</span><span class="n">maven</span><span class="o">-</span><span class="n">secret</span><span class="o">&lt;/</span><span class="n">secretName</span><span class="o">&gt;</span>
+<span class="w">                  </span><span class="o">&lt;</span><span class="n">secretKey</span><span class="o">&gt;</span><span class="n">username</span><span class="o">&lt;/</span><span class="n">secretKey</span><span class="o">&gt;</span>
+<span class="w">                </span><span class="o">&lt;/</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">model</span><span class="p">.</span><span class="n">SecretEnvVar</span><span class="o">&gt;</span>
+<span class="w">                </span><span class="o">&lt;</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">model</span><span class="p">.</span><span class="n">SecretEnvVar</span><span class="o">&gt;</span>
+<span class="w">                  </span><span class="o">&lt;</span><span class="n">key</span><span class="o">&gt;</span><span class="n">MAVEN_SERVER_PASSWORD</span><span class="o">&lt;/</span><span class="n">key</span><span class="o">&gt;</span>
+<span class="w">                  </span><span class="o">&lt;</span><span class="n">secretName</span><span class="o">&gt;</span><span class="n">maven</span><span class="o">-</span><span class="n">secret</span><span class="o">&lt;/</span><span class="n">secretName</span><span class="o">&gt;</span>
+<span class="w">                  </span><span class="o">&lt;</span><span class="n">secretKey</span><span class="o">&gt;</span><span class="n">password</span><span class="o">&lt;/</span><span class="n">secretKey</span><span class="o">&gt;</span>
+<span class="w">                </span><span class="o">&lt;/</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">model</span><span class="p">.</span><span class="n">SecretEnvVar</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;/</span><span class="n">envVars</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">ports</span><span class="o">/&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">livenessProbe</span><span class="o">&gt;</span>
+<span class="w">                </span><span class="o">&lt;</span><span class="n">execArgs</span><span class="o">&gt;&lt;/</span><span class="n">execArgs</span><span class="o">&gt;</span>
+<span class="w">                </span><span class="o">&lt;</span><span class="n">timeoutSeconds</span><span class="o">&gt;</span><span class="mi">0</span><span class="o">&lt;/</span><span class="n">timeoutSeconds</span><span class="o">&gt;</span>
+<span class="w">                </span><span class="o">&lt;</span><span class="n">initialDelaySeconds</span><span class="o">&gt;</span><span class="mi">0</span><span class="o">&lt;/</span><span class="n">initialDelaySeconds</span><span class="o">&gt;</span>
+<span class="w">                </span><span class="o">&lt;</span><span class="n">failureThreshold</span><span class="o">&gt;</span><span class="mi">0</span><span class="o">&lt;/</span><span class="n">failureThreshold</span><span class="o">&gt;</span>
+<span class="w">                </span><span class="o">&lt;</span><span class="n">periodSeconds</span><span class="o">&gt;</span><span class="mi">0</span><span class="o">&lt;/</span><span class="n">periodSeconds</span><span class="o">&gt;</span>
+<span class="w">                </span><span class="o">&lt;</span><span class="n">successThreshold</span><span class="o">&gt;</span><span class="mi">0</span><span class="o">&lt;/</span><span class="n">successThreshold</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;/</span><span class="n">livenessProbe</span><span class="o">&gt;</span>
+<span class="w">            </span><span class="o">&lt;/</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">ContainerTemplate</span><span class="o">&gt;</span>
+<span class="w">            </span><span class="o">&lt;</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">ContainerTemplate</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">name</span><span class="o">&gt;</span><span class="n">httpbin</span><span class="o">&lt;/</span><span class="n">name</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">image</span><span class="o">&gt;</span><span class="n">citizenstig</span><span class="o">/</span><span class="n">httpbin</span><span class="o">&lt;/</span><span class="n">image</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">privileged</span><span class="o">&gt;</span><span class="nb">false</span><span class="o">&lt;/</span><span class="n">privileged</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">alwaysPullImage</span><span class="o">&gt;</span><span class="nb">false</span><span class="o">&lt;/</span><span class="n">alwaysPullImage</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">workingDir</span><span class="o">&gt;&lt;/</span><span class="n">workingDir</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">command</span><span class="o">&gt;/</span><span class="n">run</span><span class="p">.</span><span class="n">sh</span><span class="o">&lt;/</span><span class="n">command</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">args</span><span class="o">&gt;&lt;/</span><span class="n">args</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">ttyEnabled</span><span class="o">&gt;</span><span class="nb">false</span><span class="o">&lt;/</span><span class="n">ttyEnabled</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">resourceRequestCpu</span><span class="o">&gt;&lt;/</span><span class="n">resourceRequestCpu</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">resourceRequestMemory</span><span class="o">&gt;</span><span class="mi">256</span><span class="n">Mi</span><span class="o">&lt;/</span><span class="n">resourceRequestMemory</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">resourceLimitCpu</span><span class="o">&gt;&lt;/</span><span class="n">resourceLimitCpu</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">resourceLimitMemory</span><span class="o">&gt;</span><span class="mi">256</span><span class="n">Mi</span><span class="o">&lt;/</span><span class="n">resourceLimitMemory</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">envVars</span><span class="o">/&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">ports</span><span class="o">/&gt;</span>
+<span class="w">              </span><span class="o">&lt;</span><span class="n">livenessProbe</span><span class="o">&gt;</span>
+<span class="w">                </span><span class="o">&lt;</span><span class="n">execArgs</span><span class="o">&gt;&lt;/</span><span class="n">execArgs</span><span class="o">&gt;</span>
+<span class="w">                </span><span class="o">&lt;</span><span class="n">timeoutSeconds</span><span class="o">&gt;</span><span class="mi">0</span><span class="o">&lt;/</span><span class="n">timeoutSeconds</span><span class="o">&gt;</span>
+<span class="w">                </span><span class="o">&lt;</span><span class="n">initialDelaySeconds</span><span class="o">&gt;</span><span class="mi">0</span><span class="o">&lt;/</span><span class="n">initialDelaySeconds</span><span class="o">&gt;</span>
+<span class="w">                </span><span class="o">&lt;</span><span class="n">failureThreshold</span><span class="o">&gt;</span><span class="mi">0</span><span class="o">&lt;/</span><span class="n">failureThreshold</span><span class="o">&gt;</span>
+<span class="w">                </span><span class="o">&lt;</span><span class="n">periodSeconds</span><span class="o">&gt;</span><span class="mi">0</span><span class="o">&lt;/</span><span class="n">periodSeconds</span><span class="o">&gt;</span>
+<span class="w">                </span><span class="o">&lt;</span><span class="n">successThreshold</span><span class="o">&gt;</span><span class="mi">0</span><span class="o">&lt;/</span><span class="n">successThreshold</span><span class="o">&gt;</span>
+<span class="w">              </span><span class="o">&lt;/</span><span class="n">livenessProbe</span><span class="o">&gt;</span>
+<span class="w">            </span><span class="o">&lt;/</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">ContainerTemplate</span><span class="o">&gt;</span>
+<span class="w">          </span><span class="o">&lt;/</span><span class="n">containers</span><span class="o">&gt;</span>
+<span class="w">          </span><span class="o">&lt;</span><span class="n">envVars</span><span class="o">/&gt;</span>
+<span class="w">          </span><span class="o">&lt;</span><span class="n">annotations</span><span class="o">/&gt;</span>
+<span class="w">          </span><span class="o">&lt;</span><span class="n">imagePullSecrets</span><span class="o">/&gt;</span>
+<span class="w">        </span><span class="o">&lt;/</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">PodTemplate</span><span class="o">&gt;</span>
+<span class="w">      </span><span class="o">&lt;/</span><span class="n">templates</span><span class="o">&gt;</span>
+<span class="w">      </span><span class="o">&lt;</span><span class="n">serverUrl</span><span class="o">&gt;</span><span class="n">https</span><span class="o">:</span><span class="c1">//172.30.0.1:443&lt;/serverUrl&gt;</span>
+<span class="w">      </span><span class="o">&lt;</span><span class="n">serverCertificate</span><span class="o">&gt;-----</span><span class="n">BEGIN</span><span class="w"> </span><span class="n">CERTIFICATE</span><span class="o">-----</span>
+<span class="n">MIIC6jCC</span><span class="p">...</span>
+<span class="o">-----</span><span class="n">END</span><span class="w"> </span><span class="n">CERTIFICATE</span><span class="o">-----&lt;/</span><span class="n">serverCertificate</span><span class="o">&gt;</span>
+<span class="w">      </span><span class="o">&lt;</span><span class="n">skipTlsVerify</span><span class="o">&gt;</span><span class="nb">false</span><span class="o">&lt;/</span><span class="n">skipTlsVerify</span><span class="o">&gt;</span>
+<span class="w">      </span><span class="o">&lt;</span><span class="n">namespace</span><span class="o">&gt;</span><span class="n">first</span><span class="o">&lt;/</span><span class="n">namespace</span><span class="o">&gt;</span>
+<span class="w">      </span><span class="o">&lt;</span><span class="n">jenkinsUrl</span><span class="o">&gt;</span><span class="n">http</span><span class="o">:</span><span class="c1">//jenkins.cicd.svc:80&lt;/jenkinsUrl&gt;</span>
+<span class="w">      </span><span class="o">&lt;</span><span class="n">jenkinsTunnel</span><span class="o">&gt;</span><span class="n">jenkins</span><span class="o">-</span><span class="n">jnlp</span><span class="p">.</span><span class="n">cicd</span><span class="p">.</span><span class="n">svc</span><span class="o">:</span><span class="mi">50000</span><span class="o">&lt;/</span><span class="n">jenkinsTunnel</span><span class="o">&gt;</span>
+<span class="w">      </span><span class="o">&lt;</span><span class="n">credentialsId</span><span class="o">&gt;</span><span class="mi">1</span><span class="n">a12dfa4</span><span class="mi">-7</span><span class="n">fc5</span><span class="mi">-47</span><span class="n">a7</span><span class="o">-</span><span class="n">aa17</span><span class="o">-</span><span class="n">cc56572a41c7</span><span class="o">&lt;/</span><span class="n">credentialsId</span><span class="o">&gt;</span>
+<span class="w">      </span><span class="o">&lt;</span><span class="n">containerCap</span><span class="o">&gt;</span><span class="mi">10</span><span class="o">&lt;/</span><span class="n">containerCap</span><span class="o">&gt;</span>
+<span class="w">      </span><span class="o">&lt;</span><span class="n">retentionTimeout</span><span class="o">&gt;</span><span class="mi">5</span><span class="o">&lt;/</span><span class="n">retentionTimeout</span><span class="o">&gt;</span>
+<span class="w">      </span><span class="o">&lt;</span><span class="n">connectTimeout</span><span class="o">&gt;</span><span class="mi">0</span><span class="o">&lt;/</span><span class="n">connectTimeout</span><span class="o">&gt;</span>
+<span class="w">      </span><span class="o">&lt;</span><span class="n">readTimeout</span><span class="o">&gt;</span><span class="mi">0</span><span class="o">&lt;/</span><span class="n">readTimeout</span><span class="o">&gt;</span>
+<span class="w">      </span><span class="o">&lt;</span><span class="n">maxRequestsPerHost</span><span class="o">&gt;</span><span class="mi">32</span><span class="o">&lt;/</span><span class="n">maxRequestsPerHost</span><span class="o">&gt;</span>
+<span class="w">    </span><span class="o">&lt;/</span><span class="n">org</span><span class="p">.</span><span class="n">csanchez</span><span class="p">.</span><span class="n">jenkins</span><span class="p">.</span><span class="n">plugins</span><span class="p">.</span><span class="n">kubernetes</span><span class="p">.</span><span class="n">KubernetesCloud</span><span class="o">&gt;</span>
+<span class="w">  </span><span class="o">&lt;/</span><span class="n">clouds</span><span class="o">&gt;</span>
+
+<span class="o">&lt;/</span><span class="n">hudson</span><span class="o">&gt;</span>
+</code></pre></div>
+
+<p>尝试愉快的构建吧！</p>
+<p>原文发表于 <a href="https://itnext.io/running-jenkins-builds-in-containers-458e90ff2a7b">ITNext</a>，已获得翻版授权。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

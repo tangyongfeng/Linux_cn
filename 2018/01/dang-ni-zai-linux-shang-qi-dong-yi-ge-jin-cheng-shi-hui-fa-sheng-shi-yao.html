@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>当你在 Linux 上启动一个进程时会发生什么？</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Julia Evans 本文是关于 fork 和 exec 是如何在 Unix 上工作的。你或许已经知道，也有人还不知道。几年前当我了解到这些时，我惊叹不已 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/01/dang-ni-zai-linux-shang-qi-dong-yi-ge-jin-cheng-shi-hui-fa-sheng-shi-yao.html" rel="bookmark"
+           title="Permalink to 当你在 Linux 上启动一个进程时会发生什么？">当你在 Linux 上启动一个进程时会发生什么？</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-01-19T11:32:31+01:00">
+                Published: Fri 19 January 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Julia Evans</p>
+<p><img alt="" src="/data/attachment/album/201801/19/113216ou3o0ouab9z01lxx.jpg"></p>
+<p>本文是关于 fork 和 exec 是如何在 Unix 上工作的。你或许已经知道，也有人还不知道。几年前当我了解到这些时，我惊叹不已。</p>
+<p>我们要做的是启动一个进程。我们已经在博客上讨论了很多关于<strong>系统调用</strong>的问题，每当你启动一个进程或者打开一个文件，这都是一个系统调用。所以你可能会认为有这样的系统调用：</p>
+<div class="highlight"><pre><span></span><code>start_process([&quot;ls&quot;, &quot;-l&quot;, &quot;my_cool_directory&quot;])
+</code></pre></div>
+
+<p>这是一个合理的想法，显然这是它在 DOS 或 Windows 中的工作原理。我想说的是，这并不是 Linux 上的工作原理。但是，我查阅了文档，确实有一个 <a href="http://man7.org/linux/man-pages/man3/posix_spawn.3.html">posix_spawn</a> 的系统调用基本上是这样做的，不过这不在本文的讨论范围内。</p>
+<h3>fork 和 exec</h3>
+<p>Linux 上的 <code>posix_spawn</code> 是通过两个系统调用实现的，分别是 <code>fork</code> 和 <code>exec</code>（实际上是 <code>execve</code>），这些都是人们常常使用的。尽管在 OS X 上，人们使用 <code>posix_spawn</code>，而 <code>fork</code> 和 <code>exec</code> 是不提倡的，但我们将讨论的是 Linux。</p>
+<p>Linux 中的每个进程都存在于“进程树”中。你可以通过运行 <code>pstree</code> 命令查看进程树。树的根是 <code>init</code>，进程号是 1。每个进程（<code>init</code> 除外）都有一个父进程，一个进程都可以有很多子进程。</p>
+<p>所以，假设我要启动一个名为 <code>ls</code> 的进程来列出一个目录。我是不是只要发起一个进程 <code>ls</code> 就好了呢？不是的。</p>
+<p>我要做的是，创建一个子进程，这个子进程是我（<code>me</code>）本身的一个克隆，然后这个子进程的“脑子”被吃掉了，变成 <code>ls</code>。</p>
+<p>开始是这样的：</p>
+<div class="highlight"><pre><span></span><code>my parent
+    |- me
+</code></pre></div>
+
+<p>然后运行 <code>fork()</code>，生成一个子进程，是我（<code>me</code>）自己的一份克隆：</p>
+<div class="highlight"><pre><span></span><code>my parent
+    |- me
+       |-- clone of me
+</code></pre></div>
+
+<p>然后我让该子进程运行 <code>exec("ls")</code>，变成这样：</p>
+<div class="highlight"><pre><span></span><code>my parent
+    |- me
+       |-- ls
+</code></pre></div>
+
+<p>当 ls 命令结束后，我几乎又变回了我自己：</p>
+<div class="highlight"><pre><span></span><code>my parent
+    |- me
+       |-- ls (zombie)
+</code></pre></div>
+
+<p>在这时 <code>ls</code> 其实是一个僵尸进程。这意味着它已经死了，但它还在等我，以防我需要检查它的返回值（使用 <code>wait</code> 系统调用）。一旦我获得了它的返回值，我将再次恢复独自一人的状态。</p>
+<div class="highlight"><pre><span></span><code>my parent
+    |- me
+</code></pre></div>
+
+<h3>fork 和 exec 的代码实现</h3>
+<p>如果你要编写一个 shell，这是你必须做的一个练习（这是一个非常有趣和有启发性的项目。Kamal 在 Github 上有一个很棒的研讨会：<a href="https://github.com/kamalmarhubi/shell-workshop">https://github.com/kamalmarhubi/shell-workshop</a>）。</p>
+<p>事实证明，有了 C 或 Python 的技能，你可以在几个小时内编写一个非常简单的 shell，像 bash 一样。（至少如果你旁边能有个人多少懂一点，如果没有的话用时会久一点。）我已经完成啦，真的很棒。</p>
+<p>这就是 <code>fork</code> 和 <code>exec</code> 在程序中的实现。我写了一段 C 的伪代码。请记住，<a href="https://rachelbythebay.com/w/2014/08/19/fork/">fork 也可能会失败哦。</a></p>
+<div class="highlight"><pre><span></span><code><span class="nv">int</span><span class="w"> </span><span class="nv">pid</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">fork</span><span class="ss">()</span><span class="c1">;</span>
+<span class="o">//</span><span class="w"> </span>我要分身啦
+<span class="o">//</span><span class="w"> </span>“我”是谁呢？可能是子进程也可能是父进程
+<span class="k">if</span><span class="w"> </span><span class="ss">(</span><span class="nv">pid</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="ss">)</span><span class="w"> </span>{
+<span class="w">    </span><span class="o">//</span><span class="w"> </span>我现在是子进程
+<span class="w">    </span><span class="o">//</span><span class="w"> </span>“<span class="nv">ls</span>”<span class="w"> </span>吃掉了我脑子，然后变成一个完全不一样的进程
+<span class="w">    </span><span class="k">exec</span><span class="ss">(</span>[<span class="s2">&quot;ls&quot;</span>]<span class="ss">)</span>
+}<span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="ss">(</span><span class="nv">pid</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="ss">)</span><span class="w"> </span>{
+<span class="w">    </span><span class="o">//</span><span class="w"> </span>天啊，<span class="nv">fork</span><span class="w"> </span>失败了，简直是灾难！
+}<span class="w"> </span><span class="k">else</span><span class="w"> </span>{
+<span class="w">    </span><span class="o">//</span><span class="w"> </span>我是父进程耶
+<span class="w">    </span><span class="o">//</span><span class="w"> </span>继续做一个酷酷的美男子吧
+<span class="w">    </span><span class="o">//</span><span class="w"> </span>需要的话，我可以等待子进程结束
+}
+</code></pre></div>
+
+<h3>上文提到的“脑子被吃掉”是什么意思呢？</h3>
+<p>进程有很多属性：</p>
+<ul>
+<li>打开的文件（包括打开的网络连接）</li>
+<li>环境变量</li>
+<li>信号处理程序（在程序上运行 Ctrl + C 时会发生什么？）</li>
+<li>内存（你的“地址空间”）</li>
+<li>寄存器</li>
+<li>可执行文件（<code>/proc/$pid/exe</code>）</li>
+<li>cgroups 和命名空间（与 Linux 容器相关）</li>
+<li>当前的工作目录</li>
+<li>运行程序的用户</li>
+<li>其他我还没想到的</li>
+</ul>
+<p>当你运行 <code>execve</code> 并让另一个程序吃掉你的脑子的时候，实际上几乎所有东西都是相同的！ 你们有相同的环境变量、信号处理程序和打开的文件等等。</p>
+<p>唯一改变的是，内存、寄存器以及正在运行的程序，这可是件大事。</p>
+<h3>为何 fork 并非那么耗费资源（写入时复制）</h3>
+<p>你可能会问：“如果我有一个使用了 2GB 内存的进程，这是否意味着每次我启动一个子进程，所有 2 GB 的内存都要被复制一次？这听起来要耗费很多资源！”</p>
+<p>事实上，Linux 为 <code>fork()</code> 调用实现了<ruby> 写时复制 <rt>  copy on write </rt></ruby>，对于新进程的 2GB 内存来说，就像是“看看旧的进程就好了，是一样的！”。然后，当如果任一进程试图写入内存，此时系统才真正地复制一个内存的副本给该进程。如果两个进程的内存是相同的，就不需要复制了。</p>
+<h3>为什么你需要知道这么多</h3>
+<p>你可能会说，好吧，这些细节听起来很厉害，但为什么这么重要？关于信号处理程序或环境变量的细节会被继承吗？这对我的日常编程有什么实际影响呢？</p>
+<p>有可能哦！比如说，在 Kamal 的博客上有一个很有意思的 <a href="http://kamalmarhubi.com/blog/2015/06/30/my-favourite-bug-so-far-at-the-recurse-center/">bug</a>。它讨论了 Python 如何使信号处理程序忽略了 <code>SIGPIPE</code>。也就是说，如果你从 Python 里运行一个程序，默认情况下它会忽略 <code>SIGPIPE</code>！这意味着，程序从 Python 脚本和从 shell 启动的表现会<strong>有所不同</strong>。在这种情况下，它会造成一个奇怪的问题。</p>
+<p>所以，你的程序的环境（环境变量、信号处理程序等）可能很重要，都是从父进程继承来的。知道这些，在调试时是很有用的。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

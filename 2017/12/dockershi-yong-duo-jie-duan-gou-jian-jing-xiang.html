@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Docker：使用多阶段构建镜像</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Docker 多阶段构建是 Docker 17.05 及更高版本提供的新功能。这对致力于优化 Dockerfile 的人来说，使得 Dockerfile 易于阅读和维护。 致谢: 特别感谢 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/12/dockershi-yong-duo-jie-duan-gou-jian-jing-xiang.html" rel="bookmark"
+           title="Permalink to Docker：使用多阶段构建镜像">Docker：使用多阶段构建镜像</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-12-11T22:32:57+01:00">
+                Published: Mon 11 December 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Docker</p>
+<p><img alt="" src="/data/attachment/album/201712/11/223241y0thlaabla8ahh7z.jpg"></p>
+<p>多阶段构建是 Docker 17.05 及更高版本提供的新功能。这对致力于优化 Dockerfile 的人来说，使得 Dockerfile 易于阅读和维护。</p>
+<blockquote>
+<p>致谢: 特别感谢 <a href="https://twitter.com/alexellisuk">Alex Ellis</a> 授权使用他的关于 Docker 多阶段构建的博客文章 <a href="http://blog.alexellis.io/mutli-stage-docker-builds/">Builder pattern vs. Multi-stage builds in Docker</a> 作为以下示例的基础。</p>
+</blockquote>
+<h3>在多阶段构建之前</h3>
+<p>关于构建镜像最具挑战性的事情之一是保持镜像体积小巧。 Dockerfile 中的每条指令都会在镜像中增加一层，并且在移动到下一层之前，需要记住清除不需要的构件。要编写一个非常高效的 Dockerfile，你通常需要使用 shell 技巧和其它方式来尽可能地减少层数，并确保每一层都具有上一层所需的构件，而其它任何东西都不需要。</p>
+<p>实际上最常见的是，有一个 Dockerfile 用于开发（其中包含构建应用程序所需的所有内容），而另一个裁剪过的用于生产环境，它只包含您的应用程序以及运行它所需的内容。这被称为“构建器模式”。但是维护两个 Dockerfile 并不理想。</p>
+<p>下面分别是一个 <code>Dockerfile.build</code> 和遵循上面的构建器模式的 <code>Dockerfile</code> 的例子：</p>
+<p><code>Dockerfile.build</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="k">FROM</span><span class="w"> </span><span class="nl">golang</span><span class="p">:</span><span class="mf">1.7.3</span>
+<span class="n">WORKDIR</span><span class="w"> </span><span class="o">/</span><span class="k">go</span><span class="o">/</span><span class="n">src</span><span class="o">/</span><span class="n">github</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">alexellis</span><span class="o">/</span><span class="n">href</span><span class="o">-</span><span class="n">counter</span><span class="o">/</span>
+<span class="n">RUN</span><span class="w"> </span><span class="k">go</span><span class="w"> </span><span class="k">get</span><span class="w"> </span><span class="o">-</span><span class="n">d</span><span class="w"> </span><span class="o">-</span><span class="n">v</span><span class="w"> </span><span class="n">golang</span><span class="p">.</span><span class="n">org</span><span class="o">/</span><span class="n">x</span><span class="o">/</span><span class="n">net</span><span class="o">/</span><span class="n">html</span>
+<span class="n">COPY</span><span class="w"> </span><span class="n">app</span><span class="p">.</span><span class="k">go</span><span class="w"> </span><span class="p">.</span>
+<span class="n">RUN</span><span class="w"> </span><span class="k">go</span><span class="w"> </span><span class="k">get</span><span class="w"> </span><span class="o">-</span><span class="n">d</span><span class="w"> </span><span class="o">-</span><span class="n">v</span><span class="w"> </span><span class="n">golang</span><span class="p">.</span><span class="n">org</span><span class="o">/</span><span class="n">x</span><span class="o">/</span><span class="n">net</span><span class="o">/</span><span class="n">html</span><span class="w"> </span><span class="err">\</span>
+<span class="w">  </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">CGO_ENABLED</span><span class="o">=</span><span class="mi">0</span><span class="w"> </span><span class="n">GOOS</span><span class="o">=</span><span class="n">linux</span><span class="w"> </span><span class="k">go</span><span class="w"> </span><span class="n">build</span><span class="w"> </span><span class="o">-</span><span class="n">a</span><span class="w"> </span><span class="o">-</span><span class="n">installsuffix</span><span class="w"> </span><span class="n">cgo</span><span class="w"> </span><span class="o">-</span><span class="n">o</span><span class="w"> </span><span class="n">app</span><span class="w"> </span><span class="p">.</span>
+</code></pre></div>
+
+<p>注意这个例子还使用 Bash 的 <code>&amp;&amp;</code> 运算符人为地将两个 <code>RUN</code> 命令压缩在一起，以避免在镜像中创建额外的层。这很容易失败，难以维护。例如，插入另一个命令时，很容易忘记继续使用 <code>\</code> 字符。</p>
+<p><code>Dockerfile</code>：</p>
+<div class="highlight"><pre><span></span><code>FROM alpine:latest
+RUN apk --no-cache add ca-certificates
+WORKDIR /root/
+COPY app .
+CMD [&quot;./app&quot;]
+</code></pre></div>
+
+<p><code>build.sh</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/bin/sh</span>
+<span class="nb">echo</span><span class="w"> </span>Building<span class="w"> </span>alexellis2/href-counter:build
+
+docker<span class="w"> </span>build<span class="w"> </span>--build-arg<span class="w"> </span><span class="nv">https_proxy</span><span class="o">=</span><span class="nv">$https_proxy</span><span class="w"> </span>--build-arg<span class="w"> </span><span class="nv">http_proxy</span><span class="o">=</span><span class="nv">$http_proxy</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-t<span class="w"> </span>alexellis2/href-counter:build<span class="w"> </span>.<span class="w"> </span>-f<span class="w"> </span>Dockerfile.build
+
+docker<span class="w"> </span>create<span class="w"> </span>--name<span class="w"> </span>extract<span class="w"> </span>alexellis2/href-counter:build
+docker<span class="w"> </span>cp<span class="w"> </span>extract:/go/src/github.com/alexellis/href-counter/app<span class="w"> </span>./app
+docker<span class="w"> </span>rm<span class="w"> </span>-f<span class="w"> </span>extract
+
+<span class="nb">echo</span><span class="w"> </span>Building<span class="w"> </span>alexellis2/href-counter:latest
+
+docker<span class="w"> </span>build<span class="w"> </span>--no-cache<span class="w"> </span>-t<span class="w"> </span>alexellis2/href-counter:latest<span class="w"> </span>.
+rm<span class="w"> </span>./app
+</code></pre></div>
+
+<p>当您运行 <code>build.sh</code> 脚本时，它会构建第一个镜像，从中创建一个容器，以便将该构件复制出来，然后构建第二个镜像。 这两个镜像会占用您的系统的空间，而你仍然会一个 <code>app</code> 构件存放在你的本地磁盘上。</p>
+<p>多阶段构建大大简化了这种情况！</p>
+<h3>使用多阶段构建</h3>
+<p>在多阶段构建中，您需要在 Dockerfile 中多次使用 <code>FROM</code> 声明。每次 <code>FROM</code> 指令可以使用不同的基础镜像，并且每次 <code>FROM</code> 指令都会开始新阶段的构建。您可以选择将构件从一个阶段复制到另一个阶段，在最终镜像中，不会留下您不需要的所有内容。为了演示这是如何工作的，让我们调整前一节中的 Dockerfile 以使用多阶段构建。</p>
+<p><code>Dockerfile</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="k">FROM</span><span class="w"> </span><span class="nl">golang</span><span class="p">:</span><span class="mf">1.7.3</span>
+<span class="n">WORKDIR</span><span class="w"> </span><span class="o">/</span><span class="k">go</span><span class="o">/</span><span class="n">src</span><span class="o">/</span><span class="n">github</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">alexellis</span><span class="o">/</span><span class="n">href</span><span class="o">-</span><span class="n">counter</span><span class="o">/</span>
+<span class="n">RUN</span><span class="w"> </span><span class="k">go</span><span class="w"> </span><span class="k">get</span><span class="w"> </span><span class="o">-</span><span class="n">d</span><span class="w"> </span><span class="o">-</span><span class="n">v</span><span class="w"> </span><span class="n">golang</span><span class="p">.</span><span class="n">org</span><span class="o">/</span><span class="n">x</span><span class="o">/</span><span class="n">net</span><span class="o">/</span><span class="n">html</span>
+<span class="n">COPY</span><span class="w"> </span><span class="n">app</span><span class="p">.</span><span class="k">go</span><span class="w"> </span><span class="p">.</span>
+<span class="n">RUN</span><span class="w"> </span><span class="n">CGO_ENABLED</span><span class="o">=</span><span class="mi">0</span><span class="w"> </span><span class="n">GOOS</span><span class="o">=</span><span class="n">linux</span><span class="w"> </span><span class="k">go</span><span class="w"> </span><span class="n">build</span><span class="w"> </span><span class="o">-</span><span class="n">a</span><span class="w"> </span><span class="o">-</span><span class="n">installsuffix</span><span class="w"> </span><span class="n">cgo</span><span class="w"> </span><span class="o">-</span><span class="n">o</span><span class="w"> </span><span class="n">app</span><span class="w"> </span><span class="p">.</span>
+
+<span class="k">FROM</span><span class="w"> </span><span class="nl">alpine</span><span class="p">:</span><span class="n">latest</span>
+<span class="n">RUN</span><span class="w"> </span><span class="n">apk</span><span class="w"> </span><span class="o">--</span><span class="k">no</span><span class="o">-</span><span class="n">cache</span><span class="w"> </span><span class="k">add</span><span class="w"> </span><span class="n">ca</span><span class="o">-</span><span class="n">certificates</span>
+<span class="n">WORKDIR</span><span class="w"> </span><span class="o">/</span><span class="n">root</span><span class="o">/</span>
+<span class="n">COPY</span><span class="w"> </span><span class="o">--</span><span class="k">from</span><span class="o">=</span><span class="mi">0</span><span class="w"> </span><span class="o">/</span><span class="k">go</span><span class="o">/</span><span class="n">src</span><span class="o">/</span><span class="n">github</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">alexellis</span><span class="o">/</span><span class="n">href</span><span class="o">-</span><span class="n">counter</span><span class="o">/</span><span class="n">app</span><span class="w"> </span><span class="p">.</span>
+<span class="n">CMD</span><span class="w"> </span><span class="o">[</span><span class="n">&quot;./app&quot;</span><span class="o">]</span>
+</code></pre></div>
+
+<p>您只需要单一个 Dockerfile。 不需要另外的构建脚本。只需运行 <code>docker build</code> 即可。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>docker<span class="w"> </span>build<span class="w"> </span>-t<span class="w"> </span>alexellis2/href-counter:latest<span class="w"> </span>.
+</code></pre></div>
+
+<p>最终的结果是和以前体积一样小的生产镜像，复杂性显著降低。您不需要创建任何中间镜像，也不需要将任何构件提取到本地系统。</p>
+<p>它是如何工作的呢？第二条 <code>FROM</code> 指令以 <code>alpine:latest</code> 镜像作为基础开始新的建造阶段。<code>COPY --from=0</code> 这一行将刚才前一个阶段产生的构件复制到这个新阶段。Go SDK 和任何中间构件都被留在那里，而不会保存到最终的镜像中。</p>
+<h3>命名您的构建阶段</h3>
+<p>默认情况下，这些阶段没有命名，您可以通过它们的整数来引用它们，从第一个 <code>FROM</code> 指令的 0 开始。但是，你可以通过在 <code>FROM</code> 指令中使用 <code>as &lt;NAME&gt;</code> 来为阶段命名。以下示例通过命名阶段并在 <code>COPY</code> 指令中使用名称来改进前一个示例。这意味着，即使您的 <code>Dockerfile</code> 中的指令稍后重新排序，<code>COPY</code> 也不会出问题。</p>
+<div class="highlight"><pre><span></span><code><span class="k">FROM</span><span class="w"> </span><span class="nl">golang</span><span class="p">:</span><span class="mf">1.7.3</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">builder</span>
+<span class="n">WORKDIR</span><span class="w"> </span><span class="o">/</span><span class="k">go</span><span class="o">/</span><span class="n">src</span><span class="o">/</span><span class="n">github</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">alexellis</span><span class="o">/</span><span class="n">href</span><span class="o">-</span><span class="n">counter</span><span class="o">/</span>
+<span class="n">RUN</span><span class="w"> </span><span class="k">go</span><span class="w"> </span><span class="k">get</span><span class="w"> </span><span class="o">-</span><span class="n">d</span><span class="w"> </span><span class="o">-</span><span class="n">v</span><span class="w"> </span><span class="n">golang</span><span class="p">.</span><span class="n">org</span><span class="o">/</span><span class="n">x</span><span class="o">/</span><span class="n">net</span><span class="o">/</span><span class="n">html</span>
+<span class="n">COPY</span><span class="w"> </span><span class="n">app</span><span class="p">.</span><span class="k">go</span><span class="w">    </span><span class="p">.</span>
+<span class="n">RUN</span><span class="w"> </span><span class="n">CGO_ENABLED</span><span class="o">=</span><span class="mi">0</span><span class="w"> </span><span class="n">GOOS</span><span class="o">=</span><span class="n">linux</span><span class="w"> </span><span class="k">go</span><span class="w"> </span><span class="n">build</span><span class="w"> </span><span class="o">-</span><span class="n">a</span><span class="w"> </span><span class="o">-</span><span class="n">installsuffix</span><span class="w"> </span><span class="n">cgo</span><span class="w"> </span><span class="o">-</span><span class="n">o</span><span class="w"> </span><span class="n">app</span><span class="w"> </span><span class="p">.</span>
+
+<span class="k">FROM</span><span class="w"> </span><span class="nl">alpine</span><span class="p">:</span><span class="n">latest</span>
+<span class="n">RUN</span><span class="w"> </span><span class="n">apk</span><span class="w"> </span><span class="o">--</span><span class="k">no</span><span class="o">-</span><span class="n">cache</span><span class="w"> </span><span class="k">add</span><span class="w"> </span><span class="n">ca</span><span class="o">-</span><span class="n">certificates</span>
+<span class="n">WORKDIR</span><span class="w"> </span><span class="o">/</span><span class="n">root</span><span class="o">/</span>
+<span class="n">COPY</span><span class="w"> </span><span class="o">--</span><span class="k">from</span><span class="o">=</span><span class="n">builder</span><span class="w"> </span><span class="o">/</span><span class="k">go</span><span class="o">/</span><span class="n">src</span><span class="o">/</span><span class="n">github</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">alexellis</span><span class="o">/</span><span class="n">href</span><span class="o">-</span><span class="n">counter</span><span class="o">/</span><span class="n">app</span><span class="w"> </span><span class="p">.</span>
+<span class="n">CMD</span><span class="w"> </span><span class="o">[</span><span class="n">&quot;./app&quot;</span><span class="o">]</span>
+</code></pre></div>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

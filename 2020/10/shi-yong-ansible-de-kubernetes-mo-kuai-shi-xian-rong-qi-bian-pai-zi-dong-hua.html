@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 Ansible 的 Kubernetes 模块实现容器编排自动化</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Seth Kenlon 将 Kubernetes 与 Ansible 结合实现云端自动化。此外，还可以参照我们的 Ansible 的 k8s 模块速查表。 Ansible 是实现自动化工作的优秀工具，而 Kubernetes …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2020/10/shi-yong-ansible-de-kubernetes-mo-kuai-shi-xian-rong-qi-bian-pai-zi-dong-hua.html" rel="bookmark"
+           title="Permalink to 使用 Ansible 的 Kubernetes 模块实现容器编排自动化">使用 Ansible 的 Kubernetes 模块实现容器编排自动化</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2020-10-28T21:19:13+01:00">
+                Published: Wed 28 October 2020
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Seth Kenlon</p>
+<blockquote>
+<p>将 Kubernetes 与 Ansible 结合实现云端自动化。此外，还可以参照我们的 Ansible 的 k8s 模块速查表。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/202010/28/211747jhlttlf3f81xrffi.jpg"></p>
+<p><a href="https://opensource.com/resources/what-ansible">Ansible</a> 是实现自动化工作的优秀工具，而 <a href="https://opensource.com/resources/what-is-kubernetes">Kubernetes</a> 则是容器编排方面的利器，要是把两者结合起来，会有怎样的效果呢？正如你所猜测的，Ansible + Kubernetes 的确可以实现容器编排自动化。</p>
+<h3>Ansible 模块</h3>
+<p>实际上，Ansible 本身只是一个用于解释 YAML 文件的框架。它真正强大之处在于它<a href="https://docs.ansible.com/ansible/latest/modules/modules_by_category.html">丰富的模块</a>，所谓<ruby> 模块 <rt>  module </rt></ruby>，就是在 Ansible <ruby> 剧本 <rt>  playbook </rt></ruby> 中让你得以通过简单配置就能调用外部应用程序的一些工具。</p>
+<p>Ansible 中有模块可以直接操作 Kubernetes，也有对一些相关组件（例如 <a href="https://opensource.com/resources/what-docker">Docker</a> 和 <a href="http://podman.io">Podman</a>）实现操作的模块。学习使用一个新模块的过程和学习新的终端命令、API 一样，可以先从文档中了解这个模块在调用的时候需要接受哪些参数，以及这些参数在外部应用程序中产生的具体作用。</p>
+<h3>访问 Kubernetes 集群</h3>
+<p>在使用 Ansible Kubernetes 模块之前，先要有能够访问 Kubernetes 集群的权限。在没有权限的情况下，可以尝试使用一个短期在线试用账号，但我们更推荐的是按照 Kubernetes 官网上的指引，或是参考 Braynt Son 《<a href="https://opensource.com/article/18/10/getting-started-minikube">入门 Kubernetes</a>》的教程安装 <a href="https://kubernetes.io/docs/tasks/tools/install-minikube">Minikube</a>。Minikube 提供了一个单节点 Kubernetes 实例的安装过程，你可以像使用一个完整集群一样对其进行配置和交互。</p>
+<ul>
+<li>下载 <a href="https://opensource.com/downloads/ansible-k8s-cheat-sheet">Ansible k8s 速记表</a>（需注册）</li>
+</ul>
+<p>在安装 Minikube 之前，你需要确保你的环境支持虚拟化并安装 <code>libvirt</code>，然后对 <code>libvirt</code> 用户组授权：</p>
+<div class="highlight"><pre><span></span><code><span class="n">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">dnf</span><span class="w"> </span><span class="k">install</span><span class="w"> </span><span class="n">libvirt</span>
+<span class="n">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">systemctl</span><span class="w"> </span><span class="k">start</span><span class="w"> </span><span class="n">libvirtd</span>
+<span class="n">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">usermod</span><span class="w"> </span><span class="o">--</span><span class="n">append</span><span class="w"> </span><span class="o">--</span><span class="k">groups</span><span class="w"> </span><span class="n">libvirt</span><span class="w"> </span><span class="n n-Quoted">`whoami`</span>
+<span class="n">$</span><span class="w"> </span><span class="n">newgrp</span><span class="w"> </span><span class="n">libvirt</span>
+</code></pre></div>
+
+<h4>安装 Python 模块</h4>
+<p>为了能够在 Ansible 中使用 Kubernetes 相关的模块，你需要安装以下这些 Python 模块：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>pip3.6<span class="w"> </span>install<span class="w"> </span>kubernetes<span class="w"> </span>--user
+$<span class="w"> </span>pip3.6<span class="w"> </span>install<span class="w"> </span>openshift<span class="w"> </span>--user
+</code></pre></div>
+
+<h4>启动 Kubernetes</h4>
+<p>如果你使用的是 Minikube 而不是完整的 Kubernetes 集群，请使用 <code>minikube</code> 命令在本地创建一个最精简化的 Kubernetes 实例：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>minikube<span class="w"> </span>start<span class="w"> </span>--driver<span class="o">=</span>kvm2<span class="w"> </span>--kvm-network<span class="w"> </span>default
+</code></pre></div>
+
+<p>然后等待 Minikube 完成初始化，这个过程所需的时间会因实际情况而异。</p>
+<h3>获取集群信息</h3>
+<p>集群启动以后，通过 <code>cluster-info</code> 选项就可以获取到集群相关信息了：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>kubectl<span class="w"> </span>cluster-info
+Kubernetes<span class="w"> </span>master<span class="w"> </span>is<span class="w"> </span>running<span class="w"> </span>at<span class="w"> </span>https://192.168.39.190:8443
+KubeDNS<span class="w"> </span>is<span class="w"> </span>running<span class="w"> </span>at<span class="w"> </span>https://192.168.39.190:8443/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
+
+To<span class="w"> </span>further<span class="w"> </span>debug<span class="w"> </span>and<span class="w"> </span>diagnose<span class="w"> </span>cluster<span class="w"> </span>problems,<span class="w"> </span>use<span class="w"> </span><span class="s1">&#39;kubectl cluster-info dump&#39;</span>.
+</code></pre></div>
+
+<h3>使用 k8s 模块</h3>
+<p>Ansible 使用 <code>k8s</code> 这个模块来实现对 Kubernetes 的操作，在剧本中使用 <code>k8s</code> 模块就可以对 Kuvernetes 对象进行管理。这个模块描述了 <code>kubectl</code> 命令的最终状态，例如对于以下这个使用 <code>kubectl</code> 创建新的<a href="https://opensource.com/article/19/10/namespaces-and-containers-linux">命名空间</a>的操作：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>kubectl<span class="w"> </span>create<span class="w"> </span>namespace<span class="w"> </span>my-namespace
+</code></pre></div>
+
+<p>这是一个很简单的操作，而对这个操作的最终状态用 YAML 文件来描述是这样的：</p>
+<div class="highlight"><pre><span></span><code><span class="k">-</span> hosts: localhost
+  tasks:
+    <span class="k">-</span> name: create namespace
+      k8s:
+        name: my-namespace
+        api_version: v1
+        kind: Namespace
+        state: present
+</code></pre></div>
+
+<p>如果你使用的是 Minikube，那么主机名（<code>hosts</code>）应该定义为 <code>localhost</code>。需要注意的是，所使用的模块也定义了可用参数的语法（例如 <code>api_version</code> 和 <code>kind</code> 参数）。</p>
+<p>在运行这个剧本之前，先通过 <code>yamllint</code> 命令验证是否有错误：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>yamllint<span class="w"> </span>example.yaml
+</code></pre></div>
+
+<p>确保没有错误之后，运行剧本：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ansible-playbook<span class="w"> </span>./example.yaml
+</code></pre></div>
+
+<p>可以验证新的命名空间是否已经被创建出来：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>kubectl<span class="w"> </span>get<span class="w"> </span>namespaces
+NAME<span class="w">              </span>STATUS<span class="w">   </span>AGE
+default<span class="w">           </span>Active<span class="w">   </span>37h
+kube-node-lease<span class="w">   </span>Active<span class="w">   </span>37h
+kube-public<span class="w">       </span>Active<span class="w">   </span>37h
+kube-system<span class="w">       </span>Active<span class="w">   </span>37h
+demo<span class="w">              </span>Active<span class="w">   </span>11h
+my-namespace<span class="w">      </span>Active<span class="w">   </span>3s
+</code></pre></div>
+
+<h3>使用 Podman 拉取容器镜像</h3>
+<p>容器是个 Linux 系统，几乎是最小化的，可以由 Kubernetes 管理。<a href="https://www.redhat.com/sysadmin/exploring-containers-lxc">LXC 项目</a>和 Docker 定义了大部分的容器规范。最近加入容器工具集的是 Podman，它不需要守护进程就可以运行，为此受到了很多用户的欢迎。</p>
+<p>通过 Podman 可以从 Docker Hub 或者 <a href="http://Quay.io">Quay.io</a> 等存储库拉取容器镜像。这一操作对应的 Ansible 语法也很简单，只需要将存储库网站提供的镜像路径写在剧本中的相应位置就可以了：</p>
+<div class="highlight"><pre><span></span><code>   <span class="k">-</span> name: pull an image
+      podman_image:
+        name: quay.io/jitesoft/nginx
+</code></pre></div>
+
+<p>使用 <code>yamllint</code> 验证：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>yamllint<span class="w"> </span>example.yaml
+</code></pre></div>
+
+<p>运行剧本：</p>
+<div class="highlight"><pre><span></span><code><span class="n">$</span><span class="w"> </span><span class="n">ansible</span><span class="o">-</span><span class="n">playbook</span><span class="w"> </span><span class="p">.</span><span class="o">/</span><span class="n">example</span><span class="p">.</span><span class="n">yaml</span>
+<span class="p">[</span><span class="n">WARNING</span><span class="p">]</span><span class="o">:</span><span class="w"> </span><span class="n">provided</span><span class="w"> </span><span class="n">hosts</span><span class="w"> </span><span class="n">list</span><span class="w"> </span><span class="n">is</span><span class="w"> </span><span class="n">empty</span><span class="p">,</span><span class="w"> </span><span class="n">only</span><span class="w"> </span><span class="n">localhost</span><span class="w"> </span><span class="n">is</span><span class="w"> </span><span class="n">available</span><span class="p">.</span>
+<span class="n">Note</span><span class="w"> </span><span class="n">that</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">implicit</span><span class="w"> </span><span class="n">localhost</span><span class="w"> </span><span class="n">does</span><span class="w"> </span><span class="n">not</span><span class="w"> </span><span class="n">match</span><span class="w"> </span><span class="err">&#39;</span><span class="n">all</span><span class="err">&#39;</span>
+
+<span class="n">PLAY</span><span class="w"> </span><span class="p">[</span><span class="n">localhost</span><span class="p">]</span><span class="w"> </span><span class="o">************************</span>
+
+<span class="n">TASK</span><span class="w"> </span><span class="p">[</span><span class="n">Gathering</span><span class="w"> </span><span class="n">Facts</span><span class="p">]</span><span class="w"> </span><span class="o">************************</span>
+<span class="nl">ok</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="n">localhost</span><span class="p">]</span>
+
+<span class="n">TASK</span><span class="w"> </span><span class="p">[</span><span class="n">create</span><span class="w"> </span><span class="n">k8s</span><span class="w"> </span><span class="n">namespace</span><span class="p">]</span><span class="w"> </span><span class="o">************************</span>
+<span class="nl">ok</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="n">localhost</span><span class="p">]</span>
+
+<span class="n">TASK</span><span class="w"> </span><span class="p">[</span><span class="n">pull</span><span class="w"> </span><span class="n">an</span><span class="w"> </span><span class="n">image</span><span class="p">]</span><span class="w"> </span><span class="o">************************</span>
+<span class="nl">changed</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="n">localhost</span><span class="p">]</span>
+
+<span class="n">PLAY</span><span class="w"> </span><span class="n">RECAP</span><span class="w"> </span><span class="o">************************</span>
+<span class="nl">localhost</span><span class="p">:</span><span class="w"> </span><span class="n">ok</span><span class="o">=</span><span class="mi">3</span><span class="w"> </span><span class="n">changed</span><span class="o">=</span><span class="mi">1</span><span class="w"> </span><span class="n">unreachable</span><span class="o">=</span><span class="mi">0</span><span class="w"> </span><span class="n">failed</span><span class="o">=</span><span class="mi">0</span>
+<span class="w">           </span><span class="n">skipped</span><span class="o">=</span><span class="mi">0</span><span class="w"> </span><span class="n">rescued</span><span class="o">=</span><span class="mi">0</span><span class="w"> </span><span class="n">ignored</span><span class="o">=</span><span class="mi">0</span>
+</code></pre></div>
+
+<h3>使用 Ansible 实现部署</h3>
+<p>Ansible 除了可以执行小型维护任务以外，还可以通过剧本实现其它由 <code>kubectl</code> 实现的功能，因为两者的 YAML 文件之间只有少量的差异。在 Kubernetes 中使用的 YAML 文件只需要稍加改动，就可以在 Ansible 剧本中使用。例如下面这个用于使用 <code>kubectl</code> 命令部署 Web 服务器的 YAML 文件：</p>
+<div class="highlight"><pre><span></span><code><span class="n">apiVersion</span><span class="o">:</span><span class="w"> </span><span class="n">apps</span><span class="o">/</span><span class="n">v1</span>
+<span class="n">kind</span><span class="o">:</span><span class="w"> </span><span class="n">Deployment</span>
+<span class="n">metadata</span><span class="o">:</span>
+<span class="w">  </span><span class="n">name</span><span class="o">:</span><span class="w"> </span><span class="n">my</span><span class="o">-</span><span class="n">webserver</span>
+<span class="n">spec</span><span class="o">:</span>
+<span class="w">  </span><span class="n">selector</span><span class="o">:</span>
+<span class="w">    </span><span class="n">matchLabels</span><span class="o">:</span>
+<span class="w">      </span><span class="n">run</span><span class="o">:</span><span class="w"> </span><span class="n">my</span><span class="o">-</span><span class="n">webserver</span>
+<span class="w">  </span><span class="n">replicas</span><span class="o">:</span><span class="w"> </span><span class="mi">1</span>
+<span class="w">  </span><span class="n">template</span><span class="o">:</span>
+<span class="w">    </span><span class="n">metadata</span><span class="o">:</span>
+<span class="w">      </span><span class="n">labels</span><span class="o">:</span>
+<span class="w">        </span><span class="n">run</span><span class="o">:</span><span class="w"> </span><span class="n">my</span><span class="o">-</span><span class="n">webserver</span>
+<span class="w">    </span><span class="n">spec</span><span class="o">:</span>
+<span class="w">      </span><span class="n">containers</span><span class="o">:</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="o">:</span><span class="w"> </span><span class="n">my</span><span class="o">-</span><span class="n">webserver</span>
+<span class="w">        </span><span class="n">image</span><span class="o">:</span><span class="w"> </span><span class="n">nginx</span>
+<span class="w">        </span><span class="n">ports</span><span class="o">:</span>
+<span class="w">        </span><span class="o">-</span><span class="w"> </span><span class="n">containerPort</span><span class="o">:</span><span class="w"> </span><span class="mi">80</span>
+</code></pre></div>
+
+<p>如果你对其中的参数比较熟悉，你只要把 YAML 文件中的大部分内容放到剧本中的 <code>definition</code> 部分，就可以在 Ansible 中使用了：</p>
+<div class="highlight"><pre><span></span><code>   <span class="k">-</span> name: deploy a web server
+      k8s:
+        api_version: v1
+        namespace: my-namespace
+        definition:
+          kind: Deployment
+          metadata:
+            labels:
+              app: nginx
+            name: nginx-deploy
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: nginx
+            template:
+              metadata:
+                labels:
+                  app: nginx
+              spec:
+                containers:
+                  <span class="k">-</span> name: my-webserver
+                    image: quay.io/jitesoft/nginx
+                    ports:
+                      <span class="k">-</span> containerPort: 80
+                        protocol: TCP
+</code></pre></div>
+
+<p>执行完成后，使用 <code>kubectl</code> 命令可以看到预期中的的<ruby> 部署 <rt>  deployment </rt></ruby>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>kubectl<span class="w"> </span>-n<span class="w"> </span>my-namespace<span class="w"> </span>get<span class="w"> </span>pods
+NAME<span class="w">                      </span>READY<span class="w">  </span>STATUS
+nginx-deploy-7fdc9-t9wc2<span class="w">  </span><span class="m">1</span>/1<span class="w">    </span>Running
+</code></pre></div>
+
+<h3>在云上使用模块</h3>
+<p>随着现在越来越多的开发和部署工作往云上转移的趋势，我们必须了解如何在云上实现自动化。其中 <code>k8s</code> 和 <code>podman_image</code> 这两个模块只是云开发中的其中一小部分。你可以在你的工作流程中寻找一些需要自动化的任务，并学习如何使用 Ansible 让你在这些任务上事半功倍。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

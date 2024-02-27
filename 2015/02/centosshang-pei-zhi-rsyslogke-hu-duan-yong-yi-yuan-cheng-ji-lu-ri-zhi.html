@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>CentOS上配置rsyslog客户端用以远程记录日志</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Caezsar M rsyslog是一个开源工具，被广泛用于Linux系统以通过TCP/UDP协议转发或接收日志消息。rsyslog守护进程可以被配置成两种环境，一种是配置成日志收集服务器，rsyslog进程可以从网络中收集其它主机上的日志数据，这些主机会将日志配置为发送到另外的 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/02/centosshang-pei-zhi-rsyslogke-hu-duan-yong-yi-yuan-cheng-ji-lu-ri-zhi.html" rel="bookmark"
+           title="Permalink to CentOS上配置rsyslog客户端用以远程记录日志">CentOS上配置rsyslog客户端用以远程记录日志</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-02-06T08:45:00+01:00">
+                Published: Fri 06 February 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Caezsar M</p>
+<p><strong>rsyslog</strong>是一个开源工具，被广泛用于Linux系统以通过TCP/UDP协议转发或接收日志消息。rsyslog守护进程可以被配置成两种环境，一种是配置成日志收集服务器，rsyslog进程可以从网络中收集其它主机上的日志数据，这些主机会将日志配置为发送到另外的远程服务器。rsyslog的另外一个用法，就是可以配置为客户端，用来过滤和发送内部日志消息到本地文件夹（如/var/log）或一台可以路由到的远程rsyslog服务器上。</p>
+<p>假定你的网络中已经有一台<a href="http://linux.cn/article-5023-1.html">已经配置好并启动的</a>rsyslog服务器，本指南将为你展示如何来设置CentOS系统将其内部日志消息路由到一台远程rsyslog服务器上。这将大大改善你的系统磁盘空间的使用，尤其是当你还没有一个用于/var目录的独立的大分区。</p>
+<p><img alt="" src="/data/attachment/album/201503/10/152630q6m2xkmhk2fc0lz8.png"></p>
+<h3>步骤一： 安装Rsyslog守护进程</h3>
+<p>在CentOS 6和7上，rsyslog守护进程已经预先安装了。要验证rsyslog是否已经安装到你的CentOS系统上，请执行如下命令：</p>
+<div class="highlight"><pre><span></span><code># rpm -qa | grep rsyslog
+# rsyslogd -v 
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/201502/06/084555h6c44qppq4dxw6qc.jpg"></p>
+<p>如果处于某种原因，rsyslog守护进程没有出现在你的系统中，请使用以下命令来安装：</p>
+<div class="highlight"><pre><span></span><code> # yum install rsyslog 
+</code></pre></div>
+
+<h3>步骤二： 配置Rsyslog守护进程为客户端</h3>
+<p>接下来的步骤，是要将你的CentOS机器转变成rsyslog客户端，将其所有内部日志消息发送到远程中央日志服务器上。</p>
+<p>要实现该功能，请使用你喜爱的文本编辑器打开位于/etc路径下的rsyslog主配置文件：</p>
+<div class="highlight"><pre><span></span><code># nano /etc/rsyslog.conf 
+</code></pre></div>
+
+<p>开启文件用于编辑后，你需要添加以下声明到文件底部。将IP地址替换为你的远程rsyslog服务器的IP地址。</p>
+<div class="highlight"><pre><span></span><code><span class="o">*</span><span class="p">.</span><span class="o">*</span><span class="w">  </span><span class="mf">@192.168.1.25</span><span class="o">:</span><span class="mi">514</span><span class="w"> </span>
+</code></pre></div>
+
+<p>上面的声明告诉rsyslog守护进程，将系统上各个设备的各种日志消息路由到远程rsyslog服务器（192.168.1.25）的UDP端口514。</p>
+<p>如果出于某种原因，你需要更为可靠的协议，如TCP，而rsyslog服务器也被配置为监听TCP连接，你必须在远程主机的IP地址前添加一个额外的@字符，像下面这样：</p>
+<div class="highlight"><pre><span></span><code><span class="o">*</span><span class="p">.</span><span class="o">*</span><span class="w">  </span><span class="p">@</span><span class="mf">@192.168.1.25</span><span class="o">:</span><span class="mi">514</span><span class="w"> </span>
+</code></pre></div>
+
+<p>注意，你也可以将rsyslog服务器的IP地址替换成它的主机名（FQDN）。</p>
+<p>如果你只想要转发服务器上的指定设备的日志消息，比如说内核设备，那么你可以在rsyslog配置文件中使用以下声明。</p>
+<div class="highlight"><pre><span></span><code><span class="n">kern</span><span class="p">.</span><span class="o">*</span><span class="w"> </span><span class="mf">@192.168.1.25</span><span class="o">:</span><span class="mi">514</span><span class="w"> </span>
+</code></pre></div>
+
+<p>修改配置文件后，你需要重启进程以激活修改：</p>
+<p><strong>CentOS 7：</strong></p>
+<div class="highlight"><pre><span></span><code># systemctl restart rsyslog.service 
+</code></pre></div>
+
+<p><strong>CentOS 6：</strong></p>
+<div class="highlight"><pre><span></span><code># service rsyslog restart 
+</code></pre></div>
+
+<h4>非 syslog 日志的转发</h4>
+<p>在另外一种环境中，让我们假定你已经在机器上安装了一个名为“foobar”的应用程序，它会在/var/log下生成foobar.log日志文件。现在，你想要将它的日志定向到rsyslog服务器，这可以通过像下面这样在rsyslog配置文件中加载imfile模块来实现。</p>
+<p>首先，加载imfile模块，这只需做一次。</p>
+<div class="highlight"><pre><span></span><code><span class="n">module</span><span class="p">(</span><span class="nb">load</span><span class="o">=</span><span class="s2">&quot;imfile&quot;</span><span class="w"> </span><span class="n">PollingInterval</span><span class="o">=</span><span class="s2">&quot;5&quot;</span><span class="p">)</span><span class="w"> </span>
+</code></pre></div>
+
+<p>然后，指定日志文件的路径以便imfile模块可以检测到：</p>
+<div class="highlight"><pre><span></span><code><span class="n">input</span><span class="p">(</span><span class="n">type</span><span class="o">=</span><span class="s2">&quot;imfile&quot;</span>
+<span class="w">      </span><span class="n">File</span><span class="o">=</span><span class="s2">&quot;/var/log/foobar.log&quot;</span>
+<span class="w">      </span><span class="n">Tag</span><span class="o">=</span><span class="s2">&quot;foobar&quot;</span>
+<span class="w">      </span><span class="n">Severity</span><span class="o">=</span><span class="s2">&quot;error&quot;</span>
+<span class="w">      </span><span class="n">Facility</span><span class="o">=</span><span class="s2">&quot;local7&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>最后，定向local7设备到远程rsyslog服务器：</p>
+<div class="highlight"><pre><span></span><code><span class="n">local7</span><span class="p">.</span><span class="o">*</span><span class="w"> </span><span class="mf">@192.168.1.25</span><span class="o">:</span><span class="mi">514</span>
+</code></pre></div>
+
+<p>别忘了重启rsyslog进程哦！</p>
+<h3>步骤三： 让Rsyslog进程自动启动</h3>
+<p>要让rsyslog客户端在每次系统重启后自动启动，请运行以下命令：</p>
+<p><strong>CentOS 7：</strong></p>
+<div class="highlight"><pre><span></span><code># systemctl enable rsyslog.service 
+</code></pre></div>
+
+<p><strong>CentOS 6：</strong></p>
+<div class="highlight"><pre><span></span><code># chkconfig rsyslog on 
+</code></pre></div>
+
+<h3>小结</h3>
+<p>在本教程中，我演示了如何将CentOS系统转变成rsyslog客户端以强制它发送日志消息到远程rsyslog服务器。这里我假定rsyslog客户端和服务器之间的连接是安全的（如，在有防火墙保护的公司网络中）。不管在任何情况下，都不要配置rsyslog客户端将日志消息通过不安全的网络转发，或者，特别是通过互联网转发，因为syslog协议是一个明文协议。要进行安全传输，可以考虑使用<a href="http://www.rsyslog.com/doc/rsyslog_tls.html">TLS/SSL</a>来加密日志消息的传输。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

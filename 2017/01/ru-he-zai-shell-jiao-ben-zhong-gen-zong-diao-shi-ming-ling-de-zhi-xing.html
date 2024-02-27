@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何在 Shell 脚本中跟踪调试命令的执行</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Aaron Kili 在 shell 脚本调试系列 中，本文将解释第三种 shell 脚本调试模式，即 shell 跟踪，并查看一些示例来演示它如何工作以及如何 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/01/ru-he-zai-shell-jiao-ben-zhong-gen-zong-diao-shi-ming-ling-de-zhi-xing.html" rel="bookmark"
+           title="Permalink to 如何在 Shell 脚本中跟踪调试命令的执行">如何在 Shell 脚本中跟踪调试命令的执行</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-01-15T17:25:07+01:00">
+                Published: Sun 15 January 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Aaron Kili</p>
+<p>在 <a href="/article-8028-1.html">shell 脚本调试系列</a> 中，本文将解释第三种 shell 脚本调试模式，即 shell 跟踪，并查看一些示例来演示它如何工作以及如何使用它。</p>
+<p><img alt="" src="/data/attachment/album/201701/15/172501x3lrwwqio266pq29.jpg"></p>
+<p>本系列的前面部分清晰地阐明了另外两种 shell 脚本调试模式：详细模式和语法检查模式，并用易于理解的例子展示了如何在这些模式下启用 shell 脚本调试。</p>
+<ol>
+<li><a href="/article-8028-1.html">如何在 Linux 中启用 Shell 脚本的调试模式</a></li>
+<li><a href="/article-8045-1.html">如何在 Shell 脚本中执行语法检查调试模式</a></li>
+</ol>
+<p>shell 跟踪简单的来说就是跟踪 shell 脚本中的命令的执行。要打开 shell 跟踪，请使用 <code>-x</code> 调试选项。</p>
+<p>这会让 shell 在终端上显示所有执行的命令及其参数。</p>
+<p>我们将使用下面的 <code>sys_info.sh</code> shell 脚本，它会简要地打印出你的系统日期和时间、登录的用户数和系统的运行时间。不过，脚本中包含我们需要查找和更正的语法错误。</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/bin/bash</span>
+<span class="c1"># script to print brief system info</span>
+<span class="nv">ROOT_ID</span><span class="o">=</span><span class="s2">&quot;0&quot;</span>
+<span class="nv">DATE</span><span class="o">=</span><span class="sb">`</span>date<span class="sb">`</span>
+<span class="nv">NO_USERS</span><span class="o">=</span><span class="sb">`</span>who<span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l<span class="sb">`</span>
+<span class="nv">UPTIME</span><span class="o">=</span><span class="sb">`</span>uptime<span class="sb">`</span>
+check_root<span class="o">(){</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$UID</span><span class="s2">&quot;</span><span class="w"> </span>-ne<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$ROOT_ID</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;You are not allowed to execute this program!&quot;</span>
+<span class="w">    </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span><span class="p">;</span><span class="w">    </span>
+<span class="o">}</span>
+print_sys_info<span class="o">(){</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;System Time    : </span><span class="nv">$DATE</span><span class="s2">&quot;</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Number of users: </span><span class="nv">$NO_USERS</span><span class="s2">&quot;</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;System Uptime  : </span><span class="nv">$UPTIME</span>
+<span class="s2">}</span>
+<span class="s2">check_root</span>
+<span class="s2">print_sys_info</span>
+<span class="s2">exit 0</span>
+</code></pre></div>
+
+<p>保存文件并执行脚本。脚本只能用 root 用户运行，因此如下使用 <a href="http://www.tecmint.com/su-vs-sudo-and-how-to-configure-sudo-in-linux/">sudo 命令</a>运行：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>chmod<span class="w"> </span>+x<span class="w"> </span>sys_info.sh
+$<span class="w"> </span>sudo<span class="w"> </span>bash<span class="w"> </span>-x<span class="w"> </span>sys_info.sh
+</code></pre></div>
+
+<p><img alt="Shell Tracing - Show Error in Script" src="/data/attachment/album/201701/15/172508tobn0iinniy0cave.png"></p>
+<p><em>shell 跟踪 - 显示脚本中的错误</em></p>
+<p>从上面的输出我们可以观察到，首先执行命令，然后其输出做为一个变量的值。</p>
+<p>例如，先执行 <code>date</code>，其输出做为变量 <code>DATE</code> 的值。</p>
+<p>我们可以执行语法检查来只显示其中的语法错误，如下所示：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>bash<span class="w"> </span>-n<span class="w"> </span>sys_info.sh<span class="w"> </span>
+</code></pre></div>
+
+<p><img alt="Syntax Checking in Script" src="/data/attachment/album/201701/15/172508topuogicp7zyzuuu.png"></p>
+<p><em>脚本中语法检查</em></p>
+<p>如果我们审视这个 shell 脚本，我们就会发现 <code>if</code> 语句缺少了封闭条件的 <code>fi</code> 关键字。因此，让我们加上它，新的脚本应该看起来像这样：</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/bin/bash</span>
+<span class="c1">#script to print brief system info</span>
+<span class="nv">ROOT_ID</span><span class="o">=</span><span class="s2">&quot;0&quot;</span>
+<span class="nv">DATE</span><span class="o">=</span><span class="sb">`</span>date<span class="sb">`</span>
+<span class="nv">NO_USERS</span><span class="o">=</span><span class="sb">`</span>who<span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l<span class="sb">`</span>
+<span class="nv">UPTIME</span><span class="o">=</span><span class="sb">`</span>uptime<span class="sb">`</span>
+check_root<span class="o">(){</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$UID</span><span class="s2">&quot;</span><span class="w"> </span>-ne<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$ROOT_ID</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;You are not allowed to execute this program!&quot;</span>
+<span class="w">    </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span><span class="p">;</span>
+<span class="w">  </span><span class="k">fi</span><span class="w">    </span>
+<span class="o">}</span>
+print_sys_info<span class="o">(){</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;System Time    : </span><span class="nv">$DATE</span><span class="s2">&quot;</span><span class="w"> </span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Number of users: </span><span class="nv">$NO_USERS</span><span class="s2">&quot;</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;System Uptime  : </span><span class="nv">$UPTIME</span>
+<span class="s2">}</span>
+<span class="s2">check_root</span>
+<span class="s2">print_sys_info</span>
+<span class="s2">exit 0</span>
+</code></pre></div>
+
+<p>再次保存文件并以 root 执行，同时做语法检查：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>bash<span class="w"> </span>-n<span class="w"> </span>sys_info.sh
+</code></pre></div>
+
+<p><img alt="Perform Syntax Check in Shell Scripts" src="/data/attachment/album/201701/15/172509xm77ckrcmz21c2r2.png"></p>
+<p><em>在 shell 脚本中执行语法检查</em></p>
+<p>上面的语法检查操作的结果仍然显示在脚本的第 21 行还有一个错误。所以，我们仍然要纠正一些语法。</p>
+<p>再一次分析脚本，会发现第 21 行的错误是由于在 <code>print_sys_info</code> 函数内最后一个 <a href="http://www.tecmint.com/echo-command-in-linux/">echo 命令</a>中没有闭合双引号 <code>"</code>。</p>
+<p>我们将在 <code>echo</code> 命令中添加闭合双引号并保存文件。修改过的脚本如下：</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/bin/bash</span>
+<span class="c1">#script to print brief system info</span>
+<span class="nv">ROOT_ID</span><span class="o">=</span><span class="s2">&quot;0&quot;</span>
+<span class="nv">DATE</span><span class="o">=</span><span class="sb">`</span>date<span class="sb">`</span>
+<span class="nv">NO_USERS</span><span class="o">=</span><span class="sb">`</span>who<span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l<span class="sb">`</span>
+<span class="nv">UPTIME</span><span class="o">=</span><span class="sb">`</span>uptime<span class="sb">`</span>
+check_root<span class="o">(){</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$UID</span><span class="s2">&quot;</span><span class="w"> </span>-ne<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$ROOT_ID</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;You are not allowed to execute this program!&quot;</span>
+<span class="w">    </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span><span class="p">;</span>
+<span class="w">  </span><span class="k">fi</span>
+<span class="o">}</span>
+print_sys_info<span class="o">(){</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;System Time    : </span><span class="nv">$DATE</span><span class="s2">&quot;</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Number of users: </span><span class="nv">$NO_USERS</span><span class="s2">&quot;</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;System Uptime  : </span><span class="nv">$UPTIME</span><span class="s2">&quot;</span>
+<span class="o">}</span>
+check_root
+print_sys_info
+<span class="nb">exit</span><span class="w"> </span><span class="m">0</span>
+</code></pre></div>
+
+<p>现在再一次检查语法。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>bash<span class="w"> </span>-n<span class="w"> </span>sys_info.sh
+</code></pre></div>
+
+<p>上面的命令不会产生任何输出，因为我们的脚本语法上正确。我们也可以再次跟踪脚本执行，它应该工作得很好：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>bash<span class="w"> </span>-x<span class="w"> </span>sys_info.sh
+</code></pre></div>
+
+<p><img alt="Trace Shell Script Execution" src="/data/attachment/album/201701/15/172509y91u9r3uqum9r111.png"></p>
+<p><em>跟踪 shell 脚本执行</em></p>
+<p>现在运行脚本。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>./sys_info.sh
+</code></pre></div>
+
+<p><img alt="Shell Script to Show Date, Time and Uptime" src="/data/attachment/album/201701/15/172509d69fbzbkk2akfja6.png"></p>
+<p><em>用 shell 脚本显示日期、时间和运行时间</em></p>
+<h3>shell 跟踪执行的重要性</h3>
+<p>shell 脚本跟踪可以帮助我们识别语法错误，更重要的是识别逻辑错误。例如，在 <code>sys_info.sh</code> shell 脚本中的 <code>check_root</code> 函数，它用于确定用户是否为 root，因为脚本只允许由超级用户执行。</p>
+<div class="highlight"><pre><span></span><code>check_root(){
+  if [ &quot;$UID&quot; -ne &quot;$ROOT_ID&quot; ]; then
+    echo &quot;You are not allowed to execute this program!&quot;
+    exit 1;
+  fi
+}
+</code></pre></div>
+
+<p>这里的魔法是由 <code>if</code> 语句表达式 <code>["$ UID" -ne "$ ROOT_ID"]</code> 控制的，一旦我们不使用合适的数字运算符（示例中为 <code>-ne</code>，这意味着不相等），我们最终可能会出一个逻辑错误。</p>
+<p>假设我们使用 <code>-eq</code> （意思是等于），这将允许任何系统用户以及 root 用户运行脚本，因此是一个逻辑错误。</p>
+<div class="highlight"><pre><span></span><code>check_root(){
+  if [ &quot;$UID&quot; -eq &quot;$ROOT_ID&quot; ]; then
+    echo &quot;You are not allowed to execute this program!&quot;
+    exit 1;
+  fi
+}
+</code></pre></div>
+
+<p>注意：我们在本系列开头介绍过，<code>set</code> 这个 shell 内置命令可以在 shell 脚本的特定部分激活调试。</p>
+<p>因此，下面的行将帮助我们通过跟踪脚本的执行在其中找到这个逻辑错误：</p>
+<p>具有逻辑错误的脚本：</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/bin/bash</span>
+<span class="c1">#script to print brief system info</span>
+<span class="nv">ROOT_ID</span><span class="o">=</span><span class="s2">&quot;0&quot;</span>
+<span class="nv">DATE</span><span class="o">=</span><span class="sb">`</span>date<span class="sb">`</span>
+<span class="nv">NO_USERS</span><span class="o">=</span><span class="sb">`</span>who<span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l<span class="sb">`</span>
+<span class="nv">UPTIME</span><span class="o">=</span><span class="sb">`</span>uptime<span class="sb">`</span>
+check_root<span class="o">(){</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$UID</span><span class="s2">&quot;</span><span class="w"> </span>-eq<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$ROOT_ID</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;You are not allowed to execute this program!&quot;</span>
+<span class="w">    </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span><span class="p">;</span>
+<span class="w">  </span><span class="k">fi</span>
+<span class="o">}</span>
+print_sys_info<span class="o">(){</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;System Time    : </span><span class="nv">$DATE</span><span class="s2">&quot;</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Number of users: </span><span class="nv">$NO_USERS</span><span class="s2">&quot;</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;System Uptime  : </span><span class="nv">$UPTIME</span><span class="s2">&quot;</span>
+<span class="o">}</span>
+<span class="c1">#turning on and off debugging of check_root function</span>
+<span class="nb">set</span><span class="w"> </span>-x<span class="w"> </span><span class="p">;</span><span class="w"> </span>check_root<span class="p">;</span><span class="w">  </span><span class="nb">set</span><span class="w"> </span>+x<span class="w"> </span><span class="p">;</span>
+print_sys_info
+<span class="nb">exit</span><span class="w"> </span><span class="m">0</span>
+</code></pre></div>
+
+<p>保存文件并调用脚本，在输出中，我们可以看到一个普通系统用户可以在未 sudo 的情况下运行脚本。 这是因为 <code>USER_ID</code> 的值为 100，不等于为 0 的 root 的 <code>ROOT_ID</code> 。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>./sys_info.sh
+</code></pre></div>
+
+<p><img alt="Run Shell Script Without Sudo" src="/data/attachment/album/201701/15/172510gkei69f839yeqe85.png"></p>
+<p><strong>未 sudo 的情况下运行 shell 脚本</strong></p>
+<p>那么，现在我们已经完成了 <a href="/article-8028-1.html">shell 脚本调试系列</a>，可以在下面的反馈栏里给我们关于本篇或者本系列提出问题或反馈。</p>
+<p>via: <a href="http://www.tecmint.com/trace-shell-script-execution-in-linux/">http://www.tecmint.com/trace-shell-script-execution-in-linux/</a></p>
+<p>作者：<a href="http://www.tecmint.com/author/aaronkili/">Aaron Kili</a> 译者：<a href="https://github.com/geekpi">geekpi</a> 校对：<a href="https://github.com/jasminepeng">jasminepeng</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创编译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Kubernetes 网络策略基础</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Mike Calizo 在你通过 Kubernetes 部署一个应用之前，了解 Kubernetes 的网络策略是一个基本的要求。 随着越来越多的云原生应用程序通过 Kubernetes 部 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2021/11/kubernetes-wang-luo-ce-lue-ji-chu.html" rel="bookmark"
+           title="Permalink to Kubernetes 网络策略基础">Kubernetes 网络策略基础</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2021-11-21T13:02:25+01:00">
+                Published: Sun 21 November 2021
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Mike Calizo</p>
+<blockquote>
+<p>在你通过 Kubernetes 部署一个应用之前，了解 Kubernetes 的网络策略是一个基本的要求。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/202111/21/130217ocykri3zbv37i6ou.jpg" title="Parts, modules, containers for software"></p>
+<p>随着越来越多的云原生应用程序通过 Kubernetes 部署到生产环境，安全性是你必须在早期就需要考虑的一个重要检查项。在设计云原生应用程序时，预先嵌入安全策略非常重要。不这样做会导致后续的安全问题，从而导致项目延迟，并最终给你带来不必要的压力和金钱投入。</p>
+<p>这么多年来，人们总是把安全留到最后，直到他们的部署即将发布到生产环境时才考虑安全。这种做法会导致项目交付的延迟，因为每个组织都有要遵守的安全标准，这些规定被绕过或不遵守，并承受大量的风险才得以实现可交付成果。</p>
+<p>对于刚开始学习 Kubernetes 实施的人来说，理解 Kubernetes <ruby> 网络策略 <rt>  NetworkPolicy </rt></ruby> 可能会令人生畏。但这是在将应用程序部署到 Kubernetes 集群之前必须了解的基本要求之一。在学习 Kubernetes 和云原生应用程序时，请把“不要把安全抛在脑后！”定为你的口号。</p>
+<h3>NetworkPolicy 概念</h3>
+<p><ruby> <a href="https://kubernetes.io/docs/concepts/services-networking/network-policies/">  网络策略 </a> <rt>  NetworkPolicy </rt></ruby> 取代了你所知道的数据中心环境中的防火墙设备 —— 如<ruby> 吊舱 <rt>  Pod </rt></ruby>之于计算实例、网络插件之于路由器和交换机，以及卷之于存储区域网络（SAN）。</p>
+<p>默认情况下，Kubernetes 网络策略允许 <ruby> <a href="https://kubernetes.io/docs/concepts/workloads/pods/">  吊舱 </a> <rt>  Pod </rt></ruby> 从任何地方接收流量。如果你不担心吊舱的安全性，那么这可能没问题。但是，如果你正在运行关键工作负载，则需要保护吊舱。控制集群内的流量（包括入口和出口流量），可以通过网络策略来实现。</p>
+<p>要启用网络策略，你需要一个支持网络策略的网络插件。否则，你应用的任何规则都将变得毫无用处。</p>
+<p><a href="https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/network-plugins/">Kubernetes.io</a> 上列出了不同的网络插件：</p>
+<ul>
+<li>CNI 插件：遵循 <ruby> <a href="https://github.com/containernetworking/cni">  容器网络接口 </a> <rt>  Container Network Interface </rt></ruby>（CNI）规范，旨在实现互操作性。<ul>
+<li>Kubernetes 遵循 CNI 规范的 <a href="https://github.com/containernetworking/cni/blob/spec-v0.4.0/SPEC.md">v0.4.0</a> 版本。</li>
+</ul>
+</li>
+<li>Kubernetes 插件：使用桥接器和主机本地 CNI 插件实现基本的 <code>cbr0</code>。</li>
+</ul>
+<h3>应用网络策略</h3>
+<p>要应用网络策略，你需要一个工作中的 Kubernetes 集群，并有支持网络策略的网络插件。</p>
+<p>但首先，你需要了解如何在 Kubernetes 的环境使用网络策略。Kubernetes 网络策略允许 <a href="https://kubernetes.io/docs/concepts/workloads/pods/">吊舱</a> 从任何地方接收流量。这并不是理想情况。为了吊舱安全，你必须了解吊舱是可以在 Kubernetes 架构内进行通信的端点。</p>
+<p>1、使用 <code>podSelector</code> 进行吊舱间的通信：</p>
+<div class="highlight"><pre><span></span><code> - namespaceSelector:
+    matchLabels:
+      project: myproject 
+</code></pre></div>
+
+<p>2、使用 <code>namespaceSelector</code> 和/或 <code>podSelector</code> 和 <code>namespaceSelector</code> 的组合进行命名空间之间的通信和命名空间到吊舱的通信。：</p>
+<div class="highlight"><pre><span></span><code> - namespaceSelector:
+    matchLabels:
+      project: myproject
+ - podSelector:
+    matchLabels:
+      role: frontend 
+</code></pre></div>
+
+<p>3、对于吊舱的 IP 块通信，使用 <code>ipBlock</code> 定义哪些 IP CIDR 块决定源和目的。</p>
+<div class="highlight"><pre><span></span><code> - ipBlock:
+        cidr: 172.17.0.0/16
+        except:
+        - 172.17.1.0/24 
+</code></pre></div>
+
+<p>注意吊舱、命名空间和基于 IP 的策略之间的区别。对于基于吊舱和命名空间的网络策略，使用选择器来控制流量，而对基于 IP 的网络策略，使用 IP 块（CIDR 范围）来定义控制。</p>
+<p>把它们放在一起，一个网络策略应如下所示：</p>
+<div class="highlight"><pre><span></span><code><span class="n">apiVersion</span><span class="o">:</span><span class="w"> </span><span class="n">networking</span><span class="o">.</span><span class="na">k8s</span><span class="o">.</span><span class="na">io</span><span class="o">/</span><span class="n">v1</span>
+<span class="n">kind</span><span class="o">:</span><span class="w"> </span><span class="n">NetworkPolicy</span>
+<span class="n">metadata</span><span class="o">:</span>
+<span class="w">  </span><span class="n">name</span><span class="o">:</span><span class="w"> </span><span class="n">test</span><span class="o">-</span><span class="n">network</span><span class="o">-</span><span class="n">policy</span>
+<span class="w">  </span><span class="kd">namespace</span><span class="o">:</span><span class="w"> </span><span class="k">default</span>
+<span class="n">spec</span><span class="o">:</span>
+<span class="w">  </span><span class="n">podSelector</span><span class="o">:</span>
+<span class="w">    </span><span class="n">matchLabels</span><span class="o">:</span>
+<span class="w">      </span><span class="n">app</span><span class="o">:</span><span class="w"> </span><span class="n">backend</span>
+<span class="w">  </span><span class="n">policyTypes</span><span class="o">:</span>
+<span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="n">Ingress</span>
+<span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="n">Egress</span>
+<span class="w">  </span><span class="n">ingress</span><span class="o">:</span>
+<span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="n">from</span><span class="o">:</span>
+<span class="w">    </span><span class="o">-</span><span class="w"> </span><span class="n">ipBlock</span><span class="o">:</span>
+<span class="w">        </span><span class="n">cidr</span><span class="o">:</span><span class="w"> </span><span class="mf">172.17</span><span class="o">.</span><span class="mf">0.0</span><span class="o">/</span><span class="mi">16</span>
+<span class="w">        </span><span class="n">except</span><span class="o">:</span>
+<span class="w">        </span><span class="o">-</span><span class="w"> </span><span class="mf">192.168</span><span class="o">.</span><span class="mf">1.0</span><span class="o">/</span><span class="mi">24</span>
+<span class="w">    </span><span class="o">-</span><span class="w"> </span><span class="n">namespaceSelector</span><span class="o">:</span>
+<span class="w">        </span><span class="n">matchLabels</span><span class="o">:</span>
+<span class="w">          </span><span class="n">project</span><span class="o">:</span><span class="w"> </span><span class="n">myproject</span>
+<span class="w">    </span><span class="o">-</span><span class="w"> </span><span class="n">podSelector</span><span class="o">:</span>
+<span class="w">        </span><span class="n">matchLabels</span><span class="o">:</span>
+<span class="w">          </span><span class="n">role</span><span class="o">:</span><span class="w"> </span><span class="n">frontend</span>
+<span class="w">    </span><span class="n">ports</span><span class="o">:</span>
+<span class="w">    </span><span class="o">-</span><span class="w"> </span><span class="n">protocol</span><span class="o">:</span><span class="w"> </span><span class="n">TCP</span>
+<span class="w">      </span><span class="n">port</span><span class="o">:</span><span class="w"> </span><span class="mi">6379</span>
+<span class="w">  </span><span class="n">egress</span><span class="o">:</span>
+<span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="n">to</span><span class="o">:</span>
+<span class="w">    </span><span class="o">-</span><span class="w"> </span><span class="n">ipBlock</span><span class="o">:</span>
+<span class="w">        </span><span class="n">cidr</span><span class="o">:</span><span class="w"> </span><span class="mf">10.0</span><span class="o">.</span><span class="mf">0.0</span><span class="o">/</span><span class="mi">24</span>
+<span class="w">    </span><span class="n">ports</span><span class="o">:</span>
+<span class="w">    </span><span class="o">-</span><span class="w"> </span><span class="n">protocol</span><span class="o">:</span><span class="w"> </span><span class="n">TCP</span>
+<span class="w">      </span><span class="n">port</span><span class="o">:</span><span class="w"> </span><span class="mi">5978</span>
+</code></pre></div>
+
+<p>参考上面的网络策略，请注意 <code>spec</code> 部分。在此部分下，带有标签 <code>app=backend</code> 的 <code>podSelector</code> 是我们的网络策略的目标。简而言之，网络策略保护给定命名空间内称为 <code>backend</code> 的应用程序。</p>
+<p>此部分也有 <code>policyTypes</code> 定义。此字段指示给定策略是否适用于选定吊舱的入口流量、选定吊舱的出口流量，或两者皆有。</p>
+<div class="highlight"><pre><span></span><code><span class="n">spec</span><span class="o">:</span>
+<span class="w">  </span><span class="n">podSelector</span><span class="o">:</span>
+<span class="w">    </span><span class="n">matchLabels</span><span class="o">:</span>
+<span class="w">      </span><span class="n">app</span><span class="o">:</span><span class="w"> </span><span class="n">backend</span>
+<span class="w">  </span><span class="n">policyTypes</span><span class="o">:</span>
+<span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="n">Ingress</span>
+<span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="n">Egress</span>
+</code></pre></div>
+
+<p>现在，请看 <code>Ingress</code>（入口）和 <code>Egress</code>（出口）部分。该定义规定了网络策略的控制。</p>
+<p>首先，检查 <code>ingress from</code> 部分。</p>
+<p>此实例中，网络策略允许从以下位置进行吊舱连接：</p>
+<ul>
+<li><code>ipBlock</code><ul>
+<li>允许 172.17.0.0/16</li>
+<li>拒绝 192.168.1.0/24</li>
+</ul>
+</li>
+<li><code>namespaceSelector</code><ul>
+<li><code>myproject</code>: 允许来自此命名空间并具有相同标签 project=myproject 的所有吊舱。</li>
+</ul>
+</li>
+<li><code>podSelector</code><ul>
+<li><code>frontend</code>: 允许与标签 <code>role=frontend</code> 匹配的吊舱。</li>
+</ul>
+</li>
+</ul>
+<div class="highlight"><pre><span></span><code>ingress:
+ - from:
+  - ipBlock:
+      cidr: 172.17.0.0/16
+      except:
+      - 192.168.1.0/24
+  - namespaceSelector:
+      matchLabels:
+        project: myproject
+  - podSelector:
+      matchLabels:
+        role: frontend
+</code></pre></div>
+
+<p>现在，检查 <code>egress to</code> 部分。这决定了从吊舱出去的连接：</p>
+<ul>
+<li><code>ipBlock</code><ul>
+<li>10.0.0.0/24: 允许连接到此 CIDR</li>
+<li>Ports: 允许使用 TCP 和端口 5978 进行连接</li>
+</ul>
+</li>
+</ul>
+<div class="highlight"><pre><span></span><code>egress:
+ - to:
+  - ipBlock:
+      cidr: 10.0.0.0/24
+  ports:
+  - protocol: TCP
+    port: 5978
+</code></pre></div>
+
+<h3>网络策略的限制</h3>
+<p>仅靠网络策略无法完全保护你的 Kubernetes 集群。你可以使用操作系统组件或 7 层网络技术来克服已知限制。你需要记住，网络策略只能解决 IP 地址和端口级别的安全问题 —— 即开放系统互联（OSI）中的第 3 层或第 4 层。</p>
+<p>为了解决网络策略无法处理的安全要求，你需要使用其它安全解决方案。以下是你需要知道的一些 <a href="https://kubernetes.io/docs/concepts/services-networking/network-policies/#what-you-can-t-do-with-network-policies-at-least-not-yet">用例</a>，在这些用例中，网络策略需要其他技术的增强。</p>
+<h3>总结</h3>
+<p>了解 Kubernetes 的网络策略很重要，因为它是实现（但不是替代）你通常在数据中心设置中使用的防火墙角色的一种方式，但适用于 Kubernetes。将此视为容器安全的第一层，仅仅依靠网络策略并不是一个完整的安全解决方案。</p>
+<p>网络策略使用选择器和标签在吊舱和命名空间上实现安全性。此外，网络策略还可以通过 IP 范围实施安全性。</p>
+<p>充分理解网络策略是在 Kubernetes 环境中安全采用容器化的一项重要技能。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

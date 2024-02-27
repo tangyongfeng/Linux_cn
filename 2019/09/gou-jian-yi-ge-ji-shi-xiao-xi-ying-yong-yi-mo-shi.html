@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>构建一个即时消息应用（一）：模式</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Nicolás Parada 这是一系列关于构建“即时消息”应用的新帖子。你应该对这类应用并不陌生。有了它们的帮助，我们才可以与朋友畅 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/09/gou-jian-yi-ge-ji-shi-xiao-xi-ying-yong-yi-mo-shi.html" rel="bookmark"
+           title="Permalink to 构建一个即时消息应用（一）：模式">构建一个即时消息应用（一）：模式</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-09-27T21:15:15+02:00">
+                Published: Fri 27 September 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Nicolás Parada</p>
+<p><img alt="" src="/data/attachment/album/201909/27/211458n44f7jvp77lfxxm0.jpg"></p>
+<p>这是一系列关于构建“即时消息”应用的新帖子。你应该对这类应用并不陌生。有了它们的帮助，我们才可以与朋友畅聊无忌。<a href="https://www.messenger.com/">Facebook Messenger</a>、<a href="https://www.whatsapp.com/">WhatsApp</a> 和 <a href="https://www.skype.com/">Skype</a> 就是其中的几个例子。正如你所看到的那样，这些应用允许我们发送图片、传输视频、录制音频、以及和一大帮子人聊天等等。当然，我们的教程应用将会尽量保持简单，只在两个用户之间发送文本消息。</p>
+<p>我们将会用 <a href="https://www.cockroachlabs.com/">CockroachDB</a> 作为 SQL 数据库，用 <a href="https://golang.org/">Go</a> 作为后端语言，并且用 JavaScript 来制作 web 应用。</p>
+<p>这是第一篇帖子，我们将会讲述数据库的设计。</p>
+<div class="highlight"><pre><span></span><code>CREATE TABLE users (
+    id SERIAL NOT NULL PRIMARY KEY,
+    username STRING NOT NULL UNIQUE,
+    avatar_url STRING,
+    github_id INT NOT NULL UNIQUE
+);
+</code></pre></div>
+
+<p>显然，这个应用需要一些用户。我们这里采用社交登录的形式。由于我选用了 <a href="https://github.com/">GitHub</a>，所以这里需要保存一个对 GitHub 用户 ID 的引用。</p>
+<div class="highlight"><pre><span></span><code>CREATE TABLE conversations (
+    id SERIAL NOT NULL PRIMARY KEY,
+    last_message_id INT,
+    INDEX (last_message_id DESC)
+);
+</code></pre></div>
+
+<p>每个对话都会引用最近一条消息。每当我们输入一条新消息时，我们都会更新这个字段。我会在后面添加外键约束。</p>
+<p>… 你可能会想，我们可以先对对话进行分组，然后再通过这样的方式获取最近一条消息。但这样做会使查询变得更加复杂。</p>
+<div class="highlight"><pre><span></span><code>CREATE TABLE participants (
+    user_id INT NOT NULL REFERENCES users ON DELETE CASCADE,
+    conversation_id INT NOT NULL REFERENCES conversations ON DELETE CASCADE,
+    messages_read_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, conversation_id)
+);
+</code></pre></div>
+
+<p>尽管之前我提到过对话只会在两个用户之间进行，但我们还是采用了允许向对话中添加多个参与者的设计。因此，在对话和用户之间有一个参与者表。</p>
+<p>为了知道用户是否有未读消息，我们在消息表中添加了“读取时间”（<code>messages_read_at</code>）字段。每当用户在对话中读取消息时，我们都会更新它的值，这样一来，我们就可以将它与对话中最后一条消息的“创建时间”（<code>created_at</code>）字段进行比较。</p>
+<div class="highlight"><pre><span></span><code>CREATE TABLE messages (
+    id SERIAL NOT NULL PRIMARY KEY,
+    content STRING NOT NULL,
+    user_id INT NOT NULL REFERENCES users ON DELETE CASCADE,
+    conversation_id INT NOT NULL REFERENCES conversations ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    INDEX(created_at DESC)
+);
+</code></pre></div>
+
+<p>尽管我们将消息表放在最后，但它在应用中相当重要。我们用它来保存对创建它的用户以及它所出现的对话的引用。而且还可以根据“创建时间”（<code>created_at</code>）来创建索引以完成对消息的排序。</p>
+<div class="highlight"><pre><span></span><code>ALTER TABLE conversations
+ADD CONSTRAINT fk_last_message_id_ref_messages
+FOREIGN KEY (last_message_id) REFERENCES messages ON DELETE SET NULL;
+</code></pre></div>
+
+<p>我在前面已经提到过这个外键约束了，不是吗:D</p>
+<p>有这四张表就足够了。你也可以将这些查询保存到一个文件中，并将其通过管道传送到 Cockroach CLI。</p>
+<p>首先，我们需要启动一个新节点：</p>
+<div class="highlight"><pre><span></span><code>cockroach start --insecure --host 127.0.0.1
+</code></pre></div>
+
+<p>然后创建数据库和这些表：</p>
+<div class="highlight"><pre><span></span><code>cockroach sql --insecure -e &quot;CREATE DATABASE messenger&quot;
+cat schema.sql | cockroach sql --insecure -d messenger
+</code></pre></div>
+
+<p>这篇帖子就到这里。在接下来的部分中，我们将会介绍「登录」，敬请期待。</p>
+<ul>
+<li><a href="https://github.com/nicolasparada/go-messenger-demo">源代码</a></li>
+</ul>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

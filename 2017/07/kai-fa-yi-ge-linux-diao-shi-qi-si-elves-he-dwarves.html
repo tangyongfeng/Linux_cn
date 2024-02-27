@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>开发一个 Linux 调试器（四）：Elves 和 dwarves</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Simon Brand 到目前为止，你已经偶尔听到了关于 dwarves、调试信息、一种无需解析就可以理解源码方式。今天我们会详细介绍源码级 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/07/kai-fa-yi-ge-linux-diao-shi-qi-si-elves-he-dwarves.html" rel="bookmark"
+           title="Permalink to 开发一个 Linux 调试器（四）：Elves 和 dwarves">开发一个 Linux 调试器（四）：Elves 和 dwarves</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-07-24T14:41:03+02:00">
+                Published: Mon 24 July 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Simon Brand</p>
+<p><img alt="" src="/data/attachment/album/201707/24/143821f1phescz20gc8thf.jpg"></p>
+<p>到目前为止，你已经偶尔听到了关于 dwarves、调试信息、一种无需解析就可以理解源码方式。今天我们会详细介绍源码级的调试信息，作为本指南后面部分使用它的准备。</p>
+<h3>系列文章索引</h3>
+<p>随着后面文章的发布，这些链接会逐渐生效。</p>
+<ol>
+<li><a href="/article-8626-1.html">准备环境</a></li>
+<li><a href="/article-8645-1.html">断点</a></li>
+<li><a href="/article-8663-1.html">寄存器和内存</a></li>
+<li><a href="https://blog.tartanllama.xyz/c++/2017/04/05/writing-a-linux-debugger-elf-dwarf/">Elves 和 dwarves</a></li>
+<li><a href="https://blog.tartanllama.xyz/c++/2017/04/24/writing-a-linux-debugger-source-signal/">源码和信号</a></li>
+<li><a href="https://blog.tartanllama.xyz/c++/2017/05/06/writing-a-linux-debugger-dwarf-step/">源码级逐步执行</a></li>
+<li>源码级断点</li>
+<li>调用栈展开</li>
+<li>读取变量</li>
+<li>下一步</li>
+</ol>
+<h3>ELF 和 DWARF 简介</h3>
+<p>ELF 和 DWARF 可能是两个你没有听说过，但可能大部分时间都在使用的组件。ELF（<a href="https://en.wikipedia.org/wiki/Executable_and_Linkable_Format" title="Executable and Linkable Format">Executable and Linkable Format</a>，可执行和可链接格式）是 Linux 系统中使用最广泛的目标文件格式；它指定了一种存储二进制文件的所有不同部分的方式，例如代码、静态数据、调试信息以及字符串。它还告诉加载器如何加载二进制文件并准备执行，其中包括说明二进制文件不同部分在内存中应该放置的地点，哪些位需要根据其它组件的位置固定（<em>重分配</em>）以及其它。在这些博文中我不会用太多篇幅介绍 ELF，但是如果你感兴趣的话，你可以查看<a href="https://github.com/corkami/pics/raw/master/binary/elf101/elf101-64.pdf">这个很好的信息图</a>或<a href="http://www.skyfree.org/linux/references/ELF_Format.pdf">该标准</a>。</p>
+<p><a href="https://en.wikipedia.org/wiki/DWARF" title="DWARF WIKI">DWARF</a>是通常和 ELF 一起使用的调试信息格式。它不一定要绑定到 ELF，但它们两者是一起发展的，一起工作得很好。这种格式允许编译器告诉调试器最初的源代码如何和被执行的二进制文件相关联。这些信息分散到不同的 ELF 部分，每个部分都衔接有一份它自己的信息。下面不同部分的定义，信息取自这个稍有过时但非常重要的 <a href="http://www.dwarfstd.org/doc/Debugging%20using%20DWARF-2012.pdf">DWARF 调试格式简介</a>：</p>
+<ul>
+<li><code>.debug_abbrev</code> <code>.debug_info</code> 部分使用的缩略语</li>
+<li><code>.debug_aranges</code> 内存地址和编译的映射</li>
+<li><code>.debug_frame</code> 调用帧信息</li>
+<li><code>.debug_info</code> 包括 <ruby> DWARF 信息条目 <rp>  （ </rp> <rt>  DWARF Information Entries </rt> <rp>  ） </rp></ruby>（DIEs）的核心 DWARF 数据</li>
+<li><code>.debug_line</code> 行号程序</li>
+<li><code>.debug_loc</code> 位置描述</li>
+<li><code>.debug_macinfo</code> 宏描述</li>
+<li><code>.debug_pubnames</code> 全局对象和函数查找表</li>
+<li><code>.debug_pubtypes</code> 全局类型查找表</li>
+<li><code>.debug_ranges</code> DIEs 的引用地址范围</li>
+<li><code>.debug_str</code> <code>.debug_info</code> 使用的字符串列表</li>
+<li><code>.debug_types</code> 类型描述</li>
+</ul>
+<p>我们最关心的是 <code>.debug_line</code> 和 <code>.debug_info</code> 部分，让我们来看一个简单程序的 DWARF 信息。</p>
+<div class="highlight"><pre><span></span><code>int main() {
+    long a = 3;
+    long b = 2;
+    long c = a + b;
+    a = 4;
+}
+</code></pre></div>
+
+<h3>DWARF 行表</h3>
+<p>如果你用 <code>-g</code> 选项编译这个程序，然后将结果传递给 <code>dwarfdump</code> 执行，在行号部分你应该可以看到类似这样的东西：</p>
+<div class="highlight"><pre><span></span><code><span class="o">.</span><span class="n">debug_line</span><span class="p">:</span><span class="w"> </span><span class="n">line</span><span class="w"> </span><span class="n">number</span><span class="w"> </span><span class="n">info</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">single</span><span class="w"> </span><span class="n">cu</span>
+<span class="n">Source</span><span class="w"> </span><span class="n">lines</span><span class="w"> </span><span class="p">(</span><span class="n">from</span><span class="w"> </span><span class="n">CU</span><span class="o">-</span><span class="n">DIE</span><span class="w"> </span><span class="n">at</span><span class="w"> </span><span class="o">.</span><span class="n">debug_info</span><span class="w"> </span><span class="n">offset</span><span class="w"> </span><span class="mh">0x0000000b</span><span class="p">):</span>
+
+<span class="w">            </span><span class="n">NS</span><span class="w"> </span><span class="n">new</span><span class="w"> </span><span class="n">statement</span><span class="p">,</span><span class="w"> </span><span class="n">BB</span><span class="w"> </span><span class="n">new</span><span class="w"> </span><span class="n">basic</span><span class="w"> </span><span class="n">block</span><span class="p">,</span><span class="w"> </span><span class="n">ET</span><span class="w"> </span><span class="n">end</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="n">text</span><span class="w"> </span><span class="n">sequence</span>
+<span class="w">            </span><span class="n">PE</span><span class="w"> </span><span class="n">prologue</span><span class="w"> </span><span class="n">end</span><span class="p">,</span><span class="w"> </span><span class="n">EB</span><span class="w"> </span><span class="n">epilogue</span><span class="w"> </span><span class="n">begin</span>
+<span class="w">            </span><span class="n">IS</span><span class="o">=</span><span class="n">val</span><span class="w"> </span><span class="n">ISA</span><span class="w"> </span><span class="n">number</span><span class="p">,</span><span class="w"> </span><span class="n">DI</span><span class="o">=</span><span class="n">val</span><span class="w"> </span><span class="n">discriminator</span><span class="w"> </span><span class="n">value</span>
+<span class="o">&lt;</span><span class="n">pc</span><span class="o">&gt;</span><span class="w">        </span><span class="p">[</span><span class="n">lno</span><span class="p">,</span><span class="n">col</span><span class="p">]</span><span class="w"> </span><span class="n">NS</span><span class="w"> </span><span class="n">BB</span><span class="w"> </span><span class="n">ET</span><span class="w"> </span><span class="n">PE</span><span class="w"> </span><span class="n">EB</span><span class="w"> </span><span class="n">IS</span><span class="o">=</span><span class="w"> </span><span class="n">DI</span><span class="o">=</span><span class="w"> </span><span class="n">uri</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;filepath&quot;</span>
+<span class="mh">0x00400670</span><span class="w">  </span><span class="p">[</span><span class="w">   </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="n">NS</span><span class="w"> </span><span class="n">uri</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/home/simon/play/MiniDbg/examples/variable.cpp&quot;</span>
+<span class="mh">0x00400676</span><span class="w">  </span><span class="p">[</span><span class="w">   </span><span class="mi">2</span><span class="p">,</span><span class="mi">10</span><span class="p">]</span><span class="w"> </span><span class="n">NS</span><span class="w"> </span><span class="n">PE</span>
+<span class="mh">0x0040067e</span><span class="w">  </span><span class="p">[</span><span class="w">   </span><span class="mi">3</span><span class="p">,</span><span class="mi">10</span><span class="p">]</span><span class="w"> </span><span class="n">NS</span>
+<span class="mh">0x00400686</span><span class="w">  </span><span class="p">[</span><span class="w">   </span><span class="mi">4</span><span class="p">,</span><span class="mi">14</span><span class="p">]</span><span class="w"> </span><span class="n">NS</span>
+<span class="mh">0x0040068a</span><span class="w">  </span><span class="p">[</span><span class="w">   </span><span class="mi">4</span><span class="p">,</span><span class="mi">16</span><span class="p">]</span>
+<span class="mh">0x0040068e</span><span class="w">  </span><span class="p">[</span><span class="w">   </span><span class="mi">4</span><span class="p">,</span><span class="mi">10</span><span class="p">]</span>
+<span class="mh">0x00400692</span><span class="w">  </span><span class="p">[</span><span class="w">   </span><span class="mi">5</span><span class="p">,</span><span class="w"> </span><span class="mi">7</span><span class="p">]</span><span class="w"> </span><span class="n">NS</span>
+<span class="mh">0x0040069a</span><span class="w">  </span><span class="p">[</span><span class="w">   </span><span class="mi">6</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">]</span><span class="w"> </span><span class="n">NS</span>
+<span class="mh">0x0040069c</span><span class="w">  </span><span class="p">[</span><span class="w">   </span><span class="mi">6</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">]</span><span class="w"> </span><span class="n">NS</span><span class="w"> </span><span class="n">ET</span>
+</code></pre></div>
+
+<p>前面几行是一些如何理解 dump 的信息 - 主要的行号数据从以 <code>0x00400670</code> 开头的行开始。实际上这是一个代码内存地址到文件中行列号的映射。<code>NS</code> 表示地址标记一个新语句的开始，这通常用于设置断点或逐步执行。<code>PE</code> 表示函数序言（LCTT 译注：在汇编语言中，<a href="https://en.wikipedia.org/wiki/Function_prologue" title="function prologue">function prologue</a> 是程序开始的几行代码，用于准备函数中用到的栈和寄存器）的结束，这对于设置函数断点非常有帮助。<code>ET</code> 表示转换单元的结束。信息实际上并不像这样编码；真正的编码是一种非常节省空间的排序程序，可以通过执行它来建立这些行信息。</p>
+<p>那么，假设我们想在 <code>variable.cpp</code> 的第 4 行设置断点，我们该怎么做呢？我们查找和该文件对应的条目，然后查找对应的行条目，查找对应的地址，在那里设置一个断点。在我们的例子中，条目是：</p>
+<div class="highlight"><pre><span></span><code><span class="mf">0</span><span class="n">x00400686</span><span class="w">  </span><span class="err">[</span><span class="w">   </span><span class="mf">4</span><span class="p">,</span><span class="mf">14</span><span class="err">]</span><span class="w"> </span><span class="n">NS</span>
+</code></pre></div>
+
+<p>假设我们想在地址 <code>0x00400686</code> 处设置断点。如果你想尝试的话你可以在已经编写好的调试器上手动实现。</p>
+<p>反过来也是如此。如果我们已经有了一个内存地址 - 例如说，一个程序计数器值 - 想找到它在源码中的位置，我们只需要从行表信息中查找最接近的映射地址并从中抓取行号。</p>
+<h3>DWARF 调试信息</h3>
+<p><code>.debug_info</code> 部分是 DWARF 的核心。它给我们关于我们程序中存在的类型、函数、变量、希望和梦想的信息。这部分的基本单元是 DWARF 信息条目（DWARF Information Entry），我们亲切地称之为 DIEs。一个 DIE 包括能告诉你正在展现什么样的源码级实体的标签，后面跟着一系列该实体的属性。这是我上面展示的简单事例程序的 <code>.debug_info</code> 部分：</p>
+<div class="highlight"><pre><span></span><code><span class="o">.</span><span class="n">debug_info</span>
+
+<span class="n">COMPILE_UNIT</span><span class="o">&lt;</span><span class="n">header</span><span class="w"> </span><span class="n">overall</span><span class="w"> </span><span class="n">offset</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x00000000</span><span class="o">&gt;</span><span class="p">:</span>
+<span class="o">&lt;</span><span class="w"> </span><span class="mi">0</span><span class="o">&gt;&lt;</span><span class="mh">0x0000000b</span><span class="o">&gt;</span><span class="w">  </span><span class="n">DW_TAG_compile_unit</span>
+<span class="w">                    </span><span class="n">DW_AT_producer</span><span class="w">              </span><span class="n">clang</span><span class="w"> </span><span class="n">version</span><span class="w"> </span><span class="mf">3.9</span><span class="o">.</span><span class="mi">1</span><span class="w"> </span><span class="p">(</span><span class="n">tags</span><span class="o">/</span><span class="n">RELEASE_391</span><span class="o">/</span><span class="n">final</span><span class="p">)</span>
+<span class="w">                    </span><span class="n">DW_AT_language</span><span class="w">              </span><span class="n">DW_LANG_C_plus_plus</span>
+<span class="w">                    </span><span class="n">DW_AT_name</span><span class="w">                  </span><span class="o">/</span><span class="n">super</span><span class="o">/</span><span class="n">secret</span><span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">MiniDbg</span><span class="o">/</span><span class="n">examples</span><span class="o">/</span><span class="n">variable</span><span class="o">.</span><span class="n">cpp</span>
+<span class="w">                    </span><span class="n">DW_AT_stmt_list</span><span class="w">             </span><span class="mh">0x00000000</span>
+<span class="w">                    </span><span class="n">DW_AT_comp_dir</span><span class="w">              </span><span class="o">/</span><span class="n">super</span><span class="o">/</span><span class="n">secret</span><span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">MiniDbg</span><span class="o">/</span><span class="n">build</span>
+<span class="w">                    </span><span class="n">DW_AT_low_pc</span><span class="w">                </span><span class="mh">0x00400670</span>
+<span class="w">                    </span><span class="n">DW_AT_high_pc</span><span class="w">               </span><span class="mh">0x0040069c</span>
+
+<span class="n">LOCAL_SYMBOLS</span><span class="p">:</span>
+<span class="o">&lt;</span><span class="w"> </span><span class="mi">1</span><span class="o">&gt;&lt;</span><span class="mh">0x0000002e</span><span class="o">&gt;</span><span class="w">    </span><span class="n">DW_TAG_subprogram</span>
+<span class="w">                      </span><span class="n">DW_AT_low_pc</span><span class="w">                </span><span class="mh">0x00400670</span>
+<span class="w">                      </span><span class="n">DW_AT_high_pc</span><span class="w">               </span><span class="mh">0x0040069c</span>
+<span class="w">                      </span><span class="n">DW_AT_frame_base</span><span class="w">            </span><span class="n">DW_OP_reg6</span>
+<span class="w">                      </span><span class="n">DW_AT_name</span><span class="w">                  </span><span class="n">main</span>
+<span class="w">                      </span><span class="n">DW_AT_decl_file</span><span class="w">             </span><span class="mh">0x00000001</span><span class="w"> </span><span class="o">/</span><span class="n">super</span><span class="o">/</span><span class="n">secret</span><span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">MiniDbg</span><span class="o">/</span><span class="n">examples</span><span class="o">/</span><span class="n">variable</span><span class="o">.</span><span class="n">cpp</span>
+<span class="w">                      </span><span class="n">DW_AT_decl_line</span><span class="w">             </span><span class="mh">0x00000001</span>
+<span class="w">                      </span><span class="n">DW_AT_type</span><span class="w">                  </span><span class="o">&lt;</span><span class="mh">0x00000077</span><span class="o">&gt;</span>
+<span class="w">                      </span><span class="n">DW_AT_external</span><span class="w">              </span><span class="n">yes</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="o">&lt;</span><span class="w"> </span><span class="mi">2</span><span class="o">&gt;&lt;</span><span class="mh">0x0000004c</span><span class="o">&gt;</span><span class="w">      </span><span class="n">DW_TAG_variable</span>
+<span class="w">                        </span><span class="n">DW_AT_location</span><span class="w">              </span><span class="n">DW_OP_fbreg</span><span class="w"> </span><span class="o">-</span><span class="mi">8</span>
+<span class="w">                        </span><span class="n">DW_AT_name</span><span class="w">                  </span><span class="n">a</span>
+<span class="w">                        </span><span class="n">DW_AT_decl_file</span><span class="w">             </span><span class="mh">0x00000001</span><span class="w"> </span><span class="o">/</span><span class="n">super</span><span class="o">/</span><span class="n">secret</span><span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">MiniDbg</span><span class="o">/</span><span class="n">examples</span><span class="o">/</span><span class="n">variable</span><span class="o">.</span><span class="n">cpp</span>
+<span class="w">                        </span><span class="n">DW_AT_decl_line</span><span class="w">             </span><span class="mh">0x00000002</span>
+<span class="w">                        </span><span class="n">DW_AT_type</span><span class="w">                  </span><span class="o">&lt;</span><span class="mh">0x0000007e</span><span class="o">&gt;</span>
+<span class="o">&lt;</span><span class="w"> </span><span class="mi">2</span><span class="o">&gt;&lt;</span><span class="mh">0x0000005a</span><span class="o">&gt;</span><span class="w">      </span><span class="n">DW_TAG_variable</span>
+<span class="w">                        </span><span class="n">DW_AT_location</span><span class="w">              </span><span class="n">DW_OP_fbreg</span><span class="w"> </span><span class="o">-</span><span class="mi">16</span>
+<span class="w">                        </span><span class="n">DW_AT_name</span><span class="w">                  </span><span class="n">b</span>
+<span class="w">                        </span><span class="n">DW_AT_decl_file</span><span class="w">             </span><span class="mh">0x00000001</span><span class="w"> </span><span class="o">/</span><span class="n">super</span><span class="o">/</span><span class="n">secret</span><span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">MiniDbg</span><span class="o">/</span><span class="n">examples</span><span class="o">/</span><span class="n">variable</span><span class="o">.</span><span class="n">cpp</span>
+<span class="w">                        </span><span class="n">DW_AT_decl_line</span><span class="w">             </span><span class="mh">0x00000003</span>
+<span class="w">                        </span><span class="n">DW_AT_type</span><span class="w">                  </span><span class="o">&lt;</span><span class="mh">0x0000007e</span><span class="o">&gt;</span>
+<span class="o">&lt;</span><span class="w"> </span><span class="mi">2</span><span class="o">&gt;&lt;</span><span class="mh">0x00000068</span><span class="o">&gt;</span><span class="w">      </span><span class="n">DW_TAG_variable</span>
+<span class="w">                        </span><span class="n">DW_AT_location</span><span class="w">              </span><span class="n">DW_OP_fbreg</span><span class="w"> </span><span class="o">-</span><span class="mi">24</span>
+<span class="w">                        </span><span class="n">DW_AT_name</span><span class="w">                  </span><span class="n">c</span>
+<span class="w">                        </span><span class="n">DW_AT_decl_file</span><span class="w">             </span><span class="mh">0x00000001</span><span class="w"> </span><span class="o">/</span><span class="n">super</span><span class="o">/</span><span class="n">secret</span><span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">MiniDbg</span><span class="o">/</span><span class="n">examples</span><span class="o">/</span><span class="n">variable</span><span class="o">.</span><span class="n">cpp</span>
+<span class="w">                        </span><span class="n">DW_AT_decl_line</span><span class="w">             </span><span class="mh">0x00000004</span>
+<span class="w">                        </span><span class="n">DW_AT_type</span><span class="w">                  </span><span class="o">&lt;</span><span class="mh">0x0000007e</span><span class="o">&gt;</span>
+<span class="o">&lt;</span><span class="w"> </span><span class="mi">1</span><span class="o">&gt;&lt;</span><span class="mh">0x00000077</span><span class="o">&gt;</span><span class="w">    </span><span class="n">DW_TAG_base_type</span>
+<span class="w">                      </span><span class="n">DW_AT_name</span><span class="w">                  </span><span class="nb nb-Type">int</span>
+<span class="w">                      </span><span class="n">DW_AT_encoding</span><span class="w">              </span><span class="n">DW_ATE_signed</span>
+<span class="w">                      </span><span class="n">DW_AT_byte_size</span><span class="w">             </span><span class="mh">0x00000004</span>
+<span class="o">&lt;</span><span class="w"> </span><span class="mi">1</span><span class="o">&gt;&lt;</span><span class="mh">0x0000007e</span><span class="o">&gt;</span><span class="w">    </span><span class="n">DW_TAG_base_type</span>
+<span class="w">                      </span><span class="n">DW_AT_name</span><span class="w">                  </span><span class="n">long</span><span class="w"> </span><span class="nb nb-Type">int</span>
+<span class="w">                      </span><span class="n">DW_AT_encoding</span><span class="w">              </span><span class="n">DW_ATE_signed</span>
+<span class="w">                      </span><span class="n">DW_AT_byte_size</span><span class="w">             </span><span class="mh">0x00000008</span>
+</code></pre></div>
+
+<p>第一个 DIE 表示一个编译单元（CU），实际上是一个包括了所有 <code>#includes</code> 和类似语句的源文件。下面是带含义注释的属性：</p>
+<div class="highlight"><pre><span></span><code><span class="n">DW_AT_producer</span><span class="w">   </span><span class="n">clang</span><span class="w"> </span><span class="n">version</span><span class="w"> </span><span class="mf">3.9</span><span class="o">.</span><span class="mi">1</span><span class="w"> </span><span class="p">(</span><span class="n">tags</span><span class="o">/</span><span class="n">RELEASE_391</span><span class="o">/</span><span class="n">final</span><span class="p">)</span><span class="w">    </span><span class="o">&lt;--</span><span class="w"> </span><span class="err">产生该二进制文件的编译器</span>
+<span class="n">DW_AT_language</span><span class="w">   </span><span class="n">DW_LANG_C_plus_plus</span><span class="w">                             </span><span class="o">&lt;--</span><span class="w"> </span><span class="err">原编程语言</span>
+<span class="n">DW_AT_name</span><span class="w">       </span><span class="o">/</span><span class="n">super</span><span class="o">/</span><span class="n">secret</span><span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">MiniDbg</span><span class="o">/</span><span class="n">examples</span><span class="o">/</span><span class="n">variable</span><span class="o">.</span><span class="n">cpp</span><span class="w">  </span><span class="o">&lt;--</span><span class="w"> </span><span class="err">该</span><span class="w"> </span><span class="n">CU</span><span class="w"> </span><span class="err">表示的文件名称</span>
+<span class="n">DW_AT_stmt_list</span><span class="w">  </span><span class="mh">0x00000000</span><span class="w">                                      </span><span class="o">&lt;--</span><span class="w"> </span><span class="err">跟踪该</span><span class="w"> </span><span class="n">CU</span><span class="w"> </span><span class="err">的行表偏移</span>
+<span class="n">DW_AT_comp_dir</span><span class="w">   </span><span class="o">/</span><span class="n">super</span><span class="o">/</span><span class="n">secret</span><span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">MiniDbg</span><span class="o">/</span><span class="n">build</span><span class="w">                  </span><span class="o">&lt;--</span><span class="w"> </span><span class="err">编译目录</span>
+<span class="n">DW_AT_low_pc</span><span class="w">     </span><span class="mh">0x00400670</span><span class="w">                                      </span><span class="o">&lt;--</span><span class="w"> </span><span class="err">该</span><span class="w"> </span><span class="n">CU</span><span class="w"> </span><span class="err">的代码起始</span>
+<span class="n">DW_AT_high_pc</span><span class="w">    </span><span class="mh">0x0040069c</span><span class="w">                                      </span><span class="o">&lt;--</span><span class="w"> </span><span class="err">该</span><span class="w"> </span><span class="n">CU</span><span class="w"> </span><span class="err">的代码结尾</span>
+</code></pre></div>
+
+<p>其它的 DIEs 遵循类似的模式，你也很可能推测出不同属性的含义。</p>
+<p>现在我们可以根据新学到的 DWARF 知识尝试和解决一些实际问题。</p>
+<h3>当前我在哪个函数？</h3>
+<p>假设我们有一个程序计数器值然后想找到当前我们在哪一个函数。一个解决该问题的简单算法：</p>
+<div class="highlight"><pre><span></span><code>for each compile unit:
+    if the pc is between DW_AT_low_pc and DW_AT_high_pc:
+        for each function in the compile unit:
+            if the pc is between DW_AT_low_pc and DW_AT_high_pc:
+                return function information
+</code></pre></div>
+
+<p>这对于很多目的都有效，但如果有成员函数或者内联（inline），就会变得更加复杂。假如有内联，一旦我们找到其范围包括我们的程序计数器（PC）的函数，我们需要递归遍历该 DIE 的所有孩子检查有没有内联函数能更好地匹配。在我的代码中，我不会为该调试器处理内联，但如果你想要的话你可以添加该功能。</p>
+<h3>如何在一个函数上设置断点？</h3>
+<p>再次说明，这取决于你是否想要支持成员函数、命名空间以及类似的东西。对于简单的函数你只需要迭代遍历不同编译单元中的函数直到你找到一个合适的名字。如果你的编译器能够填充 <code>.debug_pubnames</code> 部分，你可以更高效地做到这点。</p>
+<p>一旦找到了函数，你可以在 <code>DW_AT_low_pc</code> 给定的内存地址设置一个断点。不过那会在函数序言处中断，但更合适的是在用户代码处中断。由于行表信息可以指定序言的结束的内存地址，你只需要在行表中查找 <code>DW_AT_low_pc</code> 的值，然后一直读取直到被标记为序言结束的条目。一些编译器不会输出这些信息，因此另一种方式是在该函数第二行条目指定的地址处设置断点。</p>
+<p>假如我们想在我们示例程序中的 <code>main</code> 函数设置断点。我们查找名为 <code>main</code> 的函数，获取到它的 DIE：</p>
+<div class="highlight"><pre><span></span><code><span class="o">&lt;</span><span class="w"> </span><span class="mi">1</span><span class="o">&gt;&lt;</span><span class="mh">0x0000002e</span><span class="o">&gt;</span><span class="w">    </span><span class="n">DW_TAG_subprogram</span>
+<span class="w">                      </span><span class="n">DW_AT_low_pc</span><span class="w">                </span><span class="mh">0x00400670</span>
+<span class="w">                      </span><span class="n">DW_AT_high_pc</span><span class="w">               </span><span class="mh">0x0040069c</span>
+<span class="w">                      </span><span class="n">DW_AT_frame_base</span><span class="w">            </span><span class="n">DW_OP_reg6</span>
+<span class="w">                      </span><span class="n">DW_AT_name</span><span class="w">                  </span><span class="n">main</span>
+<span class="w">                      </span><span class="n">DW_AT_decl_file</span><span class="w">             </span><span class="mh">0x00000001</span><span class="w"> </span><span class="o">/</span><span class="n">super</span><span class="o">/</span><span class="n">secret</span><span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">MiniDbg</span><span class="o">/</span><span class="n">examples</span><span class="o">/</span><span class="n">variable</span><span class="o">.</span><span class="n">cpp</span>
+<span class="w">                      </span><span class="n">DW_AT_decl_line</span><span class="w">             </span><span class="mh">0x00000001</span>
+<span class="w">                      </span><span class="n">DW_AT_type</span><span class="w">                  </span><span class="o">&lt;</span><span class="mh">0x00000077</span><span class="o">&gt;</span>
+<span class="w">                      </span><span class="n">DW_AT_external</span><span class="w">              </span><span class="n">yes</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+</code></pre></div>
+
+<p>这告诉我们函数从 <code>0x00400670</code> 开始。如果我们在行表中查找这个，我们可以获得条目：</p>
+<div class="highlight"><pre><span></span><code><span class="mf">0</span><span class="n">x00400670</span><span class="w">  </span><span class="err">[</span><span class="w">   </span><span class="mf">1</span><span class="p">,</span><span class="w"> </span><span class="mf">0</span><span class="err">]</span><span class="w"> </span><span class="n">NS</span><span class="w"> </span><span class="n">uri</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;/super/secret/path/MiniDbg/examples/variable.cpp&quot;</span>
+</code></pre></div>
+
+<p>我们希望跳过序言，因此我们再读取一个条目：</p>
+<div class="highlight"><pre><span></span><code><span class="mf">0</span><span class="n">x00400676</span><span class="w">  </span><span class="err">[</span><span class="w">   </span><span class="mf">2</span><span class="p">,</span><span class="mf">10</span><span class="err">]</span><span class="w"> </span><span class="n">NS</span><span class="w"> </span><span class="n">PE</span>
+</code></pre></div>
+
+<p>Clang 在这个条目中包括了序言结束标记，因此我们知道在这里停止，然后在地址 <code>0x00400676</code> 处设一个断点。</p>
+<h3>我如何读取一个变量的内容？</h3>
+<p>读取变量可能非常复杂。它们是难以捉摸的东西，可能在整个函数中移动、保存在寄存器中、被放置于内存、被优化掉、隐藏在角落里，等等。幸运的是我们的简单示例是真的很简单。如果我们想读取变量 <code>a</code> 的内容，我们需要看它的 <code>DW_AT_location</code> 属性：</p>
+<div class="highlight"><pre><span></span><code><span class="n">DW_AT_location</span><span class="w">              </span><span class="n">DW_OP_fbreg</span><span class="w"> </span><span class="o">-</span><span class="mh">8</span>
+</code></pre></div>
+
+<p>这告诉我们内容被保存在以栈帧基（base of the stack frame）偏移为 <code>-8</code> 的地方。为了找到栈帧基，我们查找所在函数的 <code>DW_AT_frame_base</code> 属性。</p>
+<div class="highlight"><pre><span></span><code><span class="n">DW_AT_frame_base</span><span class="w">            </span><span class="n">DW_OP_reg6</span>
+</code></pre></div>
+
+<p>从 <a href="https://www.uclibc.org/docs/psABI-x86_64.pdf">System V x86_64 ABI</a> 我们可以知道 <code>reg6</code> 在 x86 中是帧指针寄存器。现在我们读取帧指针的内容，从中减去 <code>8</code>，就找到了我们的变量。如果我们知道它具体是什么，我们还需要看它的类型：</p>
+<div class="highlight"><pre><span></span><code><span class="o">&lt;</span><span class="w"> </span><span class="mi">2</span><span class="o">&gt;&lt;</span><span class="mh">0x0000004c</span><span class="o">&gt;</span><span class="w">      </span><span class="n">DW_TAG_variable</span>
+<span class="w">                        </span><span class="n">DW_AT_name</span><span class="w">                  </span><span class="n">a</span>
+<span class="w">                        </span><span class="n">DW_AT_type</span><span class="w">                  </span><span class="o">&lt;</span><span class="mh">0x0000007e</span><span class="o">&gt;</span>
+</code></pre></div>
+
+<p>如果我们在调试信息中查找该类型，我们得到下面的 DIE：</p>
+<div class="highlight"><pre><span></span><code><span class="p">&lt;</span><span class="w"> </span><span class="mi">1</span><span class="p">&gt;&lt;</span><span class="mh">0x0000007e</span><span class="p">&gt;</span><span class="w">    </span><span class="nx">DW_TAG_base_type</span>
+<span class="w">                      </span><span class="nx">DW_AT_name</span><span class="w">                  </span><span class="nx">long</span><span class="w"> </span><span class="nx">int</span>
+<span class="w">                      </span><span class="nx">DW_AT_encoding</span><span class="w">              </span><span class="nx">DW_ATE_signed</span>
+<span class="w">                      </span><span class="nx">DW_AT_byte_size</span><span class="w">             </span><span class="mh">0x00000008</span>
+</code></pre></div>
+
+<p>这告诉我们该类型是 8 字节（64 位）有符号整型，因此我们可以继续并把这些字节解析为 <code>int64_t</code> 并向用户显示。</p>
+<p>当然，类型可能比那要复杂得多，因为它们要能够表示类似 C++ 的类型，但是这能给你它们如何工作的基本认识。</p>
+<p>再次回到帧基（frame base），Clang 可以通过帧指针寄存器跟踪帧基。最近版本的 GCC 倾向于使用 <code>DW_OP_call_frame_cfa</code>，它包括解析 <code>.eh_frame</code> ELF 部分，那是一个我不会去写的另外一篇完全不同的文章。如果你告诉 GCC 使用 DWARF 2 而不是最近的版本，它会倾向于输出位置列表，这更便于阅读：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">DW_AT_frame_base</span><span class="w">            </span><span class="p">&lt;</span><span class="nx">loclist</span><span class="w"> </span><span class="nx">at</span><span class="w"> </span><span class="nx">offset</span><span class="w"> </span><span class="mh">0x00000000</span><span class="w"> </span><span class="nx">with</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="nx">entries</span><span class="w"> </span><span class="nx">follows</span><span class="p">&gt;</span>
+<span class="w"> </span><span class="nx">low</span><span class="o">-</span><span class="nx">off</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="mh">0x00000000</span><span class="w"> </span><span class="kd">addr</span><span class="w">  </span><span class="mh">0x00400696</span><span class="w"> </span><span class="nx">high</span><span class="o">-</span><span class="nx">off</span><span class="w">  </span><span class="mh">0x00000001</span><span class="w"> </span><span class="kd">addr</span><span class="w"> </span><span class="mh">0x00400697</span><span class="p">&gt;</span><span class="nx">DW_OP_breg7</span><span class="o">+</span><span class="mi">8</span>
+<span class="w"> </span><span class="nx">low</span><span class="o">-</span><span class="nx">off</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="mh">0x00000001</span><span class="w"> </span><span class="kd">addr</span><span class="w">  </span><span class="mh">0x00400697</span><span class="w"> </span><span class="nx">high</span><span class="o">-</span><span class="nx">off</span><span class="w">  </span><span class="mh">0x00000004</span><span class="w"> </span><span class="kd">addr</span><span class="w"> </span><span class="mh">0x0040069a</span><span class="p">&gt;</span><span class="nx">DW_OP_breg7</span><span class="o">+</span><span class="mi">16</span>
+<span class="w"> </span><span class="nx">low</span><span class="o">-</span><span class="nx">off</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="mh">0x00000004</span><span class="w"> </span><span class="kd">addr</span><span class="w">  </span><span class="mh">0x0040069a</span><span class="w"> </span><span class="nx">high</span><span class="o">-</span><span class="nx">off</span><span class="w">  </span><span class="mh">0x00000031</span><span class="w"> </span><span class="kd">addr</span><span class="w"> </span><span class="mh">0x004006c7</span><span class="p">&gt;</span><span class="nx">DW_OP_breg6</span><span class="o">+</span><span class="mi">16</span>
+<span class="w"> </span><span class="nx">low</span><span class="o">-</span><span class="nx">off</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="mh">0x00000031</span><span class="w"> </span><span class="kd">addr</span><span class="w">  </span><span class="mh">0x004006c7</span><span class="w"> </span><span class="nx">high</span><span class="o">-</span><span class="nx">off</span><span class="w">  </span><span class="mh">0x00000032</span><span class="w"> </span><span class="kd">addr</span><span class="w"> </span><span class="mh">0x004006c8</span><span class="p">&gt;</span><span class="nx">DW_OP_breg7</span><span class="o">+</span><span class="mi">8</span>
+</code></pre></div>
+
+<p>位置列表取决于程序计数器所处的位置给出不同的位置。这个例子告诉我们如果程序计数器是在 <code>DW_AT_low_pc</code> 偏移量为 <code>0x0</code> 的位置，那么帧基就在和寄存器 7 中保存的值偏移量为 8 的位置，如果它是在 <code>0x1</code> 和 <code>0x4</code> 之间，那么帧基就在和相同位置偏移量为 16 的位置，以此类推。</p>
+<h3>休息一会</h3>
+<p>这里有很多的信息需要你的大脑消化，但好消息是在后面的几篇文章中我们会用一个库替我们完成这些艰难的工作。理解概念仍然很有帮助，尤其是当出现错误或者你想支持一些你使用的 DWARF 库所没有实现的 DWARF 概念时。</p>
+<p>如果你想了解更多关于 DWARF 的内容，那么你可以从<a href="http://dwarfstd.org/Download.php">这里</a>获取其标准。在写这篇博客时，刚刚发布了 DWARF 5，但更普遍支持 DWARF 4。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>容器的四大基础技术</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Nived V 命名空间、控制组、seccomp 和 SELinux 构成了在系统上构建和运行一个容器进程的 Linux 技术基础。 在以前的文章中，我介绍过 容器 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2021/09/rong-qi-de-si-da-ji-chu-ji-zhu.html" rel="bookmark"
+           title="Permalink to 容器的四大基础技术">容器的四大基础技术</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2021-09-17T08:54:44+02:00">
+                Published: Fri 17 September 2021
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Nived V</p>
+<blockquote>
+<p>命名空间、控制组、seccomp 和 SELinux 构成了在系统上构建和运行一个容器进程的 Linux 技术基础。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/202109/17/085439ye0iq5ynzyhpusy5.jpg" title="Penguin driving a car with a yellow background"></p>
+<p>在以前的文章中，我介绍过 <a href="/article-13766-1.html">容器镜像</a> 及其 <a href="/article-13772-1.html">运行时</a>。在本文中，我研究了容器是如何在一些特殊的 Linux 技术基础上实现的，这其中包括命名空间和控制组。</p>
+<p><img alt="容器技术的层次" src="/data/attachment/album/202109/17/085446w47ahozm1daudluh.png" title="layers of linux technologies"></p>
+<p><em>图1：对容器有贡献的 Linux 技术（Nived Velayudhan, <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>）</em></p>
+<p>这些 Linux 技术构成了在系统上构建和运行容器进程的基础：</p>
+<ol>
+<li>命名空间</li>
+<li>控制组（cgroups）</li>
+<li>Seccomp</li>
+<li>SELinux</li>
+</ol>
+<h3>命名空间</h3>
+<p><ruby> 命名空间 <rt>  namespace </rt></ruby> 为容器提供了一个隔离层，给容器提供了一个看起来是独占的 Linux 文件系统的视图。这就限制了进程能访问的内容，从而限制了它所能获得的资源。</p>
+<p>在创建容器时，Docker 或 Podman 和其他容器技术使用了 Linux 内核中的几个命名空间：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">nivedv@homelab ~</span><span class="o">]</span><span class="err">$</span><span class="w"> </span><span class="n">docker</span><span class="w"> </span><span class="n">container</span><span class="w"> </span><span class="n">run</span><span class="w"> </span><span class="n">alpine</span><span class="w"> </span><span class="n">ping</span><span class="w"> </span><span class="mf">8.8.8.8</span>
+<span class="o">[</span><span class="n">nivedv@homelab ~</span><span class="o">]</span><span class="err">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">lsns</span><span class="w"> </span><span class="o">-</span><span class="n">p</span><span class="w"> </span><span class="mi">29413</span>
+
+<span class="w">        </span><span class="n">NS</span><span class="w"> </span><span class="n">TYPE</span><span class="w">   </span><span class="n">NPROCS</span><span class="w">   </span><span class="n">PID</span><span class="w"> </span><span class="k">USER</span><span class="w"> </span><span class="n">COMMAND</span>
+<span class="mi">4026531835</span><span class="w"> </span><span class="n">cgroup</span><span class="w">    </span><span class="mi">299</span><span class="w">     </span><span class="mi">1</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">systemd</span><span class="o">/</span><span class="n">systemd</span><span class="w"> </span><span class="o">--</span><span class="n">switched</span><span class="p">...</span>
+<span class="mi">4026531837</span><span class="w"> </span><span class="k">user</span><span class="w">      </span><span class="mi">278</span><span class="w">     </span><span class="mi">1</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">systemd</span><span class="o">/</span><span class="n">systemd</span><span class="w"> </span><span class="o">--</span><span class="n">switched</span><span class="p">...</span>
+<span class="mi">4026533105</span><span class="w"> </span><span class="n">mnt</span><span class="w">         </span><span class="mi">1</span><span class="w"> </span><span class="mi">29413</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">ping</span><span class="w"> </span><span class="mf">8.8.8.8</span>
+<span class="mi">4026533106</span><span class="w"> </span><span class="n">uts</span><span class="w">         </span><span class="mi">1</span><span class="w"> </span><span class="mi">29413</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">ping</span><span class="w"> </span><span class="mf">8.8.8.8</span>
+<span class="mi">4026533107</span><span class="w"> </span><span class="n">ipc</span><span class="w">         </span><span class="mi">1</span><span class="w"> </span><span class="mi">29413</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">ping</span><span class="w"> </span><span class="mf">8.8.8.8</span>
+<span class="mi">4026533108</span><span class="w"> </span><span class="n">pid</span><span class="w">         </span><span class="mi">1</span><span class="w"> </span><span class="mi">29413</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">ping</span><span class="w"> </span><span class="mf">8.8.8.8</span>
+<span class="mi">4026533110</span><span class="w"> </span><span class="n">net</span><span class="w">         </span><span class="mi">1</span><span class="w"> </span><span class="mi">29413</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">ping</span><span class="w"> </span><span class="mf">8.8.8.8</span>
+</code></pre></div>
+
+<h4>用户</h4>
+<p>用户（<code>user</code>）命名空间将用户和组隔离在一个容器内。这是通过分配给容器与宿主系统有不同的 UID 和 GID 范围来实现的。用户命名空间使软件能够以 root 用户的身份在容器内运行。如果入侵者攻击容器，然后逃逸到宿主机上，他们就只能以受限的非 root 身份运行了。</p>
+<h4>挂载</h4>
+<p>挂载（<code>mnt</code>）命名空间允许容器有自己的文件系统层次结构视图。你可以在 Linux 系统中的 <code>/proc/&lt;PID&gt;/mounts</code> 位置找到每个容器进程的挂载点。</p>
+<h4>UTS</h4>
+<p><ruby> Unix 分时系统 <rt>  Unix Timeharing System </rt></ruby>（UTS）命名空间允许容器拥有一个唯一主机名和域名。当你运行一个容器时，即使使用 <code>- name</code> 标签，也会使用一个随机的 ID 作为主机名。你可以使用 <a href="https://opensource.com/article/19/10/namespaces-and-containers-linux">unshare 命令</a> 来了解一下这个工作原理。</p>
+<div class="highlight"><pre><span></span><code><span class="n">nivedv</span><span class="nv">@homelab</span><span class="w"> </span><span class="o">~</span><span class="err">]$</span><span class="w"> </span><span class="n">docker</span><span class="w"> </span><span class="n">container</span><span class="w"> </span><span class="n">run</span><span class="w"> </span><span class="o">-</span><span class="n">it</span><span class="w"> </span><span class="o">--</span><span class="n">name</span><span class="w"> </span><span class="n">nived</span><span class="w"> </span><span class="n">alpine</span><span class="w"> </span><span class="n">sh</span>
+<span class="o">/</span><span class="w"> </span><span class="err">#</span><span class="w"> </span><span class="n">hostname</span><span class="w"> </span>
+<span class="mi">9</span><span class="n">c9a5edabdd6</span>
+<span class="o">/</span><span class="w"> </span><span class="err">#</span><span class="w"> </span>
+<span class="n">nivedv</span><span class="nv">@homelab</span><span class="w"> </span><span class="o">~</span><span class="err">]$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">unshare</span><span class="w"> </span><span class="o">-</span><span class="n">u</span><span class="w"> </span><span class="n">sh</span>
+<span class="n">sh</span><span class="o">-</span><span class="mf">5.0</span><span class="err">#</span><span class="w"> </span><span class="n">hostname</span><span class="w"> </span><span class="n">isolated</span><span class="p">.</span><span class="n">hostname</span><span class="w"> </span>
+<span class="n">sh</span><span class="o">-</span><span class="mf">5.0</span><span class="err">#</span><span class="w"> </span><span class="n">hostname</span>
+<span class="n">isolated</span><span class="p">.</span><span class="n">hostname</span>
+<span class="n">sh</span><span class="o">-</span><span class="mf">5.0</span><span class="err">#</span><span class="w"> </span>
+<span class="n">sh</span><span class="o">-</span><span class="mf">5.0</span><span class="err">#</span><span class="w"> </span><span class="k">exit</span>
+<span class="k">exit</span>
+<span class="o">[</span><span class="n">nivedv@homelab ~</span><span class="o">]</span><span class="err">$</span><span class="w"> </span><span class="n">hostname</span>
+<span class="n">homelab</span><span class="p">.</span><span class="n">redhat</span><span class="p">.</span><span class="n">com</span>
+</code></pre></div>
+
+<h4>IPC</h4>
+<p><ruby> 进程间通信 <rt>  Inter-Process Communication </rt></ruby>（IPC）命名空间允许不同的容器进程之间，通过访问共享内存或使用共享消息队列来进行通信。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">root@demo /</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">ipcmk</span><span class="w"> </span><span class="o">-</span><span class="n">M</span><span class="w"> </span><span class="mi">10</span><span class="n">M</span>
+<span class="n">Shared</span><span class="w"> </span><span class="n">memory</span><span class="w"> </span><span class="nl">id</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="o">[</span><span class="n">root@demo /</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">ipcmk</span><span class="w"> </span><span class="o">-</span><span class="n">M</span><span class="w"> </span><span class="mi">20</span><span class="n">M</span>
+<span class="n">Shared</span><span class="w"> </span><span class="n">memory</span><span class="w"> </span><span class="nl">id</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span>
+<span class="o">[</span><span class="n">root@demo /</span><span class="o">]</span><span class="err">#</span><span class="w"> </span>
+<span class="o">[</span><span class="n">root@demo /</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">ipcs</span>
+<span class="o">------</span><span class="w"> </span><span class="n">Message</span><span class="w"> </span><span class="n">Queues</span><span class="w"> </span><span class="o">--------</span>
+<span class="k">key</span><span class="w">        </span><span class="n">msqid</span><span class="w">      </span><span class="n">owner</span><span class="w">      </span><span class="n">perms</span><span class="w">      </span><span class="n">used</span><span class="o">-</span><span class="n">bytes</span><span class="w">   </span><span class="n">messages</span><span class="w">    </span>
+<span class="o">------</span><span class="w"> </span><span class="n">Shared</span><span class="w"> </span><span class="n">Memory</span><span class="w"> </span><span class="n">Segments</span><span class="w"> </span><span class="o">--------</span>
+<span class="k">key</span><span class="w">        </span><span class="n">shmid</span><span class="w">      </span><span class="n">owner</span><span class="w">      </span><span class="n">perms</span><span class="w">      </span><span class="n">bytes</span><span class="w">      </span><span class="n">nattch</span><span class="w">     </span><span class="n">status</span><span class="w">      </span>
+<span class="mh">0xd1df416a</span><span class="w"> </span><span class="mi">0</span><span class="w">          </span><span class="n">root</span><span class="w">       </span><span class="mi">644</span><span class="w">        </span><span class="mi">10485760</span><span class="w">   </span><span class="mi">0</span><span class="w">                       </span>
+<span class="mh">0xbd487a9d</span><span class="w"> </span><span class="mi">1</span><span class="w">          </span><span class="n">root</span><span class="w">       </span><span class="mi">644</span><span class="w">        </span><span class="mi">20971520</span><span class="w">   </span><span class="mi">0</span><span class="w">                       </span>
+<span class="o">------</span><span class="w"> </span><span class="n">Semaphore</span><span class="w"> </span><span class="n">Arrays</span><span class="w"> </span><span class="o">--------</span>
+<span class="k">key</span><span class="w">        </span><span class="n">semid</span><span class="w">      </span><span class="n">owner</span><span class="w">      </span><span class="n">perms</span><span class="w">      </span><span class="n">nsems</span>
+</code></pre></div>
+
+<h4>PID</h4>
+<p><ruby> 进程 ID <rt>  Process ID </rt></ruby>（PID）命名空间确保运行在容器内的进程与外部隔离。当你在容器内运行 <code>ps</code> 命令时，由于这个命名空间隔离的存在，你只能看到在容器内运行的进程，而不是在宿主机上。</p>
+<h4>网络</h4>
+<p>网络（<code>net</code>）命名空间允许容器有自己网络接口、IP 地址、路由表、端口号等视图。容器如何能够与外部通信？你创建的所有容器都会被附加到一个特殊的虚拟网络接口上进行通信。</p>
+<div class="highlight"><pre><span></span><code><span class="na">[nivedv@homelab ~]</span><span class="err">$</span><span class="w"> </span><span class="n">docker</span><span class="w"> </span><span class="n">container</span><span class="w"> </span><span class="n">run</span><span class="w"> </span><span class="p">--</span><span class="n">rm</span><span class="w"> </span><span class="p">-</span><span class="n">it</span><span class="w"> </span><span class="n">alpine</span><span class="w"> </span><span class="n">sh</span>
+<span class="p">/</span><span class="w"> </span><span class="err">#</span><span class="w"> </span><span class="n">ping</span><span class="w"> </span><span class="m">8.8</span><span class="p">.</span><span class="m">8.8</span>
+<span class="n">PING</span><span class="w"> </span><span class="m">8.8</span><span class="p">.</span><span class="m">8.8</span><span class="w"> </span><span class="p">(</span><span class="m">8.8</span><span class="p">.</span><span class="m">8.8</span><span class="p">):</span><span class="w"> </span><span class="m">56</span><span class="w"> </span><span class="n">data</span><span class="w"> </span><span class="n">bytes</span>
+<span class="m">64</span><span class="w"> </span><span class="n">bytes</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="m">8.8</span><span class="p">.</span><span class="m">8.8</span><span class="p">:</span><span class="w"> </span><span class="n">seq</span><span class="p">=</span><span class="m">0</span><span class="w"> </span><span class="n">ttl</span><span class="p">=</span><span class="m">119</span><span class="w"> </span><span class="n">time</span><span class="p">=</span><span class="m">21.643</span><span class="w"> </span><span class="n">ms</span>
+<span class="m">64</span><span class="w"> </span><span class="n">bytes</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="m">8.8</span><span class="p">.</span><span class="m">8.8</span><span class="p">:</span><span class="w"> </span><span class="n">seq</span><span class="p">=</span><span class="m">1</span><span class="w"> </span><span class="n">ttl</span><span class="p">=</span><span class="m">119</span><span class="w"> </span><span class="n">time</span><span class="p">=</span><span class="m">20.940</span><span class="w"> </span><span class="n">ms</span>
+<span class="p">^</span><span class="n">C</span>
+<span class="na">[root@homelab ~]</span><span class="err">#</span><span class="w"> </span><span class="n">ip</span><span class="w"> </span><span class="n">link</span><span class="w"> </span><span class="n">show</span><span class="w"> </span><span class="n">veth84ea6fc</span>
+<span class="n">veth84ea6fc@if22</span><span class="p">:</span><span class="w"> </span><span class="p">&lt;</span><span class="n">BROADCAST</span><span class="p">,</span><span class="n">MULTICAST</span><span class="p">,</span><span class="n">UP</span><span class="p">,</span><span class="n">LOWER_UP</span><span class="p">&gt;</span><span class="w"> </span><span class="n">mtu</span><span class="w"> </span><span class="m">1500</span><span class="w"> </span><span class="n">qdisc</span><span class="w"> </span><span class="n">noqueue</span><span class="w"> </span>
+<span class="n">master</span><span class="w"> </span><span class="n">docker0</span><span class="w"> </span><span class="n">state</span><span class="w"> </span><span class="n">UP</span><span class="w"> </span><span class="n">mode</span><span class="w"> </span><span class="n">DEFAULT</span><span class="w"> </span><span class="n">group</span><span class="w"> </span><span class="n">default</span>
+</code></pre></div>
+
+<h3>控制组</h3>
+<p>控制组（<code>cgroup</code>）是组成一个容器的基本模块。控制组会分配和限制容器所使用的资源，如 CPU、内存、网络 I/O 等。容器引擎会自动创建每种类型的控制组文件系统，并在容器运行时为每个容器设置配额。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">root@homelab ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">lscgroup</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="n">docker</span>
+<span class="nl">cpuset</span><span class="p">:</span><span class="o">/</span><span class="n">docker</span>
+<span class="n">net_cls</span><span class="p">,</span><span class="nl">net_prio</span><span class="p">:</span><span class="o">/</span><span class="n">docker</span>
+<span class="n">cpu</span><span class="p">,</span><span class="nl">cpuacct</span><span class="p">:</span><span class="o">/</span><span class="n">docker</span>
+<span class="nl">hugetlb</span><span class="p">:</span><span class="o">/</span><span class="n">docker</span>
+<span class="nl">devices</span><span class="p">:</span><span class="o">/</span><span class="n">docker</span>
+<span class="nl">freezer</span><span class="p">:</span><span class="o">/</span><span class="n">docker</span>
+<span class="nl">memory</span><span class="p">:</span><span class="o">/</span><span class="n">docker</span>
+<span class="nl">perf_event</span><span class="p">:</span><span class="o">/</span><span class="n">docker</span>
+<span class="nl">blkio</span><span class="p">:</span><span class="o">/</span><span class="n">docker</span>
+<span class="nl">pids</span><span class="p">:</span><span class="o">/</span><span class="n">docker</span>
+</code></pre></div>
+
+<p>容器运行时为每个容器设置了控制组值，所有信息都存储在 <code>/sys/fs/cgroup/*/docker</code>。下面的命令将确保容器可以使用 50000 微秒的 CPU 时间片，并将内存的软、硬限制分别设置为 500M 和 1G。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">root@homelab ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">docker</span><span class="w"> </span><span class="n">container</span><span class="w"> </span><span class="n">run</span><span class="w"> </span><span class="o">-</span><span class="n">d</span><span class="w"> </span><span class="o">--</span><span class="n">name</span><span class="w"> </span><span class="n">test</span><span class="o">-</span><span class="n">cgroups</span><span class="w"> </span><span class="o">--</span><span class="n">cpus</span><span class="w"> </span><span class="mf">0.5</span><span class="w"> </span><span class="o">--</span><span class="n">memory</span><span class="w"> </span><span class="mi">1</span><span class="n">G</span><span class="w"> </span><span class="o">--</span><span class="n">memory</span><span class="o">-</span><span class="n">reservation</span><span class="w"> </span><span class="mi">500</span><span class="n">M</span><span class="w"> </span><span class="n">httpd</span>
+<span class="o">[</span><span class="n">root@homelab ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">lscgroup</span><span class="w"> </span><span class="n">cpu</span><span class="p">,</span><span class="nl">cpuacct</span><span class="p">:</span><span class="o">/</span><span class="n">docker</span><span class="w"> </span><span class="nl">memory</span><span class="p">:</span><span class="o">/</span><span class="n">docker</span>
+<span class="n">cpu</span><span class="p">,</span><span class="nl">cpuacct</span><span class="p">:</span><span class="o">/</span><span class="n">docker</span><span class="o">/</span>
+<span class="n">cpu</span><span class="p">,</span><span class="nl">cpuacct</span><span class="p">:</span><span class="o">/</span><span class="n">docker</span><span class="o">/</span><span class="n">c3503ac704dafea3522d3bb82c77faff840018e857a2a7f669065f05c8b2cc84</span>
+<span class="nl">memory</span><span class="p">:</span><span class="o">/</span><span class="n">docker</span><span class="o">/</span>
+<span class="nl">memory</span><span class="p">:</span><span class="o">/</span><span class="n">docker</span><span class="o">/</span><span class="n">c3503ac704dafea3522d3bb82c77faff840018e857a2a7f669065f05c8b2cc84</span>
+<span class="o">[</span><span class="n">root@homelab c....c84</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="n">cpu</span><span class="p">.</span><span class="n">cfs_period_us</span><span class="w"> </span>
+<span class="mi">100000</span>
+<span class="o">[</span><span class="n">root@homelab c....c84</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="n">cpu</span><span class="p">.</span><span class="n">cfs_quota_us</span><span class="w"> </span>
+<span class="mi">50000</span>
+<span class="o">[</span><span class="n">root@homelab c....c84</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="n">memory</span><span class="p">.</span><span class="n">soft_limit_in_bytes</span><span class="w"> </span>
+<span class="mi">524288000</span>
+<span class="o">[</span><span class="n">root@homelab c....c84</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="n">memory</span><span class="p">.</span><span class="n">limit_in_bytes</span><span class="w"> </span>
+<span class="mi">1073741824</span>
+</code></pre></div>
+
+<h3>SECCOMP</h3>
+<p>Seccomp 意思是“<ruby> 安全计算 <rt>  secure computing </rt></ruby>”。它是一项 Linux 功能，用于限制应用程序进行的系统调用的集合。例如，Docker 的默认 seccomp 配置文件禁用了大约 44 个系统调用（总计超过 300 个）。</p>
+<p>这里的思路是让容器只访问所必须的资源。例如，如果你不需要容器改变主机上的时钟时间，你可能不会使用 <code>clock_adjtime</code> 和 <code>clock_settime</code> 系统调用，屏蔽它们是合理的。同样地，你不希望容器改变内核模块，所以没有必要让它们使用 <code>create_module</code>、 <code>delete_module</code> 系统调用。</p>
+<h3>SELinux</h3>
+<p>SELinux 是“<ruby> 安全增强的 Linux <rt>  security-enhanced Linux </rt></ruby>”的缩写。如果你在你的宿主机上运行的是 Red Hat 发行版，那么 SELinux 是默认启用的。SELinux 可以让你限制一个应用程序只能访问它自己的文件，并阻止任何其他进程访问。因此，如果一个应用程序被破坏了，它将限制该应用程序可以影响或控制的文件数量。通过为文件和进程设置上下文环境以及定义策略来实现，这些策略将限制一个进程可以访问和更改的内容。</p>
+<p>容器的 SELinux 策略是由 <code>container-selinux</code> 包定义的。默认情况下，容器以 <code>container_t</code> 标签运行，允许在 <code>/usr</code> 目录下读取（<code>r</code>）和执行（<code>x</code>），并从 <code>/etc</code> 目录下读取大部分内容。标签<code>container_var_lib_t</code> 是与容器有关的文件的通用标签。</p>
+<h3>总结</h3>
+<p>容器是当今 IT 基础设施的一个重要组成部分，也是一项相当有趣的技术。即使你的工作不直接涉及容器化，了解一些基本的容器概念和方法，也能让你体会到它们如何帮助你的组织。容器是建立在开源的 Linux 技术之上的，这使它们变得更加美好。</p>
+<p>本文基于 <a href="https://nivedv.medium.com/container-internals-deep-dive-5cc424957413">techbeatly</a> 的文章，并经授权改编。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

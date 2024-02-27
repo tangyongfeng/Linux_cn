@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 shell 构建多进程的 CommandlineFu 爬虫</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Lujun9972 CommandlineFu 是一个记录脚本片段的网站，每个片段都有对应的功能说明和对应的标签。我想要做的就是尝试用 shell 写一个多进 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/03/shi-yong-shell-gou-jian-duo-jin-cheng-de-commandlinefu-pa-chong.html" rel="bookmark"
+           title="Permalink to 使用 shell 构建多进程的 CommandlineFu 爬虫">使用 shell 构建多进程的 CommandlineFu 爬虫</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-03-11T22:45:00+01:00">
+                Published: Mon 11 March 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Lujun9972</p>
+<p><img alt="" src="/data/attachment/album/201903/11/224237ba1adl8jd18mlady.jpg"></p>
+<p><a href="https://www.commandlinefu.com/">CommandlineFu</a> 是一个记录脚本片段的网站，每个片段都有对应的功能说明和对应的标签。我想要做的就是尝试用 shell 写一个多进程的爬虫把这些代码片段记录在一个 org 文件中。</p>
+<h3>参数定义</h3>
+<p>这个脚本需要能够通过 <code>-n</code> 参数指定并发的爬虫数（默认为 CPU 核的数量），还要能通过 <code>-f</code> 指定保存的 org 文件路径（默认输出到 stdout）。</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env bash</span>
+
+<span class="nv">proc_num</span><span class="o">=</span><span class="k">$(</span>nproc<span class="k">)</span>
+<span class="nv">store_file</span><span class="o">=</span>/dev/stdout
+<span class="k">while</span><span class="w"> </span><span class="nb">getopts</span><span class="w"> </span>:n:f:<span class="w"> </span>OPT<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="nv">$OPT</span><span class="w"> </span><span class="k">in</span>
+<span class="w">        </span>n<span class="p">|</span>+n<span class="o">)</span>
+<span class="w">            </span><span class="nv">proc_num</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$OPTARG</span><span class="s2">&quot;</span>
+<span class="w">            </span><span class="p">;;</span>
+<span class="w">        </span>f<span class="p">|</span>+f<span class="o">)</span>
+<span class="w">            </span><span class="nv">store_file</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$OPTARG</span><span class="s2">&quot;</span>
+<span class="w">            </span><span class="p">;;</span>
+<span class="w">        </span>*<span class="o">)</span>
+<span class="w">            </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;usage: </span><span class="si">${</span><span class="nv">0</span><span class="p">##*/</span><span class="si">}</span><span class="s2"> [+-n proc_num] [+-f org_file} [--]&quot;</span>
+<span class="w">            </span><span class="nb">exit</span><span class="w"> </span><span class="m">2</span>
+<span class="w">    </span><span class="k">esac</span>
+<span class="k">done</span>
+<span class="nb">shift</span><span class="w"> </span><span class="k">$((</span><span class="w"> </span><span class="nv">OPTIND</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="k">))</span>
+<span class="nv">OPTIND</span><span class="o">=</span><span class="m">1</span>
+</code></pre></div>
+
+<h3>解析命令浏览页面</h3>
+<p>我们需要一个进程从 CommandlineFu 的浏览列表中抽取各个脚本片段的 URL，这个进程将抽取出来的 URL 存放到一个队列中，再由各个爬虫进程从进程中读取 URL 并从中抽取出对应的代码片段、描述说明和标签信息写入 org 文件中。</p>
+<p>这里就会遇到三个问题:</p>
+<ol>
+<li>进程之间通讯的队列如何实现</li>
+<li>如何从页面中抽取出 URL、代码片段、描述说明、标签等信息</li>
+<li>多进程对同一文件进行读写时的乱序问题</li>
+</ol>
+<h4>实现进程之间的通讯队列</h4>
+<p>这个问题比较好解决，我们可以通过一个命名管道来实现：</p>
+<div class="highlight"><pre><span></span><code>queue=$(mktemp<span class="w"> </span>--dry-run)
+mkfifo<span class="w"> </span><span class="cp">${</span><span class="n">queue</span><span class="cp">}</span>
+exec<span class="w"> </span>99<span class="err">&lt;</span>&gt;<span class="cp">${</span><span class="n">queue</span><span class="cp">}</span>
+trap<span class="w"> </span>&quot;rm<span class="w"> </span><span class="cp">${</span><span class="n">queue</span><span class="cp">}</span><span class="w"> </span>2&gt;/dev/null&quot;<span class="w"> </span>EXIT
+</code></pre></div>
+
+<h4>从页面中抽取想要的信息</h4>
+<p>从页面中提取元素内容主要有两种方法：</p>
+<ol>
+<li>对于简单的 HTML 页面，我们可以通过 <code>sed</code>、<code>grep</code>、<code>awk</code> 等工具通过正则表达式匹配的方式来从 HTML 中抽取信息。</li>
+<li>通过 <a href="https://www.w3.org/Tools/HTML-XML-utils/">html-xml-utils</a> 工具集中的 <a href="https://www.w3.org/Tools/HTML-XML-utils/man1/hxselect.html">hxselect</a> 来根据 CSS 选择器提取相关元素。</li>
+</ol>
+<p>这里我们使用 html-xml-utils 工具来提取：</p>
+<div class="highlight"><pre><span></span><code><span class="k">function</span><span class="w"> </span><span class="nf">extract_views_from_browse_page</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">[[</span><span class="w"> </span>$#<span class="w"> </span><span class="o">-</span><span class="nb">eq</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">]];</span><span class="n">then</span>
+<span class="w">        </span><span class="s">local</span><span class="w"> </span><span class="s">html=$(cat</span><span class="w"> </span><span class="o">-</span><span class="p">)</span>
+<span class="w">    </span><span class="k">else</span>
+<span class="w">        </span><span class="n">local</span><span class="w"> </span><span class="n">html</span><span class="p">=</span><span class="s">&quot;$*&quot;</span>
+<span class="w">    </span><span class="n">fi</span>
+<span class="w">    </span><span class="nb">echo</span><span class="w"> </span>$<span class="p">{</span><span class="n">html</span><span class="p">}</span><span class="w"> </span><span class="o">|</span><span class="n">hxclean</span><span class="w"> </span><span class="o">|</span><span class="n">hxselect</span><span class="w"> </span><span class="o">-</span><span class="n">c</span><span class="w"> </span><span class="o">-</span><span class="n">s</span><span class="w"> </span><span class="s">&quot;\n&quot;</span><span class="w"> </span><span class="s">&quot;li.list-group-item &gt; div:nth-child(1) &gt; div:nth-child(1) &gt; a:nth-child(1)::attr(href)&quot;</span><span class="o">|</span><span class="n">sed</span><span class="w"> </span><span class="s">&#39;s@^@https://www.commandlinefu.com/@&#39;</span>
+<span class="p">}</span>
+
+<span class="k">function</span><span class="w"> </span><span class="nf">extract_nextpage_from_browse_page</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">[[</span><span class="w"> </span>$#<span class="w"> </span><span class="o">-</span><span class="nb">eq</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">]];</span><span class="n">then</span>
+<span class="w">        </span><span class="s">local</span><span class="w"> </span><span class="s">html=$(cat</span><span class="w"> </span><span class="o">-</span><span class="p">)</span>
+<span class="w">    </span><span class="k">else</span>
+<span class="w">        </span><span class="n">local</span><span class="w"> </span><span class="n">html</span><span class="p">=</span><span class="s">&quot;$*&quot;</span>
+<span class="w">    </span><span class="n">fi</span>
+<span class="w">    </span><span class="nb">echo</span><span class="w"> </span>$<span class="p">{</span><span class="n">html</span><span class="p">}</span><span class="w"> </span><span class="o">|</span><span class="n">hxclean</span><span class="w"> </span><span class="o">|</span><span class="n">hxselect</span><span class="w"> </span><span class="o">-</span><span class="n">s</span><span class="w"> </span><span class="s">&quot;\n&quot;</span><span class="w"> </span><span class="s">&quot;li.list-group-item:nth-child(26) &gt; a&quot;</span><span class="o">|</span><span class="n">grep</span><span class="w"> </span><span class="s">&#39;&gt;&#39;</span><span class="o">|</span><span class="n">hxselect</span><span class="w"> </span><span class="o">-</span><span class="n">c</span><span class="w"> </span><span class="s">&quot;::attr(href)&quot;</span><span class="o">|</span><span class="n">sed</span><span class="w"> </span><span class="s">&#39;s@^@https://www.commandlinefu.com/@&#39;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这里需要注意的是：<code>hxselect</code> 对 HTML 解析时要求遵循严格的 XML 规范，因此在用 <code>hxselect</code> 解析之前需要先经过 <code>hxclean</code> 矫正。另外，为了防止 HTML 过大，超过参数列表长度，这里允许通过管道的形式将 HTML 内容传入。</p>
+<h4>循环读取下一页的浏览页面，不断抽取代码片段 URL 写入队列</h4>
+<p>这里要解决的是上面提到的第三个问题: 多进程对管道进行读写时如何保障不出现乱序? 为此，我们需要在写入文件时对文件加锁，然后在写完文件后对文件解锁，在 shell 中我们可以使用 flock 来对文件进行枷锁。 关于 <code>flock</code> 的使用方法和注意事项，请参见另一篇博文 <a href="https://github.com/lujun9972/lujun9972.github.com/blob/source/linux%E5%92%8C%E5%AE%83%E7%9A%84%E5%B0%8F%E4%BC%99%E4%BC%B4/linux%20shell%20flock%E6%96%87%E4%BB%B6%E9%94%81%E7%9A%84%E7%94%A8%E6%B3%95%E5%8F%8A%E6%B3%A8%E6%84%8F%E4%BA%8B%E9%A1%B9.org">Linux shell flock 文件锁的用法及注意事项</a>。</p>
+<p>由于需要在 <code>flock</code> 子进程中使用函数 <code>extract_views_from_browse_page</code>，因此需要先导出该函数：</p>
+<div class="highlight"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="o">-</span><span class="n">f</span><span class="w"> </span><span class="n">extract_views_from_browse_page</span>
+</code></pre></div>
+
+<p>由于网络问题，使用 <code>curl</code> 获取内容可能失败，需要重复获取：</p>
+<div class="highlight"><pre><span></span><code><span class="k">function</span><span class="w"> </span><span class="nf">fetch</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="n">local</span><span class="w"> </span><span class="n">url</span><span class="p">=</span><span class="s">&quot;$1&quot;</span>
+<span class="w">    </span><span class="k">while</span><span class="w"> </span>!<span class="w"> </span><span class="nb">curl</span><span class="w"> </span><span class="o">-</span><span class="n">L</span><span class="w"> </span>$<span class="p">{</span><span class="n">url</span><span class="p">}</span><span class="w"> </span><span class="mi">2</span><span class="o">&gt;/</span><span class="n">dev</span><span class="o">/</span><span class="nb">null</span><span class="p">;</span><span class="n">do</span>
+<span class="w">        </span><span class="s">:</span>
+<span class="w">    </span><span class="n">done</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><code>collector</code> 用来从种子 URL 中抓取待爬的 URL，写入管道文件中，写操作期间管道文件同时作为锁文件：</p>
+<div class="highlight"><pre><span></span><code><span class="k">function</span><span class="w"> </span><span class="nf">collector</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="n">url</span><span class="p">=</span><span class="s">&quot;$*&quot;</span>
+<span class="w">    </span><span class="k">while</span><span class="w"> </span><span class="p">[[</span><span class="w"> </span><span class="o">-</span><span class="n">n</span><span class="w"> </span>$<span class="p">{</span><span class="n">url</span><span class="p">}</span><span class="w"> </span><span class="p">]];</span><span class="n">do</span>
+<span class="w">        </span><span class="s">echo</span><span class="w"> </span><span class="s">&quot;从$url中抽取&quot;</span>
+<span class="w">        </span><span class="n">html</span><span class="p">=</span>$<span class="p">(</span><span class="n">fetch</span><span class="w"> </span><span class="s">&quot;${url}&quot;</span><span class="p">)</span>
+<span class="w">        </span><span class="nb">echo</span><span class="w"> </span><span class="s">&quot;${html}&quot;</span><span class="o">|</span><span class="n">flock</span><span class="w"> </span>$<span class="p">{</span><span class="n">queue</span><span class="p">}</span><span class="w"> </span><span class="o">-</span><span class="n">c</span><span class="w"> </span><span class="s">&quot;extract_views_from_browse_page &gt;${queue}&quot;</span>
+<span class="w">        </span><span class="n">url</span><span class="p">=</span>$<span class="p">(</span><span class="nb">echo</span><span class="w"> </span><span class="s">&quot;${html}&quot;</span><span class="o">|</span><span class="n">extract_nextpage_from_browse_page</span><span class="p">)</span>
+<span class="w">    </span><span class="n">done</span>
+<span class="w">    </span>#<span class="w"> </span>让后面解析代码片段的爬虫进程能够正常退出，而不至于被阻塞<span class="p">.</span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">((</span><span class="nb">i</span><span class="p">=</span><span class="mi">0</span><span class="p">;</span><span class="nb">i</span><span class="o">&lt;</span>$<span class="p">{</span><span class="n">proc_num</span><span class="p">};</span><span class="nb">i</span><span class="o">++</span><span class="p">))</span>
+<span class="w">    </span><span class="n">do</span>
+<span class="w">        </span><span class="nb">echo</span><span class="w"> </span><span class="o">&gt;</span>$<span class="p">{</span><span class="n">queue</span><span class="p">}</span>
+<span class="w">    </span><span class="n">done</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这里要注意的是， 在找不到下一页 URL 后，我们用一个 for 循环往队列里写入了 <code>=proc_num=</code> 个空行，这一步的目的是让后面解析代码片段的爬虫进程能够正常退出，而不至于被阻塞。</p>
+<h3>解析脚本片段页面</h3>
+<p>我们需要从脚本片段的页面中抽取标题、代码片段、描述说明以及标签信息，同时将这些内容按 org 模式的格式写入存储文件中。</p>
+<div class="highlight"><pre><span></span><code><span class="w">  </span><span class="k">function</span><span class="w"> </span><span class="nf">view_page_handler</span><span class="p">()</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">      </span><span class="n">local</span><span class="w"> </span><span class="n">url</span><span class="p">=</span><span class="s">&quot;$1&quot;</span>
+<span class="w">      </span><span class="n">local</span><span class="w"> </span><span class="n">html</span><span class="p">=</span><span class="s">&quot;$(fetch &quot;</span>$<span class="p">{</span><span class="n">url</span><span class="p">}</span><span class="s">&quot;)&quot;</span>
+<span class="w">      </span>#<span class="w"> </span><span class="n">headline</span>
+<span class="w">      </span><span class="n">local</span><span class="w"> </span><span class="n">headline</span><span class="p">=</span><span class="s">&quot;$(echo ${html} |hxclean |hxselect -c -s &quot;</span><span class="o">\</span><span class="n">n</span><span class="s">&quot; &quot;</span><span class="p">.</span><span class="n">col</span><span class="o">-</span><span class="n">md</span><span class="o">-</span><span class="mi">8</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">h1</span><span class="p">:</span><span class="n">nth</span><span class="o">-</span><span class="n">child</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="s">&quot;)&quot;</span>
+<span class="w">      </span>#<span class="w"> </span><span class="n">command</span>
+<span class="w">      </span><span class="n">local</span><span class="w"> </span><span class="n">command</span><span class="p">=</span><span class="s">&quot;$(echo ${html} |hxclean |hxselect -c -s &quot;</span><span class="o">\</span><span class="n">n</span><span class="s">&quot; &quot;</span><span class="p">.</span><span class="n">col</span><span class="o">-</span><span class="n">md</span><span class="o">-</span><span class="mi">8</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">div</span><span class="p">:</span><span class="n">nth</span><span class="o">-</span><span class="n">child</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">span</span><span class="p">:</span><span class="n">nth</span><span class="o">-</span><span class="n">child</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span><span class="s">&quot;|pandoc -f html -t org)&quot;</span>
+<span class="w">      </span>#<span class="w"> </span><span class="n">description</span>
+<span class="w">      </span><span class="n">local</span><span class="w"> </span><span class="n">description</span><span class="p">=</span><span class="s">&quot;$(echo ${html} |hxclean |hxselect -c -s &quot;</span><span class="o">\</span><span class="n">n</span><span class="s">&quot; &quot;</span><span class="p">.</span><span class="n">col</span><span class="o">-</span><span class="n">md</span><span class="o">-</span><span class="mi">8</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">div</span><span class="p">.</span><span class="n">description</span><span class="s">&quot;|pandoc -f html -t org)&quot;</span>
+<span class="w">      </span>#<span class="w"> </span><span class="n">tags</span>
+<span class="w">      </span><span class="n">local</span><span class="w"> </span><span class="n">tags</span><span class="p">=</span><span class="s">&quot;$(echo ${html} |hxclean |hxselect -c -s &quot;</span><span class="p">:</span><span class="s">&quot; &quot;</span><span class="p">.</span><span class="n">functions</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">a</span><span class="s">&quot;)&quot;</span>
+<span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">[[</span><span class="w"> </span><span class="o">-</span><span class="n">n</span><span class="w"> </span><span class="s">&quot;${tags}&quot;</span><span class="w"> </span><span class="p">]];</span><span class="n">then</span>
+<span class="w">          </span><span class="s">tags=&quot;:${tags}&quot;</span>
+<span class="w">      </span><span class="n">fi</span>
+<span class="w">      </span>#<span class="w"> </span><span class="n">build</span><span class="w"> </span><span class="n">org</span><span class="w"> </span><span class="n">content</span>
+<span class="w">      </span><span class="nb">cat</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="n">EOF</span><span class="w"> </span><span class="o">|</span><span class="n">flock</span><span class="w"> </span><span class="o">-</span><span class="n">x</span><span class="w"> </span>$<span class="p">{</span><span class="n">store_file</span><span class="p">}</span><span class="w"> </span><span class="n">tee</span><span class="w"> </span><span class="o">-</span><span class="n">a</span><span class="w"> </span>$<span class="p">{</span><span class="n">store_file</span><span class="p">}</span>
+<span class="o">*</span><span class="w"> </span>$<span class="p">{</span><span class="n">headline</span><span class="p">}</span><span class="w">      </span>$<span class="p">{</span><span class="n">tags</span><span class="p">}</span>
+
+<span class="p">:</span><span class="n">PROPERTIES</span><span class="p">:</span>
+<span class="p">:</span><span class="n">URL</span><span class="p">:</span><span class="w">       </span>$<span class="p">{</span><span class="n">url</span><span class="p">}</span>
+<span class="p">:</span><span class="n">END</span><span class="p">:</span>
+
+$<span class="p">{</span><span class="n">description</span><span class="p">}</span>
+#<span class="o">+</span><span class="n">begin_src</span><span class="w"> </span><span class="n">shell</span>
+$<span class="p">{</span><span class="n">command</span><span class="p">}</span>
+#<span class="o">+</span><span class="n">end_src</span>
+
+<span class="n">EOF</span>
+<span class="w">  </span><span class="s">}</span>
+</code></pre></div>
+
+<p>这里抽取信息的方法跟上面的类似，不过代码片段和描述说明中可能有一些 HTML 代码，因此通过 <code>pandoc</code> 将之转换为 org 格式的内容。</p>
+<p>注意最后输出 org 模式的格式并写入存储文件中的代码不要写成下面这样：</p>
+<div class="highlight"><pre><span></span><code><span class="w">    </span>flock<span class="w"> </span>-x<span class="w"> </span><span class="cp">${</span><span class="n">store_file</span><span class="cp">}</span><span class="w"> </span>cat<span class="w"> </span><span class="err">&lt;</span><span class="nt">&lt;EOF</span> <span class="nt">&gt;</span><span class="cp">${</span><span class="n">store_file</span><span class="cp">}</span>
+<span class="w">    </span>*<span class="w"> </span><span class="cp">${</span><span class="n">headline</span><span class="cp">}</span>\t\t<span class="w"> </span><span class="cp">${</span><span class="n">tags</span><span class="cp">}</span>
+<span class="w">    </span><span class="cp">${</span><span class="n">description</span><span class="cp">}</span>
+<span class="w">    </span>#+begin_src<span class="w"> </span>shell
+<span class="w">    </span><span class="cp">${</span><span class="n">command</span><span class="cp">}</span>
+<span class="w">    </span>#+end_src
+EOF
+</code></pre></div>
+
+<p>它的意思是使用 <code>flock</code> 对 <code>cat</code> 命令进行加锁，再把 <code>flock</code> 整个命令的结果通过重定向输出到存储文件中，而重定向输出的这个过程是没有加锁的。</p>
+<p><code>spider</code> 从管道文件中读取待抓取的 URL，然后实施真正的抓取动作。</p>
+<div class="highlight"><pre><span></span><code><span class="k">function</span><span class="w"> </span><span class="nf">spider</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">while</span><span class="w"> </span><span class="p">:</span>
+<span class="w">    </span><span class="n">do</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span>!<span class="w"> </span><span class="n">url</span><span class="p">=</span>$<span class="p">(</span><span class="n">flock</span><span class="w"> </span>$<span class="p">{</span><span class="n">queue</span><span class="p">}</span><span class="w"> </span><span class="o">-</span><span class="n">c</span><span class="w"> </span><span class="s">&#39;read -t 1 -u 99 url &amp;&amp; echo $url&#39;</span><span class="p">)</span>
+<span class="w">        </span><span class="n">then</span>
+<span class="w">            </span><span class="n">sleep</span><span class="w"> </span><span class="mi">1</span>
+<span class="w">            </span><span class="k">continue</span>
+<span class="w">        </span><span class="n">fi</span>
+
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">[[</span><span class="w"> </span><span class="o">-</span><span class="n">z</span><span class="w"> </span><span class="s">&quot;$url&quot;</span><span class="w"> </span><span class="p">]];</span><span class="n">then</span>
+<span class="w">            </span><span class="s">break</span>
+<span class="w">        </span><span class="n">fi</span>
+<span class="w">        </span><span class="n">view_page_handler</span><span class="w"> </span>$<span class="p">{</span><span class="n">url</span><span class="p">}</span>
+<span class="w">    </span><span class="n">done</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这里要注意的是，为了防止发生死锁，从管道中读取 URL 时设置了超时，当出现超时就意味着生产进程赶不上消费进程的消费速度,因此消费进程休眠一秒后再次检查队列中的 URL。</p>
+<h3>组合起来</h3>
+<div class="highlight"><pre><span></span><code>collector<span class="w"> </span>&quot;https://www.commandlinefu.com/commands/browse&quot;<span class="w"> </span><span class="err">&amp;</span>
+
+for<span class="w"> </span>((i=0;i<span class="err">&lt;</span><span class="cp">${</span><span class="n">proc_num</span><span class="cp">}</span>;i++))
+do
+<span class="w">    </span>spider<span class="w"> </span><span class="err">&amp;</span>
+done
+wait
+</code></pre></div>
+
+<h3>抓取其他网站</h3>
+<p>通过重新定义 <code>extract_views_from_browse_page</code>、 <code>extract_nextpage_from-browse_page</code>、 <code>view_page_handler</code> 这几个函数， 以及提供一个新的种子 URL，我们可以很容易将其改造成抓取其他网站的多进程爬虫。</p>
+<p>例如通过下面这段代码，就可以用来爬取 <a href="https://xkcd.com/">xkcd</a> 上的漫画：</p>
+<div class="highlight"><pre><span></span><code><span class="k">function</span><span class="w"> </span><span class="nf">extract_views_from_browse_page</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">[[</span><span class="w"> </span>$#<span class="w"> </span><span class="o">-</span><span class="nb">eq</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">]];</span><span class="n">then</span>
+<span class="w">        </span><span class="s">local</span><span class="w"> </span><span class="s">html=$(cat</span><span class="w"> </span><span class="o">-</span><span class="p">)</span>
+<span class="w">    </span><span class="k">else</span>
+<span class="w">        </span><span class="n">local</span><span class="w"> </span><span class="n">html</span><span class="p">=</span><span class="s">&quot;$*&quot;</span>
+<span class="w">    </span><span class="n">fi</span>
+<span class="w">    </span><span class="nb">max</span><span class="p">=</span>$<span class="p">(</span><span class="nb">echo</span><span class="w"> </span><span class="s">&quot;${html}&quot;</span><span class="o">|</span><span class="n">hxclean</span><span class="w"> </span><span class="o">|</span><span class="n">hxselect</span><span class="w"> </span><span class="o">-</span><span class="n">c</span><span class="w"> </span><span class="o">-</span><span class="n">s</span><span class="w"> </span><span class="s">&quot;\n&quot;</span><span class="w"> </span><span class="s">&quot;#middleContainer&quot;</span><span class="o">|</span><span class="n">grep</span><span class="w"> </span><span class="s">&quot;Permanent link to this comic&quot;</span><span class="w"> </span><span class="o">|</span><span class="n">awk</span><span class="w"> </span><span class="o">-</span><span class="n">F</span><span class="w"> </span><span class="s">&quot;/&quot;</span><span class="w"> </span><span class="s">&#39;{print $4}&#39;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">seq</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span>$<span class="p">{</span><span class="nb">max</span><span class="p">}</span><span class="o">|</span><span class="n">sed</span><span class="w"> </span><span class="s">&#39;s@^@https://xkcd.com/@&#39;</span>
+<span class="p">}</span>
+
+<span class="k">function</span><span class="w"> </span><span class="nf">extract_nextpage_from_browse_page</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s">&quot;&quot;</span>
+<span class="p">}</span>
+
+<span class="k">function</span><span class="w"> </span><span class="nf">view_page_handler</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="n">local</span><span class="w"> </span><span class="n">url</span><span class="p">=</span><span class="s">&quot;$1&quot;</span>
+<span class="w">    </span><span class="n">local</span><span class="w"> </span><span class="n">html</span><span class="p">=</span><span class="s">&quot;$(fetch &quot;</span>$<span class="p">{</span><span class="n">url</span><span class="p">}</span><span class="o">/</span><span class="s">&quot;)&quot;</span>
+<span class="w">    </span><span class="n">local</span><span class="w"> </span><span class="nb">image</span><span class="p">=</span><span class="s">&quot;https:$(echo ${html} |hxclean |hxselect -c -s &quot;</span><span class="o">\</span><span class="n">n</span><span class="s">&quot; &quot;</span>#<span class="n">comic</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">img</span><span class="p">:</span><span class="n">nth</span><span class="o">-</span><span class="n">child</span><span class="p">(</span><span class="mi">1</span><span class="p">)::</span><span class="n">attr</span><span class="p">(</span><span class="n">src</span><span class="p">)</span><span class="s">&quot;)&quot;</span>
+<span class="w">    </span><span class="nb">echo</span><span class="w"> </span>$<span class="p">{</span><span class="nb">image</span><span class="p">}</span>
+<span class="w">    </span><span class="n">wget</span><span class="w"> </span>$<span class="p">{</span><span class="nb">image</span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="n">collector</span><span class="w"> </span><span class="s">&quot;https://xkcd.com/&quot;</span><span class="w"> </span><span class="o">&amp;</span>
+</code></pre></div>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

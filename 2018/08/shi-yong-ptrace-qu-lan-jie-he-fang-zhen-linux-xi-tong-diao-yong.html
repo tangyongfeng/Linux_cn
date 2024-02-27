@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 Ptrace 去拦截和仿真 Linux 系统调用</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Chris Wellons ptrace(2)（“ 进程跟踪 process trace ”）系统调用通常都与调试有关。它是类 Unix 系统上通过原生调试器监测被调试进程的主要机制。它 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/08/shi-yong-ptrace-qu-lan-jie-he-fang-zhen-linux-xi-tong-diao-yong.html" rel="bookmark"
+           title="Permalink to 使用 Ptrace 去拦截和仿真 Linux 系统调用">使用 Ptrace 去拦截和仿真 Linux 系统调用</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-08-22T13:38:00+02:00">
+                Published: Wed 22 August 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Chris Wellons</p>
+<p><img alt="" src="/data/attachment/album/201808/22/133757z7896qpkfrdfg25z.jpg"></p>
+<p><code>ptrace(2)</code>（“<ruby> 进程跟踪 <rt>  process trace </rt></ruby>”）系统调用通常都与调试有关。它是类 Unix 系统上通过原生调试器监测被调试进程的主要机制。它也是实现 <a href="https://blog.plover.com/Unix/strace-groff.html">strace</a>（<ruby> 系统调用跟踪 <rt>  system call trace </rt></ruby>）的常见方法。使用 Ptrace，跟踪器可以暂停被跟踪进程，<a href="http://nullprogram.com/blog/2016/09/03/">检查和设置寄存器和内存</a>，监视系统调用，甚至可以<ruby> 拦截 <rp>  （ </rp> <rt>  intercepting </rt> <rp>  ） </rp></ruby>系统调用。</p>
+<p>通过拦截功能，意味着跟踪器可以篡改系统调用参数，篡改系统调用的返回值，甚至阻塞某些系统调用。言外之意就是，一个跟踪器本身完全可以提供系统调用服务。这是件非常有趣的事，因为这意味着<strong>一个跟踪器可以仿真一个完整的外部操作系统</strong>，而这些都是在没有得到内核任何帮助的情况下由 Ptrace 实现的。</p>
+<p>问题是，在同一时间一个进程只能被一个跟踪器附着，因此在那个进程的调试期间，不可能再使用诸如 GDB 这样的工具去仿真一个外部操作系统。另外的问题是，仿真系统调用的开销非常高。</p>
+<p>在本文中，我们将专注于 x86-64 <a href="http://man7.org/linux/man-pages/man2/ptrace.2.html">Linux 的 Ptrace</a>，并将使用一些 Linux 专用的扩展。同时，在本文中，我们将忽略掉一些错误检查，但是完整的源代码仍然会包含这些错误检查。</p>
+<p>本文中的可直接运行的示例代码在这里：<a href="https://github.com/skeeto/ptrace-examples">https://github.com/skeeto/ptrace-examples</a></p>
+<h3>strace</h3>
+<p>在进入到最有趣的部分之前，我们先从回顾 strace 的基本实现来开始。它<a href="http://nullprogram.com/blog/2018/01/17/">不是 DTrace</a>，但 strace 仍然非常有用。</p>
+<p>Ptrace 一直没有被标准化。它的接口在不同的操作系统上非常类似，尤其是在核心功能方面，但是在不同的系统之间仍然存在细微的差别。<code>ptrace(2)</code> 的原型基本上应该像下面这样，但特定的类型可能有些差别。</p>
+<div class="highlight"><pre><span></span><code><span class="nx">long</span><span class="w"> </span><span class="nx">ptrace</span><span class="p">(</span><span class="nx">int</span><span class="w"> </span><span class="nx">request</span><span class="p">,</span><span class="w"> </span><span class="nx">pid_t</span><span class="w"> </span><span class="nx">pid</span><span class="p">,</span><span class="w"> </span><span class="nx">void</span><span class="w"> </span><span class="o">*</span><span class="kd">addr</span><span class="p">,</span><span class="w"> </span><span class="nx">void</span><span class="w"> </span><span class="o">*</span><span class="nx">data</span><span class="p">);</span>
+</code></pre></div>
+
+<p><code>pid</code> 是被跟踪进程的 ID。虽然<strong>同一个时间</strong>只有一个跟踪器可以附着到该进程上，但是一个跟踪器可以附着跟踪多个进程。</p>
+<p><code>request</code> 字段选择一个具体的 Ptrace 函数，比如 <code>ioctl(2)</code> 接口。对于 strace，只需要两个：</p>
+<ul>
+<li><code>PTRACE_TRACEME</code>：这个进程被它的父进程跟踪。</li>
+<li><code>PTRACE_SYSCALL</code>：继续跟踪，但是在下一下系统调用入口或出口时停止。</li>
+<li><code>PTRACE_GETREGS</code>：取得被跟踪进程的寄存器内容副本。</li>
+</ul>
+<p>另外两个字段，<code>addr</code> 和 <code>data</code>，作为所选的 Ptrace 函数的一般参数。一般情况下，可以忽略一个或全部忽略，在那种情况下，传递零个参数。</p>
+<p>strace 接口实质上是前缀到另一个命令之前。</p>
+<div class="highlight"><pre><span></span><code><span class="n">$</span><span class="w"> </span><span class="n">strace</span><span class="w"> </span><span class="p">[</span><span class="n">strace</span><span class="w"> </span><span class="n">options</span><span class="p">]</span><span class="w"> </span><span class="n">program</span><span class="w"> </span><span class="p">[</span><span class="n">arguments</span><span class="p">]</span>
+</code></pre></div>
+
+<p>最小化的 strace 不需要任何选项，因此需要做的第一件事情是 —— 假设它至少有一个参数 —— 在 <code>argv</code> 尾部的 <code>fork(2)</code> 和 <code>exec(2)</code> 被跟踪进程。但是在加载目标程序之前，新的进程将告知内核，目标程序将被它的父进程继续跟踪。被跟踪进程将被这个 Ptrace 系统调用暂停。</p>
+<div class="highlight"><pre><span></span><code><span class="nt">pid_t</span><span class="w"> </span><span class="nt">pid</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nt">fork</span><span class="o">();</span>
+<span class="nt">switch</span><span class="w"> </span><span class="o">(</span><span class="nt">pid</span><span class="o">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="err">case</span><span class="w"> </span><span class="err">-1:</span><span class="w"> </span><span class="c">/* error */</span>
+<span class="w">        </span><span class="err">FATAL(&quot;%s&quot;,</span><span class="w"> </span><span class="err">strerror(errno))</span><span class="p">;</span>
+<span class="w">    </span><span class="err">case</span><span class="w"> </span><span class="err">0:</span><span class="w">  </span><span class="c">/* child */</span>
+<span class="w">        </span><span class="err">ptrace(PTRACE_TRACEME,</span><span class="w"> </span><span class="err">0,</span><span class="w"> </span><span class="err">0,</span><span class="w"> </span><span class="err">0)</span><span class="p">;</span>
+<span class="w">        </span><span class="err">execvp(argv</span><span class="cp">[</span><span class="mi">1</span><span class="cp">]</span><span class="err">,</span><span class="w"> </span><span class="err">argv</span><span class="w"> </span><span class="err">+</span><span class="w"> </span><span class="err">1)</span><span class="p">;</span>
+<span class="w">        </span><span class="err">FATAL(&quot;%s&quot;,</span><span class="w"> </span><span class="err">strerror(errno))</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>父进程使用 <code>wait(2)</code> 等待子进程的 <code>PTRACE_TRACEME</code>，当 <code>wait(2)</code> 返回后，子进程将被暂停。</p>
+<div class="highlight"><pre><span></span><code>waitpid(pid, 0, 0);
+</code></pre></div>
+
+<p>在允许子进程继续运行之前，我们告诉操作系统，被跟踪进程和它的父进程应该一同被终止。一个真实的 strace 实现可能会设置其它的选择，比如： <code>PTRACE_O_TRACEFORK</code>。</p>
+<div class="highlight"><pre><span></span><code>ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_EXITKILL);
+</code></pre></div>
+
+<p>剩余部分就是一个简单的、无休止的循环了，每循环一次捕获一个系统调用。循环体总共有四步：</p>
+<ol>
+<li>等待进程进入下一个系统调用。</li>
+<li>输出系统调用的一个描述。</li>
+<li>允许系统调用去运行并等待返回。</li>
+<li>输出系统调用返回值。</li>
+</ol>
+<p>这个 <code>PTRACE_SYSCALL</code> 请求被用于等待下一个系统调用时开始，和等待那个系统调用退出。和前面一样，需要一个 <code>wait(2)</code> 去等待被跟踪进程进入期望的状态。</p>
+<div class="highlight"><pre><span></span><code>ptrace(PTRACE_SYSCALL, pid, 0, 0);
+waitpid(pid, 0, 0);
+</code></pre></div>
+
+<p>当 <code>wait(2)</code> 返回时，进行了系统调用的线程的寄存器中写入了该系统调用的系统调用号及其参数。尽管如此，<em>操作系统仍然没有为这个系统调用提供服务</em>。这个细节对后续操作很重要。</p>
+<p>接下来的一步是采集系统调用信息。这是各个系统架构不同的地方。在 x86-64 上，<a href="http://nullprogram.com/blog/2015/05/15/">系统调用号是在 <code>rax</code> 中传递的</a>，而参数（最多 6 个）是在 <code>rdi</code>、<code>rsi</code>、<code>rdx</code>、<code>r10</code>、<code>r8</code> 和 <code>r9</code> 中传递的。这些寄存器是由另外的 Ptrace 调用读取的，不过这里再也不需要 <code>wait(2)</code> 了，因为被跟踪进程的状态再也不会发生变化了。</p>
+<div class="highlight"><pre><span></span><code><span class="k">struct</span><span class="w"> </span><span class="n">user_regs_struct</span><span class="w"> </span><span class="n">regs</span><span class="p">;</span>
+<span class="n">ptrace</span><span class="p">(</span><span class="n">PTRACE_GETREGS</span><span class="p">,</span><span class="w"> </span><span class="n">pid</span><span class="p">,</span><span class="w"> </span><span class="mh">0</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">regs</span><span class="p">);</span>
+<span class="n">long</span><span class="w"> </span><span class="n">syscall</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">regs</span><span class="p">.</span><span class="n">orig_rax</span><span class="p">;</span>
+
+<span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;%ld(%ld, %ld, %ld, %ld, %ld, %ld)&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="n">syscall</span><span class="p">,</span>
+<span class="w">        </span><span class="p">(</span><span class="n">long</span><span class="p">)</span><span class="n">regs</span><span class="p">.</span><span class="n">rdi</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="n">long</span><span class="p">)</span><span class="n">regs</span><span class="p">.</span><span class="n">rsi</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="n">long</span><span class="p">)</span><span class="n">regs</span><span class="p">.</span><span class="n">rdx</span><span class="p">,</span>
+<span class="w">        </span><span class="p">(</span><span class="n">long</span><span class="p">)</span><span class="n">regs</span><span class="p">.</span><span class="n">r10</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="n">long</span><span class="p">)</span><span class="n">regs</span><span class="p">.</span><span class="n">r8</span><span class="p">,</span><span class="w">  </span><span class="p">(</span><span class="n">long</span><span class="p">)</span><span class="n">regs</span><span class="p">.</span><span class="n">r9</span><span class="p">);</span>
+</code></pre></div>
+
+<p>这里有一个警告。由于 <a href="https://stackoverflow.com/a/6469069">内核的内部用途</a>，系统调用号是保存在 <code>orig_rax</code> 中而不是 <code>rax</code> 中。而所有的其它系统调用参数都是非常简单明了的。</p>
+<p>接下来是它的另一个 <code>PTRACE_SYSCALL</code> 和 <code>wait(2)</code>，然后是另一个 <code>PTRACE_GETREGS</code> 去获取结果。结果保存在 <code>rax</code> 中。</p>
+<div class="highlight"><pre><span></span><code><span class="n">ptrace</span><span class="p">(</span><span class="n">PTRACE_GETREGS</span><span class="p">,</span><span class="w"> </span><span class="n">pid</span><span class="p">,</span><span class="w"> </span><span class="mh">0</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">regs</span><span class="p">);</span>
+<span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span><span class="w"> </span><span class="s">&quot; = %ld</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="n">long</span><span class="p">)</span><span class="n">regs</span><span class="p">.</span><span class="n">rax</span><span class="p">);</span>
+</code></pre></div>
+
+<p>这个简单程序的输出也是非常粗糙的。这里的系统调用都没有符号名，并且所有的参数都是以数字形式输出，甚至是一个指向缓冲区的指针也是如此。更完整的 strace 输出将能知道哪个参数是指针，并使用 <code>process_vm_readv(2)</code> 从被跟踪进程中读取哪些缓冲区，以便正确输出它们。</p>
+<p>然而，这些仅仅是系统调用拦截的基础工作。</p>
+<h3>系统调用拦截</h3>
+<p>假设我们想使用 Ptrace 去实现如 OpenBSD 的 <a href="https://man.openbsd.org/pledge.2"><code>pledge(2)</code></a> 这样的功能，它是 <a href="http://www.openbsd.org/papers/hackfest2015-pledge/mgp00001.html">一个进程<ruby> 承诺 <rt>  pledge </rt></ruby>只使用一套受限的系统调用</a>。初步想法是，许多程序一般都有一个初始化阶段，这个阶段它们都需要进行许多的系统访问（比如，打开文件、绑定套接字、等等）。初始化完成以后，它们进行一个主循环，在主循环中它们处理输入，并且仅使用所需的、很少的一套系统调用。</p>
+<p>在进入主循环之前，一个进程可以限制它自己只能运行所需要的几个操作。如果 <a href="http://nullprogram.com/blog/2017/07/19/">程序有缺陷</a>，能够通过恶意的输入去利用该缺陷，这个<strong>承诺</strong>可以有效地限制漏洞利用的实现。</p>
+<p>使用与 strace 相同的模型，但不是输出所有的系统调用，我们既能够阻塞某些系统调用，也可以在它的行为异常时简单地终止被跟踪进程。终止它很容易：只需要在跟踪器中调用 <code>exit(2)</code>。因此，它也可以被设置为去终止被跟踪进程。阻塞系统调用和允许子进程继续运行都只是些雕虫小技而已。</p>
+<p>最棘手的部分是<strong>当系统调用启动后没有办法去中断它</strong>。当跟踪器在入口从 <code>wait(2)</code> 中返回到系统调用时，从一开始停止一个系统调用的仅有方式是，终止被跟踪进程。</p>
+<p>然而，我们不仅可以“搞乱”系统调用的参数，也可以改变系统调用号本身，将它修改为一个不存在的系统调用。返回时，在 <code>errno</code> 中 <a href="http://nullprogram.com/blog/2016/09/23/">通过正常的内部信号</a>，我们就可以报告一个“友好的”错误信息。</p>
+<div class="highlight"><pre><span></span><code><span class="k">for</span><span class="w"> </span><span class="p">(;;)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="cm">/* Enter next system call */</span>
+<span class="w">    </span><span class="n">ptrace</span><span class="p">(</span><span class="n">PTRACE_SYSCALL</span><span class="p">,</span><span class="w"> </span><span class="n">pid</span><span class="p">,</span><span class="w"> </span><span class="mh">0</span><span class="p">,</span><span class="w"> </span><span class="mh">0</span><span class="p">);</span>
+<span class="w">    </span><span class="n">waitpid</span><span class="p">(</span><span class="n">pid</span><span class="p">,</span><span class="w"> </span><span class="mh">0</span><span class="p">,</span><span class="w"> </span><span class="mh">0</span><span class="p">);</span>
+
+<span class="w">    </span><span class="k">struct</span><span class="w"> </span><span class="n">user_regs_struct</span><span class="w"> </span><span class="n">regs</span><span class="p">;</span>
+<span class="w">    </span><span class="n">ptrace</span><span class="p">(</span><span class="n">PTRACE_GETREGS</span><span class="p">,</span><span class="w"> </span><span class="n">pid</span><span class="p">,</span><span class="w"> </span><span class="mh">0</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">regs</span><span class="p">);</span>
+
+<span class="w">    </span><span class="cm">/* Is this system call permitted? */</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">blocked</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0</span><span class="p">;</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">is_syscall_blocked</span><span class="p">(</span><span class="n">regs</span><span class="p">.</span><span class="n">orig_rax</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">blocked</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">1</span><span class="p">;</span>
+<span class="w">        </span><span class="n">regs</span><span class="p">.</span><span class="n">orig_rax</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">-</span><span class="mh">1</span><span class="p">;</span><span class="w"> </span><span class="c1">// set to invalid syscall</span>
+<span class="w">        </span><span class="n">ptrace</span><span class="p">(</span><span class="n">PTRACE_SETREGS</span><span class="p">,</span><span class="w"> </span><span class="n">pid</span><span class="p">,</span><span class="w"> </span><span class="mh">0</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">regs</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="cm">/* Run system call and stop on exit */</span>
+<span class="w">    </span><span class="n">ptrace</span><span class="p">(</span><span class="n">PTRACE_SYSCALL</span><span class="p">,</span><span class="w"> </span><span class="n">pid</span><span class="p">,</span><span class="w"> </span><span class="mh">0</span><span class="p">,</span><span class="w"> </span><span class="mh">0</span><span class="p">);</span>
+<span class="w">    </span><span class="n">waitpid</span><span class="p">(</span><span class="n">pid</span><span class="p">,</span><span class="w"> </span><span class="mh">0</span><span class="p">,</span><span class="w"> </span><span class="mh">0</span><span class="p">);</span>
+
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">blocked</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="cm">/* errno = EPERM */</span>
+<span class="w">        </span><span class="n">regs</span><span class="p">.</span><span class="n">rax</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">-</span><span class="n">EPERM</span><span class="p">;</span><span class="w"> </span><span class="c1">// Operation not permitted</span>
+<span class="w">        </span><span class="n">ptrace</span><span class="p">(</span><span class="n">PTRACE_SETREGS</span><span class="p">,</span><span class="w"> </span><span class="n">pid</span><span class="p">,</span><span class="w"> </span><span class="mh">0</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">regs</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这个简单的示例只是检查了系统调用是否违反白名单或黑名单。而它们在这里并没有差别，比如，允许文件以只读而不是读写方式打开（<code>open(2)</code>），允许匿名内存映射但不允许非匿名映射等等。但是这里仍然没有办法去动态撤销被跟踪进程的权限。</p>
+<p>跟踪器与被跟踪进程如何沟通？使用人为的系统调用！</p>
+<h3>创建一个人为的系统调用</h3>
+<p>对于我的这个类似于 pledge 的系统调用 —— 我可以通过调用 <code>xpledge()</code> 将它与真实的系统调用区分开 —— 我设置 10000 作为它的系统调用号，这是一个非常大的数字，真实的系统调用中从来不会用到它。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span>define SYS_xpledge 10000
+</code></pre></div>
+
+<p>为演示需要，我同时构建了一个非常小的接口，这在实践中并不是个好主意。它与 OpenBSD 的 <code>pledge(2)</code> 稍有一些相似之处，它使用了一个 <a href="https://www.tedunangst.com/flak/post/string-interfaces">字符串接口</a>。<em>事实上</em>，设计一个健壮且安全的权限集是非常复杂的，正如在 <code>pledge(2)</code> 的手册页面上所显示的那样。下面是对被跟踪进程的系统调用的完整接口<em>和</em>实现：</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#define _GNU_SOURCE</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;unistd.h&gt;</span>
+
+<span class="cp">#define XPLEDGE_RDWR (1 &lt;&lt; 0)</span>
+<span class="cp">#define XPLEDGE_OPEN (1 &lt;&lt; 1)</span>
+
+<span class="cp">#define xpledge(arg) syscall(SYS_xpledge, arg)</span>
+</code></pre></div>
+
+<p>如果给它传递个参数 0 ，仅允许一些基本的系统调用，包括那些用于去分配内存的系统调用（比如 <code>brk(2)</code>）。 <code>PLEDGE_RDWR</code> 位允许 <a href="http://nullprogram.com/blog/2017/03/01/">各种</a> 读和写的系统调用（<code>read(2)</code>、<code>readv(2)</code>、<code>pread(2)</code>、<code>preadv(2)</code> 等等）。<code>PLEDGE_OPEN</code> 位允许 <code>open(2)</code>。</p>
+<p>为防止发生提升权限的行为，<code>pledge()</code> 会拦截它自己 —— 但这样也防止了权限撤销，以后再细说这方面内容。</p>
+<p>在 xpledge 跟踪器中，我需要去检查这个系统调用：</p>
+<div class="highlight"><pre><span></span><code><span class="o">/*</span><span class="w"> </span><span class="n">Handle</span><span class="w"> </span><span class="n">entrance</span><span class="w"> </span><span class="o">*/</span>
+<span class="k">switch</span><span class="w"> </span><span class="p">(</span><span class="n">regs</span><span class="p">.</span><span class="n">orig_rax</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="n">SYS_pledge</span><span class="p">:</span>
+<span class="w">        </span><span class="n">register_pledge</span><span class="p">(</span><span class="n">regs</span><span class="p">.</span><span class="n">rdi</span><span class="p">);</span>
+<span class="w">        </span><span class="k">break</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>操作系统将返回 <code>ENOSYS</code>（函数尚未实现），因为它不是一个<em>真实的</em>系统调用。为此在退出时我用一个 <code>success(0)</code> 去覆写它。</p>
+<div class="highlight"><pre><span></span><code><span class="o">/*</span><span class="w"> </span><span class="n">Handle</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="o">*/</span>
+<span class="k">switch</span><span class="w"> </span><span class="p">(</span><span class="n">regs</span><span class="p">.</span><span class="n">orig_rax</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="n">SYS_pledge</span><span class="p">:</span>
+<span class="w">        </span><span class="n">ptrace</span><span class="p">(</span><span class="n">PTRACE_POKEUSER</span><span class="p">,</span><span class="w"> </span><span class="n">pid</span><span class="p">,</span><span class="w"> </span><span class="n">RAX</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">8</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span>
+<span class="w">        </span><span class="k">break</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>我写了一小段测试程序去打开 <code>/dev/urandom</code>，做一个读操作，尝试去承诺后，然后试着第二次打开 <code>/dev/urandom</code>，然后确认它能够读取原始的 <code>/dev/urandom</code> 文件描述符。在没有承诺跟踪器的情况下运行，输出如下：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>./example
+fread<span class="o">(</span><span class="s2">&quot;/dev/urandom&quot;</span><span class="o">)[</span><span class="m">1</span><span class="o">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>0xcd2508c7
+XPledging...
+XPledge<span class="w"> </span>failed:<span class="w"> </span>Function<span class="w"> </span>not<span class="w"> </span>implemented
+fread<span class="o">(</span><span class="s2">&quot;/dev/urandom&quot;</span><span class="o">)[</span><span class="m">2</span><span class="o">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>0x0be4a986
+fread<span class="o">(</span><span class="s2">&quot;/dev/urandom&quot;</span><span class="o">)[</span><span class="m">1</span><span class="o">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>0x03147604
+</code></pre></div>
+
+<p>做一个无效的系统调用并不会让应用程序崩溃。它只是失败，这是一个很方便的返回方式。当它在跟踪器下运行时，它的输出如下：</p>
+<div class="highlight"><pre><span></span><code>&gt;$ ./xpledge ./example
+fread(&quot;/dev/urandom&quot;)[1] = 0xb2ac39c4
+XPledging...
+fopen(&quot;/dev/urandom&quot;)[2]: Operation not permitted
+fread(&quot;/dev/urandom&quot;)[1] = 0x2e1bd1c4
+</code></pre></div>
+
+<p>这个承诺很成功，第二次的 <code>fopen(3)</code> 并没有进行，因为跟踪器用一个 <code>EPERM</code> 阻塞了它。</p>
+<p>可以将这种思路进一步发扬光大，比如，改变文件路径或返回一个假的结果。一个跟踪器可以很高效地 chroot 它的被跟踪进程，通过一个系统调用将任意路径传递给 root 从而实现 chroot 路径。它甚至可以对用户进行欺骗，告诉用户它以 root 运行。事实上，这些就是 <a href="https://fakeroot-ng.lingnu.com/index.php/Home_Page">Fakeroot NG</a> 程序所做的事情。</p>
+<h3>仿真外部系统</h3>
+<p>假设你不满足于仅拦截一些系统调用，而是想拦截<em>全部</em>系统调用。你就会有了 <a href="http://nullprogram.com/blog/2017/11/30/">一个打算在其它操作系统上运行的二进制程序</a>，无需系统调用，这个二进制程序可以一直运行。</p>
+<p>使用我在前面所描述的这些内容你就可以管理这一切。跟踪器可以使用一个假冒的东西去代替系统调用号，允许它失败，以及为系统调用本身提供服务。但那样做的效率很低。其实质上是对每个系统调用做了三个上下文切换：一个是在入口上停止，一个是让系统调用总是以失败告终，还有一个是在系统调用退出时停止。</p>
+<p>从 2005 年以后，对于这个技术，PTrace 的 Linux 版本有更高效的操作：<code>PTRACE_SYSEMU</code>。PTrace 仅在每个系统调用发出时停止<em>一次</em>，在允许被跟踪进程继续运行之前，由跟踪器为系统调用提供服务。</p>
+<div class="highlight"><pre><span></span><code><span class="k">for</span><span class="w"> </span><span class="p">(;;)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">ptrace</span><span class="p">(</span><span class="n">PTRACE_SYSEMU</span><span class="p">,</span><span class="w"> </span><span class="n">pid</span><span class="p">,</span><span class="w"> </span><span class="mh">0</span><span class="p">,</span><span class="w"> </span><span class="mh">0</span><span class="p">);</span>
+<span class="w">    </span><span class="n">waitpid</span><span class="p">(</span><span class="n">pid</span><span class="p">,</span><span class="w"> </span><span class="mh">0</span><span class="p">,</span><span class="w"> </span><span class="mh">0</span><span class="p">);</span>
+
+<span class="w">    </span><span class="k">struct</span><span class="w"> </span><span class="n">user_regs_struct</span><span class="w"> </span><span class="n">regs</span><span class="p">;</span>
+<span class="w">    </span><span class="n">ptrace</span><span class="p">(</span><span class="n">PTRACE_GETREGS</span><span class="p">,</span><span class="w"> </span><span class="n">pid</span><span class="p">,</span><span class="w"> </span><span class="mh">0</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">regs</span><span class="p">);</span>
+
+<span class="w">    </span><span class="n">switch</span><span class="w"> </span><span class="p">(</span><span class="n">regs</span><span class="p">.</span><span class="n">orig_rax</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="nl">OS_read:</span>
+<span class="w">            </span><span class="cm">/* ... */</span>
+
+<span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="nl">OS_write:</span>
+<span class="w">            </span><span class="cm">/* ... */</span>
+
+<span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="nl">OS_open:</span>
+<span class="w">            </span><span class="cm">/* ... */</span>
+
+<span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="nl">OS_exit:</span>
+<span class="w">            </span><span class="cm">/* ... */</span>
+
+<span class="w">        </span><span class="cm">/* ... and so on ... */</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>从任何具有（足够）稳定的系统调用 ABI（LCTT 译注：应用程序二进制接口），在相同架构的机器上运行一个二进制程序时，你只需要 <code>PTRACE_SYSEMU</code> 跟踪器、一个加载器（用于代替 <code>exec(2)</code>），和这个二进制程序所需要（或仅运行静态的二进制程序）的任何系统库即可。</p>
+<p>事实上，这听起来有点像一个有趣的周末项目。</p>
+<p><strong>参见</strong></p>
+<ul>
+<li><a href="https://www.youtube.com/watch?v=uXgxMDglxVM">给 Linux 内核克隆实现一个 OpenBSD 承诺</a></li>
+</ul>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

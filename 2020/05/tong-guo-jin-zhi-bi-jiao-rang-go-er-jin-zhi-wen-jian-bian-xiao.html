@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>通过禁止比较让 Go 二进制文件变小</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Dave Cheney 大家常规的认知是，Go 程序中声明的类型越多，生成的二进制文件就越大。这个符合直觉，毕竟如果你写的代码不去 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2020/05/tong-guo-jin-zhi-bi-jiao-rang-go-er-jin-zhi-wen-jian-bian-xiao.html" rel="bookmark"
+           title="Permalink to 通过禁止比较让 Go 二进制文件变小">通过禁止比较让 Go 二进制文件变小</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2020-05-22T10:17:46+02:00">
+                Published: Fri 22 May 2020
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Dave Cheney</p>
+<p><img alt="" src="/data/attachment/album/202005/22/101617lcha7vvqzhh7d565.jpg"></p>
+<p>大家常规的认知是，Go 程序中声明的类型越多，生成的二进制文件就越大。这个符合直觉，毕竟如果你写的代码不去操作定义的类型，那么定义一堆类型就没有意义了。然而，链接器的部分工作就是检测没有被程序引用的函数（比如说它们是一个库的一部分，其中只有一个子集的功能被使用），然后把它们从最后的编译产出中删除。常言道，“类型越多，二进制文件越大”，对于多数 Go 程序还是正确的。</p>
+<p>本文中我会深入讲解在 Go 程序的上下文中“相等”的意义，以及为什么<a href="https://github.com/golang/net/commit/e0ff5e5a1de5b859e2d48a2830d7933b3ab5b75f">像这样</a>的修改会对 Go 程序的大小有重大的影响。</p>
+<h3>定义两个值相等</h3>
+<p>Go 的语法定义了“赋值”和“相等”的概念。赋值是把一个值赋给一个标识符的行为。并不是所有声明的标识符都可以被赋值，如常量和函数就不可以。相等是通过检查标识符的内容是否相等来比较两个标识符的行为。</p>
+<p>作为强类型语言，“相同”的概念从根源上被植入标识符的类型中。两个标识符只有是相同类型的前提下，才有可能相同。除此之外，值的类型定义了如何比较该类型的两个值。</p>
+<p>例如，整型是用算数方法进行比较的。对于指针类型，是否相等是指它们指向的地址是否相同。映射和通道等引用类型，跟指针类似，如果它们指向相同的地址，那么就认为它们是相同的。</p>
+<p>上面都是按位比较相等的例子，即值占用的内存的位模式是相同的，那么这些值就相等。这就是所谓的 memcmp，即内存比较，相等是通过比较两个内存区域的内容来定义的。</p>
+<p>记住这个思路，我过会儿再来谈。</p>
+<h3>结构体相等</h3>
+<p>除了整型、浮点型和指针等标量类型，还有复合类型：结构体。所有的结构体以程序中的顺序被排列在内存中。因此下面这个声明：</p>
+<div class="highlight"><pre><span></span><code><span class="k">type</span><span class="w"> </span><span class="nx">S</span><span class="w"> </span><span class="nx">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">a</span><span class="p">,</span><span class="w"> </span><span class="nx">b</span><span class="p">,</span><span class="w"> </span><span class="nx">c</span><span class="p">,</span><span class="w"> </span><span class="nx">d</span><span class="w"> </span><span class="nx">int64</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>会占用 32 字节的内存空间；<code>a</code> 占用 8 个字节，<code>b</code> 占用 8 个字节，以此类推。Go 的规则说如果结构体所有的字段都是可以比较的，那么结构体的值就是可以比较的。因此如果两个结构体所有的字段都相等，那么它们就相等。</p>
+<div class="highlight"><pre><span></span><code><span class="nv">a</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nv">S</span><span class="p">{</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="p">}</span>
+<span class="nv">b</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nv">S</span><span class="p">{</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="p">}</span>
+<span class="nv">fmt</span><span class="o">.</span><span class="nf">Println</span><span class="p">(</span><span class="nv">a</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nv">b</span><span class="p">)</span><span class="w"> </span><span class="o">//</span><span class="w"> </span>输出<span class="w"> </span><span class="no">true</span>
+</code></pre></div>
+
+<p>编译器在底层使用 memcmp 来比较 <code>a</code> 的 32 个字节和 <code>b</code> 的 32 个字节。</p>
+<h3>填充和对齐</h3>
+<p>然而，在下面的场景下过分简单化的按位比较的策略会返回错误的结果：</p>
+<div class="highlight"><pre><span></span><code><span class="n">type</span><span class="w"> </span><span class="n">S</span><span class="w"> </span><span class="n">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">a</span><span class="w"> </span><span class="n">byte</span>
+<span class="w">    </span><span class="n">b</span><span class="w"> </span><span class="n">uint64</span>
+<span class="w">    </span><span class="n">c</span><span class="w"> </span><span class="n">int16</span>
+<span class="w">    </span><span class="n">d</span><span class="w"> </span><span class="n">uint32</span>
+<span class="p">}</span>
+
+<span class="k">func</span><span class="w"> </span><span class="n">main</span><span class="p">()</span>
+<span class="w">    </span><span class="n">a</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">S</span><span class="p">{</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="p">}</span>
+<span class="w">    </span><span class="n">b</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">S</span><span class="p">{</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="p">}</span>
+<span class="w">    </span><span class="n">fmt</span><span class="o">.</span><span class="n">Println</span><span class="p">(</span><span class="n">a</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">b</span><span class="p">)</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="err">输出</span><span class="w"> </span><span class="bp">true</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>编译代码后，这个比较表达式的结果还是 <code>true</code>，但是编译器在底层并不能仅依赖比较 <code>a</code> 和 <code>b</code> 的位模式，因为结构体有<em>填充</em>。</p>
+<p>Go 要求结构体的所有字段都对齐。2 字节的值必须从偶数地址开始，4 字节的值必须从 4 的倍数地址开始，以此类推 <sup id="fnref1"> <a href="#fn1" rel="footnote">  1 </a></sup>。编译器根据字段的类型和底层平台加入了填充来确保字段都<em>对齐</em>。在填充之后，编译器实际上看到的是 <sup id="fnref2"> <a href="#fn2" rel="footnote">  2 </a></sup>：</p>
+<div class="highlight"><pre><span></span><code><span class="k">type</span><span class="w"> </span><span class="nx">S</span><span class="w"> </span><span class="nx">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">a</span><span class="w"> </span><span class="nx">byte</span>
+<span class="w">    </span><span class="nx">_</span><span class="w"> </span><span class="p">[</span><span class="mi">7</span><span class="p">]</span><span class="nx">byte</span><span class="w"> </span><span class="c1">// 填充</span>
+<span class="w">    </span><span class="nx">b</span><span class="w"> </span><span class="nx">uint64</span>
+<span class="w">    </span><span class="nx">c</span><span class="w"> </span><span class="nx">int16</span>
+<span class="w">    </span><span class="nx">_</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="nx">int16</span><span class="w"> </span><span class="c1">// 填充</span>
+<span class="w">    </span><span class="nx">d</span><span class="w"> </span><span class="nx">uint32</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>填充的存在保证了字段正确对齐，而填充确实占用了内存空间，但是填充字节的内容是未知的。你可能会认为在 Go 中 填充字节都是 0，但实际上并不是 — 填充字节的内容是未定义的。由于它们并不是被定义为某个确定的值，因此按位比较会因为分布在 <code>s</code> 的 24 字节中的 9 个填充字节不一样而返回错误结果。</p>
+<p>Go 通过生成所谓的相等函数来解决这个问题。在这个例子中，<code>s</code> 的相等函数只比较函数中的字段略过填充部分，这样就能正确比较类型 <code>s</code> 的两个值。</p>
+<h3>类型算法</h3>
+<p>呵，这是个很大的设置，说明了为什么，对于 Go 程序中定义的每种类型，编译器都会生成几个支持函数，编译器内部把它们称作类型的算法。如果类型是一个映射的键，那么除相等函数外，编译器还会生成一个哈希函数。为了维持稳定，哈希函数在计算结果时也会像相等函数一样考虑诸如填充等因素。</p>
+<p>凭直觉判断编译器什么时候生成这些函数实际上很难，有时并不明显，（因为）这超出了你的预期，而且链接器也很难消除没有被使用的函数，因为反射往往导致链接器在裁剪类型时变得更保守。</p>
+<h3>通过禁止比较来减小二进制文件的大小</h3>
+<p>现在，我们来解释一下 Brad 的修改。向类型添加一个不可比较的字段 <sup id="fnref3"> <a href="#fn3" rel="footnote">  3 </a></sup>，结构体也随之变成不可比较的，从而强制编译器不再生成相等函数和哈希函数，规避了链接器对那些类型的消除，在实际应用中减小了生成的二进制文件的大小。作为这项技术的一个例子，下面的程序：</p>
+<div class="highlight"><pre><span></span><code><span class="n">package</span> <span class="n">main</span>
+
+<span class="kn">import</span> <span class="s2">&quot;fmt&quot;</span>
+
+<span class="n">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+    <span class="nb">type</span> <span class="n">t</span> <span class="n">struct</span> <span class="p">{</span>
+        <span class="o">//</span> <span class="n">_</span> <span class="p">[</span><span class="mi">0</span><span class="p">][]</span><span class="n">byte</span> <span class="o">//</span> <span class="n">取消注释以阻止比较</span>
+        <span class="n">a</span> <span class="n">byte</span>
+        <span class="n">b</span> <span class="n">uint16</span>
+        <span class="n">c</span> <span class="n">int32</span>
+        <span class="n">d</span> <span class="n">uint64</span>
+    <span class="p">}</span>
+    <span class="n">var</span> <span class="n">a</span> <span class="n">t</span>
+    <span class="n">fmt</span><span class="o">.</span><span class="n">Println</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>用 Go 1.14.2（darwin/amd64）编译，大小从 2174088 降到了 2174056，节省了 32 字节。单独看节省的这 32 字节似乎微不足道，但是考虑到你的程序中每个类型及其传递闭包都会生成相等和哈希函数，还有它们的依赖，这些函数的大小随类型大小和复杂度的不同而不同，禁止它们会大大减小最终的二进制文件的大小，效果比之前使用 <code>-ldflags="-s -w"</code> 还要好。</p>
+<p>最后总结一下，如果你不想把类型定义为可比较的，可以在源码层级强制实现像这样的奇技淫巧，会使生成的二进制文件变小。</p>
+<ol>
+<li>在 32 位平台上 <code>int64</code> 和 <code>unit64</code> 的值可能不是按 8 字节对齐的，因为平台原生的是以 4 字节对齐的。查看 <a href="https://github.com/golang/go/issues/599">议题 599</a> 了解内部详细信息。 <a href="#fnref1">↩</a></li>
+<li>32 位平台会在 <code>a</code> 和 <code>b</code> 的声明中填充 <code>_ [3]byte</code>。参见前一条。 <a href="#fnref2">↩</a></li>
+<li>Brad 使用的是<code>[0]func()</code>，但是所有能限制和禁止比较的类型都可以。添加了一个有 0 个元素的数组的声明后，结构体的大小和对齐不会受影响。 <a href="#fnref3">↩</a></li>
+</ol>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

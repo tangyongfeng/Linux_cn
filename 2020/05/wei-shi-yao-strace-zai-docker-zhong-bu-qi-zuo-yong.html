@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>为什么 strace 在 Docker 中不起作用？</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Julia Evans 在编辑“容器如何工作”爱好者杂志的能力页面时，我想试着解释一下为什么 strace 在 Docker 容器中无法工作。 这里的问题是 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2020/05/wei-shi-yao-strace-zai-docker-zhong-bu-qi-zuo-yong.html" rel="bookmark"
+           title="Permalink to 为什么 strace 在 Docker 中不起作用？">为什么 strace 在 Docker 中不起作用？</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2020-05-26T10:19:27+02:00">
+                Published: Tue 26 May 2020
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Julia Evans</p>
+<p><img alt="" src="/data/attachment/album/202005/26/101909a5wsvedzw5svawa2.jpg"></p>
+<p>在编辑“容器如何工作”爱好者杂志的能力页面时，我想试着解释一下为什么 <code>strace</code> 在 Docker 容器中无法工作。</p>
+<p>这里的问题是 —— 如果我在笔记本上的 Docker 容器中运行 <code>strace</code>，就会出现这种情况：</p>
+<div class="highlight"><pre><span></span><code><span class="n">$</span><span class="w"> </span><span class="n">docker</span><span class="w"> </span><span class="n">run</span><span class="w">  </span><span class="o">-</span><span class="n">it</span><span class="w"> </span><span class="n">ubuntu</span><span class="o">:</span><span class="mf">18.04</span><span class="w"> </span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">bash</span>
+<span class="n">$</span><span class="w"> </span><span class="err">#</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="n">strace</span><span class="w"> </span><span class="p">...</span>
+<span class="p">[</span><span class="n">email</span><span class="w"> </span><span class="n">protected</span><span class="p">]</span><span class="o">:/</span><span class="err">#</span><span class="w"> </span><span class="n">strace</span><span class="w"> </span><span class="n">ls</span>
+<span class="nl">strace</span><span class="p">:</span><span class="w"> </span><span class="n">ptrace</span><span class="p">(</span><span class="n">PTRACE_TRACEME</span><span class="p">,</span><span class="w"> </span><span class="p">...)</span><span class="o">:</span><span class="w"> </span><span class="n">Operation</span><span class="w"> </span><span class="n">not</span><span class="w"> </span><span class="n">permitted</span>
+</code></pre></div>
+
+<p><code>strace</code> 通过 <code>ptrace</code> 系统调用起作用，所以如果不允许使用 <code>ptrace</code>，它肯定是不能工作的! 这个问题很容易解决 —— 在我的机器上，是这样解决的：</p>
+<div class="highlight"><pre><span></span><code>docker run --cap-add=SYS_PTRACE  -it ubuntu:18.04 /bin/bash
+</code></pre></div>
+
+<p>但我对如何修复它不感兴趣，我想知道为什么会出现这种情况。为什么 <code>strace</code> 不能工作，为什么<code>--cap-add=SYS_PTRACE</code> 可以解决这个问题？</p>
+<h3>假设 1：容器进程缺少 <code>CAP_SYS_PTRACE</code> 能力。</h3>
+<p>我一直以为原因是 Docker 容器进程默认不具备 <code>CAP_SYS_PTRACE</code> 能力。这和它可以被 <code>--cap-add=SYS_PTRACE</code> 修复是一回事，是吧？</p>
+<p>但这实际上是不合理的，原因有两个。</p>
+<p>原因 1：在实验中，作为一个普通用户，我可以对我的用户运行的任何进程进行 <code>strace</code>。但如果我检查我的当前进程是否有 <code>CAP_SYS_PTRACE</code> 能力，则没有：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>getpcaps<span class="w"> </span><span class="nv">$$</span>
+Capabilities<span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="sb">`</span><span class="m">11589</span><span class="err">&#39;</span>:<span class="w"> </span><span class="o">=</span>
+</code></pre></div>
+
+<p>原因 2：<code>capabilities</code> 的手册页对 <code>CAP_SYS_PTRACE</code> 的介绍是：</p>
+<div class="highlight"><pre><span></span><code>CAP_SYS_PTRACE
+       <span class="k">*</span> Trace arbitrary processes using ptrace(2);
+</code></pre></div>
+
+<p>所以，<code>CAP_SYS_PTRACE</code> 的作用是让你像 root 一样，可以对任何用户拥有的<strong>任意</strong>进程进行 <code>ptrace</code>。你不需要用它来对一个只是由你的用户拥有的普通进程进行 <code>ptrace</code> 。</p>
+<p>我用第三种方法测试了一下（LCTT 译注：此处可能原文有误） —— 我用 <code>docker run --cap-add=SYS_PTRACE -it ubuntu:18.04 /bin/bash</code> 运行了一个 Docker 容器，去掉了 <code>CAP_SYS_PTRACE</code> 能力，但我仍然可以跟踪进程，虽然我已经没有这个能力了。什么？为什么？！</p>
+<h3>假设 2：关于用户命名空间的事情？</h3>
+<p>我的下一个（没有那么充分的依据的）假设是“嗯，也许这个过程是在不同的用户命名空间里，而 <code>strace</code> 不能工作，因为某种原因而行不通？”这个问题其实并不相关，但这是我观察时想到的。</p>
+<p>容器进程是否在不同的用户命名空间中？嗯，在容器中：</p>
+<div class="highlight"><pre><span></span><code><span class="n">root</span><span class="nv">@e27f594da870</span><span class="err">:</span><span class="o">/</span><span class="err">#</span><span class="w"> </span><span class="n">ls</span><span class="w"> </span><span class="o">/</span><span class="k">proc</span><span class="o">/</span><span class="err">$$</span><span class="o">/</span><span class="n">ns</span><span class="o">/</span><span class="k">user</span><span class="w"> </span><span class="o">-</span><span class="n">l</span>
+<span class="p">...</span><span class="w"> </span><span class="o">/</span><span class="k">proc</span><span class="o">/</span><span class="mi">1</span><span class="o">/</span><span class="n">ns</span><span class="o">/</span><span class="k">user</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="s1">&#39;user:[4026531837]&#39;</span>
+</code></pre></div>
+
+<p>在宿主机：</p>
+<div class="highlight"><pre><span></span><code><span class="n">bork</span><span class="nv">@kiwi</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">ls</span><span class="w"> </span><span class="o">/</span><span class="k">proc</span><span class="o">/</span><span class="err">$$</span><span class="o">/</span><span class="n">ns</span><span class="o">/</span><span class="k">user</span><span class="w"> </span><span class="o">-</span><span class="n">l</span>
+<span class="p">...</span><span class="w"> </span><span class="o">/</span><span class="k">proc</span><span class="o">/</span><span class="mi">12177</span><span class="o">/</span><span class="n">ns</span><span class="o">/</span><span class="k">user</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="s1">&#39;user:[4026531837]&#39;</span>
+</code></pre></div>
+
+<p>因为用户命名空间 ID（<code>4026531837</code>）是相同的，所以容器中的 root 用户和主机上的 root 用户是完全相同的用户。所以，绝对没有理由不能够对它创建的进程进行 <code>strace</code>!</p>
+<p>这个假设并没有什么意义，但我（之前）没有意识到 Docker 容器中的 root 用户和主机上的 root 用户同一个，所以我觉得这很有意思。</p>
+<h3>假设 3：ptrace 系统的调用被 seccomp-bpf 规则阻止了</h3>
+<p>我也知道 Docker 使用 seccomp-bpf 来阻止容器进程运行许多系统调用。而 <code>ptrace</code> 在<a href="https://docs.docker.com/engine/security/seccomp/">被 Docker 默认的 seccomp 配置文件阻止的系统调用列表</a>中!（实际上，允许的系统调用列表是一个白名单，所以只是<code>ptrace</code> 不在默认的白名单中。但得出的结果是一样的。）</p>
+<p>这很容易解释为什么 <code>strace</code> 在 Docker 容器中不能工作 —— 如果 <code>ptrace</code> 系统调用完全被屏蔽了，那么你当然不能调用它，<code>strace</code> 就会失败。</p>
+<p>让我们来验证一下这个假设 —— 如果我们禁用了所有的 seccomp 规则，<code>strace</code> 能在 Docker 容器中工作吗？</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>docker<span class="w"> </span>run<span class="w"> </span>--security-opt<span class="w"> </span><span class="nv">seccomp</span><span class="o">=</span>unconfined<span class="w"> </span>-it<span class="w"> </span>ubuntu:18.04<span class="w">  </span>/bin/bash
+$<span class="w"> </span>strace<span class="w"> </span>ls
+execve<span class="o">(</span><span class="s2">&quot;/bin/ls&quot;</span>,<span class="w"> </span><span class="o">[</span><span class="s2">&quot;ls&quot;</span><span class="o">]</span>,<span class="w"> </span>0x7ffc69a65580<span class="w"> </span>/*<span class="w"> </span><span class="m">8</span><span class="w"> </span>vars<span class="w"> </span>*/<span class="o">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">0</span>
+...<span class="w"> </span>it<span class="w"> </span>works<span class="w"> </span>fine<span class="w"> </span>...
+</code></pre></div>
+
+<p>是的，很好用！很好。谜底解开了，除了…..</p>
+<h3>为什么 <code>--cap-add=SYS_PTRACE</code> 能解决问题？</h3>
+<p>我们还没有解释的是：为什么 <code>--cap-add=SYS_PTRACE</code> 可以解决这个问题？</p>
+<p><code>docker run</code> 的手册页是这样解释 <code>--cap-add</code> 参数的。</p>
+<div class="highlight"><pre><span></span><code>--cap-add=[]
+   Add Linux capabilities
+</code></pre></div>
+
+<p>这跟 seccomp 规则没有任何关系! 怎么回事？</p>
+<h3>我们来看看 Docker 源码</h3>
+<p>当文档没有帮助的时候，唯一要做的就是去看源码。</p>
+<p>Go 语言的好处是，因为依赖关系通常是在一个 Go 仓库里，你可以通过 <code>grep</code> 来找出做某件事的代码在哪里。所以我克隆了 <code>github.com/moby/moby</code>，然后对一些东西进行 <code>grep</code>，比如 <code>rg CAP_SYS_PTRACE</code>。</p>
+<p>我认为是这样的。在 <code>containerd</code> 的 seccomp 实现中，在 <a href="https://github.com/containerd/containerd/blob/4be98fa28b62e8a012491d655a4d6818ef87b080/contrib/seccomp/seccomp_default.go#L527-L537">contrib/seccomp/seccomp/seccomp_default.go</a> 中，有一堆代码来确保如果一个进程有一个能力，那么它也会（通过 seccomp 规则）获得访问权限，以使用与该能力相关的系统调用。</p>
+<div class="highlight"><pre><span></span><code>case &quot;CAP_SYS_PTRACE&quot;:
+       s.Syscalls = append(s.Syscalls, specs.LinuxSyscall{
+           Names: []string{
+               &quot;kcmp&quot;,
+               &quot;process_vm_readv&quot;,
+               &quot;process_vm_writev&quot;,
+               &quot;ptrace&quot;,
+           },
+           Action: specs.ActAllow,
+           Args:   []specs.LinuxSeccompArg{},
+       })
+</code></pre></div>
+
+<p>在 moby 中的 <a href="https://github.com/moby/moby/blob/cc0dfb6e7b22ad120c60a9ce770ea15415767cf9/profiles/seccomp/seccomp.go#L126-L132">profile/seccomp/seccomp.go</a> 和 <a href="https://github.com/moby/moby/blob/master/profiles/seccomp/default.json#L723-L739">默认的 seccomp 配置文件</a>中，也有一些其他的代码似乎做了一些非常类似的事情，所以有可能就是这个代码在做这个事情。</p>
+<p>所以我想我们有答案了!</p>
+<h3>Docker 中的 <code>--cap-add</code> 做的事情比它说的要多</h3>
+<p>结果似乎是，<code>--cap-add</code> 并不像手册页里说的那样，它更像是 <code>--cap-add-and-also-whiteelist-some-extra-system-calls-if-required</code>。这很有意义! 如果你具有一个像 <code>--CAP_SYS_PTRACE</code> 这样的能力，可以让你使用 <code>process_vm_readv</code> 系统调用，但是该系统调用被 seccomp 配置文件阻止了，那对你没有什么帮助！</p>
+<p>所以当你给容器 <code>CAP_SYS_PTRACE</code> 能力时，允许使用 <code>process_vm_readv</code> 和 <code>ptrace</code> 系统调用似乎是一个合理的选择。</p>
+<h3>就这样！</h3>
+<p>这是个有趣的小事情，我认为这是一个很好的例子，说明了容器是由许多移动的部件组成的，它们以不完全显而易见的方式一起工作。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在 Linux 下使用 fstrim 延长 SSD 驱动器的寿命</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Alan Formy-duval 这个新的系统服务可以使你的生活更轻松。 在过去的十年中，固态驱动器（SSD）带来了一种管理存储的新方法。与上一 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2020/03/zai-linux-xia-shi-yong-fstrim-yan-chang-ssd-qu-dong-qi-de-shou-ming.html" rel="bookmark"
+           title="Permalink to 在 Linux 下使用 fstrim 延长 SSD 驱动器的寿命">在 Linux 下使用 fstrim 延长 SSD 驱动器的寿命</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2020-03-04T12:16:58+01:00">
+                Published: Wed 04 March 2020
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Alan Formy-duval</p>
+<blockquote>
+<p>这个新的系统服务可以使你的生活更轻松。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/202003/04/121625sl380ga10g56d33h.jpg"></p>
+<p>在过去的十年中，固态驱动器（SSD）带来了一种管理存储的新方法。与上一代的转盘产品相比，SSD 具有无声、更冷却的操作和更快的接口规格等优点。当然，新技术带来了新的维护和管理方法。SSD 具有一种称为 TRIM 的功能。从本质上讲，这是一种用于回收设备上未使用的块的方法，该块可能先前已被写入，但不再包含有效数据，因此可以返回到通用存储池以供重用。Opensource.com 的 Don Watkins 首先在其 2017 年的文章《<a href="/article-8177-1.html">Linux 固态驱动器：为 SSD 启用 TRIM</a>》中介绍过 TRIM 的内容。</p>
+<p>如果你一直在 Linux 系统上使用此功能，则你可能熟悉下面描述的两种方法。</p>
+<h3>老的方式</h3>
+<h4>丢弃选项</h4>
+<p>我最初使用 <code>mount</code> 命令的 <code>discard</code> 选项启用了此功能。每个文件系统的配置都放在 <code>/etc/fstab</code> 文件中。</p>
+<div class="highlight"><pre><span></span><code># cat /etc/fstab
+UUID=3453g54-6628-2346-8123435f  /home  xfs  defaults,discard   0 0
+</code></pre></div>
+
+<p>丢弃选项可启用自动的在线 TRIM。由于可能会对性能造成负面影响，最近关于这是否是最佳方法一直存在争议。使用此选项会在每次将新数据写入驱动器时启动 TRIM。这可能会引入其他磁盘活动，从而影响存储性能。</p>
+<h4>Cron 作业</h4>
+<p>我从 <code>fstab</code> 文件中删除了丢弃选项。然后，我创建了一个 cron 作业来按计划调用该命令。</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="n">crontab</span><span class="w"> </span><span class="o">-</span><span class="n">l</span>
+<span class="nv">@midnight</span><span class="w"> </span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="k">trim</span>
+</code></pre></div>
+
+<p>这是我最近在 Ubuntu Linux 系统上使用的方法，直到我了解到另一种方法。</p>
+<h3>一个新的 TRIM 服务</h3>
+<p>我最近发现有一个用于 TRIM 的 systemd 服务。Fedora 在版本 30 中将其<a href="https://fedoraproject.org/wiki/Changes/EnableFSTrimTimer" title="Fedora Project WIKI: Changes/EnableFSTrimTimer">引入</a>，尽管默认情况下在版本 30 和 31 中未启用它，但计划在版本 32 中使用它。如果你使用的是 Fedora 工作站 31，并且你想要开始使用此功能，可以非常轻松地启用它。我还将在下面向你展示如何对其进行测试。该服务并非 Fedora 独有的服务。它是否存在及其地位将因发行版而异。</p>
+<h4>测试</h4>
+<p>我喜欢先进行测试，以更好地了解幕后情况。我通过打开终端并发出配置服务调用的命令来执行此操作。</p>
+<div class="highlight"><pre><span></span><code>/usr/sbin/fstrim --fstab --verbose --quiet
+</code></pre></div>
+
+<p><code>fstrim</code> 的 <code>-help</code> 参数将描述这些信息和其他参数。</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">sbin</span><span class="o">/</span><span class="n">fstrim</span><span class="w"> </span><span class="o">--</span><span class="n">help</span>
+
+<span class="k">Usage</span><span class="err">:</span>
+<span class="w"> </span><span class="n">fstrim</span><span class="w"> </span><span class="o">[</span><span class="n">options</span><span class="o">]</span><span class="w"> </span><span class="o">&lt;</span><span class="n">mount</span><span class="w"> </span><span class="n">point</span><span class="o">&gt;</span>
+
+<span class="n">Discard</span><span class="w"> </span><span class="n">unused</span><span class="w"> </span><span class="n">blocks</span><span class="w"> </span><span class="k">on</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">mounted</span><span class="w"> </span><span class="n">filesystem</span><span class="p">.</span>
+
+<span class="nl">Options</span><span class="p">:</span>
+<span class="w"> </span><span class="o">-</span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="o">--</span><span class="ow">all</span><span class="w">           </span><span class="k">trim</span><span class="w"> </span><span class="ow">all</span><span class="w"> </span><span class="n">supported</span><span class="w"> </span><span class="n">mounted</span><span class="w"> </span><span class="n">filesystems</span>
+<span class="w"> </span><span class="o">-</span><span class="n">A</span><span class="p">,</span><span class="w"> </span><span class="o">--</span><span class="n">fstab</span><span class="w">         </span><span class="k">trim</span><span class="w"> </span><span class="ow">all</span><span class="w"> </span><span class="n">supported</span><span class="w"> </span><span class="n">mounted</span><span class="w"> </span><span class="n">filesystems</span><span class="w"> </span><span class="k">from</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">fstab</span>
+<span class="w"> </span><span class="o">-</span><span class="n">o</span><span class="p">,</span><span class="w"> </span><span class="o">--</span><span class="n">offset</span><span class="w"> </span><span class="o">&lt;</span><span class="n">num</span><span class="o">&gt;</span><span class="w">  </span><span class="n">the</span><span class="w"> </span><span class="n">offset</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">bytes</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="k">start</span><span class="w"> </span><span class="n">discarding</span><span class="w"> </span><span class="k">from</span>
+<span class="w"> </span><span class="o">-</span><span class="n">l</span><span class="p">,</span><span class="w"> </span><span class="o">--</span><span class="n">length</span><span class="w"> </span><span class="o">&lt;</span><span class="n">num</span><span class="o">&gt;</span><span class="w">  </span><span class="n">the</span><span class="w"> </span><span class="n">number</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="n">bytes</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">discard</span>
+<span class="w"> </span><span class="o">-</span><span class="n">m</span><span class="p">,</span><span class="w"> </span><span class="o">--</span><span class="n">minimum</span><span class="w"> </span><span class="o">&lt;</span><span class="n">num</span><span class="o">&gt;</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">minimum</span><span class="w"> </span><span class="n">extent</span><span class="w"> </span><span class="n">length</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">discard</span>
+<span class="w"> </span><span class="o">-</span><span class="n">v</span><span class="p">,</span><span class="w"> </span><span class="o">--</span><span class="n">verbose</span><span class="w">       </span><span class="k">print</span><span class="w"> </span><span class="n">number</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="n">discarded</span><span class="w"> </span><span class="n">bytes</span>
+<span class="w">     </span><span class="o">--</span><span class="n">quiet</span><span class="w">         </span><span class="n">suppress</span><span class="w"> </span><span class="n">error</span><span class="w"> </span><span class="n">messages</span>
+<span class="w"> </span><span class="o">-</span><span class="n">n</span><span class="p">,</span><span class="w"> </span><span class="o">--</span><span class="n">dry</span><span class="o">-</span><span class="n">run</span><span class="w">       </span><span class="n">does</span><span class="w"> </span><span class="n">everything</span><span class="p">,</span><span class="w"> </span><span class="n">but</span><span class="w"> </span><span class="k">trim</span>
+
+<span class="w"> </span><span class="o">-</span><span class="n">h</span><span class="p">,</span><span class="w"> </span><span class="o">--</span><span class="n">help</span><span class="w">          </span><span class="n">display</span><span class="w"> </span><span class="n">this</span><span class="w"> </span><span class="n">help</span>
+<span class="w"> </span><span class="o">-</span><span class="n">V</span><span class="p">,</span><span class="w"> </span><span class="c1">--version       display version</span>
+</code></pre></div>
+
+<p>因此，现在我可以看到这个 systemd 服务已配置为在我的 <code>/etc/fstab</code> 文件中的所有受支持的挂载文件系统上运行该修剪操作（<code>-fstab</code>），并打印出所丢弃的字节数（<code>-verbose</code>），但是抑制了任何可能会发生的错误消息（<code>–quiet</code>）。了解这些选项对测试很有帮助。例如，我可以从最安全的方法开始，即空运行。我还将去掉 <code>-quiet</code> 参数，以便确定驱动器设置是否发生任何错误。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>/usr/sbin/fstrim<span class="w"> </span>--fstab<span class="w"> </span>--verbose<span class="w"> </span>--dry-run
+</code></pre></div>
+
+<p>这就会显示 <code>fstrim</code> 命令根据在 <code>/etc/fstab</code> 文件中找到的文件系统要执行的操作。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>/usr/sbin/fstrim<span class="w"> </span>--fstab<span class="w"> </span>--verbose
+</code></pre></div>
+
+<p>现在，这会将 TRIM 操作发送到驱动器，并报告每个文件系统中丢弃的字节数。以下是我最近在新的 NVME SSD 上全新安装 Fedora 之后的示例。</p>
+<div class="highlight"><pre><span></span><code>/home: 291.5 GiB (313011310592 bytes) trimmed on /dev/mapper/wkst-home
+/boot/efi: 579.2 MiB (607301632 bytes) trimmed on /dev/nvme0n1p1
+/boot: 787.5 MiB (825778176 bytes) trimmed on /dev/nvme0n1p2
+/: 60.7 GiB (65154805760 bytes) trimmed on /dev/mapper/wkst-root
+</code></pre></div>
+
+<h4>启用</h4>
+<p>Fedora Linux 实现了一个计划每周运行它的 systemd 计时器服务。要检查其是否存在及当前状态，请运行 <code>systemctl status</code>。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>status<span class="w"> </span>fstrim.timer
+</code></pre></div>
+
+<p>现在，启用该服务。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>fstrim.timer
+</code></pre></div>
+
+<h4>验证</h4>
+<p>然后，你可以通过列出所有计时器来验证该计时器是否已启用。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>list-timers<span class="w"> </span>--all
+</code></pre></div>
+
+<p>会显示出下列行，表明 <code>fstrim.timer</code> 存在。注意，该计时器实际上激活了 <code>fstrim.service</code> 服务。这是实际调用 <code>fstrim</code> 的地方。与时间相关的字段显示为 <code>n/a</code>，因为该服务已启用且尚未运行。</p>
+<div class="highlight"><pre><span></span><code><span class="k">NEXT</span><span class="w">   </span><span class="nv">LEFT</span><span class="w">    </span><span class="nv">LAST</span><span class="w">   </span><span class="nv">PASSED</span><span class="w">   </span><span class="nv">UNIT</span><span class="w">           </span><span class="nv">ACTIVATES</span>
+<span class="nv">n</span><span class="o">/</span><span class="nv">a</span><span class="w">    </span><span class="nv">n</span><span class="o">/</span><span class="nv">a</span><span class="w">     </span><span class="nv">n</span><span class="o">/</span><span class="nv">a</span><span class="w">    </span><span class="nv">n</span><span class="o">/</span><span class="nv">a</span><span class="w">      </span><span class="nv">fstrim</span>.<span class="nv">timer</span><span class="w">   </span><span class="nv">fstrim</span>.<span class="nv">service</span>
+</code></pre></div>
+
+<h3>结论</h3>
+<p>该服务似乎是在驱动器上运行 TRIM 的最佳方法。这比必须创建自己的 crontab 条目来调用 <code>fstrim</code> 命令要简单得多。不必编辑 <code>fstab</code> 文件也更安全。观察固态存储技术的发展很有趣，并且我很高兴看到 Linux 似乎正在朝着标准且安全的方向实现它。</p>
+<p>在本文中，学习了固态驱动器与传统硬盘驱动器有何不同以及它的含义…</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

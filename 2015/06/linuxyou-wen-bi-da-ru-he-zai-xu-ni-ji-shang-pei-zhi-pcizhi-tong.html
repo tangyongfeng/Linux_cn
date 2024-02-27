@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Linux有问必答：如何在虚拟机上配置PCI直通</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Dan Nanni 提问：我想要分配一块物理网卡到用KVM创建的虚拟机上。我打算为这台虚拟机启用网卡的PCI直通。请问，我如何才能在virt-manager里面通过PCI直通方式来增加一个PCI设备到虚拟机上？..." />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/06/linuxyou-wen-bi-da-ru-he-zai-xu-ni-ji-shang-pei-zhi-pcizhi-tong.html" rel="bookmark"
+           title="Permalink to Linux有问必答：如何在虚拟机上配置PCI直通">Linux有问必答：如何在虚拟机上配置PCI直通</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-06-05T07:23:00+02:00">
+                Published: Fri 05 June 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Dan Nanni</p>
+<blockquote>
+<p><strong>提问</strong>：我想要分配一块物理网卡到用KVM创建的虚拟机上。我打算为这台虚拟机启用网卡的PCI直通。请问，我如何才能在virt-manager里面通过PCI直通方式来增加一个PCI设备到虚拟机上？</p>
+</blockquote>
+<p>如今的hypervisor能够高效地在多个虚拟操作系统间共享和模拟硬件资源。然而，虚拟资源共享不是总能使人满意，甚至在虚拟机性能是重点考量时，或者是虚拟机需要硬件DMA的完全控制时，应该避免共享。一项名叫“PCI直通”的技术可以用在一个虚拟机需要独享PCI设备时（例如：网卡、声卡、显卡）。本质上，PCI直通穿透了虚拟层，直接将PCI设备放到虚拟机里，而其他虚拟机则不能访问该设备。</p>
+<h3>开启“PCI直通”的准备</h3>
+<p>如果你想要为一台HVM实例开启PCI直通（例如，一台KVM创建的全虚拟化的虚拟机），你的母系统（包括CPU和主板）必须满足以下条件。如果你的虚拟机是半虚拟化的（由Xen创建），你可以跳过这步。</p>
+<p>为了在 HVM虚拟机上开启PCI直通，系统需要支持<strong>VT-d</strong> (Intel处理器)或者<strong>AMD-Vi</strong> (AMD处理器)。Intel的VT-D（“英特尔直接I/O虚拟化技术”）是适用于最高端的Nehalem处理器和它的后继者（例如，Westmere、Sandy Bridge的，Ivy Bridge）。注意：VT-d和VT-x是两个独立功能。intel/AMD处理器支持VT-D/AMD-VI功能的列表可以<a href="http://wiki.xenproject.org/wiki/VTdHowTo">查看这里</a>。</p>
+<p>在确认你的设备支持VT-d/AMD-Vi后，还有两件事情需要做。首先，确保VT-d/AMD-Vi已经在BIOS中开启。然后，在内核启动过程中开启IOMMU。IOMMU服务，是由VT-d/AMD-Vi提供的，可以保护虚拟机访问的主机内存，同时它也是全虚拟化虚拟机支持PCI直通的前提。</p>
+<p>Intel处理器中，通过将“<strong>intel_iommu=on</strong>传给内核启动参数来开启IOMMU。参看<a href="http://xmodulo.com/add-kernel-boot-parameters-via-grub-linux.html">这篇教程</a>了解如何通过GRUB修改内核启动参数。</p>
+<p>配置完启动参数后，重启电脑。</p>
+<h3>添加PCI设备到虚拟机</h3>
+<p>我们已经完成了开启PCI直通的准备。事实上，只需通过virt-manager就可以给虚拟机分配一个PCI设备。</p>
+<p>打开virt-manager的虚拟机设置，在左边工具栏点击‘增加硬件’按钮。</p>
+<p>选择从PCI设备表一个PCI设备来分配，点击“完成”按钮</p>
+<p><img alt="" src="/data/attachment/album/201506/04/222528xwzph92j59wofzp9.jpg"></p>
+<p>最后，启动实例。这样，主机的PCI设备已经可以由虚拟机直接访问了。</p>
+<h3>常见问题</h3>
+<p>在虚拟机启动时，如果你看见下列任何一个错误，这个错误有可能由于母机VT-d (或 IOMMU)未开启导致。</p>
+<div class="highlight"><pre><span></span><code>Error starting domain: unsupported configuration: host doesn&#39;t support passthrough of host PCI devices
+</code></pre></div>
+
+<p>via: <a href="http://ask.xmodulo.com/pci-passthrough-virt-manager.html">http://ask.xmodulo.com/pci-passthrough-virt-manager.html</a></p>
+<p>作者：<a href="http://ask.xmodulo.com/author/nanni">Dan Nanni</a> 译者：<a href="http://vicyu.net">Vic020/VicYu</a> 校对：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创翻译，<a href="http://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

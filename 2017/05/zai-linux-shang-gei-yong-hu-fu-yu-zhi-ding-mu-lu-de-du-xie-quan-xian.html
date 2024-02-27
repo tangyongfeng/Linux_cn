@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在 Linux 上给用户赋予指定目录的读写权限</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Aaron Kili 在上篇文章中我们向您展示了如何在 Linux 上创建一个共享目录。这次，我们会为您介绍如何将 Linux 上指定目录的读写 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/05/zai-linux-shang-gei-yong-hu-fu-yu-zhi-ding-mu-lu-de-du-xie-quan-xian.html" rel="bookmark"
+           title="Permalink to 在 Linux 上给用户赋予指定目录的读写权限">在 Linux 上给用户赋予指定目录的读写权限</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-05-07T21:04:05+02:00">
+                Published: Sun 07 May 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Aaron Kili</p>
+<p><img alt="" src="/data/attachment/album/201705/07/210335tgwti3xdxidtx6zs.jpg"></p>
+<p>在上篇文章中我们向您展示了如何在 Linux 上<a href="/article-8187-1.html">创建一个共享目录</a>。这次，我们会为您介绍如何将 Linux 上指定目录的读写权限赋予用户。</p>
+<p>有两种方法可以实现这个目标：第一种是 <a href="http://www.tecmint.com/secure-files-using-acls-in-linux/">使用 ACL (访问控制列表)</a> ，第二种是<a href="http://www.tecmint.com/manage-users-and-groups-in-linux/">创建用户组来管理文件权限</a>，下面会一一介绍。</p>
+<p>为了完成这个教程，我们将使用以下设置。</p>
+<ul>
+<li>操作系统：CentOS 7</li>
+<li>测试目录：<code>/shares/project1/reports</code></li>
+<li>测试用户：tecmint</li>
+<li>文件系统类型：ext4</li>
+</ul>
+<p>请确认所有的命令都是使用 root 用户执行的，或者使用 <a href="http://www.tecmint.com/sudoers-configurations-for-setting-sudo-in-linux/">sudo 命令</a> 来享受与之同样的权限。</p>
+<p>让我们开始吧！下面，先使用 <code>mkdir</code> 命令来创建一个名为 <code>reports</code> 的目录。</p>
+<div class="highlight"><pre><span></span><code># mkdir -p /shares/project1/reports                 
+</code></pre></div>
+
+<h3>使用 ACL 来为用户赋予目录的读写权限</h3>
+<p>重要提示：打算使用此方法的话，您需要确认您的 Linux 文件系统类型（如 ext3 和 ext4, NTFS, BTRFS）支持 ACL。</p>
+<p>1、 首先， 依照以下命令在您的系统中<a href="http://www.tecmint.com/find-linux-filesystem-type/">检查当前文件系统类型</a>，并且查看内核是否支持 ACL：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> df -T | awk &#39;{print $1,$2,$NF}&#39; | grep &quot;^/dev&quot;
+<span class="gh">#</span> grep -i acl /boot/config*
+</code></pre></div>
+
+<p>从下方的截屏可以看到，文件系统类型是 <code>ext4</code>，并且从 <code>CONFIG_EXT4_FS_POSIX_ACL=y</code> 选项可以发现内核是支持 <strong>POSIX ACL</strong> 的。</p>
+<p><img alt="Check Filesystem Type and Kernel ACL Support" src="/data/attachment/album/201705/07/210408kyof3u59rttxkjyt.png"></p>
+<p><em>查看文件系统类型和内核的 ACL 支持。</em></p>
+<p>2、 接下来，查看文件系统（分区）挂载时是否使用了 ACL 选项。</p>
+<div class="highlight"><pre><span></span><code># tune2fs -l /dev/sda1 | grep acl
+</code></pre></div>
+
+<p><img alt="Check Partition ACL Support" src="/data/attachment/album/201705/07/210409n7hu77rbk887hb70.png"></p>
+<p><em>查看分区是否支持 ACL</em></p>
+<p>通过上边的输出可以发现，默认的挂载项目中已经对 <strong>ACL</strong> 进行了支持。如果发现结果不如所愿，你可以通过以下命令对指定分区（此例中使用 <code>/dev/sda3</code>）开启 ACL 的支持。</p>
+<div class="highlight"><pre><span></span><code># mount -o remount,acl /
+# tune2fs -o acl /dev/sda3
+</code></pre></div>
+
+<p>3、 现在是时候指定目录 <code>reports</code> 的读写权限分配给名为 <code>tecmint</code> 的用户了，依照以下命令执行即可。</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span><span class="nv">getfacl</span><span class="w"> </span><span class="o">/</span><span class="nv">shares</span><span class="o">/</span><span class="nv">project1</span><span class="o">/</span><span class="nv">reports</span><span class="w">                </span>#<span class="w"> </span><span class="nv">Check</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="nv">default</span><span class="w"> </span><span class="nv">ACL</span><span class="w"> </span><span class="nv">settings</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="nv">directory</span><span class="w"> </span>
+#<span class="w"> </span><span class="nv">setfacl</span><span class="w"> </span><span class="o">-</span><span class="nv">m</span><span class="w"> </span><span class="nv">user</span>:<span class="nv">tecmint</span>:<span class="nv">rw</span><span class="w"> </span><span class="o">/</span><span class="nv">shares</span><span class="o">/</span><span class="nv">project1</span><span class="o">/</span><span class="nv">reports</span><span class="w">     </span>#<span class="w"> </span><span class="nv">Give</span><span class="w"> </span><span class="nv">rw</span><span class="w"> </span><span class="nv">access</span><span class="w"> </span><span class="nv">to</span><span class="w"> </span><span class="nv">user</span><span class="w"> </span><span class="nv">tecmint</span><span class="w"> </span>
+#<span class="w"> </span><span class="nv">getfacl</span><span class="w"> </span><span class="o">/</span><span class="nv">shares</span><span class="o">/</span><span class="nv">project1</span><span class="o">/</span><span class="nv">reports</span><span class="w">                </span>#<span class="w"> </span><span class="nv">Check</span><span class="w"> </span><span class="nv">new</span><span class="w"> </span><span class="nv">ACL</span><span class="w"> </span><span class="nv">settings</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="nv">directory</span>
+</code></pre></div>
+
+<p><img alt="Give Read/Write Access to Directory Using ACL" src="/data/attachment/album/201705/07/210410vjq0cjg7c0wcsx18.png"></p>
+<p><em>通过 ACL 对指定目录赋予读写权限</em></p>
+<p>在上方的截屏中，通过输出结果的第二行 <code>getfacl</code> 命令可以发现，用户 <code>tecmint</code> 已经成功的被赋予了 <code>/shares/project1/reports</code> 目录的读写权限。</p>
+<p>如果想要获取 ACL 列表的更多信息。可以在下方查看我们的其他指南。</p>
+<ol>
+<li><a href="http://www.tecmint.com/set-access-control-lists-acls-and-disk-quotas-for-users-groups/">如何使用访问控制列表（ACL）为用户/组设置磁盘配额</a></li>
+<li><a href="http://www.tecmint.com/rhcsa-exam-configure-acls-and-mount-nfs-samba-shares/">如何使用访问控制列表（ACL）挂载网络共享</a></li>
+</ol>
+<p>现在我们来看看如何使用第二种方法来为目录赋予读写权限。</p>
+<h3>使用用户组来为用户赋予指定目录的读写权限</h3>
+<p>1、 如果用户已经拥有了默认的用户组（通常组名与用户名相同），就可以简单的通过变更文件夹的所属用户组来完成。</p>
+<div class="highlight"><pre><span></span><code># chgrp tecmint /shares/project1/reports
+</code></pre></div>
+
+<p>另外，我们也可以通过以下方法为多个用户（需要赋予指定目录读写权限的）新建一个用户组。如此一来，也就<a href="http://www.tecmint.com/create-a-shared-directory-in-linux/">创建了一个共享目录</a>。</p>
+<div class="highlight"><pre><span></span><code># groupadd projects
+</code></pre></div>
+
+<p>2、 接下来将用户 <code>tecmint</code> 添加到 <code>projects</code> 组中：</p>
+<div class="highlight"><pre><span></span><code># usermod -aG projects tecmint      # add user to projects
+# groups tecmint                # check users groups
+</code></pre></div>
+
+<p>3、 将目录的所属用户组变更为 projects：</p>
+<div class="highlight"><pre><span></span><code># chgrp projects /shares/project1/reports
+</code></pre></div>
+
+<p>4、 现在，给组成员设置读写权限。</p>
+<div class="highlight"><pre><span></span><code># chmod -R 0760 /shares/projects/reports
+# ls  -l /shares/projects/      #check new permissions
+</code></pre></div>
+
+<p>好了！这篇教程中，我们向您展示了如何在 Linux 中将指定目录的读写权限赋予用户。若有疑问，请在留言区中提问。</p>
+<p>（题图：Pixabay，CC0）</p>
+<p>via: <a href="http://www.tecmint.com/give-read-write-access-to-directory-in-linux/">http://www.tecmint.com/give-read-write-access-to-directory-in-linux/</a></p>
+<p>作者：<a href="http://www.tecmint.com/author/aaronkili/">Aaron Kili</a> 译者：<a href="http://www.mr-ping.com">Mr-Ping</a> 校对：<a href="https://github.com/jasminepeng">jasminepeng</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创编译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

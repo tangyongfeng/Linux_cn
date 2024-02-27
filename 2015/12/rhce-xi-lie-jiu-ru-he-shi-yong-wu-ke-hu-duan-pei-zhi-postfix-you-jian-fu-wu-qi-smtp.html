@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>RHCE 系列（九）：如何使用无客户端配置 Postfix 邮件服务器（SMTP）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Gabriel Cánepa 尽管现在有很多在线联系方式，电子邮件仍然是一个人传递信息给远在世界尽头或办公室里坐在我们旁边的另 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/12/rhce-xi-lie-jiu-ru-he-shi-yong-wu-ke-hu-duan-pei-zhi-postfix-you-jian-fu-wu-qi-smtp.html" rel="bookmark"
+           title="Permalink to RHCE 系列（九）：如何使用无客户端配置 Postfix 邮件服务器（SMTP）">RHCE 系列（九）：如何使用无客户端配置 Postfix 邮件服务器（SMTP）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-12-07T10:27:00+01:00">
+                Published: Mon 07 December 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Gabriel Cánepa</p>
+<p>尽管现在有很多在线联系方式，电子邮件仍然是一个人传递信息给远在世界尽头或办公室里坐在我们旁边的另一个人的有效方式。</p>
+<p>下面的图描述了电子邮件从发送者发出直到信息到达接收者收件箱的传递过程。</p>
+<p><img alt="电子邮件如何工作" src="/data/attachment/album/201512/06/213226iooi9z5tjhm5noca.png"></p>
+<p><em>电子邮件如何工作</em></p>
+<p>要实现这一切，背后发生了好多事情。为了使电子邮件信息从一个客户端应用程序（例如 <a href="http://www.tecmint.com/install-thunderbird-17-in-ubuntu-xubuntu-linux-mint/">Thunderbird</a>、Outlook，或者 web 邮件服务，例如 Gmail 或 Yahoo 邮件）投递到一个邮件服务器，并从其投递到目标服务器并最终到目标接收人，每个服务器上都必须有 SMTP（简单邮件传输协议）服务。</p>
+<p>这就是为什么我们要在这篇博文中介绍如何在 RHEL 7 中设置 SMTP 服务器，从本地用户发送的邮件（甚至发送到另外一个本地用户）被<ruby> 转发 <rp>  （ </rp> <rt>  forward </rt> <rp>  ） </rp></ruby>到一个中央邮件服务器以便于访问。</p>
+<p>在这个考试的要求中这称为<ruby> 无客户端 <rp>  （ </rp> <rt>  null-client </rt> <rp>  ） </rp></ruby>安装。</p>
+<p>在我们的测试环境中将包括一个<ruby> 起源 <rp>  （ </rp> <rt>  originating </rt> <rp>  ） </rp></ruby>邮件服务器和一个中央服务器或<ruby> 中继主机 <rp>  （ </rp> <rt>  relayhost </rt> <rp>  ） </rp></ruby>。</p>
+<ul>
+<li>起源邮件服务器： （主机名: box1.mydomain.com / IP: 192.168.0.18）</li>
+<li>中央邮件服务器： （主机名: mail.mydomain.com / IP: 192.168.0.20）</li>
+</ul>
+<p>我们在两台机器中都会使用你熟知的 <code>/etc/hosts</code> 文件做名字解析：</p>
+<div class="highlight"><pre><span></span><code><span class="mf">192.168.0.18</span><span class="w">    </span><span class="n">box1</span><span class="mf">.</span><span class="n">mydomain</span><span class="mf">.</span><span class="n">com</span><span class="w">       </span><span class="n">box1</span>
+<span class="mf">192.168.0.20</span><span class="w">    </span><span class="n">mail</span><span class="mf">.</span><span class="n">mydomain</span><span class="mf">.</span><span class="n">com</span><span class="w">       </span><span class="n">mail</span>
+</code></pre></div>
+
+<h3>安装 Postfix 和防火墙/SELinux 注意事项</h3>
+<p>首先，我们需要（在两台机器上）：</p>
+<p><strong>1、 安装 Postfix：</strong></p>
+<div class="highlight"><pre><span></span><code># yum update &amp;&amp; yum install postfix
+</code></pre></div>
+
+<p><strong>2、 启动服务并启用开机自动启动：</strong></p>
+<div class="highlight"><pre><span></span><code># systemctl start postfix
+# systemctl enable postfix
+</code></pre></div>
+
+<p><strong>3、 允许邮件流量通过防火墙：</strong></p>
+<div class="highlight"><pre><span></span><code># firewall-cmd --permanent --add-service=smtp
+# firewall-cmd --add-service=smtp
+</code></pre></div>
+
+<p><img alt="在防火墙中开通邮件服务器端口" src="/data/attachment/album/201512/06/213227t16qe1egz1q2rhc2.png"></p>
+<p><em>在防火墙中开通邮件服务器端口</em></p>
+<p><strong>4、 在 box1.mydomain.com 配置 Postfix</strong></p>
+<p>Postfix 的主要配置文件是 <code>/etc/postfix/main.cf</code>。这个文件本身是一个很大的文本文件，因为其中包含了解释程序设置的用途的注释。</p>
+<p>为了简洁，我们只显示了需要编辑的行（没错，在起源服务器中你需要保留 <code>mydestination</code> 为空；否则邮件会被存储到本地，而不是我们实际想要发往的中央邮件服务器）：</p>
+<div class="highlight"><pre><span></span><code>myhostname = box1.mydomain.com
+mydomain = mydomain.com
+myorigin = $mydomain
+inet_interfaces = loopback-only
+mydestination =
+relayhost = 192.168.0.20
+</code></pre></div>
+
+<p><strong>5、 在 mail.mydomain.com 配置 Postfix</strong></p>
+<div class="highlight"><pre><span></span><code>myhostname = mail.mydomain.com
+mydomain = mydomain.com
+myorigin = $mydomain
+inet_interfaces = all
+mydestination = $myhostname, localhost.$mydomain, localhost, $mydomain
+mynetworks = 192.168.0.0/24, 127.0.0.0/8
+</code></pre></div>
+
+<p>如果还没有设置，还要设置相关的 SELinux 布尔值永久为真：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> setsebool -P allow_postfix_local_write_mail_spool on
+</code></pre></div>
+
+<p><img alt="设置 Postfix SELinux 权限" src="/data/attachment/album/201512/06/213227nxrgkw0owlwwrwsx.png"></p>
+<p><em>设置 Postfix SELinux 权限</em></p>
+<p>上面的 SELinux 布尔值会允许中央服务器上的 Postfix 可以写入<ruby> 邮件池 <rp>  （ </rp> <rt>  mail spool </rt> <rp>  ） </rp></ruby>。</p>
+<p><strong>6、 在两台机子上重启服务以使更改生效：</strong></p>
+<div class="highlight"><pre><span></span><code># systemctl restart postfix
+</code></pre></div>
+
+<p>如果 Postfix 没有正确启动，你可以使用下面的命令进行错误处理。</p>
+<div class="highlight"><pre><span></span><code># systemctl -l status postfix
+# journalctl -xn
+# postconf -n
+</code></pre></div>
+
+<h3>测试 Postfix 邮件服务</h3>
+<p>要测试邮件服务器，你可以使用任何<ruby> 邮件用户代理 <rp>  （ </rp> <rt>  Mail User Agent，MUA </rt> <rp>  ） </rp></ruby>，例如 <a href="http://www.tecmint.com/send-mail-from-command-line-using-mutt-command/">mail 或 mutt</a>。</p>
+<p>由于我个人喜欢 mutt，我会在 box1 中使用它发送邮件给用户 tecmint，并把现有文件（mailbody.txt）作为信息内容：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="n">mutt</span><span class="w"> </span><span class="o">-</span><span class="n">s</span><span class="w"> </span><span class="ss">&quot;Part 9-RHCE series&quot;</span><span class="w"> </span><span class="n">tecmint</span><span class="nv">@mydomain</span><span class="p">.</span><span class="n">com</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">mailbody</span><span class="p">.</span><span class="n">txt</span>
+</code></pre></div>
+
+<p><img alt="测试 Postfix 邮件服务器" src="/data/attachment/album/201512/06/213228vt5sszfoeyfeeyhn.png"></p>
+<p><em>测试 Postfix 邮件服务器</em></p>
+<p>现在到中央邮件服务器（mail.mydomain.com）以 tecmint 用户登录，并检查是否收到了邮件：</p>
+<div class="highlight"><pre><span></span><code># su – tecmint
+# mail
+</code></pre></div>
+
+<p><img alt="检查 Postfix 邮件服务器发送" src="/data/attachment/album/201512/06/213230ffa1kjcaqwqwco5z.png"></p>
+<p><em>检查 Postfix 邮件服务器发送</em></p>
+<p>如果没有收到邮件，检查 root 用户的邮件池看看是否有警告或者错误提示。你也许需要使用 <a href="http://www.tecmint.com/nmap-command-examples/">nmap 命令</a>确保两台服务器运行了 SMTP 服务，并在中央邮件服务器中打开了 25 号端口：</p>
+<div class="highlight"><pre><span></span><code># nmap -PN 192.168.0.20
+</code></pre></div>
+
+<p><img alt="Postfix 邮件服务器错误处理" src="/data/attachment/album/201512/06/213232c424fzdii52p3q1q.png"></p>
+<p><em>Postfix 邮件服务器错误处理</em></p>
+<h3>总结</h3>
+<p>像本文中展示的设置邮件服务器和中继主机是每个系统管理员必须拥有的重要技能，也代表了理解和安装更复杂情景的基础，例如一个邮件服务器托管有多个邮件账户（甚至成百上千）的域名。</p>
+<p>（请注意这种类型的设置需要有 DNS 服务器，这不在本文的介绍范围），但你可以参照下面的文章设置 DNS 服务器：</p>
+<ul>
+<li><a href="http://www.tecmint.com/setup-dns-cache-server-in-centos-7/">在 CentOS/RHEL 07 上配置仅缓存的 DNS 服务器</a></li>
+</ul>
+<p>最后，我强烈建议你熟悉 Postfix 的配置文件（main.cf）和这个程序的帮助手册。如果有任何疑问，别犹豫，使用下面的评论框或者我们的论坛 Linuxsay.com 告诉我们吧，你会从世界各地的 Linux 高手中获得几乎是及时的帮助。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

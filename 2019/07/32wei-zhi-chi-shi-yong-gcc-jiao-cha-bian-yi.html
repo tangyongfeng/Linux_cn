@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>32位支持：使用 GCC 交叉编译</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Seth Kenlon 使用 GCC 在单一的构建机器上来为不同的 CPU 架构交叉编译二进制文件。 如果你是一个开发者，要创建二进制软件包 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/07/32wei-zhi-chi-shi-yong-gcc-jiao-cha-bian-yi.html" rel="bookmark"
+           title="Permalink to 32位支持：使用 GCC 交叉编译">32位支持：使用 GCC 交叉编译</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-07-19T05:42:57+02:00">
+                Published: Fri 19 July 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Seth Kenlon</p>
+<blockquote>
+<p>使用 GCC 在单一的构建机器上来为不同的 CPU 架构交叉编译二进制文件。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/201907/19/054242nwhludz9tm2lwd8t.jpg"></p>
+<p>如果你是一个开发者，要创建二进制软件包，像一个 RPM、DEB、Flatpak 或 Snap 软件包，你不得不为各种不同的目标平台编译代码。典型的编译目标包括 32 位和 64 位的 x86 和 ARM。你可以在不同的物理或虚拟机器上完成你的构建，但这需要你为何几个系统。作为代替，你可以使用 GNU 编译器集合 (<a href="https://gcc.gnu.org/">GCC</a>) 来交叉编译，在单一的构建机器上为几个不同的 CPU 架构产生二进制文件。</p>
+<p>假设你有一个想要交叉编译的简单的掷骰子游戏。在大多数系统上，以 C 语言来编写这个相对简单，出于给添加现实的复杂性的目的，我以 C++ 语言写这个示例，所以程序依赖于一些不在 C 语言中东西 (具体来说就是 <code>iostream</code>)。</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;iostream&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;cstdlib&gt;</span>
+
+<span class="n">using</span><span class="w"> </span><span class="n">namespace</span><span class="w"> </span><span class="nn">std</span><span class="p">;</span>
+
+<span class="kr">void</span><span class="w"> </span><span class="nf">lose</span><span class="w"> </span><span class="p">(</span><span class="kr">int</span><span class="w"> </span><span class="n">c</span><span class="p">);</span><span class="w"> </span>
+<span class="kr">void</span><span class="w"> </span><span class="nf">win</span><span class="w"> </span><span class="p">(</span><span class="kr">int</span><span class="w"> </span><span class="n">c</span><span class="p">);</span><span class="w"> </span>
+<span class="kr">void</span><span class="w"> </span><span class="nf">draw</span><span class="w"> </span><span class="p">();</span><span class="w"> </span>
+
+<span class="kr">int</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span>
+<span class="w">  </span><span class="kr">int</span><span class="w"> </span><span class="n">i</span><span class="p">;</span><span class="w"> </span>
+<span class="w">    </span><span class="k">do</span><span class="w"> </span><span class="p">{</span><span class="w"> </span>
+<span class="w">      </span><span class="n">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;Pick a number between 1 and 20: </span><span class="se">\n</span><span class="s">&quot;</span><span class="p">;</span><span class="w"> </span>
+<span class="w">      </span><span class="n">cin</span><span class="w"> </span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">i</span><span class="p">;</span><span class="w"> </span>
+<span class="w">      </span><span class="kr">int</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rand</span><span class="w"> </span><span class="p">(</span><span class="w"> </span><span class="p">)</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mi">21</span><span class="p">;</span><span class="w"> </span>
+<span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">i</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">20</span><span class="p">)</span><span class="w"> </span><span class="n">lose</span><span class="w"> </span><span class="p">(</span><span class="n">c</span><span class="p">);</span><span class="w"> </span>
+<span class="w">      </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="p">)</span><span class="w"> </span><span class="n">lose</span><span class="w"> </span><span class="p">(</span><span class="n">c</span><span class="p">);</span><span class="w"> </span>
+<span class="w">      </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">i</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="p">)</span><span class="w"> </span><span class="n">win</span><span class="w"> </span><span class="p">(</span><span class="n">c</span><span class="p">);</span><span class="w"> </span>
+<span class="w">      </span><span class="k">else</span><span class="w"> </span><span class="n">draw</span><span class="w"> </span><span class="p">();</span><span class="w"> </span>
+<span class="w">      </span><span class="p">}</span><span class="w"> </span>
+<span class="w">      </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="mi">1</span><span class="o">==</span><span class="mi">1</span><span class="p">);</span><span class="w"> </span>
+<span class="w">      </span><span class="p">}</span>
+
+<span class="kr">void</span><span class="w"> </span><span class="nf">lose</span><span class="w"> </span><span class="p">(</span><span class="kr">int</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="p">)</span><span class="w"> </span>
+<span class="w">  </span><span class="p">{</span><span class="w"> </span>
+<span class="w">    </span><span class="n">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;You lose! Computer rolled &quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">;</span><span class="w"> </span>
+<span class="w">  </span><span class="p">}</span>
+
+<span class="kr">void</span><span class="w"> </span><span class="nf">win</span><span class="w"> </span><span class="p">(</span><span class="kr">int</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="p">)</span><span class="w"> </span>
+<span class="w">  </span><span class="p">{</span><span class="w"> </span>
+<span class="w">    </span><span class="n">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;You win!! Computer rolled &quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">;</span><span class="w"> </span>
+<span class="w">   </span><span class="p">}</span>
+
+<span class="kr">void</span><span class="w"> </span><span class="nf">draw</span><span class="w"> </span><span class="p">(</span><span class="w"> </span><span class="p">)</span><span class="w"> </span>
+<span class="w">   </span><span class="p">{</span><span class="w"> </span>
+<span class="w">     </span><span class="n">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;What are the chances. You tied. Try again, I dare you! </span><span class="se">\n</span><span class="s">&quot;</span><span class="p">;</span>
+<span class="w">   </span><span class="p">}</span>
+</code></pre></div>
+
+<p>在你的系统上使用 <code>g++</code> 命令编译它：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>g++<span class="w"> </span>dice.cpp<span class="w"> </span>-o<span class="w"> </span>dice
+</code></pre></div>
+
+<p>然后，运行它来确认其工作：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>./dice
+Pick<span class="w"> </span>a<span class="w"> </span>number<span class="w"> </span>between<span class="w"> </span><span class="m">1</span><span class="w"> </span>and<span class="w"> </span><span class="m">20</span>:
+<span class="o">[</span>...<span class="o">]</span>
+</code></pre></div>
+
+<p>你可以使用 <code>file</code> 命令来查看你刚刚生产的二进制文件的类型：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>file<span class="w"> </span>./dice
+dice:<span class="w"> </span>ELF<span class="w"> </span><span class="m">64</span>-bit<span class="w"> </span>LSB<span class="w"> </span>executable,<span class="w"> </span>x86-64,<span class="w"> </span>version<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="o">(</span>SYSV<span class="o">)</span>,<span class="w"> </span>dynamically
+linked<span class="w"> </span><span class="o">(</span>uses<span class="w"> </span>shared<span class="w"> </span>libs<span class="o">)</span>,<span class="w"> </span><span class="k">for</span><span class="w"> </span>GNU/Linux<span class="w"> </span><span class="m">5</span>.1.15,<span class="w"> </span>not<span class="w"> </span>stripped
+</code></pre></div>
+
+<p>同样重要，使用 <code>ldd</code> 命令来查看它链接哪些库：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ldd<span class="w"> </span>dice
+linux-vdso.so.1<span class="w"> </span><span class="o">=</span><span class="p">&amp;</span>gt<span class="p">;</span><span class="w"> </span><span class="o">(</span>0x00007ffe0d1dc000<span class="o">)</span>
+libstdc++.so.6<span class="w"> </span><span class="o">=</span><span class="p">&amp;</span>gt<span class="p">;</span><span class="w"> </span>/usr/lib/x86_64-linux-gnu/libstdc++.so.6
+<span class="o">(</span>0x00007fce8410e000<span class="o">)</span>
+libc.so.6<span class="w"> </span><span class="o">=</span><span class="p">&amp;</span>gt<span class="p">;</span><span class="w"> </span>/lib/x86_64-linux-gnu/libc.so.6
+<span class="o">(</span>0x00007fce83d4f000<span class="o">)</span>
+libm.so.6<span class="w"> </span><span class="o">=</span><span class="p">&amp;</span>gt<span class="p">;</span><span class="w"> </span>/lib/x86_64-linux-gnu/libm.so.6
+<span class="o">(</span>0x00007fce83a52000<span class="o">)</span>
+/lib64/ld-linux-x86-64.so.2<span class="w"> </span><span class="o">(</span>0x00007fce84449000<span class="o">)</span>
+libgcc_s.so.1<span class="w"> </span><span class="o">=</span><span class="p">&amp;</span>gt<span class="p">;</span><span class="w"> </span>/lib/x86_64-linux-gnu/libgcc_s.so.1
+<span class="o">(</span>0x00007fce8383c000<span class="o">)</span>
+</code></pre></div>
+
+<p>从这些测试中，你已经确认了两件事：你刚刚运行的二进制文件是 64 位的，并且它链接的是 64 位库。</p>
+<p>这意味着，为实现 32 位交叉编译，你必需告诉 <code>g++</code> 来：</p>
+<ol>
+<li>产生一个 32 位二进制文件</li>
+<li>链接 32 位库，而不是 64 位库</li>
+</ol>
+<h3>设置你的开发环境</h3>
+<p>为编译成 32 位二进制，你需要在你的系统上安装 32 位的库和头文件。如果你运行一个纯 64 位系统，那么，你没有 32 位的库或头文件，并且需要安装一个基础集合。最起码，你需要 C 和 C++ 库（<code>glibc</code> 和 <code>libstdc++</code>）以及 GCC 库（<code>libgcc</code>）的 32 位版本。这些软件包的名称可能在每个发行版中不同。在 Slackware 系统上，一个纯 64 位的带有 32 位兼容的发行版，可以从 <a href="http://www.slackware.com/%7Ealien/multilib/">Alien BOB</a> 提供的 <code>multilib</code> 软件包中获得。在 Fedora、CentOS 和 RHEL 系统上：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>libstdc++-*.i686
+$<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>glibc-*.i686
+$<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>libgcc.i686
+</code></pre></div>
+
+<p>不管你正在使用什么系统，你同样必须安装一些你工程使用的 32 位库。例如，如果你在你的工程中包含 <code>yaml-cpp</code>，那么，在编译工程前，你必需安装 <code>yaml-cpp</code> 的 32 位版本，或者，在很多系统上，安装 <code>yaml-cpp</code> 的开发软件包（例如，在 Fedora 系统上的 <code>yaml-cpp-devel</code>）。</p>
+<p>一旦这些处理好了，编译是相当简单的：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>g++<span class="w"> </span>-m32<span class="w"> </span>dice.cpp<span class="w"> </span>-o<span class="w"> </span>dice32<span class="w"> </span>-L<span class="w"> </span>/usr/lib<span class="w"> </span>-march<span class="o">=</span>i686
+</code></pre></div>
+
+<p><code>-m32</code> 标志告诉 GCC 以 32 位模式编译。<code>-march=i686</code> 选项进一步定义来使用哪种最优化类型（参考 <code>info gcc</code> 了解选项列表）。<code>-L</code> 标志设置你希望 GCC 来链接的库的路径。对于 32 位来说通常是 <code>/usr/lib</code>，不过，这依赖于你的系统是如何设置的，它可以是 <code>/usr/lib32</code>，甚至 <code>/opt/usr/lib</code>，或者任何你知道存放你的 32 位库的地方。</p>
+<p>在代码编译后，查看你的构建的证据：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>file<span class="w"> </span>./dice32
+dice:<span class="w"> </span>ELF<span class="w"> </span><span class="m">32</span>-bit<span class="w"> </span>LSB<span class="w"> </span>executable,<span class="w"> </span>Intel<span class="w"> </span><span class="m">80386</span>,<span class="w"> </span>version<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="o">(</span>SYSV<span class="o">)</span>,
+dynamically<span class="w"> </span>linked<span class="w"> </span><span class="o">(</span>uses<span class="w"> </span>shared<span class="w"> </span>libs<span class="o">)</span><span class="w"> </span><span class="o">[</span>...<span class="o">]</span>
+</code></pre></div>
+
+<p>接着，当然， <code>ldd ./dice32</code> 也会指向你的 32 位库。</p>
+<h3>不同的架构</h3>
+<p>在 64 位相同的处理器家族上允许 GCC 做出很多关于如何编译代码的假设来编译 32 位软件。如果你需要为完全不同的处理器编译，你必需安装适当的交叉构建实用程序。安装哪种实用程序取决于你正在编译的东西。这个过程比为相同的 CPU 家族编译更复杂一点。</p>
+<p>当你为相同处理器家族交叉编译时，你可以期待找到与 32 位库集的相同的 64 位库集，因为你的 Linux 发行版是同时维护这二者的。当为一个完全不同的架构编译时，你可能不得不穷追你的代码所需要的库。你需要的版本可能不在你的发行版的存储库中，因为你的发行版可能不为你的目标系统提供软件包，或者它不在容易到达的位置提供所有的软件包。如果你正在编译的代码是你写的，那么你可能非常清楚它的依赖关系是什么，并清楚在哪里找到它们。如果代码是你下载的，并需要编译，那么你可能不熟悉它的要求。在这种情况下，研究正确编译代码需要什么（它们通常被列在 <code>README</code> 或 <code>INSTALL</code> 文件中，当然也出现在源文件代码自身之中），然后收集需要的组件。</p>
+<p>例如，如果你需要为 ARM 编译 C 代码，你必须首先在 Fedora 或 RHEL 上安装 <code>gcc-arm-linux-gnu</code>（32 位）或 <code>gcc-aarch64-linux-gnu</code>（64 位）；或者，在 Ubuntu 上安装 <code>arm-linux-gnueabi-gcc</code> 和 <code>binutils-arm-linux-gnueabi</code>。这提供你需要用来构建（至少）一个简单的 C 程序的命令和库。此外，你需要你的代码使用的任何库。你可以在惯常的位置（大多数系统上在 <code>/usr/include</code>）放置头文件，或者，你可以放置它们在一个你选择的目录，并使用 <code>-I</code> 选项将 GCC 指向它。</p>
+<p>当编译时，不使用标准的 <code>gcc</code> 或 <code>g++</code> 命令。作为代替，使用你安装的 GCC 实用程序。例如：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>arm-linux-gnu-g++<span class="w"> </span>dice.cpp<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-I/home/seth/src/crossbuild/arm/cpp<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-o<span class="w"> </span>armdice.bin
+</code></pre></div>
+
+<p>验证你构建的内容：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>file<span class="w"> </span>armdice.bin
+armdice.bin:<span class="w"> </span>ELF<span class="w"> </span><span class="m">32</span>-bit<span class="w"> </span>LSB<span class="w"> </span>executable,<span class="w"> </span>ARM,<span class="w"> </span>EABI5<span class="w"> </span>version<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="o">(</span>SYSV<span class="o">)</span><span class="w"> </span><span class="o">[</span>...<span class="o">]</span>
+</code></pre></div>
+
+<h3>库和可交付结果</h3>
+<p>这是一个如何使用交叉编译的简单的示例。在真实的生活中，你的源文件代码可能产生的不止于一个二进制文件。虽然你可以手动管理，在这里手动管理可能不是好的正当理由。在我接下来的文章中，我将说明 GNU 自动工具，GNU 自动工具做了使你的代码可移植的大部分工作。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

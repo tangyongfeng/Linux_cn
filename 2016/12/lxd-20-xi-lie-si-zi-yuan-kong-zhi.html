@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>LXD 2.0 系列（四）：资源控制</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Stéphane Graber 这是 LXD 2.0 系列介绍文章的第四篇。 LXD 入门 安装与配置 你的第一个 LXD 容器 资源控制 镜像管理 远程主机及容器迁 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2016/12/lxd-20-xi-lie-si-zi-yuan-kong-zhi.html" rel="bookmark"
+           title="Permalink to LXD 2.0 系列（四）：资源控制">LXD 2.0 系列（四）：资源控制</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2016-12-29T08:47:00+01:00">
+                Published: Thu 29 December 2016
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Stéphane Graber</p>
+<p>这是 LXD 2.0 系列介绍文章的第四篇。</p>
+<ol>
+<li><a href="/article-7618-1.html">LXD 入门</a></li>
+<li><a href="/article-7687-1.html">安装与配置</a></li>
+<li><a href="/article-7706-1.html">你的第一个 LXD 容器</a></li>
+<li><a href="/article-8072-1.html">资源控制</a></li>
+<li><a href="/article-8107-1.html">镜像管理</a></li>
+<li><a href="/article-8169-1.html">远程主机及容器迁移</a></li>
+<li><a href="/article-8235-1.html">LXD 中的 Docker</a></li>
+<li><a href="/article-8257-1.html">LXD 中的 LXD</a></li>
+<li><a href="/article-8263-1.html">实时迁移</a></li>
+<li><a href="/article-8273-1.html">LXD 和 Juju</a></li>
+<li><a href="/article-8274-1.html">LXD 和 OpenStack</a></li>
+<li><a href="/article-8282-1.html">调试，及给 LXD 做贡献</a></li>
+</ol>
+<p><img alt="" src="/data/attachment/album/201612/28/234845wltalollpalno5rl.jpg"></p>
+<p>因为 LXD 容器管理有很多命令，因此这篇文章会很长。 如果你想要快速地浏览这些相同的命令，你可以<a href="https://github.com/lxc/lxd/blob/master/doc/configuration.md">尝试下我们的在线演示</a>！</p>
+<h3>可用资源限制</h3>
+<p>LXD 提供了各种资源限制。其中一些与容器本身相关，如内存配额、CPU 限制和 I/O 优先级。而另外一些则与特定设备相关，如 I/O 带宽或磁盘用量限制。</p>
+<p>与所有 LXD 配置一样，资源限制可以在容器运行时动态更改。某些可能无法启用，例如，如果设置的内存值小于当前内存用量，但 LXD 将会试着设置并且报告失败。</p>
+<p>所有的限制也可以通过配置文件继承，在这种情况下每个受影响的容器将受到该限制的约束。也就是说，如果在默认配置文件中设置 <code>limits.memory=256MB</code>，则使用默认配置文件（通常是全都使用）的每个容器的内存限制为 256MB。</p>
+<p>我们不支持资源限制池，将其中的限制由一组容器共享，因为我们没有什么好的方法通过现有的内核 API 实现这些功能。</p>
+<h4>磁盘</h4>
+<p>这或许是最需要和最明显的需求。只需设置容器文件系统的大小限制，并对容器强制执行。</p>
+<p>LXD 确实可以让你这样做！</p>
+<p>不幸的是，这比它听起来复杂得多。 Linux 没有基于路径的配额，而大多数文件系统只有基于用户和组的配额，这对容器没有什么用处。</p>
+<p>如果你正在使用 ZFS 或 btrfs 存储后端，这意味着现在 LXD 只能支持磁盘限制。也有可能为 LVM 实现此功能，但这取决于与它一起使用的文件系统，并且如果结合实时更新那会变得棘手起来，因为并不是所有的文件系统都允许在线增长，而几乎没有一个允许在线收缩。</p>
+<h4>CPU</h4>
+<p>当涉及到 CPU 的限制，我们支持 4 种不同的东西：</p>
+<ul>
+<li>只给我 X 个 CPU 核心</li>
+</ul>
+<p>在这种模式下，你让 LXD 为你选择一组核心，然后为更多的容器和 CPU 的上线/下线提供负载均衡。</p>
+<p>容器只看到这个数量的 CPU 核心。
+* 给我一组特定的 CPU 核心（例如，核心1、3 和 5）</p>
+<p>类似于第一种模式，但是不会做负载均衡，你会被限制在那些核心上，无论它们有多忙。
+* 给我你拥有的 20％ 处理能力</p>
+<p>在这种模式下，你可以看到所有的 CPU，但调度程序将限制你使用 20％ 的 CPU 时间，但这只有在负载状态才会这样！所以如果系统不忙，你的容器可以跑得很欢。而当其他的容器也开始使用 CPU 时，它会被限制用量。
+* 每测量 200ms，给我 50ms（并且不超过）</p>
+<p>此模式与上一个模式类似，你可以看到所有的 CPU，但这一次，无论系统可能是多么空闲，你只能使用你设置的极限时间下的尽可能多的 CPU 时间。在没有过量使用的系统上，这可使你可以非常整齐地分割 CPU，并确保这些容器的持续性能。</p>
+<p>另外还可以将前两个中的一个与最后两个之一相结合，即请求一组 CPU，然后进一步限制这些 CPU 的 CPU 时间。</p>
+<p>除此之外，我们还有一个通用的优先级调节方式，可以告诉调度器当你处于负载状态时，两个争夺资源的容器谁会取得胜利。</p>
+<h4>内存</h4>
+<p>内存听起来很简单，就是给我多少 MB 的内存！</p>
+<p>它绝对可以那么简单。 我们支持这种限制以及基于百分比的请求，比如给我 10％ 的主机内存！</p>
+<p>另外我们在上层支持一些额外的东西。 例如，你可以选择在每个容器上打开或者关闭 swap，如果打开，还可以设置优先级，以便你可以选择哪些容器先将内存交换到磁盘！</p>
+<p>内存限制默认是“hard”。 也就是说，当内存耗尽时，内核将会开始杀掉你的那些进程。</p>
+<p>或者，你可以将强制策略设置为“soft”，在这种情况下，只要没有别的进程的情况下，你将被允许使用尽可能多的内存。一旦别的进程想要这块内存，你将无法分配任何内存，直到你低于你的限制或者主机内存再次有空余。</p>
+<h4>网络 I/O</h4>
+<p>网络 I/O 可能是我们看起来最简单的限制，但是相信我，实现真的不简单！</p>
+<p>我们支持两种限制。 第一个是对网络接口的速率限制。你可以设置入口和出口的限制，或者只是设置“最大”限制然后应用到出口和入口。这个只支持“桥接”和“p2p”类型接口。</p>
+<p>第二种是全局网络 I/O 优先级，仅当你的网络接口趋于饱和的时候再使用。</p>
+<h4>块 I/O</h4>
+<p>我把最古怪的放在最后。对于用户看起来它可能简单，但有一些情况下，它的结果并不会和你的预期一样。</p>
+<p>我们在这里支持的基本上与我在网络 I/O 中描述的相同。</p>
+<p>你可以直接设置磁盘的读写 IO 的频率和速率，并且有一个全局的块 I/O 优先级，它会通知 I/O 调度程序更倾向哪个。</p>
+<p>古怪的是如何设置以及在哪里应用这些限制。不幸的是，我们用于实现这些功能的底层使用的是完整的块设备。这意味着我们不能为每个路径设置每个分区的 I/O 限制。</p>
+<p>这也意味着当使用可以支持多个块设备映射到指定的路径（带或者不带 RAID）的 ZFS 或 btrfs 时，我们并不知道这个路径是哪个块设备提供的。</p>
+<p>这意味着，完全有可能，实际上确实有可能，容器使用的多个磁盘挂载点（绑定挂载或直接挂载）可能来自于同一个物理磁盘。</p>
+<p>这就使限制变得很奇怪。为了使限制生效，LXD 具有猜测给定路径所对应块设备的逻辑，这其中包括询问 ZFS 和 btrfs 工具，甚至可以在发现一个文件系统中循环挂载的文件时递归地找出它们。</p>
+<p>这个逻辑虽然不完美，但通常会找到一组应该应用限制的块设备。LXD 接着记录并移动到下一个路径。当遍历完所有的路径，然后到了非常奇怪的部分。它会平均你为相应块设备设置的限制，然后应用这些。</p>
+<p>这意味着你将在容器中“平均”地获得正确的速度，但这也意味着你不能对来自同一个物理磁盘的“/fast”和一个“/slow”目录应用不同的速度限制。 LXD 允许你设置它，但最后，它会给你这两个值的平均值。</p>
+<h3>它怎么工作？</h3>
+<p>除了网络限制是通过较旧但是良好的“tc”实现的，上述大多数限制是通过 Linux 内核的 cgroup API 来实现的。</p>
+<p>LXD 在启动时会检测你在内核中启用了哪些 cgroup，并且将只应用你的内核支持的限制。如果你缺少一些 cgroup，守护进程会输出警告，接着你的 init 系统将会记录这些。</p>
+<p>在 Ubuntu 16.04 上，默认情况下除了内存交换审计外将会启用所有限制，内存交换审计需要你通过<code>swapaccount = 1</code>这个内核引导参数来启用。</p>
+<h3>应用这些限制</h3>
+<p>上述所有限制都能够直接或者用某个配置文件应用于容器。容器范围的限制可以使用：</p>
+<div class="highlight"><pre><span></span><code>lxc config set CONTAINER KEY VALUE
+</code></pre></div>
+
+<p>或对于配置文件设置：</p>
+<div class="highlight"><pre><span></span><code>lxc profile set PROFILE KEY VALUE
+</code></pre></div>
+
+<p>当指定特定设备时：</p>
+<div class="highlight"><pre><span></span><code>lxc config device set CONTAINER DEVICE KEY VALUE
+</code></pre></div>
+
+<p>或对于配置文件设置：</p>
+<div class="highlight"><pre><span></span><code>lxc profile device set PROFILE DEVICE KEY VALUE
+</code></pre></div>
+
+<p>有效配置键、设备类型和设备键的完整列表可以<a href="https://github.com/lxc/lxd/blob/master/doc/configuration.md">看这里</a>。</p>
+<h4>CPU</h4>
+<p>要限制使用任意两个 CPU 核心可以这么做：</p>
+<div class="highlight"><pre><span></span><code>lxc config set my-container limits.cpu 2
+</code></pre></div>
+
+<p>要指定特定的 CPU 核心，比如说第二和第四个：</p>
+<div class="highlight"><pre><span></span><code>lxc config set my-container limits.cpu 1,3
+</code></pre></div>
+
+<p>更加复杂的情况还可以设置范围：</p>
+<div class="highlight"><pre><span></span><code>lxc config set my-container limits.cpu 0-3,7-11
+</code></pre></div>
+
+<p>限制实时生效，你可以看下面的例子：</p>
+<div class="highlight"><pre><span></span><code><span class="n">stgraber</span><span class="nv">@dakara</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="k">exec</span><span class="w"> </span><span class="n">zerotier</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="o">/</span><span class="k">proc</span><span class="o">/</span><span class="n">cpuinfo</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="o">^</span><span class="n">proces</span>
+<span class="n">processor</span><span class="w"> </span><span class="err">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="n">processor</span><span class="w"> </span><span class="err">:</span><span class="w"> </span><span class="mi">1</span>
+<span class="n">processor</span><span class="w"> </span><span class="err">:</span><span class="w"> </span><span class="mi">2</span>
+<span class="n">processor</span><span class="w"> </span><span class="err">:</span><span class="w"> </span><span class="mi">3</span>
+<span class="n">stgraber</span><span class="nv">@dakara</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="k">set</span><span class="w"> </span><span class="n">zerotier</span><span class="w"> </span><span class="n">limits</span><span class="p">.</span><span class="n">cpu</span><span class="w"> </span><span class="mi">2</span>
+<span class="n">stgraber</span><span class="nv">@dakara</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="k">exec</span><span class="w"> </span><span class="n">zerotier</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="o">/</span><span class="k">proc</span><span class="o">/</span><span class="n">cpuinfo</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="o">^</span><span class="n">proces</span>
+<span class="n">processor</span><span class="w"> </span><span class="err">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="n">processor</span><span class="w"> </span><span class="err">:</span><span class="w"> </span><span class="mi">1</span>
+</code></pre></div>
+
+<p>注意，为了避免完全混淆用户空间，lxcfs 会重排 <code>/proc/cpuinfo</code> 中的条目，以便没有错误。</p>
+<p>就像 LXD 中的一切，这些设置也可以应用在配置文件中：</p>
+<div class="highlight"><pre><span></span><code><span class="n">stgraber</span><span class="nv">@dakara</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="k">exec</span><span class="w"> </span><span class="n">snappy</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="o">/</span><span class="k">proc</span><span class="o">/</span><span class="n">cpuinfo</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="o">^</span><span class="n">proces</span>
+<span class="n">processor</span><span class="w"> </span><span class="err">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="n">processor</span><span class="w"> </span><span class="err">:</span><span class="w"> </span><span class="mi">1</span>
+<span class="n">processor</span><span class="w"> </span><span class="err">:</span><span class="w"> </span><span class="mi">2</span>
+<span class="n">processor</span><span class="w"> </span><span class="err">:</span><span class="w"> </span><span class="mi">3</span>
+<span class="n">stgraber</span><span class="nv">@dakara</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">profile</span><span class="w"> </span><span class="k">set</span><span class="w"> </span><span class="k">default</span><span class="w"> </span><span class="n">limits</span><span class="p">.</span><span class="n">cpu</span><span class="w"> </span><span class="mi">3</span>
+<span class="n">stgraber</span><span class="nv">@dakara</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="k">exec</span><span class="w"> </span><span class="n">snappy</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="o">/</span><span class="k">proc</span><span class="o">/</span><span class="n">cpuinfo</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="o">^</span><span class="n">proces</span>
+<span class="n">processor</span><span class="w"> </span><span class="err">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="n">processor</span><span class="w"> </span><span class="err">:</span><span class="w"> </span><span class="mi">1</span>
+<span class="n">processor</span><span class="w"> </span><span class="err">:</span><span class="w"> </span><span class="mi">2</span>
+</code></pre></div>
+
+<p>要限制容器使用 10% 的 CPU 时间，要设置下 CPU allowance：</p>
+<div class="highlight"><pre><span></span><code>lxc config set my-container limits.cpu.allowance 10%
+</code></pre></div>
+
+<p>或者给它一个固定的 CPU 时间切片：</p>
+<div class="highlight"><pre><span></span><code>lxc config set my-container limits.cpu.allowance 25ms/200ms
+</code></pre></div>
+
+<p>最后，要将容器的 CPU 优先级调到最低：</p>
+<div class="highlight"><pre><span></span><code>lxc config set my-container limits.cpu.priority 0
+</code></pre></div>
+
+<h4>内存</h4>
+<p>要直接应用内存限制运行下面的命令：</p>
+<div class="highlight"><pre><span></span><code>lxc config set my-container limits.memory 256MB
+</code></pre></div>
+
+<p>（支持的后缀是 KB、MB、GB、TB、PB、EB）</p>
+<p>要关闭容器的内存交换（默认启用）：</p>
+<div class="highlight"><pre><span></span><code>lxc config set my-container limits.memory.swap false
+</code></pre></div>
+
+<p>告诉内核首先交换指定容器的内存：</p>
+<div class="highlight"><pre><span></span><code>lxc config set my-container limits.memory.swap.priority 0
+</code></pre></div>
+
+<p>如果你不想要强制的内存限制：</p>
+<div class="highlight"><pre><span></span><code>lxc config set my-container limits.memory.enforce soft
+</code></pre></div>
+
+<h4>磁盘和块 I/O</h4>
+<p>不像 CPU 和内存，磁盘和 I/O 限制是直接作用在实际的设备上的，因此你需要编辑原始设备或者屏蔽某个具体的设备。</p>
+<p>要设置磁盘限制（需要 btrfs 或者 ZFS）：</p>
+<div class="highlight"><pre><span></span><code>lxc config device set my-container root size 20GB
+</code></pre></div>
+
+<p>比如：</p>
+<div class="highlight"><pre><span></span><code><span class="n">stgraber</span><span class="nv">@dakara</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="k">exec</span><span class="w"> </span><span class="n">zerotier</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="n">df</span><span class="w"> </span><span class="o">-</span><span class="n">h</span><span class="w"> </span><span class="o">/</span>
+<span class="n">Filesystem</span><span class="w">                        </span><span class="k">Size</span><span class="w"> </span><span class="n">Used</span><span class="w"> </span><span class="n">Avail</span><span class="w"> </span><span class="k">Use</span><span class="o">%</span><span class="w"> </span><span class="n">Mounted</span><span class="w"> </span><span class="k">on</span>
+<span class="n">encrypted</span><span class="o">/</span><span class="n">lxd</span><span class="o">/</span><span class="n">containers</span><span class="o">/</span><span class="n">zerotier</span><span class="w"> </span><span class="mi">179</span><span class="n">G</span><span class="w"> </span><span class="mi">542</span><span class="n">M</span><span class="w">  </span><span class="mi">178</span><span class="n">G</span><span class="w">   </span><span class="mi">1</span><span class="o">%</span><span class="w"> </span><span class="o">/</span>
+<span class="n">stgraber</span><span class="nv">@dakara</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="n">device</span><span class="w"> </span><span class="k">set</span><span class="w"> </span><span class="n">zerotier</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="k">size</span><span class="w"> </span><span class="mi">20</span><span class="n">GB</span>
+<span class="n">stgraber</span><span class="nv">@dakara</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="k">exec</span><span class="w"> </span><span class="n">zerotier</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="n">df</span><span class="w"> </span><span class="o">-</span><span class="n">h</span><span class="w"> </span><span class="o">/</span>
+<span class="n">Filesystem</span><span class="w">                       </span><span class="k">Size</span><span class="w">  </span><span class="n">Used</span><span class="w"> </span><span class="n">Avail</span><span class="w"> </span><span class="k">Use</span><span class="o">%</span><span class="w"> </span><span class="n">Mounted</span><span class="w"> </span><span class="k">on</span>
+<span class="n">encrypted</span><span class="o">/</span><span class="n">lxd</span><span class="o">/</span><span class="n">containers</span><span class="o">/</span><span class="n">zerotier</span><span class="w"> </span><span class="mi">20</span><span class="n">G</span><span class="w">  </span><span class="mi">542</span><span class="n">M</span><span class="w">   </span><span class="mi">20</span><span class="n">G</span><span class="w">   </span><span class="mi">3</span><span class="o">%</span><span class="w"> </span><span class="o">/</span>
+</code></pre></div>
+
+<p>要限制速度，你可以：</p>
+<div class="highlight"><pre><span></span><code>lxc config device set my-container root limits.read 30MB
+lxc config device set my-container root.limits.write 10MB
+</code></pre></div>
+
+<p>或者限制 IO 频率：</p>
+<div class="highlight"><pre><span></span><code>lxc config device set my-container root limits.read 20Iops
+lxc config device set my-container root limits.write 10Iops
+</code></pre></div>
+
+<p>最后你在一个过量使用的繁忙系统上，你或许想要：</p>
+<div class="highlight"><pre><span></span><code>lxc config set my-container limits.disk.priority 10
+</code></pre></div>
+
+<p>将那个容器的 I/O 优先级调到最高。</p>
+<h4>网络 I/O</h4>
+<p>只要机制可用，网络 I/O 基本等同于块 I/O。</p>
+<p>比如：</p>
+<div class="highlight"><pre><span></span><code><span class="n">stgraber</span><span class="nv">@dakara</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="k">exec</span><span class="w"> </span><span class="n">zerotier</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="n">wget</span><span class="w"> </span><span class="nl">http</span><span class="p">:</span><span class="o">//</span><span class="n">speedtest</span><span class="p">.</span><span class="n">newark</span><span class="p">.</span><span class="n">linode</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="mi">100</span><span class="n">MB</span><span class="o">-</span><span class="n">newark</span><span class="p">.</span><span class="n">bin</span><span class="w"> </span><span class="o">-</span><span class="n">O</span><span class="w"> </span><span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="k">null</span>
+<span class="o">--</span><span class="mi">2016</span><span class="o">-</span><span class="mi">03</span><span class="o">-</span><span class="mi">26</span><span class="w"> </span><span class="mi">22</span><span class="err">:</span><span class="mi">17</span><span class="err">:</span><span class="mi">34</span><span class="o">--</span><span class="w"> </span><span class="nl">http</span><span class="p">:</span><span class="o">//</span><span class="n">speedtest</span><span class="p">.</span><span class="n">newark</span><span class="p">.</span><span class="n">linode</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="mi">100</span><span class="n">MB</span><span class="o">-</span><span class="n">newark</span><span class="p">.</span><span class="n">bin</span>
+<span class="n">Resolving</span><span class="w"> </span><span class="n">speedtest</span><span class="p">.</span><span class="n">newark</span><span class="p">.</span><span class="n">linode</span><span class="p">.</span><span class="n">com</span><span class="w"> </span><span class="p">(</span><span class="n">speedtest</span><span class="p">.</span><span class="n">newark</span><span class="p">.</span><span class="n">linode</span><span class="p">.</span><span class="n">com</span><span class="p">)...</span><span class="w"> </span><span class="mf">50.116.57.237</span><span class="p">,</span><span class="w"> </span><span class="mi">2600</span><span class="err">:</span><span class="mi">3</span><span class="nl">c03</span><span class="p">:</span><span class="err">:</span><span class="mi">4</span><span class="n">b</span>
+<span class="n">Connecting</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">speedtest</span><span class="p">.</span><span class="n">newark</span><span class="p">.</span><span class="n">linode</span><span class="p">.</span><span class="n">com</span><span class="w"> </span><span class="p">(</span><span class="n">speedtest</span><span class="p">.</span><span class="n">newark</span><span class="p">.</span><span class="n">linode</span><span class="p">.</span><span class="n">com</span><span class="p">)</span><span class="o">|</span><span class="mf">50.116.57.237</span><span class="o">|</span><span class="err">:</span><span class="mf">80.</span><span class="p">..</span><span class="w"> </span><span class="n">connected</span><span class="p">.</span>
+<span class="n">HTTP</span><span class="w"> </span><span class="n">request</span><span class="w"> </span><span class="n">sent</span><span class="p">,</span><span class="w"> </span><span class="n">awaiting</span><span class="w"> </span><span class="n">response</span><span class="p">...</span><span class="w"> </span><span class="mi">200</span><span class="w"> </span><span class="n">OK</span>
+<span class="nl">Length</span><span class="p">:</span><span class="w"> </span><span class="mi">104857600</span><span class="w"> </span><span class="p">(</span><span class="mi">100</span><span class="n">M</span><span class="p">)</span><span class="w"> </span><span class="o">[</span><span class="n">application/octet-stream</span><span class="o">]</span>
+<span class="n">Saving</span><span class="w"> </span><span class="k">to</span><span class="err">:</span><span class="w"> </span><span class="s1">&#39;/dev/null&#39;</span>
+
+<span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="k">null</span><span class="w"> </span><span class="mi">100</span><span class="o">%[</span><span class="n">===================&gt;</span><span class="o">]</span><span class="w"> </span><span class="mf">100.00</span><span class="n">M</span><span class="w"> </span><span class="mf">58.7</span><span class="n">MB</span><span class="o">/</span><span class="n">s</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="mf">1.7</span><span class="n">s</span><span class="w"> </span>
+
+<span class="mi">2016</span><span class="o">-</span><span class="mi">03</span><span class="o">-</span><span class="mi">26</span><span class="w"> </span><span class="mi">22</span><span class="err">:</span><span class="mi">17</span><span class="err">:</span><span class="mi">36</span><span class="w"> </span><span class="p">(</span><span class="mf">58.7</span><span class="w"> </span><span class="n">MB</span><span class="o">/</span><span class="n">s</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="s1">&#39;/dev/null&#39;</span><span class="w"> </span><span class="n">saved</span><span class="w"> </span><span class="o">[</span><span class="n">104857600/104857600</span><span class="o">]</span>
+
+<span class="n">stgraber</span><span class="nv">@dakara</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">profile</span><span class="w"> </span><span class="n">device</span><span class="w"> </span><span class="k">set</span><span class="w"> </span><span class="k">default</span><span class="w"> </span><span class="n">eth0</span><span class="w"> </span><span class="n">limits</span><span class="p">.</span><span class="n">ingress</span><span class="w"> </span><span class="mi">100</span><span class="n">Mbit</span>
+<span class="n">stgraber</span><span class="nv">@dakara</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">profile</span><span class="w"> </span><span class="n">device</span><span class="w"> </span><span class="k">set</span><span class="w"> </span><span class="k">default</span><span class="w"> </span><span class="n">eth0</span><span class="w"> </span><span class="n">limits</span><span class="p">.</span><span class="n">egress</span><span class="w"> </span><span class="mi">100</span><span class="n">Mbit</span>
+<span class="n">stgraber</span><span class="nv">@dakara</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="k">exec</span><span class="w"> </span><span class="n">zerotier</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="n">wget</span><span class="w"> </span><span class="nl">http</span><span class="p">:</span><span class="o">//</span><span class="n">speedtest</span><span class="p">.</span><span class="n">newark</span><span class="p">.</span><span class="n">linode</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="mi">100</span><span class="n">MB</span><span class="o">-</span><span class="n">newark</span><span class="p">.</span><span class="n">bin</span><span class="w"> </span><span class="o">-</span><span class="n">O</span><span class="w"> </span><span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="k">null</span>
+<span class="o">--</span><span class="mi">2016</span><span class="o">-</span><span class="mi">03</span><span class="o">-</span><span class="mi">26</span><span class="w"> </span><span class="mi">22</span><span class="err">:</span><span class="mi">17</span><span class="err">:</span><span class="mi">47</span><span class="o">--</span><span class="w"> </span><span class="nl">http</span><span class="p">:</span><span class="o">//</span><span class="n">speedtest</span><span class="p">.</span><span class="n">newark</span><span class="p">.</span><span class="n">linode</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="mi">100</span><span class="n">MB</span><span class="o">-</span><span class="n">newark</span><span class="p">.</span><span class="n">bin</span>
+<span class="n">Resolving</span><span class="w"> </span><span class="n">speedtest</span><span class="p">.</span><span class="n">newark</span><span class="p">.</span><span class="n">linode</span><span class="p">.</span><span class="n">com</span><span class="w"> </span><span class="p">(</span><span class="n">speedtest</span><span class="p">.</span><span class="n">newark</span><span class="p">.</span><span class="n">linode</span><span class="p">.</span><span class="n">com</span><span class="p">)...</span><span class="w"> </span><span class="mf">50.116.57.237</span><span class="p">,</span><span class="w"> </span><span class="mi">2600</span><span class="err">:</span><span class="mi">3</span><span class="nl">c03</span><span class="p">:</span><span class="err">:</span><span class="mi">4</span><span class="n">b</span>
+<span class="n">Connecting</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">speedtest</span><span class="p">.</span><span class="n">newark</span><span class="p">.</span><span class="n">linode</span><span class="p">.</span><span class="n">com</span><span class="w"> </span><span class="p">(</span><span class="n">speedtest</span><span class="p">.</span><span class="n">newark</span><span class="p">.</span><span class="n">linode</span><span class="p">.</span><span class="n">com</span><span class="p">)</span><span class="o">|</span><span class="mf">50.116.57.237</span><span class="o">|</span><span class="err">:</span><span class="mf">80.</span><span class="p">..</span><span class="w"> </span><span class="n">connected</span><span class="p">.</span>
+<span class="n">HTTP</span><span class="w"> </span><span class="n">request</span><span class="w"> </span><span class="n">sent</span><span class="p">,</span><span class="w"> </span><span class="n">awaiting</span><span class="w"> </span><span class="n">response</span><span class="p">...</span><span class="w"> </span><span class="mi">200</span><span class="w"> </span><span class="n">OK</span>
+<span class="nl">Length</span><span class="p">:</span><span class="w"> </span><span class="mi">104857600</span><span class="w"> </span><span class="p">(</span><span class="mi">100</span><span class="n">M</span><span class="p">)</span><span class="w"> </span><span class="o">[</span><span class="n">application/octet-stream</span><span class="o">]</span>
+<span class="n">Saving</span><span class="w"> </span><span class="k">to</span><span class="err">:</span><span class="w"> </span><span class="s1">&#39;/dev/null&#39;</span>
+
+<span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="k">null</span><span class="w"> </span><span class="mi">100</span><span class="o">%[</span><span class="n">===================&gt;</span><span class="o">]</span><span class="w"> </span><span class="mf">100.00</span><span class="n">M</span><span class="w"> </span><span class="mf">11.4</span><span class="n">MB</span><span class="o">/</span><span class="n">s</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="mf">8.8</span><span class="n">s</span><span class="w"> </span>
+
+<span class="mi">2016</span><span class="o">-</span><span class="mi">03</span><span class="o">-</span><span class="mi">26</span><span class="w"> </span><span class="mi">22</span><span class="err">:</span><span class="mi">17</span><span class="err">:</span><span class="mi">56</span><span class="w"> </span><span class="p">(</span><span class="mf">11.4</span><span class="w"> </span><span class="n">MB</span><span class="o">/</span><span class="n">s</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="s1">&#39;/dev/null&#39;</span><span class="w"> </span><span class="n">saved</span><span class="w"> </span><span class="o">[</span><span class="n">104857600/104857600</span><span class="o">]</span>
+</code></pre></div>
+
+<p>这就是如何将一个千兆网的连接速度限制到仅仅 100Mbit/s 的！</p>
+<p>和块 I/O 一样，你可以设置一个总体的网络优先级：</p>
+<div class="highlight"><pre><span></span><code>lxc config set my-container limits.network.priority 5
+</code></pre></div>
+
+<h3>获取当前资源使用率</h3>
+<p><a href="https://github.com/lxc/lxd/blob/master/doc/rest-api.md">LXD API</a> 可以导出目前容器资源使用情况的一点信息，你可以得到：</p>
+<ul>
+<li>内存：当前、峰值、目前内存交换和峰值内存交换</li>
+<li>磁盘：当前磁盘使用率</li>
+<li>网络：每个接口传输的字节和包数。</li>
+</ul>
+<p>另外如果你使用的是非常新的 LXD（在写这篇文章时的 git 版本），你还可以在<code>lxc info</code>中得到这些信息：</p>
+<div class="highlight"><pre><span></span><code><span class="n">stgraber</span><span class="nv">@dakara</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">info</span><span class="w"> </span><span class="n">zerotier</span>
+<span class="nl">Name</span><span class="p">:</span><span class="w"> </span><span class="n">zerotier</span>
+<span class="nl">Architecture</span><span class="p">:</span><span class="w"> </span><span class="n">x86_64</span>
+<span class="nl">Created</span><span class="p">:</span><span class="w"> </span><span class="mi">2016</span><span class="o">/</span><span class="mi">02</span><span class="o">/</span><span class="mi">20</span><span class="w"> </span><span class="mi">20</span><span class="err">:</span><span class="mi">01</span><span class="w"> </span><span class="n">UTC</span>
+<span class="nl">Status</span><span class="p">:</span><span class="w"> </span><span class="n">Running</span>
+<span class="nl">Type</span><span class="p">:</span><span class="w"> </span><span class="n">persistent</span>
+<span class="nl">Profiles</span><span class="p">:</span><span class="w"> </span><span class="k">default</span>
+<span class="nl">Pid</span><span class="p">:</span><span class="w"> </span><span class="mi">29258</span>
+<span class="nl">Ips</span><span class="p">:</span>
+<span class="w"> </span><span class="nl">eth0</span><span class="p">:</span><span class="w"> </span><span class="n">inet</span><span class="w"> </span><span class="mf">172.17.0.101</span>
+<span class="w"> </span><span class="nl">eth0</span><span class="p">:</span><span class="w"> </span><span class="n">inet6</span><span class="w"> </span><span class="mi">2607</span><span class="err">:</span><span class="nl">f2c0</span><span class="p">:</span><span class="nl">f00f</span><span class="p">:</span><span class="mi">2700</span><span class="err">:</span><span class="mi">216</span><span class="err">:</span><span class="mi">3</span><span class="nl">eff</span><span class="p">:</span><span class="nl">feec</span><span class="p">:</span><span class="mi">65</span><span class="n">a8</span>
+<span class="w"> </span><span class="nl">eth0</span><span class="p">:</span><span class="w"> </span><span class="n">inet6</span><span class="w"> </span><span class="nl">fe80</span><span class="p">:</span><span class="err">:</span><span class="mi">216</span><span class="err">:</span><span class="mi">3</span><span class="nl">eff</span><span class="p">:</span><span class="nl">feec</span><span class="p">:</span><span class="mi">65</span><span class="n">a8</span>
+<span class="w"> </span><span class="nl">lo</span><span class="p">:</span><span class="w"> </span><span class="n">inet</span><span class="w"> </span><span class="mf">127.0.0.1</span>
+<span class="w"> </span><span class="nl">lo</span><span class="p">:</span><span class="w"> </span><span class="n">inet6</span><span class="w"> </span><span class="o">::</span><span class="mi">1</span>
+<span class="w"> </span><span class="nl">lxcbr0</span><span class="p">:</span><span class="w"> </span><span class="n">inet</span><span class="w"> </span><span class="mf">10.0.3.1</span>
+<span class="w"> </span><span class="nl">lxcbr0</span><span class="p">:</span><span class="w"> </span><span class="n">inet6</span><span class="w"> </span><span class="nl">fe80</span><span class="p">:</span><span class="err">:</span><span class="nl">f0bd</span><span class="p">:</span><span class="mi">55</span><span class="nl">ff</span><span class="p">:</span><span class="nl">feee</span><span class="p">:</span><span class="mi">97</span><span class="n">a2</span>
+<span class="w"> </span><span class="nl">zt0</span><span class="p">:</span><span class="w"> </span><span class="n">inet</span><span class="w"> </span><span class="mf">29.17.181.59</span>
+<span class="w"> </span><span class="nl">zt0</span><span class="p">:</span><span class="w"> </span><span class="n">inet6</span><span class="w"> </span><span class="nl">fd80</span><span class="p">:</span><span class="mi">56</span><span class="nl">c2</span><span class="p">:</span><span class="nl">e21c</span><span class="p">:</span><span class="mi">0</span><span class="err">:</span><span class="mi">199</span><span class="err">:</span><span class="mi">9379</span><span class="err">:</span><span class="nl">e711</span><span class="p">:</span><span class="n">b3e1</span>
+<span class="w"> </span><span class="nl">zt0</span><span class="p">:</span><span class="w"> </span><span class="n">inet6</span><span class="w"> </span><span class="nl">fe80</span><span class="p">:</span><span class="err">:</span><span class="mi">79</span><span class="err">:</span><span class="nl">e7ff</span><span class="p">:</span><span class="nl">fe0d</span><span class="p">:</span><span class="mi">5123</span>
+<span class="nl">Resources</span><span class="p">:</span>
+<span class="w"> </span><span class="nl">Processes</span><span class="p">:</span><span class="w"> </span><span class="mi">33</span>
+<span class="w"> </span><span class="k">Disk</span><span class="w"> </span><span class="k">usage</span><span class="err">:</span>
+<span class="w">  </span><span class="nl">root</span><span class="p">:</span><span class="w"> </span><span class="mf">808.07</span><span class="n">MB</span>
+<span class="w"> </span><span class="n">Memory</span><span class="w"> </span><span class="k">usage</span><span class="err">:</span>
+<span class="w">  </span><span class="n">Memory</span><span class="w"> </span><span class="p">(</span><span class="k">current</span><span class="p">)</span><span class="err">:</span><span class="w"> </span><span class="mf">106.79</span><span class="n">MB</span>
+<span class="w">  </span><span class="n">Memory</span><span class="w"> </span><span class="p">(</span><span class="n">peak</span><span class="p">)</span><span class="err">:</span><span class="w"> </span><span class="mf">195.51</span><span class="n">MB</span>
+<span class="w">  </span><span class="n">Swap</span><span class="w"> </span><span class="p">(</span><span class="k">current</span><span class="p">)</span><span class="err">:</span><span class="w"> </span><span class="mf">124.00</span><span class="n">kB</span>
+<span class="w">  </span><span class="n">Swap</span><span class="w"> </span><span class="p">(</span><span class="n">peak</span><span class="p">)</span><span class="err">:</span><span class="w"> </span><span class="mf">124.00</span><span class="n">kB</span>
+<span class="w"> </span><span class="n">Network</span><span class="w"> </span><span class="k">usage</span><span class="err">:</span>
+<span class="w">  </span><span class="nl">lxcbr0</span><span class="p">:</span>
+<span class="w">   </span><span class="n">Bytes</span><span class="w"> </span><span class="nl">received</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="n">bytes</span>
+<span class="w">   </span><span class="n">Bytes</span><span class="w"> </span><span class="nl">sent</span><span class="p">:</span><span class="w"> </span><span class="mi">570</span><span class="w"> </span><span class="n">bytes</span>
+<span class="w">   </span><span class="n">Packets</span><span class="w"> </span><span class="nl">received</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">   </span><span class="n">Packets</span><span class="w"> </span><span class="nl">sent</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">  </span><span class="nl">zt0</span><span class="p">:</span>
+<span class="w">   </span><span class="n">Bytes</span><span class="w"> </span><span class="nl">received</span><span class="p">:</span><span class="w"> </span><span class="mf">1.10</span><span class="n">MB</span>
+<span class="w">   </span><span class="n">Bytes</span><span class="w"> </span><span class="nl">sent</span><span class="p">:</span><span class="w"> </span><span class="mi">806</span><span class="w"> </span><span class="n">bytes</span>
+<span class="w">   </span><span class="n">Packets</span><span class="w"> </span><span class="nl">received</span><span class="p">:</span><span class="w"> </span><span class="mi">10957</span>
+<span class="w">   </span><span class="n">Packets</span><span class="w"> </span><span class="nl">sent</span><span class="p">:</span><span class="w"> </span><span class="mi">10957</span>
+<span class="w">  </span><span class="nl">eth0</span><span class="p">:</span>
+<span class="w">   </span><span class="n">Bytes</span><span class="w"> </span><span class="nl">received</span><span class="p">:</span><span class="w"> </span><span class="mf">99.35</span><span class="n">MB</span>
+<span class="w">   </span><span class="n">Bytes</span><span class="w"> </span><span class="nl">sent</span><span class="p">:</span><span class="w"> </span><span class="mf">5.88</span><span class="n">MB</span>
+<span class="w">   </span><span class="n">Packets</span><span class="w"> </span><span class="nl">received</span><span class="p">:</span><span class="w"> </span><span class="mi">64481</span>
+<span class="w">   </span><span class="n">Packets</span><span class="w"> </span><span class="nl">sent</span><span class="p">:</span><span class="w"> </span><span class="mi">64481</span>
+<span class="w">  </span><span class="nl">lo</span><span class="p">:</span>
+<span class="w">   </span><span class="n">Bytes</span><span class="w"> </span><span class="nl">received</span><span class="p">:</span><span class="w"> </span><span class="mf">9.57</span><span class="n">kB</span>
+<span class="w">   </span><span class="n">Bytes</span><span class="w"> </span><span class="nl">sent</span><span class="p">:</span><span class="w"> </span><span class="mf">9.57</span><span class="n">kB</span>
+<span class="w">   </span><span class="n">Packets</span><span class="w"> </span><span class="nl">received</span><span class="p">:</span><span class="w"> </span><span class="mi">81</span>
+<span class="w">   </span><span class="n">Packets</span><span class="w"> </span><span class="nl">sent</span><span class="p">:</span><span class="w"> </span><span class="mi">81</span>
+<span class="nl">Snapshots</span><span class="p">:</span>
+<span class="w"> </span><span class="n">zerotier</span><span class="o">/</span><span class="n">blah</span><span class="w"> </span><span class="p">(</span><span class="n">taken</span><span class="w"> </span><span class="k">at</span><span class="w"> </span><span class="mi">2016</span><span class="o">/</span><span class="mi">03</span><span class="o">/</span><span class="mi">08</span><span class="w"> </span><span class="mi">23</span><span class="err">:</span><span class="mi">55</span><span class="w"> </span><span class="n">UTC</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="n">stateless</span><span class="p">)</span>
+</code></pre></div>
+
+<h3>总结</h3>
+<p>LXD 团队花费了几个月的时间来迭代我们使用的这些限制的语言。 它是为了在保持强大和功能明确的基础上同时保持简单。</p>
+<p>实时地应用这些限制和通过配置文件继承，使其成为一种非常强大的工具，可以在不影响正在运行的服务的情况下实时管理服务器上的负载。</p>
+<h3>更多信息</h3>
+<p>LXD 的主站在： <a href="https://linuxcontainers.org/lxd">https://linuxcontainers.org/lxd</a></p>
+<p>LXD 的 GitHub 仓库： <a href="https://github.com/lxc/lxd">https://github.com/lxc/lxd</a></p>
+<p>LXD 的邮件列表：<a href="https://lists.linuxcontainers.org">https://lists.linuxcontainers.org</a></p>
+<p>LXD 的 IRC 频道：#lxcontainers on irc.freenode.net</p>
+<p>如果你不想在你的机器上安装LXD，你可以<a href="https://linuxcontainers.org/lxd/try-it">在线尝试下</a>。</p>
+<p>via: <a href="https://www.stgraber.org/2016/03/26/lxd-2-0-resource-control-412/">https://www.stgraber.org/2016/03/26/lxd-2-0-resource-control-412/</a></p>
+<p>作者：<a href="https://www.stgraber.org/author/stgraber/">Stéphane Graber</a> 译者：<a href="https://github.com/geekpi">geekpi</a> 校对：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 组织翻译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

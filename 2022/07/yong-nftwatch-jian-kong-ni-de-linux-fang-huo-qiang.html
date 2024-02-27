@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>用 nftwatch 监控你的 Linux 防火墙</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Kenneth Aaron 我创建了 Linux nftwatch 命令来观察防火墙的流量统计。 Netfilter 表（nftables）是现代 Linux 发行版中的默认防火墙。它在 Fedora 和 RHEL 8、最新的 Debian 和 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2022/07/yong-nftwatch-jian-kong-ni-de-linux-fang-huo-qiang.html" rel="bookmark"
+           title="Permalink to 用 nftwatch 监控你的 Linux 防火墙">用 nftwatch 监控你的 Linux 防火墙</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2022-07-24T07:07:00+02:00">
+                Published: Sun 24 July 2022
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Kenneth Aaron</p>
+<blockquote>
+<p>我创建了 Linux nftwatch 命令来观察防火墙的流量统计。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/202207/24/070724d542rvbbg3af3o9p.jpg"></p>
+<p>Netfilter 表（<a href="https://developers.redhat.com/blog/2016/10/28/what-comes-after-iptables-its-successor-of-course-nftables?extIdCarryOver=true&amp;sc_cid=701f2000001OH79AAG#getting_started">nftables</a>）是现代 Linux 发行版中的默认防火墙。它在 Fedora 和 RHEL 8、最新的 Debian 和许多其他版本上都有。它取代了早期发行版中捆绑的旧版 iptables。它是一个强大的、值得的 iptables 替代品，作为一个广泛使用它的人，我欣赏它的能力和功能。</p>
+<p>nftables 的一个特点是能够为许多元素添加计数器，例如规则。这些都是按需启用的。你需要使用 <code>counter</code> 参数，在每一行明确地要求它。我为我的防火墙中的特定规则启用了这些计数器，这使我能够看到这些规则。</p>
+<p>这让我开始思考。我怎样才能实时查看这些计数器？一开始我尝试了 <code>watch</code>，它允许诸如刷新率之类的东西，但我不喜欢默认格式，而且它不能滚动。我发现使用 <code>head</code> 和 <code>tail</code> 以及 <code>awk</code> 也不理想，并不存在一个用户友好的解决方案。所以我自己写了一个，我想与开源社区分享。</p>
+<h3>Linux 上的 nftwatch 介绍</h3>
+<p>我的解决方案，我称之为 <code>nftwatch</code>，做了几件事：</p>
+<ul>
+<li>它对 nftables 的输出进行重新排序和改写，使其更具有可读性。</li>
+<li>它允许向上或向下滚动输出。</li>
+<li>可以由用户定义的刷新率（可以实时改变）。</li>
+<li>它可以暂停显示。</li>
+</ul>
+<p>你得到的不是一个表格的转储，而是显示每个规则活动的输出。</p>
+<p><img alt="Image of nftwatch" src="/data/attachment/album/202207/24/070806e66aw8ab0v9f5r99.jpg"></p>
+<p>你可以从它的 <a href="https://github.com/flyingrhinonz/nftwatch">Git 仓库</a>下载它。</p>
+<p>它是 100% 的 Python 代码，100% 的开源，100% 的免费。它满足了所有免费的高质量程序的要求。</p>
+<h3>在 Linux 上安装 nftwatch</h3>
+<p>以下是手动安装说明：</p>
+<ol>
+<li>克隆或从 git 仓库下载该项目。</li>
+<li>将 <code>nftwatch.yml</code> 复制到 <code>/etc/nftwatch.yml</code>。</li>
+<li>将 <code>nftwatch</code> 复制到 <code>/usr/local/bin/nftwatch</code> 并使用 <code>chmod a+x</code> 授予其可执行权限。</li>
+<li>使用 <code>nftwatch</code>，不带任何参数来运行它。</li>
+<li>参见 <code>nftwatch -m</code> 的手册。</li>
+</ol>
+<p>你也可以在没有 <a href="https://opensource.com/article/21/9/yaml-cheat-sheet">YAML</a> 配置文件的情况下运行 nftwatch，在这种情况下它使用内置的默认值。</p>
+<h3>使用</h3>
+<p><code>nftwatch</code> 命令显示 nftables 规则。大多数控制都是为此目的而设计的。</p>
+<p>箭头键和等效的 Vim 的按键控制滚动。使用 <code>F</code> 或 <code>S</code> 键来改变刷新速度。使用 <code>P</code> 键来暂停显示。</p>
+<p>运行 <code>nftwatch -m</code> 以获得完整的说明，以及交互式按键控制的列表。</p>
+<h3>防火墙的新观点</h3>
+<p>即使你花费了时间去配置防火墙，它也会显得晦涩难懂和模糊不清。除了从日志条目中推断指标外，很难判断你的防火墙实际看到的活动类型。 使用 <code>nftwatch</code>，你可以看到你的防火墙在工作，并且可以更好地了解你的网络每天需要处理的流量类型。</p>
+<p><em>（文内图片来自 Kenneth Aaron，CC BY-SA 4.0）</em></p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

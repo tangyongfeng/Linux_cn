@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在 Linux 中如何使用 gdb 调试 C 程序</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Ansh 无论多么有经验的程序员，开发的任何软件都不可能完全没有 bug。因此，排查及修复 bug 成为软件开发周期中最重要的 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/02/zai-linux-zhong-ru-he-shi-yong-gdb-diao-shi-c-cheng-xu.html" rel="bookmark"
+           title="Permalink to 在 Linux 中如何使用 gdb 调试 C 程序">在 Linux 中如何使用 gdb 调试 C 程序</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-02-04T17:56:58+01:00">
+                Published: Sat 04 February 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Ansh</p>
+<p>无论多么有经验的程序员，开发的任何软件都不可能完全没有 bug。因此，排查及修复 bug 成为软件开发周期中最重要的任务之一。有许多办法可以排查 bug（测试、代码自审等等），但是还有一些专用软件（称为调试器）可以帮助准确定位问题的所在，以便进行修复。</p>
+<p>如果你是 C/C++ 程序员，或者使用 Fortran 和 Modula-2 编程语言开发软件，那么你将会很乐意知道有这么一款优秀的调试器 - <a href="https://www.sourceware.org/gdb/">GDB</a> - 可以帮你更轻松地调试代码 bug 以及其它问题。在这篇文章中，我们将讨论一下 GDB 调试器的基础知识，包括它提供的一些有用的功能/选项。</p>
+<p><img alt="" src="/data/attachment/album/201702/04/175653ff8gl0f5flw4f518.jpg"></p>
+<p>在我们开始之前，值得一提的是，文章中的所有说明和示例都已经在 Ubuntu 14.04 LTS 中测试过。教程中的示例代码都是 C 语言写的；使用的 shell 为 bash（4.3.11）；GDB 版本为 7.7.1。</p>
+<h3>GDB 调试器基础</h3>
+<p>通俗的讲，GDB 可以让你看到程序在执行过程时的内部流程，并帮你明确问题的所在。我们将在下一节通过一个有效的示例来讨论 GDB 调试器的用法，但在此之前，我们先来探讨一些之后对你有帮助的基本要点。</p>
+<p>首先，为了能够顺利使用类似 GDB 这样的调试器，你必须以指定的方式编译程序，让编译器产生调试器所需的调试信息。例如，在使用 gcc 编译器（我们将在本教程之后的章节用它来编译 C 程序示例）编译代码的时候，你需要使用 <code>-g</code> 命令行选项。</p>
+<p>想要了解 gcc 编译器手册页中关于 <code>-g</code> 命令行选项相关的内容，请看<a href="https://linux.die.net/man/1/gcc">这里</a>。</p>
+<p>下一步，确保在你的系统中已经安装 GDB 调试器。如果没有安装，而且你使用的是基于 Debian 的系统（如 Ubuntu），那么你就可以使用以下命令轻松安装该工具：</p>
+<div class="highlight"><pre><span></span><code>sudo apt-get install gdb
+</code></pre></div>
+
+<p>在其他发行版上的安装方法，请看<a href="https://www.sourceware.org/gdb/download/">这里</a>。</p>
+<p>现在，当你按照上述的方式编译完程序（gcc <code>-g</code> 命令行选项），同时也已经安装好 GDB 调试器，那么你就可以使用以下命令让程序在调试模式中运行：</p>
+<div class="highlight"><pre><span></span><code>gdb [可执行程序的名称]
+</code></pre></div>
+
+<p>这样做会初始化 GDB 调试器，但你的可执行程序此时还不会被启动。在这个时候你就可以定义调试相关的设置。例如，你可以在特定行或函数中设置一个断点让 GDB 在该行暂停程序的执行。</p>
+<p>接着，为了启动你的程序，你必须输入执行以下 gdb 命令：</p>
+<div class="highlight"><pre><span></span><code>run
+</code></pre></div>
+
+<p>在这里，值得一提的是，如果你的程序需要一些命令行参数，那么你可以在这里指定这些参数。例如：</p>
+<div class="highlight"><pre><span></span><code>run [参数]
+</code></pre></div>
+
+<p>GDB 提供了很多有用的命令，在调试的时候总是能派的上用场。我们将在下一节讨论其中一部分命令。</p>
+<h3>GDB 调试器用例</h3>
+<p>现在我们对 GDB 及其用法有了基本的概念。因此，让我们举例来应用所学的知识。这是一段示例代码：</p>
+<div class="highlight"><pre><span></span><code><span class="n">#include</span><span class="w"> </span><span class="o">&lt;</span><span class="n">stdio</span><span class="p">.</span><span class="n">h</span><span class="o">&gt;</span>
+
+<span class="nc">int</span><span class="w"> </span><span class="n">main</span><span class="p">()</span>
+<span class="err">{</span>
+<span class="w">    </span><span class="nc">int</span><span class="w"> </span><span class="k">out</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">tot</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">cnt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">    </span><span class="nc">int</span><span class="w"> </span><span class="n">val</span><span class="err">[]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">{</span><span class="mi">5</span><span class="p">,</span><span class="w"> </span><span class="mi">54</span><span class="p">,</span><span class="w"> </span><span class="mi">76</span><span class="p">,</span><span class="w"> </span><span class="mi">91</span><span class="p">,</span><span class="w"> </span><span class="mi">35</span><span class="p">,</span><span class="w"> </span><span class="mi">27</span><span class="p">,</span><span class="w"> </span><span class="mi">45</span><span class="p">,</span><span class="w"> </span><span class="mi">15</span><span class="p">,</span><span class="w"> </span><span class="mi">99</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="err">}</span><span class="p">;</span>
+
+<span class="w">    </span><span class="k">while</span><span class="p">(</span><span class="n">cnt</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">10</span><span class="p">)</span>
+<span class="w">    </span><span class="err">{</span>
+<span class="w">        </span><span class="k">out</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">val</span><span class="o">[</span><span class="n">cnt</span><span class="o">]</span><span class="p">;</span>
+<span class="w">        </span><span class="n">tot</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tot</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mh">0xffffffff</span><span class="o">/</span><span class="k">out</span><span class="p">;</span>
+<span class="w">        </span><span class="n">cnt</span><span class="o">++</span><span class="p">;</span>
+<span class="w">    </span><span class="err">}</span>
+
+<span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="ss">&quot;\n Total = [%d]\n&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">tot</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<p>简单说明一下这段代码要做什么事。获取 <code>val</code> 数组中每一个值，将其赋值给 <code>out</code> 变量，然后将 <code>tot</code> 之前的值与 <code>0xffffffff/out</code> 的结果值累加，赋值给 <code>tot</code> 变量。</p>
+<p>这里遇到的问题是，当执行这段代码编译后的可执行程序时，产生以下错误：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>./gdb-test
+Floating<span class="w"> </span>point<span class="w"> </span>exception<span class="w"> </span><span class="o">(</span>core<span class="w"> </span>dumped<span class="o">)</span>
+</code></pre></div>
+
+<p>因此，要调试这段代码，第一步是使用 <code>-g</code> 选项编译程序。命令如下：</p>
+<div class="highlight"><pre><span></span><code>gcc -g -Wall gdb-test.c -o gdb-test
+</code></pre></div>
+
+<p>接着，让我们运行 GDB 调试器并指定要调试的可执行程序。命令如下：</p>
+<div class="highlight"><pre><span></span><code>gdb ./gdb-test
+</code></pre></div>
+
+<p>现在，我刚才得到的错误是 <code>Floating point exception</code>，大部分人可能已经知道，这是因为 <code>n % x</code>，当 x 为 0 时导致的错误。所以，考虑到这一点，我在 11 行代码除法运算的位置处添加了一个断点。如下：</p>
+<div class="highlight"><pre><span></span><code><span class="ss">(</span><span class="nv">gdb</span><span class="ss">)</span><span class="o">&amp;</span><span class="c1">;break 11</span>
+</code></pre></div>
+
+<p>注意 <code>(gdb)</code> 是调试器的提示信息，我只输入了 <code>break 11</code> 命令。</p>
+<p>现在，让 GDB 开始运行程序：</p>
+<div class="highlight"><pre><span></span><code>run
+</code></pre></div>
+
+<p>当断点第一次被命中时，GDB 显示如下输出：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">Breakpoint</span><span class="w"> </span><span class="nt">1</span><span class="o">,</span><span class="w"> </span><span class="nt">main</span><span class="w"> </span><span class="o">()</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">gdb-test</span><span class="p">.</span><span class="nc">c</span><span class="p">:</span><span class="nd">11</span>
+<span class="nt">11</span><span class="w"> </span><span class="nt">tot</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nt">tot</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nt">0xffffffff</span><span class="o">/</span><span class="nt">out</span><span class="o">;</span>
+<span class="o">(</span><span class="nt">gdb</span><span class="o">)</span>
+</code></pre></div>
+
+<p>正如你所看到的那样，调试器会显示断点所在的行代码。现在，让我们打印出此时 <code>out</code> 的值。如下：</p>
+<div class="highlight"><pre><span></span><code>(gdb) print out
+$1 = 5
+(gdb)
+</code></pre></div>
+
+<p>如上所示，值 <code>5</code> 被打印出来了。这个时候一切都还是正常的。让调试器继续执行程序直到命中下一个断点，可以通过使用 <code>c</code> 命令来完成：</p>
+<div class="highlight"><pre><span></span><code>c
+</code></pre></div>
+
+<p>重复上述操作，直到 <code>out</code> 值变为 <code>0</code> 时。</p>
+<div class="highlight"><pre><span></span><code><span class="o">...</span>
+<span class="o">...</span>
+<span class="o">...</span>
+<span class="nt">Breakpoint</span><span class="w"> </span><span class="nt">1</span><span class="o">,</span><span class="w"> </span><span class="nt">main</span><span class="w"> </span><span class="o">()</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">gdb-test</span><span class="p">.</span><span class="nc">c</span><span class="p">:</span><span class="nd">11</span>
+<span class="nt">11</span><span class="w"> </span><span class="nt">tot</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nt">tot</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nt">0xffffffff</span><span class="o">/</span><span class="nt">out</span><span class="o">;</span>
+<span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">print</span><span class="w"> </span><span class="nt">out</span>
+<span class="o">$</span><span class="nt">2</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nt">99</span>
+<span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">c</span>
+<span class="nt">Continuing</span><span class="o">.</span>
+
+<span class="nt">Breakpoint</span><span class="w"> </span><span class="nt">1</span><span class="o">,</span><span class="w"> </span><span class="nt">main</span><span class="w"> </span><span class="o">()</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">gdb-test</span><span class="p">.</span><span class="nc">c</span><span class="p">:</span><span class="nd">11</span>
+<span class="nt">11</span><span class="w"> </span><span class="nt">tot</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nt">tot</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nt">0xffffffff</span><span class="o">/</span><span class="nt">out</span><span class="o">;</span>
+<span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">print</span><span class="w"> </span><span class="nt">out</span>
+<span class="o">$</span><span class="nt">3</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nt">0</span>
+<span class="o">(</span><span class="nt">gdb</span><span class="o">)</span>
+</code></pre></div>
+
+<p>现在，为了进一步确认问题，我使用 GDB 的 <code>s</code>（或 <code>step</code>） 命令代替 <code>c</code> 命令。因为，我只想让当前程序在第 11 行之后暂停，再一步步执行，看看这个时候是否会发生崩溃。</p>
+<p>以下是执行之后输出信息：</p>
+<div class="highlight"><pre><span></span><code><span class="p">(</span><span class="n">gdb</span><span class="p">)</span><span class="w"> </span><span class="n">s</span>
+
+<span class="n">Program</span><span class="w"> </span><span class="n">received</span><span class="w"> </span><span class="k">signal</span><span class="w"> </span><span class="n">SIGFPE</span><span class="p">,</span><span class="w"> </span><span class="n">Arithmetic</span><span class="w"> </span><span class="n">exception</span><span class="o">.</span>
+<span class="mh">0x080484aa</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">main</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="n">at</span><span class="w"> </span><span class="n">gdb</span><span class="o">-</span><span class="n">test</span><span class="o">.</span><span class="n">c</span><span class="p">:</span><span class="mi">11</span>
+<span class="mi">11</span><span class="w"> </span><span class="n">tot</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tot</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mh">0xffffffff</span><span class="o">/</span><span class="n">out</span><span class="p">;</span>
+</code></pre></div>
+
+<p>是的，如上输出的第一行内容所示，这就是抛出异常的地方。当我再次尝试运行 <code>s</code> 命令时，问题最终也得到了确认：</p>
+<div class="highlight"><pre><span></span><code><span class="p">(</span><span class="n">gdb</span><span class="p">)</span><span class="w"> </span><span class="n">s</span>
+
+<span class="n">Program</span><span class="w"> </span><span class="n">terminated</span><span class="w"> </span><span class="n">with</span><span class="w"> </span><span class="k">signal</span><span class="w"> </span><span class="n">SIGFPE</span><span class="p">,</span><span class="w"> </span><span class="n">Arithmetic</span><span class="w"> </span><span class="n">exception</span><span class="o">.</span>
+<span class="n">The</span><span class="w"> </span><span class="n">program</span><span class="w"> </span><span class="n">no</span><span class="w"> </span><span class="n">longer</span><span class="w"> </span><span class="n">exists</span><span class="o">.</span>
+</code></pre></div>
+
+<p>通过这种方式，你就可以使用 GDB 调试你的程序。</p>
+<h3>总结</h3>
+<p>GDB 提供了很多功能供用户研究和使用，在这里，我们仅仅只介绍了很少一部分内容。通过 GDB 的手册页可以进一步了解这个工具，当你在调试代码的时候，尝试使用一下它。GDB 调试器有一定的学习难度，但是它很值得你下功夫学习。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

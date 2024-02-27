@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何打造更小巧的容器镜像</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Chris Collins 五种优化 Linux 容器大小和构建更小的镜像的方法。 Docker 近几年的爆炸性发展让大家逐渐了解到容器和容器镜像的概 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/03/ru-he-da-zao-geng-xiao-qiao-de-rong-qi-jing-xiang.html" rel="bookmark"
+           title="Permalink to 如何打造更小巧的容器镜像">如何打造更小巧的容器镜像</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-03-27T23:07:29+01:00">
+                Published: Wed 27 March 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Chris Collins</p>
+<blockquote>
+<p>五种优化 Linux 容器大小和构建更小的镜像的方法。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/201903/27/230706wa8s0xq01s066w60.jpg"></p>
+<p><a href="https://www.docker.com/">Docker</a> 近几年的爆炸性发展让大家逐渐了解到容器和容器镜像的概念。尽管 Linux 容器技术在很早之前就已经出现，但这项技术近来的蓬勃发展却还是要归功于 Docker 对用户友好的命令行界面以及使用 Dockerfile 格式轻松构建镜像的方式。纵然 Docker 大大降低了入门容器技术的难度，但构建一个兼具功能强大、体积小巧的容器镜像的过程中，有很多技巧需要了解。</p>
+<h3>第一步：清理不必要的文件</h3>
+<p>这一步和在普通服务器上清理文件没有太大的区别，而且要清理得更加仔细。一个小体积的容器镜像在传输方面有很大的优势，同时，在磁盘上存储不必要的数据的多个副本也是对资源的一种浪费。因此，这些技术对于容器来说应该比有大量专用内存的服务器更加需要。</p>
+<p>清理容器镜像中的缓存文件可以有效缩小镜像体积。下面的对比是使用 <code>dnf</code> 安装 <a href="https://www.nginx.com/">Nginx</a> 构建的镜像，分别是清理和没有清理 yum 缓存文件的结果：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Dockerfile with cache</span>
+<span class="n">FROM</span><span class="w"> </span><span class="n">fedora</span><span class="p">:</span><span class="mi">28</span>
+<span class="n">LABEL</span><span class="w"> </span><span class="n">maintainer</span><span class="w"> </span><span class="n">Chris</span><span class="w"> </span><span class="n">Collins</span><span class="w"> </span><span class="o">&lt;</span><span class="n">collins</span><span class="o">.</span><span class="n">christopher</span><span class="err">@</span><span class="n">gmail</span><span class="o">.</span><span class="n">com</span><span class="o">&gt;</span>
+
+<span class="n">RUN</span><span class="w"> </span><span class="n">dnf</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="o">-</span><span class="n">y</span><span class="w"> </span><span class="n">nginx</span>
+
+<span class="o">-----</span>
+
+<span class="c1"># Dockerfile w/o cache</span>
+<span class="n">FROM</span><span class="w"> </span><span class="n">fedora</span><span class="p">:</span><span class="mi">28</span>
+<span class="n">LABEL</span><span class="w"> </span><span class="n">maintainer</span><span class="w"> </span><span class="n">Chris</span><span class="w"> </span><span class="n">Collins</span><span class="w"> </span><span class="o">&lt;</span><span class="n">collins</span><span class="o">.</span><span class="n">christopher</span><span class="err">@</span><span class="n">gmail</span><span class="o">.</span><span class="n">com</span><span class="o">&gt;</span>
+
+<span class="n">RUN</span><span class="w"> </span><span class="n">dnf</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="o">-</span><span class="n">y</span><span class="w"> </span><span class="n">nginx</span><span class="w"> </span>\
+<span class="w">        </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">dnf</span><span class="w"> </span><span class="n">clean</span><span class="w"> </span><span class="n">all</span><span class="w"> </span>\
+<span class="w">        </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">rm</span><span class="w"> </span><span class="o">-</span><span class="n">rf</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">cache</span><span class="o">/</span><span class="n">yum</span>
+
+<span class="o">-----</span>
+
+<span class="p">[</span><span class="n">chris</span><span class="err">@</span><span class="n">krang</span><span class="p">]</span><span class="w"> </span><span class="o">$</span><span class="w"> </span><span class="n">docker</span><span class="w"> </span><span class="n">build</span><span class="w"> </span><span class="o">-</span><span class="n">t</span><span class="w"> </span><span class="n">cache</span><span class="w"> </span><span class="o">-</span><span class="n">f</span><span class="w"> </span><span class="n">Dockerfile</span><span class="w"> </span><span class="o">.</span><span class="w">  </span>
+<span class="p">[</span><span class="n">chris</span><span class="err">@</span><span class="n">krang</span><span class="p">]</span><span class="w"> </span><span class="o">$</span><span class="w"> </span><span class="n">docker</span><span class="w"> </span><span class="n">images</span><span class="w"> </span><span class="o">--</span><span class="n">format</span><span class="w"> </span><span class="s2">&quot;{{.Repository}}: {{.Size}}&quot;</span><span class="w"> </span>
+<span class="o">|</span><span class="w"> </span><span class="n">head</span><span class="w"> </span><span class="o">-</span><span class="n">n</span><span class="w"> </span><span class="mi">1</span>
+<span class="n">cache</span><span class="p">:</span><span class="w"> </span><span class="mi">464</span><span class="w"> </span><span class="n">MB</span>
+
+<span class="p">[</span><span class="n">chris</span><span class="err">@</span><span class="n">krang</span><span class="p">]</span><span class="w"> </span><span class="o">$</span><span class="w"> </span><span class="n">docker</span><span class="w"> </span><span class="n">build</span><span class="w"> </span><span class="o">-</span><span class="n">t</span><span class="w"> </span><span class="n">no</span><span class="o">-</span><span class="n">cache</span><span class="w"> </span><span class="o">-</span><span class="n">f</span><span class="w"> </span><span class="n">Dockerfile</span><span class="o">-</span><span class="n">wo</span><span class="o">-</span><span class="n">cache</span><span class="w"> </span><span class="o">.</span>
+<span class="p">[</span><span class="n">chris</span><span class="err">@</span><span class="n">krang</span><span class="p">]</span><span class="w"> </span><span class="o">$</span><span class="w"> </span><span class="n">docker</span><span class="w"> </span><span class="n">images</span><span class="w"> </span><span class="o">--</span><span class="n">format</span><span class="w"> </span><span class="s2">&quot;{{.Repository}}: {{.Size}}&quot;</span><span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="n">head</span><span class="w"> </span><span class="o">-</span><span class="n">n</span><span class="w"> </span><span class="mi">1</span>
+<span class="n">no</span><span class="o">-</span><span class="n">cache</span><span class="p">:</span><span class="w"> </span><span class="mi">271</span><span class="w"> </span><span class="n">MB</span>
+</code></pre></div>
+
+<p>从上面的结果来看，清理缓存文件的效果相当显著。和清除了元数据和缓存文件的容器镜像相比，不清除的镜像体积接近前者的两倍。除此以外，包管理器缓存文件、Ruby gem 的临时文件、nodejs 缓存文件，甚至是下载的源码 tarball 最好都全部清理掉。</p>
+<h3>层：一个潜在的隐患</h3>
+<p>很不幸（当你往下读，你会发现这是不幸中的万幸），根据容器中的层的概念，不能简单地向 Dockerfile 中写一句 <code>RUN rm -rf /var/cache/yum</code> 就完事儿了。因为 Dockerfile 的每一条命令都以一个层的形式存储，并一层层地叠加。所以，如果你是这样写的：</p>
+<div class="highlight"><pre><span></span><code><span class="n">RUN</span><span class="w"> </span><span class="n">dnf</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="o">-</span><span class="n">y</span><span class="w"> </span><span class="n">nginx</span>
+<span class="n">RUN</span><span class="w"> </span><span class="n">dnf</span><span class="w"> </span><span class="n">clean</span><span class="w"> </span><span class="n">all</span>
+<span class="n">RUN</span><span class="w"> </span><span class="n">rm</span><span class="w"> </span><span class="o">-</span><span class="n">rf</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">cache</span><span class="o">/</span><span class="n">yum</span>
+</code></pre></div>
+
+<p>你的容器镜像就会包含三层，而 <code>RUN dnf install -y nginx</code> 这一层仍然会保留着那些缓存文件，然后在另外两层中被移除。但缓存实际上仍然是存在的，当你把一个文件系统挂载在另外一个文件系统之上时，文件仍然在那里，只不过你见不到也访问不到它们而已。</p>
+<p>在上一节的示例中，你会看到正确的做法是将几条命令链接起来，在产生缓存文件的同一条 Dockerfile 指令里把缓存文件清理掉：</p>
+<div class="highlight"><pre><span></span><code><span class="n">RUN</span><span class="w"> </span><span class="n">dnf</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="o">-</span><span class="n">y</span><span class="w"> </span><span class="n">nginx</span><span class="w"> </span>\
+<span class="w">        </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">dnf</span><span class="w"> </span><span class="n">clean</span><span class="w"> </span><span class="n">all</span><span class="w"> </span>\
+<span class="w">        </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">rm</span><span class="w"> </span><span class="o">-</span><span class="n">rf</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">cache</span><span class="o">/</span><span class="n">yum</span>
+</code></pre></div>
+
+<p>这样就把几条命令连成了一条命令，在最终的镜像中只占用一个层。这样只会浪费一点缓存的好处，稍微多耗费一点点构建容器镜像的时间，但被清理掉的缓存文件就不会留存在最终的镜像中了。作为一个折衷方法，只需要把一些相关的命令（例如 <code>yum install</code> 和 <code>yum clean all</code>、下载文件、解压文件、移除 tarball 等等）连接成一个命令，就可以在最终的容器镜像中节省出大量体积，你也能够利用 Docker 的缓存加快开发速度。</p>
+<p>层还有一个更隐蔽的特性。每一层都记录了文件的更改，这里的更改并不仅仅已有的文件累加起来，而是包括文件属性在内的所有更改。因此即使是对文件使用了 <code>chmod</code> 操作也会被在新的层创建文件的副本。</p>
+<p>下面是一次 <code>docker images</code> 命令的输出内容。其中容器镜像 <code>layer_test_1</code> 是在 CentOS 基础镜像中增加了一个 1GB 大小的文件后构建出来的镜像，而容器镜像 <code>layer_test_2</code> 是使用了 <code>FROM layer_test_1</code> 语句创建出来的，除了执行一条 <code>chmod u+x</code> 命令没有做任何改变。</p>
+<div class="highlight"><pre><span></span><code>layer_test_2        latest       e11b5e58e2fc           7 seconds ago           2.35 GB
+layer_test_1        latest       6eca792a4ebe           2 minutes ago           1.27 GB
+</code></pre></div>
+
+<p>如你所见，<code>layer_test_2</code> 镜像比 <code>layer_test_1</code> 镜像大了 1GB 以上。尽管事实上 <code>layer_test_1</code> 只是 <code>layer_test_2</code> 的前一层，但隐藏在这第二层中有一个额外的 1GB 的文件。在构建容器镜像的过程中，如果在单独一层中进行移动、更改、删除文件，都会出现类似的结果。</p>
+<h3>专用镜像和公用镜像</h3>
+<p>有这么一个亲身经历：我们部门重度依赖于 <a href="https://rubyonrails.org/">Ruby on Rails</a>，于是我们开始使用容器。一开始我们就建立了一个正式的 Ruby 的基础镜像供所有的团队使用，为了简单起见（以及在“这就是我们自己在服务器上瞎鼓捣的”想法的指导下），我们使用 <a href="https://github.com/rbenv/rbenv">rbenv</a> 将 Ruby 最新的 4 个版本都安装到了这个镜像当中，目的是让开发人员只用这个单一的镜像就可以将使用不同版本 Ruby 的应用程序迁移到容器中。我们当时还认为这是一个虽然非常大但兼容性相当好的镜像，因为这个镜像可以同时满足各个团队的使用。</p>
+<p>实际上这是费力不讨好的。如果维护独立的、版本略微不同的镜像中，可以很轻松地实现镜像的自动化维护。同时，选择特定版本的特定镜像，还有助于在引入破坏性改变，在应用程序接近生命周期结束前提前做好预防措施，以免产生不可控的后果。庞大的公用镜像也会对资源造成浪费，当我们后来将这个庞大的镜像按照 Ruby 版本进行拆分之后，我们最终得到了共享一个基础镜像的多个镜像，如果它们都放在一个服务器上，会额外多占用一点空间，但是要比安装了多个版本的巨型镜像要小得多。</p>
+<p>这个例子也不是说构建一个灵活的镜像是没用的，但仅对于这个例子来说，从一个公共镜像创建根据用途而构建的镜像最终将节省存储资源和维护成本，而在受益于公共基础镜像的好处的同时，每个团队也能够根据需要来做定制化的配置。</p>
+<h3>从零开始：将你需要的内容添加到空白镜像中</h3>
+<p>有一些和 Dockerfile 一样易用的工具可以轻松创建非常小的兼容 Docker 的容器镜像，这些镜像甚至不需要包含一个完整的操作系统，就可以像标准的 Docker 基础镜像一样小。</p>
+<p>我曾经写过一篇<a href="https://opensource.com/article/18/6/getting-started-buildah">关于 Buildah 的文章</a>，我想在这里再一次推荐一下这个工具。因为它足够的灵活，可以使用宿主机上的工具来操作一个空白镜像并安装打包好的应用程序，而且这些工具不会被包含到镜像当中。</p>
+<p>Buildah 取代了 <code>docker build</code> 命令。可以使用 Buildah 将容器的文件系统挂载到宿主机上并进行交互。</p>
+<p>下面来使用 Buildah 实现上文中 Nginx 的例子（现在忽略了缓存的处理）：</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env bash</span>
+<span class="nb">set</span><span class="w"> </span>-o<span class="w"> </span>errexit
+
+<span class="c1"># Create a container</span>
+<span class="nv">container</span><span class="o">=</span><span class="k">$(</span>buildah<span class="w"> </span>from<span class="w"> </span>scratch<span class="k">)</span>
+
+<span class="c1"># Mount the container filesystem</span>
+<span class="nv">mountpoint</span><span class="o">=</span><span class="k">$(</span>buildah<span class="w"> </span>mount<span class="w"> </span><span class="nv">$container</span><span class="k">)</span>
+
+<span class="c1"># Install a basic filesystem and minimal set of packages, and nginx</span>
+dnf<span class="w"> </span>install<span class="w"> </span>--installroot<span class="w"> </span><span class="nv">$mountpoint</span><span class="w">  </span>--releasever<span class="w"> </span><span class="m">28</span><span class="w"> </span>glibc-minimal-langpack<span class="w"> </span>nginx<span class="w"> </span>--setopt<span class="w"> </span><span class="nv">install_weak_deps</span><span class="o">=</span><span class="nb">false</span><span class="w"> </span>-y
+
+<span class="c1"># Save the container to an image</span>
+buildah<span class="w"> </span>commit<span class="w"> </span>--format<span class="w"> </span>docker<span class="w"> </span><span class="nv">$container</span><span class="w"> </span>nginx
+
+<span class="c1"># Cleanup</span>
+buildah<span class="w"> </span>unmount<span class="w"> </span><span class="nv">$container</span>
+
+<span class="c1"># Push the image to the Docker daemon’s storage</span>
+buildah<span class="w"> </span>push<span class="w"> </span>nginx:latest<span class="w"> </span>docker-daemon:nginx:latest
+</code></pre></div>
+
+<p>你会发现这里使用的已经不再是 Dockerfile 了，而是普通的 Bash 脚本，而且是从框架（或空白）镜像开始构建的。上面这段 Bash 脚本将容器的根文件系统挂载到了宿主机上，然后使用宿主机的命令来安装应用程序，这样的话就不需要把软件包管理器放置到容器镜像中了。</p>
+<p>这样所有无关的内容（基础镜像之外的部分，例如 <code>dnf</code>）就不再会包含在镜像中了。在这个例子当中，构建出来的镜像大小只有 304 MB，比使用 Dockerfile 构建的镜像减少了 100 MB 以上。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">chris@krang</span><span class="o">]</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">docker</span><span class="w"> </span><span class="n">images</span><span class="w"> </span><span class="o">|</span><span class="n">grep</span><span class="w"> </span><span class="n">nginx</span>
+<span class="n">docker</span><span class="p">.</span><span class="n">io</span><span class="o">/</span><span class="n">nginx</span><span class="w">      </span><span class="n">buildah</span><span class="w">      </span><span class="mi">2505</span><span class="n">d3597457</span><span class="w">    </span><span class="mi">4</span><span class="w"> </span><span class="n">minutes</span><span class="w"> </span><span class="n">ago</span><span class="w">         </span><span class="mi">304</span><span class="w"> </span><span class="n">MB</span>
+</code></pre></div>
+
+<p>注：这个镜像是使用上面的构建脚本构建的，镜像名称中前缀的 <code>docker.io</code> 只是在推送到镜像仓库时加上的。</p>
+<p>对于一个 300MB 级别的容器基础镜像来说，能缩小 100MB 已经是很显著的节省了。使用软件包管理器来安装 Nginx 会带来大量的依赖项，如果能够使用宿主机直接从源代码对应用程序进行编译然后构建到容器镜像中，节省出来的空间还可以更多，因为这个时候可以精细的选用必要的依赖项，非必要的依赖项一概不构建到镜像中。</p>
+<p><a href="https://twitter.com/TSweeneyRedHat">Tom Sweeney</a> 有一篇文章《<a href="https://opensource.com/article/18/5/containers-buildah">用 Buildah 构建更小的容器</a>》，如果你想在这方面做深入的优化，不妨参考一下。</p>
+<p>通过 Buildah 可以构建一个不包含完整操作系统和代码编译工具的容器镜像，大幅缩减了容器镜像的体积。对于某些类型的镜像，我们可以进一步采用这种方式，创建一个只包含应用程序本身的镜像。</p>
+<h3>使用静态链接的二进制文件来构建镜像</h3>
+<p>按照这个思路，我们甚至可以更进一步舍弃容器内部的管理和构建工具。例如，如果我们足够专业，不需要在容器中进行排错调试，是不是可以不要 Bash 了？是不是可以不要 <a href="https://www.gnu.org/software/coreutils/coreutils.html">GNU 核心套件</a>了？是不是可以不要 Linux 基础文件系统了？如果你使用的编译型语言支持<a href="https://en.wikipedia.org/wiki/Static_library">静态链接库</a>，将应用程序所需要的所有库和函数都编译成二进制文件，那么程序所需要的函数和库都可以复制和存储在二进制文件本身里面。</p>
+<p>这种做法在 <a href="https://golang.org/">Golang</a> 社区中已经十分常见，下面我们使用由 Go 语言编写的应用程序进行展示：</p>
+<p>以下这个 Dockerfile 基于 golang:1.8 镜像构建一个小的 Hello World 应用程序镜像：</p>
+<div class="highlight"><pre><span></span><code><span class="k">FROM</span><span class="w"> </span><span class="nl">golang</span><span class="p">:</span><span class="mf">1.8</span>
+
+<span class="n">ENV</span><span class="w"> </span><span class="n">GOOS</span><span class="o">=</span><span class="n">linux</span>
+<span class="n">ENV</span><span class="w"> </span><span class="n">appdir</span><span class="o">=/</span><span class="k">go</span><span class="o">/</span><span class="n">src</span><span class="o">/</span><span class="n">gohelloworld</span>
+
+<span class="n">COPY</span><span class="w"> </span><span class="p">.</span><span class="o">/</span><span class="w"> </span><span class="o">/</span><span class="k">go</span><span class="o">/</span><span class="n">src</span><span class="o">/</span><span class="n">goHelloWorld</span>
+<span class="n">WORKDIR</span><span class="w"> </span><span class="o">/</span><span class="k">go</span><span class="o">/</span><span class="n">src</span><span class="o">/</span><span class="n">goHelloWorld</span>
+
+<span class="n">RUN</span><span class="w"> </span><span class="k">go</span><span class="w"> </span><span class="k">get</span>
+<span class="n">RUN</span><span class="w"> </span><span class="k">go</span><span class="w"> </span><span class="n">build</span><span class="w"> </span><span class="o">-</span><span class="n">o</span><span class="w"> </span><span class="o">/</span><span class="n">goHelloWorld</span><span class="w"> </span><span class="o">-</span><span class="n">a</span>
+
+<span class="n">CMD</span><span class="w"> </span><span class="o">[</span><span class="n">&quot;/goHelloWorld&quot;</span><span class="o">]</span>
+</code></pre></div>
+
+<p>构建出来的镜像中包含了二进制文件、源代码以及基础镜像层，一共 716MB。但对于应用程序运行唯一必要的只有编译后的二进制文件，其余内容在镜像中都是多余的。</p>
+<p>如果在编译的时候通过指定参数 <code>CGO_ENABLED=0</code> 来禁用 <code>cgo</code>，就可以在编译二进制文件的时候忽略某些函数的 C 语言库：</p>
+<div class="highlight"><pre><span></span><code><span class="n">GOOS</span><span class="o">=</span><span class="n">linux</span><span class="w"> </span><span class="n">CGO_ENABLED</span><span class="o">=</span><span class="mi">0</span><span class="w"> </span><span class="k">go</span><span class="w"> </span><span class="n">build</span><span class="w"> </span><span class="o">-</span><span class="n">a</span><span class="w"> </span><span class="n">goHelloWorld</span><span class="p">.</span><span class="k">go</span>
+</code></pre></div>
+
+<p>编译出来的二进制文件可以加到一个空白（或框架）镜像：</p>
+<div class="highlight"><pre><span></span><code>FROM scratch
+COPY goHelloWorld /
+CMD [&quot;/goHelloWorld&quot;]
+</code></pre></div>
+
+<p>来看一下两次构建的镜像对比：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n"> chris@krang </span><span class="o">]</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">docker</span><span class="w"> </span><span class="n">images</span>
+<span class="n">REPOSITORY</span><span class="w">      </span><span class="n">TAG</span><span class="w">             </span><span class="nc">IMAGE</span><span class="w"> </span><span class="n">ID</span><span class="w">                </span><span class="n">CREATED</span><span class="w">                 </span><span class="k">SIZE</span>
+<span class="n">goHello</span><span class="w">     </span><span class="n">scratch</span><span class="w">     </span><span class="n">a5881650d6e9</span><span class="w">            </span><span class="mi">13</span><span class="w"> </span><span class="n">seconds</span><span class="w"> </span><span class="n">ago</span><span class="w">          </span><span class="mf">1.55</span><span class="w"> </span><span class="n">MB</span>
+<span class="n">goHello</span><span class="w">     </span><span class="n">builder</span><span class="w">     </span><span class="mi">980290</span><span class="n">a100db</span><span class="w">            </span><span class="mi">14</span><span class="w"> </span><span class="n">seconds</span><span class="w"> </span><span class="n">ago</span><span class="w">          </span><span class="mi">716</span><span class="w"> </span><span class="n">MB</span>
+</code></pre></div>
+
+<p>从镜像体积来说简直是天差地别了。基于 golang:1.8 镜像构建出来带有 goHelloWorld 二进制的镜像（带有 <code>builder</code> 标签）体积是基于空白镜像构建的只包含该二进制文件的镜像的 460 倍！后者的整个镜像大小只有 1.55MB，也就是说，有 713MB 的数据都是非必要的。</p>
+<p>正如上面提到的，这种缩减镜像体积的方式在 Golang 社区非常流行，因此不乏这方面的文章。<a href="https://twitter.com/kelseyhightower">Kelsey Hightower</a> 有一篇<a href="https://medium.com/@kelseyhightower/optimizing-docker-images-for-static-binaries-b5696e26eb07">文章</a>专门介绍了如何处理这些库的依赖关系。</p>
+<h3>压缩镜像层</h3>
+<p>除了前面几节中讲到的将多个命令链接成一个命令的技巧，还可以对镜像进行压缩。镜像压缩的实质是导出它，删除掉镜像构建过程中的所有中间层，然后保存镜像的当前状态为单个镜像层。这样可以进一步将镜像缩小到更小的体积。</p>
+<p>在 Docker 1.13 之前，压缩镜像层的的过程可能比较麻烦，需要用到 <code>docker-squash</code> 之类的工具来导出容器的内容并重新导入成一个单层的镜像。但 Docker 在 Docker 1.13 中引入了 <code>--squash</code> 参数，可以在构建过程中实现同样的功能：</p>
+<div class="highlight"><pre><span></span><code><span class="n">FROM</span><span class="w"> </span><span class="n">fedora</span><span class="p">:</span><span class="mi">28</span>
+<span class="n">LABEL</span><span class="w"> </span><span class="n">maintainer</span><span class="w"> </span><span class="n">Chris</span><span class="w"> </span><span class="n">Collins</span><span class="w"> </span><span class="o">&lt;</span><span class="n">collins</span><span class="o">.</span><span class="n">christopher</span><span class="err">@</span><span class="n">gmail</span><span class="o">.</span><span class="n">com</span><span class="o">&gt;</span>
+
+<span class="n">RUN</span><span class="w"> </span><span class="n">dnf</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="o">-</span><span class="n">y</span><span class="w"> </span><span class="n">nginx</span>
+<span class="n">RUN</span><span class="w"> </span><span class="n">dnf</span><span class="w"> </span><span class="n">clean</span><span class="w"> </span><span class="n">all</span>
+<span class="n">RUN</span><span class="w"> </span><span class="n">rm</span><span class="w"> </span><span class="o">-</span><span class="n">rf</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">cache</span><span class="o">/</span><span class="n">yum</span>
+
+<span class="p">[</span><span class="n">chris</span><span class="err">@</span><span class="n">krang</span><span class="p">]</span><span class="w"> </span><span class="o">$</span><span class="w"> </span><span class="n">docker</span><span class="w"> </span><span class="n">build</span><span class="w"> </span><span class="o">-</span><span class="n">t</span><span class="w"> </span><span class="n">squash</span><span class="w"> </span><span class="o">-</span><span class="n">f</span><span class="w"> </span><span class="n">Dockerfile</span><span class="o">-</span><span class="n">squash</span><span class="w"> </span><span class="o">--</span><span class="n">squash</span><span class="w"> </span><span class="o">.</span>
+<span class="p">[</span><span class="n">chris</span><span class="err">@</span><span class="n">krang</span><span class="p">]</span><span class="w"> </span><span class="o">$</span><span class="w"> </span><span class="n">docker</span><span class="w"> </span><span class="n">images</span><span class="w"> </span><span class="o">--</span><span class="n">format</span><span class="w"> </span><span class="s2">&quot;{{.Repository}}: {{.Size}}&quot;</span><span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="n">head</span><span class="w"> </span><span class="o">-</span><span class="n">n</span><span class="w"> </span><span class="mi">1</span>
+<span class="n">squash</span><span class="p">:</span><span class="w"> </span><span class="mi">271</span><span class="w"> </span><span class="n">MB</span>
+</code></pre></div>
+
+<p>通过这种方式使用 Dockerfile 构建出来的镜像有 271MB 大小，和上面连接多条命令的方案构建出来的镜像体积一样，因此这个方案也是有效的，但也有一个潜在的问题，而且是另一种问题。</p>
+<p>“什么？还有另外的问题？”</p>
+<p>好吧，有点像以前一样的问题，以另一种方式引发了问题。</p>
+<h3>过头了：过度压缩、太小太专用了</h3>
+<p>容器镜像之间可以共享镜像层。基础镜像或许大小上有几 Mb，但它只需要拉取/存储一次，并且每个镜像都能复用它。所有共享基础镜像的实际镜像大小是基础镜像层加上每个特定改变的层的差异内容，因此，如果有数千个基于同一个基础镜像的容器镜像，其体积之和也有可能只比一个基础镜像大不了多少。</p>
+<p>因此，这就是过度使用压缩或专用镜像层的缺点。将不同镜像压缩成单个镜像层，各个容器镜像之间就没有可以共享的镜像层了，每个容器镜像都会占有单独的体积。如果你只需要维护少数几个容器镜像来运行很多容器，这个问题可以忽略不计；但如果你要维护的容器镜像很多，从长远来看，就会耗费大量的存储空间。</p>
+<p>回顾上面 Nginx 压缩的例子，我们能看出来这种情况并不是什么大的问题。在这个镜像中，有 Fedora 操作系统和 Nginx 应用程序，没有缓存，并且已经被压缩。但我们一般不会使用一个原始的 Nginx，而是会修改配置文件，以及引入其它代码或应用程序来配合 Nginx 使用，而要做到这些，Dockerfile 就变得更加复杂了。</p>
+<p>如果使用普通的镜像构建方式，构建出来的容器镜像就会带有 Fedora 操作系统的镜像层、一个安装了 Nginx 的镜像层（带或不带缓存）、为 Nginx 作自定义配置的其它多个镜像层，而如果有其它容器镜像需要用到 Fedora 或者 Nginx，就可以复用这个容器镜像的前两层。</p>
+<div class="highlight"><pre><span></span><code><span class="k">[   App 1 Layer (  5 MB) ]          [   App 2 Layer (6 MB) ]</span>
+<span class="na">[   Nginx Layer ( 21 MB) ] ------------------^</span>
+<span class="k">[ Fedora  Layer (249 MB) ]</span><span class="w">  </span>
+</code></pre></div>
+
+<p>如果使用压缩镜像层的构建方式，Fedora 操作系统会和 Nginx 以及其它配置内容都被压缩到同一层里面，如果有其它容器镜像需要使用到 Fedora，就必须重新引入 Fedora 基础镜像，这样每个容器镜像都会额外增加 249MB 的大小。</p>
+<div class="highlight"><pre><span></span><code>[ Fedora + Nginx + App 1 (275 MB)]      [ Fedora + Nginx + App 2 (276 MB) ]  
+</code></pre></div>
+
+<p>当你构建了大量在功能上趋于分化的的小型容器镜像时，这个问题就会暴露出来了。</p>
+<p>就像生活中的每一件事一样，关键是要做到适度。根据镜像层的实现原理，如果一个容器镜像变得越小、越专用化，就越难和其它容器镜像共享基础的镜像层，这样反而带来不好的效果。</p>
+<p>对于仅在基础镜像上做微小变动构建出来的多个容器镜像，可以考虑共享基础镜像层。如上所述，一个镜像层本身会带有一定的体积，但只要存在于镜像仓库中，就可以被其它容器镜像复用。这种情况下，数千个镜像也许要比单个镜像占用更少的空间。</p>
+<div class="highlight"><pre><span></span><code><span class="k">[ specific app   ]      [ specific app 2 ]</span>
+<span class="na">[ customizations ]--------------^</span>
+<span class="k">[ base layer     ]</span>
+</code></pre></div>
+
+<p>一个容器镜像变得越小、越专用化，就越难和其它容器镜像共享基础的镜像层，最终会不必要地占用越来越多的存储空间。</p>
+<div class="highlight"><pre><span></span><code> [ specific app 1 ]     [ specific app 2 ]      [ specific app 3 ]
+</code></pre></div>
+
+<h3>总结</h3>
+<p>减少处理容器镜像时所需的存储空间和带宽的方法有很多，其中最直接的方法就是减小容器镜像本身的大小。在使用容器的过程中，要经常留意容器镜像是否体积过大，根据不同的情况采用上述提到的清理缓存、压缩到一层、将二进制文件加入在空白镜像中等不同的方法，将容器镜像的体积缩减到一个有效的大小。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

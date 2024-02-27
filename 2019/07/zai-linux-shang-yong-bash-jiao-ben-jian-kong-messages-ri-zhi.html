@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在 Linux 上用 Bash 脚本监控 messages 日志</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Magesh Maruthamuthu 目前市场上有许多开源监控工具可用于监控 Linux 系统的性能。当系统达到指定的阈值限制时，它将发送电子邮件警 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/07/zai-linux-shang-yong-bash-jiao-ben-jian-kong-messages-ri-zhi.html" rel="bookmark"
+           title="Permalink to 在 Linux 上用 Bash 脚本监控 messages 日志">在 Linux 上用 Bash 脚本监控 messages 日志</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-07-31T21:14:00+02:00">
+                Published: Wed 31 July 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Magesh Maruthamuthu</p>
+<p><img alt="" src="/data/attachment/album/201907/31/211325yl2dldr4lk7gkkkk.jpg"></p>
+<p>目前市场上有许多开源监控工具可用于监控 Linux 系统的性能。当系统达到指定的阈值限制时，它将发送电子邮件警报。它可以监视 CPU 利用率、内存利用率、交换利用率、磁盘空间利用率等所有内容。</p>
+<p>如果你只有很少的系统并且想要监视它们，那么编写一个小的 shell 脚本可以使你的任务变得非常简单。</p>
+<p>在本教程中，我们添加了一个 shell 脚本来监视 Linux 系统上的 messages 日志。</p>
+<p>我们过去添加了许多有用的 shell 脚本。如果要查看这些内容，请导航至以下链接。</p>
+<ul>
+<li><a href="https://www.2daygeek.com/category/shell-script/">如何使用 shell 脚本监控系统的日常活动？</a></li>
+</ul>
+<p>此脚本将检查 <code>/var/log/messages</code> 文件中的 “warning“、“error” 和 “critical”，如果发现任何有关的东西，就给指定电子邮件地址发邮件。</p>
+<p>如果服务器有许多匹配的字符串，我们就不能经常运行这个可能填满收件箱的脚本，我们可以在一天内运行一次。</p>
+<p>为了解决这个问题，我让脚本以不同的方式触发电子邮件。</p>
+<p>如果 <code>/var/log/messages</code> 文件中昨天的日志中找到任何给定字符串，则脚本将向给定的电子邮件地址发送电子邮件警报。</p>
+<p><strong>注意：</strong>你需要更改电子邮件地址，而不是我们的电子邮件地址。</p>
+<div class="highlight"><pre><span></span><code># vi /opt/scripts/os-log-alert.sh
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="ch">#!/bin/bash</span>
+<span class="c1">#Set the variable which equal to zero</span>
+<span class="nv">prev_count</span><span class="o">=</span><span class="m">0</span>
+
+<span class="nv">count</span><span class="o">=</span><span class="k">$(</span>grep<span class="w"> </span>-i<span class="w"> </span><span class="s2">&quot;`date --date=&#39;yesterday&#39; &#39;+%b %e&#39;`&quot;</span><span class="w"> </span>/var/log/messages<span class="w"> </span><span class="p">|</span><span class="w"> </span>egrep<span class="w"> </span>-wi<span class="w"> </span><span class="s1">&#39;warning|error|critical&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l<span class="k">)</span>
+
+<span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$prev_count</span><span class="s2">&quot;</span><span class="w"> </span>-lt<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$count</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">    </span><span class="c1"># Send a mail to given email id when errors found in log</span>
+<span class="w">    </span><span class="nv">SUBJECT</span><span class="o">=</span><span class="s2">&quot;WARNING: Errors found in log on &quot;</span><span class="sb">`</span>date<span class="w"> </span>--date<span class="o">=</span><span class="s1">&#39;yesterday&#39;</span><span class="w"> </span><span class="s1">&#39;+%b %e&#39;</span><span class="sb">`</span><span class="s2">&quot;&quot;</span>
+<span class="w">    </span><span class="c1"># This is a temp file, which is created to store the email message.</span>
+<span class="w">    </span><span class="nv">MESSAGE</span><span class="o">=</span><span class="s2">&quot;/tmp/logs.txt&quot;</span>
+<span class="w">    </span><span class="nv">TO</span><span class="o">=</span><span class="s2">&quot;2daygeek@gmail.com&quot;</span>
+<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;ATTENTION: Errors are found in /var/log/messages. Please Check with Linux admin.&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span><span class="nv">$MESSAGE</span>
+<span class="w">    </span><span class="nb">echo</span><span class="w">  </span><span class="s2">&quot;Hostname: `hostname`&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span><span class="nv">$MESSAGE</span>
+<span class="w">    </span><span class="nb">echo</span><span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;\n&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span><span class="nv">$MESSAGE</span>
+<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;+------------------------------------------------------------------------------------+&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span><span class="nv">$MESSAGE</span>
+<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Error messages in the log file as below&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span><span class="nv">$MESSAGE</span>
+<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;+------------------------------------------------------------------------------------+&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span><span class="nv">$MESSAGE</span>
+<span class="w">    </span>grep<span class="w"> </span>-i<span class="w"> </span><span class="s2">&quot;`date --date=&#39;yesterday&#39; &#39;+%b %e&#39;`&quot;</span><span class="w"> </span>/var/log/messages<span class="w"> </span><span class="p">|</span><span class="w"> </span>awk<span class="w"> </span><span class="s1">&#39;{ $3=&quot;&quot;; print}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>egrep<span class="w"> </span>-wi<span class="w"> </span><span class="s1">&#39;warning|error|critical&#39;</span><span class="w"> </span>&gt;&gt;<span class="w">  </span><span class="nv">$MESSAGE</span>
+<span class="w">    </span>mail<span class="w"> </span>-s<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$SUBJECT</span><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$TO</span><span class="s2">&quot;</span><span class="w"> </span>&lt;<span class="w"> </span><span class="nv">$MESSAGE</span>
+<span class="w">    </span><span class="c1">#rm $MESSAGE</span>
+<span class="k">fi</span>
+</code></pre></div>
+
+<p>为 <code>os-log-alert.sh</code> 文件设置可执行权限。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>chmod<span class="w"> </span>+x<span class="w"> </span>/opt/scripts/os-log-alert.sh
+</code></pre></div>
+
+<p>最后添加一个 cron 任务来自动执行此操作。它将每天 7 点钟运行。</p>
+<div class="highlight"><pre><span></span><code># crontab -e
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="mf">0</span><span class="w"> </span><span class="mf">7</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">bash</span><span class="w"> </span><span class="o">/</span><span class="n">opt</span><span class="o">/</span><span class="n">scripts</span><span class="o">/</span><span class="n">os</span><span class="o">-</span><span class="nb">log</span><span class="o">-</span><span class="n">alert</span><span class="mf">.</span><span class="n">sh</span>
+</code></pre></div>
+
+<p><strong>注意：</strong>你将在每天 7 点收到昨天日志的电子邮件提醒。</p>
+<p><strong>输出：</strong>你将收到类似下面的电子邮件提醒。</p>
+<div class="highlight"><pre><span></span><code><span class="nl">ATTENTION</span><span class="p">:</span><span class="w"> </span><span class="n">Errors</span><span class="w"> </span><span class="n">are</span><span class="w"> </span><span class="n">found</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="o">/</span><span class="n">var</span><span class="o">/</span><span class="n">log</span><span class="o">/</span><span class="n">messages</span><span class="p">.</span><span class="w"> </span><span class="n">Please</span><span class="w"> </span><span class="n">Check</span><span class="w"> </span><span class="n">with</span><span class="w"> </span><span class="n">Linux</span><span class="w"> </span><span class="n">admin</span><span class="p">.</span>
+
+<span class="o">+-----------------------------------------------------+</span>
+<span class="n">Error</span><span class="w"> </span><span class="n">messages</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">log</span><span class="w"> </span><span class="n">file</span><span class="w"> </span><span class="n">as</span><span class="w"> </span><span class="n">below</span>
+<span class="o">+-----------------------------------------------------+</span>
+<span class="n">Jul</span><span class="w">  </span><span class="mi">3</span><span class="w"> </span><span class="mo">02</span><span class="o">:</span><span class="mi">40</span><span class="o">:</span><span class="mi">11</span><span class="w"> </span><span class="n">ns1</span><span class="w"> </span><span class="n">kernel</span><span class="o">:</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">fpm</span><span class="p">[</span><span class="mi">3175</span><span class="p">]</span><span class="o">:</span><span class="w"> </span><span class="n">segfault</span><span class="w"> </span><span class="n">at</span><span class="w"> </span><span class="mi">299</span><span class="w"> </span><span class="n">ip</span><span class="w"> </span><span class="mo">000055</span><span class="n">dfe7cc7e25</span><span class="w"> </span><span class="n">sp</span><span class="w"> </span><span class="mf">00007f</span><span class="n">fd799d7d38</span><span class="w"> </span><span class="n">error</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">fpm</span><span class="p">[</span><span class="mi">55</span><span class="n">dfe7a89000</span><span class="o">+</span><span class="mi">3</span><span class="n">a7000</span><span class="p">]</span>
+<span class="n">Jul</span><span class="w">  </span><span class="mi">3</span><span class="w"> </span><span class="mo">02</span><span class="o">:</span><span class="mi">50</span><span class="o">:</span><span class="mi">14</span><span class="w"> </span><span class="n">ns1</span><span class="w"> </span><span class="n">kernel</span><span class="o">:</span><span class="w"> </span><span class="n">lmtp</span><span class="p">[</span><span class="mi">8249</span><span class="p">]</span><span class="o">:</span><span class="w"> </span><span class="n">segfault</span><span class="w"> </span><span class="n">at</span><span class="w"> </span><span class="mi">20</span><span class="w"> </span><span class="n">ip</span><span class="w"> </span><span class="mf">00007f</span><span class="mi">9</span><span class="n">cc05295e4</span><span class="w"> </span><span class="n">sp</span><span class="w"> </span><span class="mf">00007f</span><span class="n">fc57bca1a0</span><span class="w"> </span><span class="n">error</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="n">libdovecot</span><span class="o">-</span><span class="n">storage</span><span class="p">.</span><span class="n">so</span><span class="mf">.0.0.0</span><span class="p">[</span><span class="mf">7f</span><span class="mi">9</span><span class="n">cc04df000</span><span class="o">+</span><span class="mi">148000</span><span class="p">]</span>
+<span class="n">Jul</span><span class="w">  </span><span class="mi">3</span><span class="w"> </span><span class="mi">15</span><span class="o">:</span><span class="mi">36</span><span class="o">:</span><span class="mi">09</span><span class="w"> </span><span class="n">ns1</span><span class="w"> </span><span class="n">kernel</span><span class="o">:</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">fpm</span><span class="p">[</span><span class="mi">17846</span><span class="p">]</span><span class="o">:</span><span class="w"> </span><span class="n">segfault</span><span class="w"> </span><span class="n">at</span><span class="w"> </span><span class="mi">299</span><span class="w"> </span><span class="n">ip</span><span class="w"> </span><span class="mo">000055</span><span class="n">dfe7cc7e25</span><span class="w"> </span><span class="n">sp</span><span class="w"> </span><span class="mf">00007f</span><span class="n">fd799d7d38</span><span class="w"> </span><span class="n">error</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">fpm</span><span class="p">[</span><span class="mi">55</span><span class="n">dfe7a89000</span><span class="o">+</span><span class="mi">3</span><span class="n">a7000</span><span class="p">]</span>
+<span class="n">Jul</span><span class="w">  </span><span class="mi">3</span><span class="w"> </span><span class="mi">15</span><span class="o">:</span><span class="mi">45</span><span class="o">:</span><span class="mi">54</span><span class="w"> </span><span class="n">ns1</span><span class="w"> </span><span class="n">pure</span><span class="o">-</span><span class="n">ftpd</span><span class="o">:</span><span class="w"> </span><span class="p">(</span><span class="o">?</span><span class="mf">@5.188.62.5</span><span class="p">)</span><span class="w"> </span><span class="p">[</span><span class="n">WARNING</span><span class="p">]</span><span class="w"> </span><span class="n">Authentication</span><span class="w"> </span><span class="n">failed</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">user</span><span class="w"> </span><span class="p">[</span><span class="n">daygeek</span><span class="p">]</span>
+<span class="n">Jul</span><span class="w">  </span><span class="mi">3</span><span class="w"> </span><span class="mi">16</span><span class="o">:</span><span class="mi">25</span><span class="o">:</span><span class="mi">36</span><span class="w"> </span><span class="n">ns1</span><span class="w"> </span><span class="n">pure</span><span class="o">-</span><span class="n">ftpd</span><span class="o">:</span><span class="w"> </span><span class="p">(</span><span class="o">?</span><span class="mf">@104.140.148.58</span><span class="p">)</span><span class="w"> </span><span class="p">[</span><span class="n">WARNING</span><span class="p">]</span><span class="w"> </span><span class="n">Sorry</span><span class="p">,</span><span class="w"> </span><span class="n">cleartext</span><span class="w"> </span><span class="n">sessions</span><span class="w"> </span><span class="n">and</span><span class="w"> </span><span class="k">weak</span><span class="w"> </span><span class="n">ciphers</span><span class="w"> </span><span class="n">are</span><span class="w"> </span><span class="n">not</span><span class="w"> </span><span class="n">accepted</span><span class="w"> </span><span class="n">on</span><span class="w"> </span><span class="n">this</span><span class="w"> </span><span class="n">server</span><span class="p">.</span><span class="err">#</span><span class="mo">012</span><span class="n">Please</span><span class="w"> </span><span class="n">reconnect</span><span class="w"> </span><span class="n">using</span><span class="w"> </span><span class="n">TLS</span><span class="w"> </span><span class="n">security</span><span class="w"> </span><span class="n">mechanisms</span><span class="p">.</span>
+<span class="n">Jul</span><span class="w">  </span><span class="mi">3</span><span class="w"> </span><span class="mi">16</span><span class="o">:</span><span class="mi">44</span><span class="o">:</span><span class="mi">20</span><span class="w"> </span><span class="n">ns1</span><span class="w"> </span><span class="n">kernel</span><span class="o">:</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">fpm</span><span class="p">[</span><span class="mi">8979</span><span class="p">]</span><span class="o">:</span><span class="w"> </span><span class="n">segfault</span><span class="w"> </span><span class="n">at</span><span class="w"> </span><span class="mi">299</span><span class="w"> </span><span class="n">ip</span><span class="w"> </span><span class="mo">000055</span><span class="n">dfe7cc7e25</span><span class="w"> </span><span class="n">sp</span><span class="w"> </span><span class="mf">00007f</span><span class="n">fd799d7d38</span><span class="w"> </span><span class="n">error</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">fpm</span><span class="p">[</span><span class="mi">55</span><span class="n">dfe7a89000</span><span class="o">+</span><span class="mi">3</span><span class="n">a7000</span><span class="p">]</span>
+</code></pre></div>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

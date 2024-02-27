@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在 CentOS7.0 上搭建 Chroot 的 Bind DNS 服务器</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: skytech BIND（Berkeley internet Name Daemon)也叫做NAMED，是现今互联网上使用最为广泛的DNS 服务器程序。这篇文章将要讲述如何在 chroot 监牢中运行 BIND，这 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/01/zai-centos70-shang-da-jian-chroot-de-bind-dns-fu-wu-qi.html" rel="bookmark"
+           title="Permalink to 在 CentOS7.0 上搭建 Chroot 的 Bind DNS 服务器">在 CentOS7.0 上搭建 Chroot 的 Bind DNS 服务器</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-01-23T13:33:00+01:00">
+                Published: Fri 23 January 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: skytech</p>
+<p>BIND（Berkeley internet Name Daemon)也叫做NAMED，是现今互联网上使用最为广泛的DNS 服务器程序。这篇文章将要讲述如何在 chroot 监牢中运行 BIND，这样它就无法访问文件系统中除“监牢”以外的其它部分。</p>
+<p>例如，在这篇文章中，我会将BIND的运行根目录改为 /var/named/chroot/。当然，对于BIND来说，这个目录就是 /（根目录）。 “jail”（监牢，下同）是一个软件机制，其功能是使得某个程序无法访问规定区域之外的资源，同样也为了增强安全性（LCTT 译注：chroot “监牢”，所谓“监牢”就是指通过chroot机制来更改某个进程所能看到的根目录，即将某进程限制在指定目录中，保证该进程只能对该目录及其子目录的文件进行操作，从而保证整个服务器的安全）。Bind Chroot DNS 服务器的默认“监牢”为 /var/named/chroot。</p>
+<p>你可以按照下列步骤，在CentOS 7.0 上部署 Bind Chroot DNS 服务器。</p>
+<p><img alt="" src="/data/attachment/album/201501/22/214634ey75e65qmhz4h764.jpg"></p>
+<h3>1、安装Bind Chroot DNS 服务器</h3>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">root@centos7 ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">yum</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="n">bind</span><span class="o">-</span><span class="n">chroot</span><span class="w"> </span><span class="n">bind</span><span class="w"> </span><span class="o">-</span><span class="n">y</span>
+</code></pre></div>
+
+<h3>2、拷贝bind相关文件,准备bind chroot 环境</h3>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">centos7</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># cp -R /usr/share/doc/bind-*/sample/var/named/* /var/named/chroot/var/named/</span>
+</code></pre></div>
+
+<h3>3、在bind chroot 的目录中创建相关文件</h3>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">centos7</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># touch /var/named/chroot/var/named/data/cache_dump.db</span>
+<span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">centos7</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># touch /var/named/chroot/var/named/data/named_stats.txt</span>
+<span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">centos7</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># touch /var/named/chroot/var/named/data/named_mem_stats.txt</span>
+<span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">centos7</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># touch /var/named/chroot/var/named/data/named.run</span>
+<span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">centos7</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># mkdir /var/named/chroot/var/named/dynamic</span>
+<span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">centos7</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># touch /var/named/chroot/var/named/dynamic/managed-keys.bind</span>
+</code></pre></div>
+
+<h3>4、 将 Bind 锁定文件设置为可写</h3>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">centos7</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># chmod -R 777 /var/named/chroot/var/named/data</span>
+<span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">centos7</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># chmod -R 777 /var/named/chroot/var/named/dynamic</span>
+</code></pre></div>
+
+<h3>5、 将 /etc/named.conf 拷贝到 bind chroot目录</h3>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">centos7</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># cp -p /etc/named.conf /var/named/chroot/etc/named.conf</span>
+</code></pre></div>
+
+<h3>6、 在/etc/named.conf中对 bind 进行配置。</h3>
+<p>在 named.conf 文件尾添加 <strong>example.local</strong> 域信息， 创建转发域（Forward Zone）与反向域（Reverse Zone）（LCTT 译注：这里example.local 并非一个真实有效的互联网域名，而是通常用于本地测试的一个域名；如果你需要做权威 DNS 解析，你可以将你拥有的域名如这里所示配置解析。）：</p>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">centos7</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># vi /var/named/chroot/etc/named.conf</span>
+</code></pre></div>
+
+<p>-</p>
+<div class="highlight"><pre><span></span><code><span class="cp">..</span>
+<span class="cp">..</span>
+zone &quot;example.local&quot; {
+    type master;
+    file &quot;example.local.zone&quot;;
+};
+
+zone &quot;0.168.192.in-addr.arpa&quot; IN {
+        type master;
+        file &quot;192.168.0.zone&quot;;
+};
+<span class="cp">..</span>
+<span class="cp">..</span>
+</code></pre></div>
+
+<p>named.conf 完全配置如下：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">//</span>
+<span class="c1">// named.conf</span>
+<span class="c1">//</span>
+<span class="c1">// 由Red Hat提供，将 ISC BIND named(8) DNS服务器 </span>
+<span class="c1">// 配置为暂存域名服务器 (用来做本地DNS解析).</span>
+<span class="c1">//</span>
+<span class="c1">// See /usr/share/doc/bind*/sample/ for example named configuration files.</span>
+<span class="c1">//</span>
+
+<span class="nx">options</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">listen</span><span class="o">-</span><span class="nx">on</span><span class="w"> </span><span class="nx">port</span><span class="w"> </span><span class="mi">53</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">any</span><span class="p">;</span><span class="w"> </span><span class="p">};</span>
+<span class="w">        </span><span class="nx">listen</span><span class="o">-</span><span class="nx">on</span><span class="o">-</span><span class="nx">v6</span><span class="w"> </span><span class="nx">port</span><span class="w"> </span><span class="mi">53</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="o">::</span><span class="mi">1</span><span class="p">;</span><span class="w"> </span><span class="p">};</span>
+<span class="w">        </span><span class="nx">directory</span><span class="w">       </span><span class="s">&quot;/var/named&quot;</span><span class="p">;</span>
+<span class="w">        </span><span class="nx">dump</span><span class="o">-</span><span class="nx">file</span><span class="w">       </span><span class="s">&quot;/var/named/data/cache_dump.db&quot;</span><span class="p">;</span>
+<span class="w">        </span><span class="nx">statistics</span><span class="o">-</span><span class="nx">file</span><span class="w"> </span><span class="s">&quot;/var/named/data/named_stats.txt&quot;</span><span class="p">;</span>
+<span class="w">        </span><span class="nx">memstatistics</span><span class="o">-</span><span class="nx">file</span><span class="w"> </span><span class="s">&quot;/var/named/data/named_mem_stats.txt&quot;</span><span class="p">;</span>
+<span class="w">        </span><span class="nx">allow</span><span class="o">-</span><span class="nx">query</span><span class="w">     </span><span class="p">{</span><span class="w"> </span><span class="nx">any</span><span class="p">;</span><span class="w"> </span><span class="p">};</span>
+
+<span class="w">        </span><span class="cm">/*</span>
+<span class="cm">         - 如果你要建立一个 授权域名服务器 服务器, 那么不要开启 recursion（递归） 功能。</span>
+<span class="cm">         - 如果你要建立一个 递归 DNS 服务器, 那么需要开启recursion 功能。</span>
+<span class="cm">         - 如果你的递归DNS服务器有公网IP地址, 你必须开启访问控制功能，</span>
+<span class="cm">           只有那些合法用户才可以发询问. 如果不这么做的话，那么你的服</span>
+<span class="cm">           服务就会受到DNS 放大攻击。实现BCP38将有效抵御这类攻击。</span>
+<span class="cm">        */</span>
+<span class="w">        </span><span class="nx">recursion</span><span class="w"> </span><span class="nx">yes</span><span class="p">;</span>
+
+<span class="w">        </span><span class="nx">dnssec</span><span class="o">-</span><span class="nx">enable</span><span class="w"> </span><span class="nx">yes</span><span class="p">;</span>
+<span class="w">        </span><span class="nx">dnssec</span><span class="o">-</span><span class="nx">validation</span><span class="w"> </span><span class="nx">yes</span><span class="p">;</span>
+<span class="w">        </span><span class="nx">dnssec</span><span class="o">-</span><span class="nx">lookaside</span><span class="w"> </span><span class="kt">auto</span><span class="p">;</span>
+
+<span class="w">        </span><span class="cm">/* Path to ISC DLV key */</span>
+<span class="w">        </span><span class="nx">bindkeys</span><span class="o">-</span><span class="nx">file</span><span class="w"> </span><span class="s">&quot;/etc/named.iscdlv.key&quot;</span><span class="p">;</span>
+
+<span class="w">        </span><span class="nx">managed</span><span class="o">-</span><span class="nx">keys</span><span class="o">-</span><span class="nx">directory</span><span class="w"> </span><span class="s">&quot;/var/named/dynamic&quot;</span><span class="p">;</span>
+
+<span class="w">        </span><span class="nx">pid</span><span class="o">-</span><span class="nx">file</span><span class="w"> </span><span class="s">&quot;/run/named/named.pid&quot;</span><span class="p">;</span>
+<span class="w">        </span><span class="nx">session</span><span class="o">-</span><span class="nx">keyfile</span><span class="w"> </span><span class="s">&quot;/run/named/session.key&quot;</span><span class="p">;</span>
+<span class="p">};</span>
+
+<span class="nx">logging</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">channel</span><span class="w"> </span><span class="nx">default_debug</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="nx">file</span><span class="w"> </span><span class="s">&quot;data/named.run&quot;</span><span class="p">;</span>
+<span class="w">                </span><span class="nx">severity</span><span class="w"> </span><span class="nx">dynamic</span><span class="p">;</span>
+<span class="w">        </span><span class="p">};</span>
+<span class="p">};</span>
+
+<span class="nx">zone</span><span class="w"> </span><span class="s">&quot;.&quot;</span><span class="w"> </span><span class="nx">IN</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">type</span><span class="w"> </span><span class="nx">hint</span><span class="p">;</span>
+<span class="w">        </span><span class="nx">file</span><span class="w"> </span><span class="s">&quot;named.ca&quot;</span><span class="p">;</span>
+<span class="p">};</span>
+
+<span class="nx">zone</span><span class="w"> </span><span class="s">&quot;example.local&quot;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">type</span><span class="w"> </span><span class="nx">master</span><span class="p">;</span>
+<span class="w">    </span><span class="nx">file</span><span class="w"> </span><span class="s">&quot;example.local.zone&quot;</span><span class="p">;</span>
+<span class="p">};</span>
+
+<span class="nx">zone</span><span class="w"> </span><span class="s">&quot;0.168.192.in-addr.arpa&quot;</span><span class="w"> </span><span class="nx">IN</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">type</span><span class="w"> </span><span class="nx">master</span><span class="p">;</span>
+<span class="w">        </span><span class="nx">file</span><span class="w"> </span><span class="s">&quot;192.168.0.zone&quot;</span><span class="p">;</span>
+<span class="p">};</span>
+
+<span class="nx">include</span><span class="w"> </span><span class="s">&quot;/etc/named.rfc1912.zones&quot;</span><span class="p">;</span>
+<span class="nx">include</span><span class="w"> </span><span class="s">&quot;/etc/named.root.key&quot;</span><span class="p">;</span>
+</code></pre></div>
+
+<h3>7、 为 example.local 域名创建转发域与反向域文件</h3>
+<h4>a)创建转发域</h4>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">centos7</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># vi /var/named/chroot/var/named/example.local.zone</span>
+</code></pre></div>
+
+<p>添加如下内容并保存：</p>
+<div class="highlight"><pre><span></span><code>;
+;       Addresses and other host information.
+;
+$TTL 86400
+@       IN      SOA     example.local. hostmaster.example.local. (
+                               2014101901      ; Serial
+                               43200      ; Refresh
+                               3600       ; Retry
+                               3600000    ; Expire
+                               2592000 )  ; Minimum
+
+;       Define the nameservers and the mail servers
+
+               IN      NS      ns1.example.local.
+               IN      NS      ns2.example.local.
+               IN      A       192.168.0.70
+               IN      MX      10 mx.example.local.
+
+centos7          IN      A       192.168.0.70
+mx               IN      A       192.168.0.50
+ns1              IN      A       192.168.0.70
+ns2              IN      A       192.168.0.80
+</code></pre></div>
+
+<h4>b)创建反向域</h4>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">centos7</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># vi /var/named/chroot/var/named/192.168.0.zone</span>
+</code></pre></div>
+
+<p>-</p>
+<div class="highlight"><pre><span></span><code><span class="p">;</span>
+<span class="p">;</span><span class="w">       </span><span class="nx">Addresses</span><span class="w"> </span><span class="k">and</span><span class="w"> </span><span class="nx">other</span><span class="w"> </span><span class="nx">host</span><span class="w"> </span><span class="nx">information</span><span class="p">.</span>
+<span class="p">;</span>
+<span class="err">$</span><span class="nx">TTL</span><span class="w"> </span><span class="mi">86400</span>
+<span class="err">@</span><span class="w">       </span><span class="nx">IN</span><span class="w">      </span><span class="nx">SOA</span><span class="w">     </span><span class="nx">example</span><span class="p">.</span><span class="nx">local</span><span class="p">.</span><span class="w"> </span><span class="nx">hostmaster</span><span class="p">.</span><span class="nx">example</span><span class="p">.</span><span class="nx">local</span><span class="p">.</span><span class="w"> </span><span class="p">(</span>
+<span class="w">                               </span><span class="mi">2014101901</span><span class="w">      </span><span class="p">;</span><span class="w"> </span><span class="nx">Serial</span>
+<span class="w">                               </span><span class="mi">43200</span><span class="w">      </span><span class="p">;</span><span class="w"> </span><span class="nx">Refresh</span>
+<span class="w">                               </span><span class="mi">3600</span><span class="w">       </span><span class="p">;</span><span class="w"> </span><span class="nx">Retry</span>
+<span class="w">                               </span><span class="mi">3600000</span><span class="w">    </span><span class="p">;</span><span class="w"> </span><span class="nx">Expire</span>
+<span class="w">                               </span><span class="mi">2592000</span><span class="w"> </span><span class="p">)</span><span class="w">  </span><span class="p">;</span><span class="w"> </span><span class="nx">Minimum</span>
+
+<span class="m m-Double">0.168.192</span><span class="p">.</span><span class="k">in</span><span class="o">-</span><span class="kd">addr</span><span class="p">.</span><span class="nx">arpa</span><span class="p">.</span><span class="w"> </span><span class="nx">IN</span><span class="w">      </span><span class="nx">NS</span><span class="w">      </span><span class="nx">centos7</span><span class="p">.</span><span class="nx">example</span><span class="p">.</span><span class="nx">local</span><span class="p">.</span>
+
+<span class="m m-Double">70.0.168.192</span><span class="p">.</span><span class="k">in</span><span class="o">-</span><span class="kd">addr</span><span class="p">.</span><span class="nx">arpa</span><span class="p">.</span><span class="w"> </span><span class="nx">IN</span><span class="w"> </span><span class="nx">PTR</span><span class="w"> </span><span class="nx">mx</span><span class="p">.</span><span class="nx">example</span><span class="p">.</span><span class="nx">local</span><span class="p">.</span>
+<span class="m m-Double">70.0.168.192</span><span class="p">.</span><span class="k">in</span><span class="o">-</span><span class="kd">addr</span><span class="p">.</span><span class="nx">arpa</span><span class="p">.</span><span class="w"> </span><span class="nx">IN</span><span class="w"> </span><span class="nx">PTR</span><span class="w"> </span><span class="nx">ns1</span><span class="p">.</span><span class="nx">example</span><span class="p">.</span><span class="nx">local</span><span class="p">.</span>
+<span class="m m-Double">80.0.168.192</span><span class="p">.</span><span class="k">in</span><span class="o">-</span><span class="kd">addr</span><span class="p">.</span><span class="nx">arpa</span><span class="p">.</span><span class="w"> </span><span class="nx">IN</span><span class="w"> </span><span class="nx">PTR</span><span class="w"> </span><span class="nx">ns2</span><span class="p">.</span><span class="nx">example</span><span class="p">.</span><span class="nx">local</span><span class="p">.</span><span class="err">。</span>
+</code></pre></div>
+
+<h3>8、开机自启动 bind-chroot 服务</h3>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">centos7</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># /usr/libexec/setup-named-chroot.sh /var/named/chroot on</span>
+<span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">centos7</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># systemctl stop named</span>
+<span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">centos7</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># systemctl disable named</span>
+<span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">centos7</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># systemctl start named-chroot</span>
+<span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">centos7</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="c1"># systemctl enable named-chroot</span>
+<span class="n">ln</span><span class="w"> </span><span class="o">-</span><span class="n">s</span><span class="w"> </span><span class="s1">&#39;/usr/lib/systemd/system/named-chroot.service&#39;</span><span class="w"> </span><span class="s1">&#39;/etc/systemd/system/multi-user.target.wants/named-chroot.service&#39;</span>
+</code></pre></div>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

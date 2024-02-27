@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何在 Linux 上使用 SSHfs 挂载一个远程文件系统</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Derrik Diener 你曾经想过用安全 shell 挂载一个远程文件系统到本地吗？如果有的话，SSHfs 也许就是你所需要的。它通过使用 SSH 和 Fuse（LCTT …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/11/ru-he-zai-linux-shang-shi-yong-sshfs-gua-zai-yi-ge-yuan-cheng-wen-jian-xi-tong.html" rel="bookmark"
+           title="Permalink to 如何在 Linux 上使用 SSHfs 挂载一个远程文件系统">如何在 Linux 上使用 SSHfs 挂载一个远程文件系统</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-11-16T09:49:00+01:00">
+                Published: Mon 16 November 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Derrik Diener</p>
+<p>你曾经想过用安全 shell 挂载一个远程文件系统到本地吗？如果有的话，SSHfs 也许就是你所需要的。它通过使用 SSH 和 Fuse（LCTT 译注：Filesystem in Userspace，用户态文件系统，是 Linux 中用于挂载某些网络空间，如 SSH，到本地文件系统的模块） 允许你挂载远程计算机（或者服务器）到本地。</p>
+<p><strong>注意</strong>： 这篇文章假设你明白<a href="https://www.maketecheasier.com/setup-ssh-ubuntu/">SSH 如何工作并在你的系统中配置 SSH</a>。</p>
+<p><img alt="" src="/data/attachment/album/201511/16/010840b4jipb9sursbj6ir.jpg"></p>
+<h3>准备</h3>
+<p>在使用 SSHfs 挂载之前，需要进行一些设置 - 在你的系统上安装 SSHfs 以及 fuse 软件包。你还需要为 fuse 创建一个组，添加用户到组，并创建远程文件系统将会驻留的目录。</p>
+<p>要在 Ubuntu Linux 上安装两个软件包，只需要在终端窗口输入以下命令：</p>
+<div class="highlight"><pre><span></span><code>sudo apt-get install sshfs fuse
+</code></pre></div>
+
+<p><img alt="ubuntu 安装 sshfs-fuse" src="/data/attachment/album/201511/16/010935gjnjcrc6rztc86t8.jpg"></p>
+<p>如果你使用的不是 Ubuntu，那就在你的发行版软件包管理器中搜索软件包名称。最好搜索和 fuse 或 SSHfs 相关的关键字，因为取决于你运行的系统，软件包名称可能稍微有些不同。</p>
+<p>在你的系统上安装完软件包之后，就该创建好 fuse 组了。在你安装 fuse 的时候，应该会在你的系统上创建一个组。如果没有的话，在终端窗口中输入以下命令以便在你的 Linux 系统中创建组：</p>
+<div class="highlight"><pre><span></span><code>sudo groupadd fuse
+</code></pre></div>
+
+<p>添加了组之后，把你的用户添加到这个组。</p>
+<div class="highlight"><pre><span></span><code>sudo gpasswd -a &quot;$USER&quot; fuse
+</code></pre></div>
+
+<p><img alt="sshfs 添加用户到组 fuse" src="/data/attachment/album/201511/16/010936rvva653999996125.png"></p>
+<p>别担心上面命令的 <code>$USER</code>。shell 会自动用你自己的用户名替换。处理了和组相关的工作之后，就是时候创建要挂载远程文件的目录了。</p>
+<div class="highlight"><pre><span></span><code>mkdir ~/remote_folder
+</code></pre></div>
+
+<p>在你的系统上创建了本地目录之后，就可以通过 SSHfs 挂载远程文件系统了。</p>
+<h3>挂载远程文件系统</h3>
+<p>要在你的机器上挂载远程文件系统，你需要在终端窗口中输入一段较长的命令。</p>
+<div class="highlight"><pre><span></span><code><span class="nx">sshfs</span><span class="w"> </span><span class="o">-</span><span class="nx">o</span><span class="w"> </span><span class="nx">idmap</span><span class="p">=</span><span class="nx">user</span><span class="w"> </span><span class="nx">username</span><span class="err">@</span><span class="nx">ip</span><span class="p">.</span><span class="nx">address</span><span class="p">:</span><span class="o">/</span><span class="nx">remote</span><span class="o">/</span><span class="nx">file</span><span class="o">/</span><span class="nx">system</span><span class="o">/</span><span class="w"> </span><span class="o">~/</span><span class="nx">remote</span>
+</code></pre></div>
+
+<p><img alt="sshfs 挂载文件系统到本地目录1" src="/data/attachment/album/201511/16/010936wz1qe2555tzqlzik.png"></p>
+<p><strong>注意</strong>： 也可以通过 SSH 密钥文件挂载 SSHfs 文件系统。只需要在上面的命中用 <code>sshfs -o IdentityFile=~/.ssh/keyfile</code>, 替换 <code>sshfs -o idmap=user</code> 部分。</p>
+<p>输入这个命令之后，会提示你输入远程用户的密码。如果登录成功了，你的远程文件系统就会被挂载到之前创建的 <code>~/remote_folder</code> 目录。</p>
+<p><img alt="sshfs挂载文件系统到本地目录2" src="/data/attachment/album/201511/16/010937toiotinelfoohxuy.jpg"></p>
+<p>使用完了你的远程文件系统，想要卸载它？容易吗？只需要在终端输入下面的命令：</p>
+<div class="highlight"><pre><span></span><code>sudo umount ~/remote_folder
+</code></pre></div>
+
+<p>这个简单的命令会断开远程连接同时清空 remote_folder 目录。</p>
+<h3>总结</h3>
+<p>在 Linux 上有很多工具可以用于访问远程文件并挂载到本地。但是如之前所说，如果有的话，也只有很少的工具能充分利用 SSH 的强大功能。我希望在这篇指南的帮助下，也能认识到 SSHfs 是一个多么强大的工具。</p>
+<p>你觉得 SSHfs 怎么样呢？在下面的评论框里告诉我们吧！</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

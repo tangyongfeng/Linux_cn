@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何在 Apache Cassandra 4.0 中使用虚拟表</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Ben Bromhead 虚拟表是什么以及如何使用。 在最近的发布的 Apache Cassandra 4.0 测试版中的众多新增功能中， 虚拟表 virtual table 是一个值得关注 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2020/11/ru-he-zai-apache-cassandra-40-zhong-shi-yong-xu-ni-biao.html" rel="bookmark"
+           title="Permalink to 如何在 Apache Cassandra 4.0 中使用虚拟表">如何在 Apache Cassandra 4.0 中使用虚拟表</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2020-11-04T23:45:33+01:00">
+                Published: Wed 04 November 2020
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Ben Bromhead</p>
+<blockquote>
+<p>虚拟表是什么以及如何使用。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/202011/04/234511kpmv6dzac6fjmr65.jpg"></p>
+<p>在最近的发布的 <a href="https://cassandra.apache.org/download/">Apache Cassandra 4.0 测试版</a>中的<a href="https://www.instaclustr.com/apache-cassandra-4-0-beta-released/">众多新增功能</a>中，<ruby> 虚拟表 <rt>  virtual table </rt></ruby>是一个值得关注的功能。</p>
+<p>在以前的 Cassandra 版本中，用户需要访问 <ruby> Java 管理扩展 <rt>  Java Management Extensions </rt></ruby>（<a href="https://en.wikipedia.org/wiki/Java_Management_Extensions">JMX</a>） 来查看 Cassandra 的细节，如运行中的<ruby> 压实 <rt>  compaction </rt></ruby>、客户端、度量和各种配置设置。虚拟表消除了这些挑战。Cassandra 4.0 测试版让用户能够从一个只读的系统表中以 <ruby> Cassandra 查询语言 <rt>  Cassandra Query Language </rt></ruby>（CQL）行的形式查询这些细节和数据。</p>
+<p>以下是之前 Cassandra 版本中基于 JMX 的机制是如何工作的。想象一下，一个用户想要检查集群中某个节点的压实状态。用户首先要建立一个 JMX 连接，在节点上运行 <code>nodetool compactionstats</code>。这个要求马上就给用户带来了一些复杂的问题。用户的客户端是否配置了 JMX 访问？Cassandra 节点和防火墙是否配置为允许 JMX 访问？是否准备好了适当的安全和审计措施，并落实到位？这些只是用户在处理 Cassandra 以前版本时必须面对的其中一些问题。</p>
+<p>在 Cassandra 4.0 中，虚拟表使得用户可以利用之前配置的驱动来查询所需信息。这一变化消除了与实现和维护 JMX 访问相关的所有开销。</p>
+<p>Cassandra 4.0 创建了两个新的<ruby> 键空间 <rt>  keyspace </rt></ruby>来帮助用户利用虚拟表：<code>system_views</code> 和 <code>system_virtual_schema</code>。<code>system_views</code> 键空间包含了用户查询的所有有价值的信息，有用地存储在一些表中。<code>system_virtual_schema</code> 键空间，顾名思义，存储了这些虚拟表的所有必要的模式信息。</p>
+<p><img alt="system_views and system_virtual_schema keyspaces and tables" src="/data/attachment/album/202011/04/234540q4mqxbamq7tt8p8g.png" title="system_views and system_virtual_schema keyspaces and tables"></p>
+<p>重要的是要明白，每个虚拟表的范围仅限于其节点。任何虚拟表查询都将返回的数据，只对其协调器的节点有效，而不管一致性如何。为了简化这一要求，已经在几个驱动中添加了支持，以便在这些查询中指定协调器节点 （Python、DataStax Java 和其他驱动现在提供了这种支持）。</p>
+<p>为了说明这一点，请查看这个 <code>sstable_tasks</code> 虚拟表。这个虚拟表显示了对 <a href="https://cassandra.apache.org/doc/latest/architecture/storage_engine.html#sstables">SSTables</a> 的所有操作，包括压实、清理、升级等。</p>
+<p><img alt="Querying the sstable_tasks virtual table" src="/data/attachment/album/202011/04/234546yzjjmb0j5ueevevb.png" title="Querying the sstable_tasks virtual table"></p>
+<p>如果用户在以前的 Cassandra 版本中运行 <code>nodetool compactionstats</code>，则会显示相同类型的信息。 在这里，这个查询发现该节点当前有一个活动的压缩。它还显示了它的进度以及它的键空间和表。得益于虚拟表，用户可以快速收集这些信息，并同样有效地获得正确诊断集群健康状况所需的能力。</p>
+<p>需要说明的是，Cassandra 4.0 并没有去除对 JMX 访问的需求。JMX 仍然是查询某些指标的唯一选择。尽管如此，用户会欢迎简单地使用 CQL 来获取关键集群指标的能力。由于虚拟表提供的便利，用户可能会将之前投入到 JMX 工具的时间和资源重新投入到 Cassandra 本身。客户端工具也应该开始利用虚拟表提供的优势。</p>
+<p>如果你对 Cassandra 4.0 测试版及其虚拟表功能感兴趣，请<a href="https://cassandra.apache.org/download/">试试试它</a>。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

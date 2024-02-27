@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>将你的 Python 脚本转换为命令行程序</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Mark Meyer 使用 Python 中的 scaffold 和 click 库，你可以将一个简单的实用程序升级为一个成熟的命令行界面工具。 在我的职业生涯中，我写 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2022/09/jiang-ni-de-python-jiao-ben-zhuan-huan-wei-ming-ling-xing-cheng-xu.html" rel="bookmark"
+           title="Permalink to 将你的 Python 脚本转换为命令行程序">将你的 Python 脚本转换为命令行程序</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2022-09-23T09:34:00+02:00">
+                Published: Fri 23 September 2022
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Mark Meyer</p>
+<blockquote>
+<p>使用 Python 中的 <code>scaffold</code> 和 <code>click</code> 库，你可以将一个简单的实用程序升级为一个成熟的命令行界面工具。</p>
+</blockquote>
+<p><img alt="Python 吉祥物和 Linux 的吉祥物企鹅" src="/data/attachment/album/202209/23/093712jyayyed8x7d8d8yd.jpg"></p>
+<p>在我的职业生涯中，我写过、用过和看到过很多随意的脚本。一些人需要半自动化完成任务，于是它们诞生了。一段时间后，它们变得越来越大。它们在一生中可能转手很多次。我常常希望这些脚本提供更多的<strong>命令行工具式</strong>的感觉。但是，从一次性脚本到合适的工具，真正提高质量水平有多难呢？事实证明这在 Python 中并不难。</p>
+<h3>搭建骨架脚本</h3>
+<p>在本文中，我将从一小段 Python 代码开始。我将把它应用到 <code>scaffold</code> 模块中，并使用 <code>click</code> 库扩展它以接受命令行参数。</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/python</span>
+
+<span class="kn">from</span> <span class="nn">glob</span> <span class="kn">import</span> <span class="n">glob</span>
+<span class="kn">from</span> <span class="nn">os.path</span> <span class="kn">import</span> <span class="n">join</span><span class="p">,</span> <span class="n">basename</span>
+<span class="kn">from</span> <span class="nn">shutil</span> <span class="kn">import</span> <span class="n">move</span>
+<span class="kn">from</span> <span class="nn">datetime</span> <span class="kn">import</span> <span class="n">datetime</span>
+<span class="kn">from</span> <span class="nn">os</span> <span class="kn">import</span> <span class="n">link</span><span class="p">,</span> <span class="n">unlink</span>
+
+<span class="n">LATEST</span> <span class="o">=</span> <span class="s1">&#39;latest.txt&#39;</span>
+<span class="n">ARCHIVE</span> <span class="o">=</span> <span class="s1">&#39;/Users/mark/archive&#39;</span>
+<span class="n">INCOMING</span> <span class="o">=</span> <span class="s1">&#39;/Users/mark/incoming&#39;</span>
+<span class="n">TPATTERN</span> <span class="o">=</span> <span class="s1">&#39;%Y-%m-</span><span class="si">%d</span><span class="s1">&#39;</span>
+
+<span class="k">def</span> <span class="nf">transmogrify_filename</span><span class="p">(</span><span class="n">fname</span><span class="p">):</span>
+    <span class="n">bname</span> <span class="o">=</span> <span class="n">basename</span><span class="p">(</span><span class="n">fname</span><span class="p">)</span>
+    <span class="n">ts</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="n">TPATTERN</span><span class="p">)</span>
+    <span class="k">return</span> <span class="s1">&#39;-&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">ts</span><span class="p">,</span> <span class="n">bname</span><span class="p">])</span>
+
+<span class="k">def</span> <span class="nf">set_current_latest</span><span class="p">(</span><span class="n">file</span><span class="p">):</span>
+    <span class="n">latest</span> <span class="o">=</span> <span class="n">join</span><span class="p">(</span><span class="n">ARCHIVE</span><span class="p">,</span> <span class="n">LATEST</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">unlink</span><span class="p">(</span><span class="n">latest</span><span class="p">)</span>
+    <span class="k">except</span><span class="p">:</span>
+        <span class="k">pass</span>
+    <span class="n">link</span><span class="p">(</span><span class="n">file</span><span class="p">,</span> <span class="n">latest</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">rotate_file</span><span class="p">(</span><span class="n">source</span><span class="p">):</span>
+    <span class="n">target</span> <span class="o">=</span> <span class="n">join</span><span class="p">(</span><span class="n">ARCHIVE</span><span class="p">,</span> <span class="n">transmogrify_filename</span><span class="p">(</span><span class="n">source</span><span class="p">))</span>
+    <span class="n">move</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">)</span>
+    <span class="n">set_current_latest</span><span class="p">(</span><span class="n">target</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">rotoscope</span><span class="p">():</span>
+    <span class="n">file_no</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">folder</span> <span class="o">=</span> <span class="n">join</span><span class="p">(</span><span class="n">INCOMING</span><span class="p">,</span> <span class="s1">&#39;*.txt&#39;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Looking in </span><span class="si">{</span><span class="n">INCOMING</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">file</span> <span class="ow">in</span> <span class="n">glob</span><span class="p">(</span><span class="n">folder</span><span class="p">):</span>
+        <span class="n">rotate_file</span><span class="p">(</span><span class="n">file</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Rotated: </span><span class="si">{</span><span class="n">file</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="n">file_no</span> <span class="o">=</span> <span class="n">file_no</span> <span class="o">+</span> <span class="mi">1</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Total files rotated: </span><span class="si">{</span><span class="n">file_no</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;This is rotoscope 0.4.1. Bleep, bloop.&#39;</span><span class="p">)</span>
+    <span class="n">rotoscope</span><span class="p">()</span>
+</code></pre></div>
+
+<p>本文所有没有在这里插入显示的代码示例，你都可以在 <a href="https://codeberg.org/ofosos/rotoscope">https://codeberg.org/ofosos/rotoscope</a> 中找到特定版本的代码。该仓库中的每个提交都描述了本文操作过程中一些有意义的步骤。</p>
+<p>这个片段做了几件事：</p>
+<ul>
+<li>检查 <code>INCOMING</code> 指定的路径中是否有文本文件</li>
+<li>如果存在，则使用当前时间戳创建一个新文件名，并将其移动到 <code>ARCHIVE</code></li>
+<li>删除当前的 <code>ARCHIVE/latest.txt</code> 链接，并创建一个指向刚刚添加文件的新链接</li>
+</ul>
+<p>作为一个示例，它很简单，但它会让你理解这个过程。</p>
+<h3>使用 Pyscaffold 创建应用程序</h3>
+<p>首先，你需要安装 <code>scaffold</code>、<code>click</code> 和 <code>tox</code> <a href="https://opensource.com/article/19/5/python-tox">Python 库</a>。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>scaffold<span class="w"> </span>click<span class="w"> </span>tox
+</code></pre></div>
+
+<p>安装 <code>scaffold</code> 后，切换到示例的 <code>rotoscope</code> 项目所在的目录，然后执行以下命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>putup<span class="w"> </span>rotoscope<span class="w"> </span>-p<span class="w"> </span>rotoscope<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--force<span class="w"> </span>--no-skeleton<span class="w"> </span>-n<span class="w"> </span>rotoscope<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-d<span class="w"> </span><span class="s1">&#39;Move some files around.&#39;</span><span class="w"> </span>-l<span class="w"> </span>GLWT<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-u<span class="w"> </span>http://codeberg.org/ofosos/rotoscope<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--save-config<span class="w"> </span>--pre-commit<span class="w"> </span>--markdown
+</code></pre></div>
+
+<p>Pyscaffold 会重写我的 <code>README.md</code>，所以从 Git 恢复它：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>git<span class="w"> </span>checkout<span class="w"> </span>README.md
+</code></pre></div>
+
+<p>Pyscaffold 在文档中说明了如何设置一个完整的示例项目，我不会在这里介绍，你之后可以探索。除此之外，Pyscaffold 还可以在项目中为你提供持续集成（CI）模板：</p>
+<ul>
+<li>打包: 你的项目现在启用了 PyPi，所以你可以将其上传到一个仓库并从那里安装它。</li>
+<li>文档: 你的项目现在有了一个完整的文档文件夹层次结构，它基于 Sphinx，包括一个 <a href="http://readthedocs.org">readthedocs.org</a> 构建器。</li>
+<li>测试: 你的项目现在可以与 tox 一起使用，测试文件夹包含运行基于 pytest 的测试所需的所有样板文件。</li>
+<li>依赖管理: 打包和测试基础结构都需要一种管理依赖关系的方法。<code>setup.cfg</code> 文件解决了这个问题，它包含所有依赖项。</li>
+<li>预提交钩子: 包括 Python 源代码格式工具 black 和 Python 风格检查器 flake8。</li>
+</ul>
+<p>查看测试文件夹并在项目目录中运行 <code>tox</code> 命令，它会立即输出一个错误：打包基础设施无法找到相关库。</p>
+<p>现在创建一个 <code>Git</code> 标记（例如 <code>v0.2</code>），此工具会将其识别为可安装版本。在提交更改之前，浏览一下自动生成的 <code>setup.cfg</code> 并根据需要编辑它。对于此示例，你可以修改 <code>LICENSE</code> 和项目描述，将这些更改添加到 Git 的暂存区，我必须禁用预提交钩子，然后提交它们。否则，我会遇到错误，因为 Python 风格检查器 flake8 会抱怨糟糕的格式。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nv">PRE_COMMIT_ALLOW_NO_CONFIG</span><span class="o">=</span><span class="m">1</span><span class="w"> </span>git<span class="w"> </span>commit
+</code></pre></div>
+
+<p>如果这个脚本有一个入口点，用户可以从命令行调用，那就更好了。现在，你只能通过找 <code>.py</code> 文件并手动执行它来运行。幸运的是，Python 的打包基础设施有一个很好的“罐装”方式，可以轻松地进行配置更改。将以下内容添加到 <code>setup.cfg</code> 的 <code>options.entry_points</code> 部分：</p>
+<div class="highlight"><pre><span></span><code>console_scripts =
+    roto = rotoscope.rotoscope:rotoscope
+</code></pre></div>
+
+<p>这个更改会创建一个名为 <code>roto</code> 的 shell 命令，你可以使用它来调用 rotoscope 脚本，使用 <code>pip</code> 安装 rotoscope 后，可以使用 <code>roto</code> 命令。</p>
+<p>就是这样，你可以从 Pyscaffold 免费获得所有打包、测试和文档设置。你还获得了一个预提交钩子来保证（大部分情况下）你按照设定规则提交。</p>
+<h3>CLI 工具化</h3>
+<p>现在，一些值会硬编码到脚本中，它们作为命令 <a href="https://opensource.com/article/21/8/linux-terminal#argument">参数</a> 会更方便。例如，将 <code>INCOMING</code> 常量作为命令行参数会更好。</p>
+<p>首先，导入 <a href="https://click.palletsprojects.com">click</a> 库，使用 Click 提供的命令装饰器对 <code>rotoscope()</code> 方法进行装饰，并添加一个 Click 传递给 <code>rotoscope</code> 函数的参数。Click 提供了一组验证器，因此要向参数添加一个路径验证器。Click 还方便地使用函数的内嵌字符串作为命令行文档的一部分。所以你最终会得到以下方法签名：</p>
+<div class="highlight"><pre><span></span><code><span class="err">@</span><span class="nx">click</span><span class="p">.</span><span class="nx">command</span><span class="p">()</span>
+<span class="err">@</span><span class="nx">click</span><span class="p">.</span><span class="nx">argument</span><span class="p">(</span><span class="err">&#39;</span><span class="nx">incoming</span><span class="err">&#39;</span><span class="p">,</span><span class="w"> </span><span class="k">type</span><span class="p">=</span><span class="nx">click</span><span class="p">.</span><span class="nx">Path</span><span class="p">(</span><span class="nx">exists</span><span class="p">=</span><span class="nx">True</span><span class="p">))</span>
+<span class="nx">def</span><span class="w"> </span><span class="nx">rotoscope</span><span class="p">(</span><span class="nx">incoming</span><span class="p">):</span>
+<span class="w">    </span><span class="s">&quot;&quot;&quot;</span>
+<span class="s">    Rotoscope 0.4 - Bleep, blooop.</span>
+<span class="s">    Simple sample that move files.</span>
+<span class="s">    &quot;&quot;&quot;</span>
+</code></pre></div>
+
+<p>主函数会调用 <code>rotoscope()</code>，它现在是一个 Click 命令，不需要传递任何参数。</p>
+<p>选项也可以使用 <a href="https://opensource.com/article/19/8/what-are-environment-variables">环境变量</a> 自动填充。例如，将 <code>ARCHIVE</code> 常量改为一个选项：</p>
+<div class="highlight"><pre><span></span><code><span class="err">@</span><span class="n">click</span><span class="o">.</span><span class="n">option</span><span class="p">(</span><span class="s1">&#39;archive&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;--archive&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">default</span><span class="o">=</span><span class="s1">&#39;/Users/mark/archive&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">envvar</span><span class="o">=</span><span class="s1">&#39;ROTO_ARCHIVE&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">type</span><span class="o">=</span><span class="n">click</span><span class="o">.</span><span class="n">Path</span><span class="p">())</span>
+</code></pre></div>
+
+<p>使用相同的路径验证器。这一次，让 Click 填充环境变量，如果环境变量没有提供任何内容，则默认为旧常量的值。</p>
+<p>Click 可以做更多的事情，它有彩色的控制台输出、提示和子命令，可以让你构建复杂的 CLI 工具。浏览 Click 文档会发现它的更多功能。</p>
+<p>现在添加一些测试。</p>
+<h3>测试</h3>
+<p>Click 对使用 CLI 运行器 <a href="https://click.palletsprojects.com/en/8.1.x/testing">运行端到端测试</a> 提供了一些建议。你可以用它来实现一个完整的测试（在 <a href="https://codeberg.org/ofosos/rotoscope/commit/dfa60c1bfcb1ac720ad168e5e98f02bac1fde17d">示例项目</a> 中，测试在 <code>tests</code> 文件夹中。）</p>
+<p>测试位于测试类的一个方法中。大多数约定与我在其他 Python 项目中使用的非常接近，但有一些细节，因为 rotoscope 使用 <code>click</code>。在 <code>test</code> 方法中，我创建了一个 <code>CliRunner</code>。测试使用它在一个隔离的文件系统中运行此命令。然后测试在隔离的文件系统中创建 <code>incoming</code> 和 <code>archive</code> 目录和一个虚拟的 <code>incoming/test.txt</code> 文件，然后它调用 CliRunner，就像你调用命令行应用程序一样。运行完成后，测试会检查隔离的文件系统，并验证 <code>incoming</code> 为空，并且 <code>archive</code> 包含两个文件（最新链接和存档文件）。</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">os</span> <span class="kn">import</span> <span class="n">listdir</span><span class="p">,</span> <span class="n">mkdir</span>
+<span class="kn">from</span> <span class="nn">click.testing</span> <span class="kn">import</span> <span class="n">CliRunner</span>
+<span class="kn">from</span> <span class="nn">rotoscope.rotoscope</span> <span class="kn">import</span> <span class="n">rotoscope</span>
+
+<span class="k">class</span> <span class="nc">TestRotoscope</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">test_roto_good</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tmp_path</span><span class="p">):</span>
+        <span class="n">runner</span> <span class="o">=</span> <span class="n">CliRunner</span><span class="p">()</span>
+
+        <span class="k">with</span> <span class="n">runner</span><span class="o">.</span><span class="n">isolated_filesystem</span><span class="p">(</span><span class="n">temp_dir</span><span class="o">=</span><span class="n">tmp_path</span><span class="p">)</span> <span class="k">as</span> <span class="n">td</span><span class="p">:</span>
+            <span class="n">mkdir</span><span class="p">(</span><span class="s2">&quot;incoming&quot;</span><span class="p">)</span>
+            <span class="n">mkdir</span><span class="p">(</span><span class="s2">&quot;archive&quot;</span><span class="p">)</span>
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">&quot;incoming/test.txt&quot;</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;hello&quot;</span><span class="p">)</span>
+
+            <span class="n">result</span> <span class="o">=</span> <span class="n">runner</span><span class="o">.</span><span class="n">invoke</span><span class="p">(</span><span class="n">rotoscope</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;incoming&quot;</span><span class="p">,</span> <span class="s2">&quot;--archive&quot;</span><span class="p">,</span> <span class="s2">&quot;archive&quot;</span><span class="p">])</span>
+            <span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">exit_code</span> <span class="o">==</span> <span class="mi">0</span>
+
+            <span class="nb">print</span><span class="p">(</span><span class="n">td</span><span class="p">)</span>
+            <span class="n">incoming_f</span> <span class="o">=</span> <span class="n">listdir</span><span class="p">(</span><span class="s2">&quot;incoming&quot;</span><span class="p">)</span>
+            <span class="n">archive_f</span> <span class="o">=</span> <span class="n">listdir</span><span class="p">(</span><span class="s2">&quot;archive&quot;</span><span class="p">)</span>
+            <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">incoming_f</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span>
+            <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">archive_f</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span>
+</code></pre></div>
+
+<p>要在控制台上执行这些测试，在项目的根目录中运行 <code>tox</code>。</p>
+<p>在执行测试期间，我在代码中发现了一个错误。当我进行 Click 转换时，<code>rotoscope</code> 只是取消了最新文件的链接，无论它是否存在。测试从一个新的文件系统（不是我的主文件夹）开始，很快就失败了。我可以通过在一个很好的隔离和自动化测试环境中运行来防止这种错误。这将避免很多“它在我的机器上正常工作”的问题。</p>
+<h3>搭建骨架脚本和模块</h3>
+<p>本文到此结束，我们可以使用 <code>scaffold</code> 和 <code>click</code> 完成一些高级操作。有很多方法可以升级一个普通的 Python 脚本，甚至可以将你的简单实用程序变成成熟的 CLI 工具。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

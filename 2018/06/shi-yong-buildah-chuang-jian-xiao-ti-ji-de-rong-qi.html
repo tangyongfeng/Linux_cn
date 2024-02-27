@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 Buildah 创建小体积的容器</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Tom Sweeney 技术问题推动了开源协作的力量。 我最近加入了 Red Hat，在这之前我在另外一家科技公司工作了很多年。在我的上一 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li class="active"><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/06/shi-yong-buildah-chuang-jian-xiao-ti-ji-de-rong-qi.html" rel="bookmark"
+           title="Permalink to 使用 Buildah 创建小体积的容器">使用 Buildah 创建小体积的容器</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-06-06T10:40:14+02:00">
+                Published: Wed 06 June 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/guan-dian">观点</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Tom Sweeney</p>
+<blockquote>
+<p>技术问题推动了开源协作的力量。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/201806/06/104008xf00r3xfqjh03913.png"></p>
+<p>我最近加入了 Red Hat，在这之前我在另外一家科技公司工作了很多年。在我的上一份工作岗位上，我开发了不少不同类型的软件产品，这些产品是成功的，但都有版权保护。不仅法规限制了我们不能在公司外将软件共享，而且我们在公司内部也基本不进行共享。在那时，我觉得这很有道理：公司花费了时间、精力和预算用于开发软件，理应保护并要求软件涉及的利益。</p>
+<p>时间如梭，去年我加入 Red Hat 并培养出一种完全不同的理念。<a href="https://github.com/projectatomic/buildah">Buildah 项目</a>是我最早加入的项目之一，该项目用于构建 OCI (Open Container Initiative) 标准的镜像，特别擅长让你精简创建好的镜像的体积。那时 Buildah 还处于非常早期的阶段，包含一些瑕疵，不适合用于生产环境。</p>
+<p>刚接触项目不久，我做了一些小变更，然后询问公司内部 git 仓库地址，以便提交我做的变更。收到的回答是：没有内部仓库，直接将变更提交到 GitHub 上。这让我感到困惑，将我的变更提交到 GitHub 意味着：任何人都可以查看这部分代码并在他们自己的项目中使用。况且代码还有一些瑕疵，这样做简直有悖常理。但作为一个新人，我只是惊讶地摇了摇头并提交了变更。</p>
+<p>一年后，我终于相信了开源软件的力量和价值。我仍为 Buildah 项目工作，我们最近遇到的一个主题很形象地说明了这种力量和价值。这个标题为 <a href="https://github.com/projectatomic/buildah/issues/532">Buildah 镜像体积并不小？</a> 的工单由 Tim Dudgeon (@tdudgeon) 提出。简而言之，他发现使用 Buildah 创建的镜像比使用 Docker 创建的镜像体积更大，而且 Buildah 镜像中并不包含一些额外应用，但 Docker 镜像中却包含它们。</p>
+<p>为了比较，他首先操作如下：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>docker<span class="w"> </span>pull<span class="w"> </span>centos:7
+$<span class="w"> </span>docker<span class="w"> </span>images
+REPOSITORY<span class="w">            </span>TAG<span class="w">              </span>IMAGE<span class="w"> </span>ID<span class="w">                 </span>CREATED<span class="w">             </span>SIZE
+docker.io/centos<span class="w">          </span><span class="m">7</span><span class="w">                   </span>2d194b392dd1<span class="w">        </span><span class="m">2</span><span class="w"> </span>weeks<span class="w"> </span>ago<span class="w">         </span><span class="m">195</span><span class="w"> </span>MB
+</code></pre></div>
+
+<p>他发现 Docker 镜像的体积为 195MB。Tim 接着使用 Buildah 创建了一个（基于 scratch 的）最小化镜像，仅仅将 <code>coreutils</code> 和 <code>bash</code> 软件包加入到镜像中，使用的脚本如下：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cat<span class="w">  </span>./buildah-base.sh
+<span class="c1">#!/bin/bash</span>
+
+<span class="nb">set</span><span class="w"> </span>-x
+
+<span class="c1"># build a minimal image</span>
+<span class="nv">newcontainer</span><span class="o">=</span><span class="k">$(</span>buildah<span class="w"> </span>from<span class="w"> </span>scratch<span class="k">)</span>
+<span class="nv">scratchmnt</span><span class="o">=</span><span class="k">$(</span>buildah<span class="w"> </span>mount<span class="w"> </span><span class="nv">$newcontainer</span><span class="k">)</span>
+
+<span class="c1"># install the packages</span>
+yum<span class="w"> </span>install<span class="w"> </span>--installroot<span class="w"> </span><span class="nv">$scratchmnt</span><span class="w"> </span>bash<span class="w"> </span>coreutils<span class="w"> </span>--releasever<span class="w"> </span><span class="m">7</span><span class="w"> </span>--setopt<span class="w"> </span><span class="nv">install_weak_deps</span><span class="o">=</span><span class="nb">false</span><span class="w"> </span>-y
+yum<span class="w"> </span>clean<span class="w"> </span>all<span class="w"> </span>-y<span class="w"> </span>--installroot<span class="w"> </span><span class="nv">$scratchmnt</span><span class="w"> </span>--releasever<span class="w"> </span><span class="m">7</span>
+
+sudo<span class="w"> </span>buildah<span class="w"> </span>config<span class="w"> </span>--cmd<span class="w"> </span>/bin/bash<span class="w"> </span><span class="nv">$newcontainer</span>
+
+<span class="c1"># set some config info</span>
+buildah<span class="w"> </span>config<span class="w"> </span>--label<span class="w"> </span><span class="nv">name</span><span class="o">=</span>centos-base<span class="w"> </span><span class="nv">$newcontainer</span>
+
+<span class="c1"># commit the image</span>
+buildah<span class="w"> </span>unmount<span class="w"> </span><span class="nv">$newcontainer</span>
+buildah<span class="w"> </span>commit<span class="w"> </span><span class="nv">$newcontainer</span><span class="w"> </span>centos-base
+
+$<span class="w"> </span>sudo<span class="w"> </span>./buildah-base.sh
+
+$<span class="w"> </span>sudo<span class="w"> </span>buildah<span class="w"> </span>images
+IMAGE<span class="w"> </span>ID<span class="w">               </span>IMAGE<span class="w"> </span>NAME<span class="w">                                             </span>CREATED<span class="w"> </span>AT<span class="w">            </span>SIZE
+8379315d3e3e<span class="w">     </span>docker.io/library/centos-base:latest<span class="w">           </span>Mar<span class="w"> </span><span class="m">25</span>,<span class="w"> </span><span class="m">2018</span><span class="w"> </span><span class="m">17</span>:08<span class="w">   </span><span class="m">212</span>.1<span class="w"> </span>MB
+</code></pre></div>
+
+<p>Tim 想知道为何 Buildah 镜像体积反而大 17MB，毕竟 <code>python</code> 和 <code>yum</code> 软件包都没有安装到 Buildah 镜像中，而这些软件已经安装到 Docker 镜像中。这个结果并不符合预期，在 Github 的相关主题中引发了广泛的讨论。</p>
+<p>不仅 Red Hat 的员工参与了讨论，还有不少公司外人士也加入了讨论，这很有意义。值得一提的是，GitHub 用户 @pixdrift 主导了很多重要的讨论并提出很多发现，他指出在这个 Buildah 镜像中文档和语言包就占据了比 100MB 略多一点的空间。Pixdrift 建议在 yum 安装器中强制指定语言，据此提出如下修改过的 <code>buildah-bash.sh</code> 脚本：</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/bin/bash</span>
+
+<span class="nb">set</span><span class="w"> </span>-x
+
+<span class="c1"># build a minimal image</span>
+<span class="nv">newcontainer</span><span class="o">=</span><span class="k">$(</span>buildah<span class="w"> </span>from<span class="w"> </span>scratch<span class="k">)</span>
+<span class="nv">scratchmnt</span><span class="o">=</span><span class="k">$(</span>buildah<span class="w"> </span>mount<span class="w"> </span><span class="nv">$newcontainer</span><span class="k">)</span>
+
+<span class="c1"># install the packages</span>
+yum<span class="w"> </span>install<span class="w"> </span>--installroot<span class="w"> </span><span class="nv">$scratchmnt</span><span class="w"> </span>bash<span class="w"> </span>coreutils<span class="w"> </span>--releasever<span class="w"> </span><span class="m">7</span><span class="w"> </span>--setopt<span class="o">=</span><span class="nv">install_weak_deps</span><span class="o">=</span><span class="nb">false</span><span class="w"> </span>--setopt<span class="o">=</span><span class="nv">tsflags</span><span class="o">=</span>nodocs<span class="w"> </span>--setopt<span class="o">=</span><span class="nv">override_install_langs</span><span class="o">=</span>en_US.utf8<span class="w"> </span>-y
+yum<span class="w"> </span>clean<span class="w"> </span>all<span class="w"> </span>-y<span class="w"> </span>--installroot<span class="w"> </span><span class="nv">$scratchmnt</span><span class="w"> </span>--releasever<span class="w"> </span><span class="m">7</span>
+
+sudo<span class="w"> </span>buildah<span class="w"> </span>config<span class="w"> </span>--cmd<span class="w"> </span>/bin/bash<span class="w"> </span><span class="nv">$newcontainer</span>
+
+<span class="c1"># set some config info</span>
+buildah<span class="w"> </span>config<span class="w"> </span>--label<span class="w"> </span><span class="nv">name</span><span class="o">=</span>centos-base<span class="w"> </span><span class="nv">$newcontainer</span>
+
+<span class="c1"># commit the image</span>
+buildah<span class="w"> </span>unmount<span class="w"> </span><span class="nv">$newcontainer</span>
+buildah<span class="w"> </span>commit<span class="w"> </span><span class="nv">$newcontainer</span><span class="w"> </span>centos-base
+</code></pre></div>
+
+<p>Tim 运行这个新脚本，得到的镜像体积缩减至 92MB，相比之前的 Buildah 镜像体积减少了 120MB，这比较接近我们的预期；然而，出于工程师的天性，56% 的体积缩减不能让他们满足。讨论继续深入下去，涉及如何移除个人语言包以节省更多空间。如果想了解讨论细节，点击 <a href="https://github.com/projectatomic/buildah/issues/532">Buildah 镜像体积并不小？</a> 这个链接。说不定你也能给出有帮助的点子，甚至更进一步成为 Buildah 项目的贡献者。这个主题的解决从一个侧面告诉我们，Buildah 软件可以多么快速和容易地创建体积最小化的容器，该容器仅包含你高效运行任务所需的软件。额外的好处是，你无需运行一个守护进程。</p>
+<p>这个镜像体积缩减的主题让我意识到开源软件的力量。来自不同公司的大量开发者，在一天多的时间内，以开放讨论的形式进行合作解决问题。虽然解决这个具体问题并没有修改已有代码，但 Red Hat 公司外开发者对 Buildah 做了很多代码贡献，进而帮助项目变得更好。这些贡献也吸引了更多人才关注项目代码；如果像之前那样，代码作为版权保护软件的一部分放置在私有 git 仓库中，不会获得上述好处。我只用了一年的时间就转向拥抱 <a href="https://twitter.com/opensourceway">开源方式</a>，而且可能不会再转回去了。</p>
+<p>文章最初发表于 <a href="http://www.projectatomic.io/blog/2018/04/open-source-what-a-concept/">Project Atomic</a>，已获得转载许可。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

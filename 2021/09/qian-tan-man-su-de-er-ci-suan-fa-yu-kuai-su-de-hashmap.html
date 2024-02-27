@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>浅谈慢速的二次算法与快速的 hashmap</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Julia Evans 大家好！昨天我与一位朋友聊天，他正在准备编程面试，并试图学习一些算法基础知识。 我们聊到了 二次时间 quadratic-time 与 线 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2021/09/qian-tan-man-su-de-er-ci-suan-fa-yu-kuai-su-de-hashmap.html" rel="bookmark"
+           title="Permalink to 浅谈慢速的二次算法与快速的 hashmap">浅谈慢速的二次算法与快速的 hashmap</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2021-09-15T09:45:31+02:00">
+                Published: Wed 15 September 2021
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Julia Evans</p>
+<p><img alt="" src="/data/attachment/album/202109/15/094524s7dlcq74ksqazyyc.jpg"></p>
+<p>大家好！昨天我与一位朋友聊天，他正在准备编程面试，并试图学习一些算法基础知识。</p>
+<p>我们聊到了<ruby> 二次时间 <rt>  quadratic-time </rt></ruby>与<ruby> 线性时间 <rt>  linear-time </rt></ruby>算法的话题，我认为在这里写这篇文章会很有趣，因为避免二次时间算法不仅在面试中很重要——有时在现实生活中了解一下也是很好的！后面我会快速解释一下什么是“二次时间算法” :)</p>
+<p>以下是我们将要讨论的 3 件事：</p>
+<ol>
+<li>二次时间函数比线性时间函数慢得非常非常多</li>
+<li>有时可以通过使用 hashmap 把二次算法变成线性算法</li>
+<li>这是因为 hashmap 查找非常快（即时查询！）</li>
+</ol>
+<p>我会尽量避免使用数学术语，重点关注真实的代码示例以及它们到底有多快/多慢。</p>
+<h3>目标问题：取两个列表的交集</h3>
+<p>我们来讨论一个简单的面试式问题：获取 2 个数字列表的交集。 例如，<code>intersect([1,2,3], [2,4,5])</code> 应该返回 <code>[2]</code>。</p>
+<p>这个问题也是有些现实应用的——你可以假设有一个真实程序，其需求正是取两个 ID 列表的交集。</p>
+<h3>“显而易见”的解决方案：</h3>
+<p>我们来写一些获取 2 个列表交集的代码。下面是一个实现此需求的程序，命名为 <code>quadratic.py</code>。</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">sys</span>
+
+<span class="c1"># 实际运行的代码</span>
+<span class="k">def</span> <span class="nf">intersection</span><span class="p">(</span><span class="n">list1</span><span class="p">,</span> <span class="n">list2</span><span class="p">):</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">list1</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">y</span> <span class="ow">in</span> <span class="n">list2</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">x</span> <span class="o">==</span> <span class="n">y</span><span class="p">:</span>
+                <span class="n">result</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">result</span>
+
+<span class="c1"># 一些样板，便于我们从命令行运行程序，处理不同大小的列表</span>
+<span class="k">def</span> <span class="nf">run</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+    <span class="c1"># 定义两个有 n+1 个元素的列表</span>
+    <span class="n">list1</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span> <span class="o">+</span> <span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+    <span class="n">list2</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="o">*</span><span class="n">n</span><span class="p">))</span> <span class="o">+</span> <span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+    <span class="c1"># 取其交集并输出结果</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">intersection</span><span class="p">(</span><span class="n">list1</span><span class="p">,</span> <span class="n">list2</span><span class="p">)))</span>
+
+<span class="c1"># 使用第一个命令行参数作为输入，运行程序</span>
+<span class="n">run</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+</code></pre></div>
+
+<p>程序名为 <code>quadratic.py</code>（LCTT 译注：“quadratic”意为“二次方的”）的原因是：如果 <code>list1</code> 和 <code>list2</code> 的大小为 <code>n</code>，那么内层循环（<code>if x == y</code>）会运行 <code>n^2</code> 次。在数学中，像 <code>x^2</code> 这样的函数就称为“二次”函数。</p>
+<h3><code>quadratic.py</code> 有多慢？</h3>
+<p>用一些不同长度的列表来运行这个程序，两个列表的交集总是相同的：<code>[2]</code>。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">time</span><span class="w"> </span>python3<span class="w"> </span>quadratic.py<span class="w"> </span><span class="m">10</span>
+<span class="o">[</span><span class="m">2</span><span class="o">]</span>
+
+real<span class="w">    </span>0m0.037s
+$<span class="w"> </span><span class="nb">time</span><span class="w"> </span>python3<span class="w"> </span>quadratic.py<span class="w"> </span><span class="m">100</span>
+<span class="o">[</span><span class="m">2</span><span class="o">]</span>
+
+real<span class="w">    </span>0m0.053s
+$<span class="w"> </span><span class="nb">time</span><span class="w"> </span>python3<span class="w"> </span>quadratic.py<span class="w"> </span><span class="m">1000</span>
+<span class="o">[</span><span class="m">2</span><span class="o">]</span>
+
+real<span class="w">    </span>0m0.051s
+$<span class="w"> </span><span class="nb">time</span><span class="w"> </span>python3<span class="w"> </span>quadratic.py<span class="w"> </span><span class="m">10000</span><span class="w"> </span><span class="c1"># 10,000</span>
+<span class="o">[</span><span class="m">2</span><span class="o">]</span>
+
+real<span class="w">    </span>0m1.661s
+</code></pre></div>
+
+<p>到目前为止，一切都还不错——程序仍然只花费不到 2 秒的时间。</p>
+<p>然后运行该程序处理两个包含 100,000 个元素的列表，我不得不等待了很长时间。结果如下：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">time</span><span class="w"> </span>python3<span class="w"> </span>quadratic.py<span class="w"> </span><span class="m">100000</span><span class="w"> </span><span class="c1"># 100,000</span>
+<span class="o">[</span><span class="m">2</span><span class="o">]</span>
+
+real<span class="w">    </span>2m41.059s
+</code></pre></div>
+
+<p>这可以说相当慢了！总共花费了 160 秒，几乎是在 10,000 个元素上运行时（1.6 秒）的 100 倍。所以我们可以看到，在某个点之后，每次我们将列表扩大 10 倍，程序运行的时间就会增加大约 100 倍。</p>
+<p>我没有尝试在 1,000,000 个元素上运行这个程序，因为我知道它会花费又 100 倍的时间——可能大约需要 3 个小时。我没时间这样做！</p>
+<p>你现在大概明白了为什么二次时间算法会成为一个问题——即使是这个非常简单的程序也会很快变得非常缓慢。</p>
+<h3>快速版：<code>linear.py</code></h3>
+<p>好，接下来我们编写一个快速版的程序。我先给你看看程序的样子，然后再分析。</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">sys</span>
+
+<span class="c1"># 实际执行的算法</span>
+<span class="k">def</span> <span class="nf">intersection</span><span class="p">(</span><span class="n">list1</span><span class="p">,</span> <span class="n">list2</span><span class="p">):</span>
+    <span class="n">set1</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">list1</span><span class="p">)</span> <span class="c1"># this is a hash set</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">y</span> <span class="ow">in</span> <span class="n">list2</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">y</span> <span class="ow">in</span> <span class="n">set1</span><span class="p">:</span>
+            <span class="n">result</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">result</span>
+
+<span class="c1"># 一些样板，便于我们从命令行运行程序，处理不同大小的列表</span>
+<span class="k">def</span> <span class="nf">run</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+    <span class="c1"># 定义两个有 n+1 个元素的列表</span>
+    <span class="n">list1</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span> <span class="o">+</span> <span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+    <span class="n">list2</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="o">*</span><span class="n">n</span><span class="p">)</span> <span class="o">+</span> <span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+    <span class="c1"># 输出交集结果</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">intersection</span><span class="p">(</span><span class="n">list1</span><span class="p">,</span> <span class="n">list2</span><span class="p">))</span>
+
+<span class="n">run</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+</code></pre></div>
+
+<p>（这不是最惯用的 Python 使用方式，但我想在尽量避免使用太多 Python 思想的前提下编写代码，以便不了解 Python 的人能够更容易理解）</p>
+<p>这里我们做了两件与慢速版程序不同的事：</p>
+<ol>
+<li>将 <code>list1</code> 转换成名为 <code>set1</code> 的 set 集合</li>
+<li>只使用一个 for 循环而不是两个</li>
+</ol>
+<h3>看看 <code>linear.py</code> 程序有多快</h3>
+<p>在讨论 <em>为什么</em> 这个程序快之前，我们先在一些大型列表上运行该程序，以此证明它确实是很快的。此处演示该程序依次在大小为 10 到 10,000,000 的列表上运行的过程。（请记住，我们上一个的程序在 100,000 个元素上运行时开始变得非常非常慢）</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">time</span><span class="w"> </span>python3<span class="w"> </span>linear.py<span class="w"> </span><span class="m">100</span>
+<span class="o">[</span><span class="m">2</span><span class="o">]</span>
+
+real<span class="w">    </span>0m0.056s
+$<span class="w"> </span><span class="nb">time</span><span class="w"> </span>python3<span class="w"> </span>linear.py<span class="w"> </span><span class="m">1000</span>
+<span class="o">[</span><span class="m">2</span><span class="o">]</span>
+
+real<span class="w">    </span>0m0.036s
+$<span class="w"> </span><span class="nb">time</span><span class="w"> </span>python3<span class="w"> </span>linear.py<span class="w"> </span><span class="m">10000</span><span class="w"> </span><span class="c1"># 10,000</span>
+<span class="o">[</span><span class="m">2</span><span class="o">]</span>
+
+real<span class="w">    </span>0m0.028s
+$<span class="w"> </span><span class="nb">time</span><span class="w"> </span>python3<span class="w"> </span>linear.py<span class="w"> </span><span class="m">100000</span><span class="w"> </span><span class="c1"># 100,000</span>
+<span class="o">[</span><span class="m">2</span><span class="o">]</span>
+
+real<span class="w">    </span>0m0.048s<span class="w"> </span>&lt;--<span class="w"> </span>quadratic.py<span class="w"> </span>took<span class="w"> </span><span class="m">2</span><span class="w"> </span>minutes<span class="w"> </span><span class="k">in</span><span class="w"> </span>this<span class="w"> </span><span class="k">case</span>!<span class="w"> </span>we<span class="err">&#39;</span>re<span class="w"> </span>doing<span class="w"> </span>it<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="m">0</span>.04<span class="w"> </span>seconds<span class="w"> </span>now!!!<span class="w"> </span>so<span class="w"> </span>fast!
+$<span class="w"> </span><span class="nb">time</span><span class="w"> </span>python3<span class="w"> </span>linear.py<span class="w"> </span><span class="m">1000000</span><span class="w"> </span><span class="c1"># 1,000,000</span>
+<span class="o">[</span><span class="m">2</span><span class="o">]</span>
+
+real<span class="w">    </span>0m0.178s
+$<span class="w"> </span><span class="nb">time</span><span class="w"> </span>python3<span class="w"> </span>linear.py<span class="w"> </span><span class="m">10000000</span><span class="w"> </span><span class="c1"># 10,000,000</span>
+<span class="o">[</span><span class="m">2</span><span class="o">]</span>
+
+real<span class="w">    </span>0m1.560s
+</code></pre></div>
+
+<h3>在极大型列表上运行 <code>linear.py</code></h3>
+<p>如果我们试着在一个非常非常大的列表（100 亿 / 10,000,000,000 个元素）上运行它，那么实际上会遇到另一个问题：它足够 <em>快</em> 了（该列表仅比花费 4.2 秒的列表大 100 倍，因此我们大概应该能在不超过 420 秒的时间内完成），但我的计算机没有足够的内存来存储列表的所有元素，因此程序在运行结束之前崩溃了。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">time</span><span class="w"> </span>python3<span class="w"> </span>linear.py<span class="w"> </span><span class="m">10000000000</span>
+Traceback<span class="w"> </span><span class="o">(</span>most<span class="w"> </span>recent<span class="w"> </span>call<span class="w"> </span>last<span class="o">)</span>:
+<span class="w">  </span>File<span class="w"> </span><span class="s2">&quot;/home/bork/work/homepage/linear.py&quot;</span>,<span class="w"> </span>line<span class="w"> </span><span class="m">18</span>,<span class="w"> </span><span class="k">in</span><span class="w"> </span>&lt;module&gt;
+<span class="w">    </span>run<span class="o">(</span>int<span class="o">(</span>sys.argv<span class="o">[</span><span class="m">1</span><span class="o">]))</span>
+<span class="w">  </span>File<span class="w"> </span><span class="s2">&quot;/home/bork/work/homepage/linear.py&quot;</span>,<span class="w"> </span>line<span class="w"> </span><span class="m">13</span>,<span class="w"> </span><span class="k">in</span><span class="w"> </span>run
+<span class="w">    </span><span class="nv">list1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">[</span><span class="m">1</span><span class="o">]</span><span class="w"> </span>*<span class="w"> </span>n<span class="w"> </span>+<span class="w"> </span><span class="o">[</span><span class="m">2</span><span class="o">]</span>
+MemoryError
+
+real<span class="w">    </span>0m0.090s
+user<span class="w">    </span>0m0.034s
+sys<span class="w"> </span>0m0.018s
+</code></pre></div>
+
+<p>不过本文不讨论内存使用，所以我们可以忽略这个问题。</p>
+<h3>那么，为什么 <code>linear.py</code> 很快呢？</h3>
+<p>现在我将试着解释为什么 <code>linear.py</code> 很快。</p>
+<p>再看一下我们的代码:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">def</span><span class="w"> </span><span class="nv">intersection</span><span class="ss">(</span><span class="nv">list1</span>,<span class="w"> </span><span class="nv">list2</span><span class="ss">)</span>:
+<span class="w">    </span><span class="nv">set1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">set</span><span class="ss">(</span><span class="nv">list1</span><span class="ss">)</span><span class="w"> </span>#<span class="w"> </span><span class="nv">this</span><span class="w"> </span><span class="nv">is</span><span class="w"> </span><span class="nv">a</span><span class="w"> </span><span class="nv">hash</span><span class="w"> </span><span class="nv">set</span>
+<span class="w">    </span><span class="nb">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>[]
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="nv">y</span><span class="w"> </span><span class="nv">in</span><span class="w"> </span><span class="nv">list2</span>:
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="nv">y</span><span class="w"> </span><span class="nv">in</span><span class="w"> </span><span class="nv">set1</span>:
+<span class="w">            </span><span class="nb">result</span>.<span class="nv">append</span><span class="ss">(</span><span class="nv">y</span><span class="ss">)</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nb">result</span>
+</code></pre></div>
+
+<p>假设 <code>list1</code> 和 <code>list2</code> 都是大约 10,000,000 个不同元素的列表，这样的元素数量可以说是很大了！</p>
+<p>那么为什么它还能够运行得如此之快呢？因为 hashmap！！！</p>
+<h3>hashmap 查找是即时的（“常数级时间”）</h3>
+<p>我们看一下快速版程序中的 <code>if</code> 语句：</p>
+<div class="highlight"><pre><span></span><code><span class="k">if</span><span class="w"> </span><span class="nv">y</span><span class="w"> </span><span class="nv">in</span><span class="w"> </span><span class="nv">set1</span>:
+<span class="w">    </span><span class="nb">result</span>.<span class="nv">append</span><span class="ss">(</span><span class="nv">y</span><span class="ss">)</span>
+</code></pre></div>
+
+<p>你可能会认为如果 <code>set1</code> 包含 1000 万个元素，那么这个查找——<code>if y in set1</code> 会比 <code>set1</code> 包含 1000 个元素时慢。但事实并非如此！无论 <code>set1</code> 有多大，所需时间基本是相同的（超级快）。</p>
+<p>这是因为 <code>set1</code> 是一个哈希集合，它是一种只有键没有值的 hashmap（hashtable）结构。</p>
+<p>我不准备在本文中解释 <em>为什么</em> hashmap 查找是即时的，但是神奇的 Vaidehi Joshi 的 <a href="https://medium.com/basecs">basecs</a> 系列中有关于 <a href="https://medium.com/basecs/taking-hash-tables-off-the-shelf-139cbf4752f0">hash table</a> 和 <a href="https://medium.com/basecs/hashing-out-hash-functions-ea5dd8beb4dd">hash 函数</a> 的解释，其中讨论了 hashmap 即时查找的原因。</p>
+<h3>不经意的二次方：现实中的二次算法！</h3>
+<p>二次时间算法真的很慢，我们看到的的这个问题实际上在现实中也会遇到——Nelson Elhage 有一个很棒的博客，名为 <a href="https://accidentallyquadratic.tumblr.com/">不经意的二次方</a>，其中有关于不经意以二次时间算法运行代码导致性能问题的故事。</p>
+<h3>二次时间算法可能会“偷袭”你</h3>
+<p>关于二次时间算法的奇怪之处在于，当你在少量元素（如 1000）上运行它们时，它看起来并没有那么糟糕！没那么慢！但是如果你给它 1,000,000 个元素，它真的会花费几个小时去运行。</p>
+<p>所以我认为它还是值得深入了解的，这样你就可以避免无意中使用二次时间算法，特别是当有一种简单的方法来编写线性时间算法（例如使用 hashmap）时。</p>
+<h3>总是让我感到一丝神奇的 hashmap</h3>
+<p>hashmap 当然不是魔法（你可以学习一下为什么 hashmap 查找是即时的！真的很酷！），但它总是让人 <em>感觉</em> 有点神奇，每次我在程序中使用 hashmap 来加速，都会使我感到开心 :)</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

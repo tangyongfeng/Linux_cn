@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何用Puppet和Augeas管理Linux配置</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Jaroslav Štěpánek 虽然Puppet是一个真正独特的有用工具，但在有些情况下你可以使用一点不同的方法来用它。比如，你要修改几个服务 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2014/11/ru-he-yong-puppethe-augeasguan-li-linuxpei-zhi.html" rel="bookmark"
+           title="Permalink to 如何用Puppet和Augeas管理Linux配置">如何用Puppet和Augeas管理Linux配置</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2014-11-25T16:37:24+01:00">
+                Published: Tue 25 November 2014
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Jaroslav Štěpánek</p>
+<p>虽然<a href="http://linux.cn/article-3959-1.html">Puppet</a>是一个真正独特的有用工具，但在有些情况下你可以使用一点不同的方法来用它。比如，你要修改几个服务器上已有的配置文件，而且它们彼此稍有不同。Puppet实验室的人也意识到了这一点，他们在 Puppet 中集成了一个叫做<a href="http://augeas.net/">Augeas</a>的伟大的工具，它是专为这种使用情况而设计的。</p>
+<p>Augeas可被认为填补了Puppet能力的空白，比如在其中一个指定对象的资源类型（例如用于维护/etc/hosts中的条目的主机资源）还不可用时。在这个文档中，您将学习如何使用Augeas来减轻你管理配置文件的负担。</p>
+<h3>Augeas是什么?</h3>
+<p><img alt="" src="/data/attachment/album/201411/25/163727yz7ejia7eic969i3.png"></p>
+<p>Augeas基本上就是一个配置编辑工具。它以他们原生的格式解析配置文件并且将它们转换成树。配置的更改可以通过操作树来完成，并可以以原生配置文件格式保存配置。</p>
+<h3>这篇教程要达成什么目的？</h3>
+<p>我们会针对<a href="http://linux.cn/article-3959-1.html">我们之前构建的Puppet服务器</a>安装并配置Augeas。我们会使用这个工具创建并测试几个不同的配置文件，并学习如何适当地使用它来管理我们的系统配置。</p>
+<h3>前置阅读</h3>
+<p>我们需要一台工作的Puppet服务器和客户端。如果你还没有，请先按照我先前的<a href="http://linux.cn/article-3959-1.html">教程</a>来。</p>
+<p>Augeas安装包可以在标准CentOS/RHEL仓库中找到。不幸的是，Puppet用到的Augeas的ruby封装只在puppetlabs仓库中（或者<a href="http://xmodulo.com/2013/03/how-to-set-up-epel-repository-on-centos.html">EPEL</a>）中才有。如果你系统中还没有这个仓库，请使用下面的命令：</p>
+<p>在CentOS/RHEL 6.5上:</p>
+<div class="highlight"><pre><span></span><code> # rpm -­ivh https://yum.puppetlabs.com/el/6.5/products/x86_64/puppetlabs­release­6­10.noarch.rpm 
+</code></pre></div>
+
+<p>在CentOS/RHEL 7上:</p>
+<div class="highlight"><pre><span></span><code> # rpm -­ivh https://yum.puppetlabs.com/el/7/products/x86_64/puppetlabs­release­7­10.noarch.rpm 
+</code></pre></div>
+
+<p>在你成功地安装了这个仓库后，在你的系统中安装Ruby­Augeas：</p>
+<div class="highlight"><pre><span></span><code> # yum install ruby­augeas 
+</code></pre></div>
+
+<p>或者如果你是从我的<a href="http://linux.cn/article-3959-1.html">上一篇教程中继续</a>的，使用puppet的方法安装这个包。在/etc/puppet/manifests/site.pp中修改你的custom_utils类，在packages这行中加入“ruby­augeas”。</p>
+<div class="highlight"><pre><span></span><code><span class="kd">class</span><span class="w"> </span><span class="nx">custom_utils</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="kn">package</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">[</span><span class="s">&quot;nmap&quot;</span><span class="p">,</span><span class="s">&quot;telnet&quot;</span><span class="p">,</span><span class="s">&quot;vim­enhanced&quot;</span><span class="p">,</span><span class="s">&quot;traceroute&quot;</span><span class="p">,</span><span class="s">&quot;ruby­augeas&quot;</span><span class="p">]:</span>
+<span class="w">                </span><span class="nx">ensure</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="nx">latest</span><span class="p">,</span>
+<span class="w">                </span><span class="nx">allow_virtual</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="p">}</span><span class="w"> </span>
+</code></pre></div>
+
+<h3>不带Puppet的Augeas</h3>
+<p>如我先前所说，最初Augeas并不是来自Puppet实验室，这意味着即使没有Puppet本身我们仍然可以使用它。这种方法可在你将它们部署到Puppet环境之前，验证你的修改和想法是否是正确的。要做到这一点，你需要在你的系统中安装一个额外的软件包。请执行以下命令：</p>
+<div class="highlight"><pre><span></span><code># yum install augeas 
+</code></pre></div>
+
+<h3>Puppet Augeas 示例</h3>
+<p>用于演示，这里有几个Augeas使用案例。</p>
+<h4>管理 /etc/sudoers 文件</h4>
+<ol>
+<li>给wheel组加上sudo权限。</li>
+</ol>
+<p>这个例子会向你展示如何在你的GNU/Linux系统中为%wheel组加上sudo权限。</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="nx">安装sudo包</span>
+<span class="kn">package</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="err">&#39;</span><span class="nx">sudo</span><span class="err">&#39;</span><span class="p">:</span>
+<span class="w">    </span><span class="nx">ensure</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="nx">installed</span><span class="p">,</span><span class="w"> </span><span class="err">#</span><span class="w"> </span><span class="nx">确保sudo包已安装</span>
+<span class="p">}</span>
+
+<span class="err">#</span><span class="w"> </span><span class="nx">允许用户属于wheel组来使用sudo</span>
+<span class="nx">augeas</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="err">&#39;</span><span class="nx">sudo_wheel</span><span class="err">&#39;</span><span class="p">:</span>
+<span class="w">    </span><span class="nx">context</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="err">&#39;</span><span class="o">/</span><span class="nx">files</span><span class="o">/</span><span class="nx">etc</span><span class="o">/</span><span class="nx">sudoers</span><span class="err">&#39;</span><span class="p">,</span><span class="w"> </span><span class="err">#</span><span class="w"> </span><span class="nx">目标文件是</span><span class="w"> </span><span class="o">/</span><span class="nx">etc</span><span class="o">/</span><span class="nx">sudoers</span>
+<span class="w">    </span><span class="nx">changes</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">[</span>
+<span class="w">        </span><span class="err">#</span><span class="w"> </span><span class="nx">允许wheel用户使用sudo</span>
+<span class="w">        </span><span class="err">&#39;</span><span class="nx">set</span><span class="w"> </span><span class="nx">spec</span><span class="p">[</span><span class="nx">user</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">&quot;%wheel&quot;</span><span class="p">]</span><span class="o">/</span><span class="nx">user</span><span class="w"> </span><span class="o">%</span><span class="nx">wheel</span><span class="err">&#39;</span><span class="p">,</span>
+<span class="w">        </span><span class="err">&#39;</span><span class="nx">set</span><span class="w"> </span><span class="nx">spec</span><span class="p">[</span><span class="nx">user</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">&quot;%wheel&quot;</span><span class="p">]</span><span class="o">/</span><span class="nx">host_group</span><span class="o">/</span><span class="nx">host</span><span class="w"> </span><span class="nx">ALL</span><span class="err">&#39;</span><span class="p">,</span>
+<span class="w">        </span><span class="err">&#39;</span><span class="nx">set</span><span class="w"> </span><span class="nx">spec</span><span class="p">[</span><span class="nx">user</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">&quot;%wheel&quot;</span><span class="p">]</span><span class="o">/</span><span class="nx">host_group</span><span class="o">/</span><span class="nx">command</span><span class="w"> </span><span class="nx">ALL</span><span class="err">&#39;</span><span class="p">,</span>
+<span class="w">        </span><span class="err">&#39;</span><span class="nx">set</span><span class="w"> </span><span class="nx">spec</span><span class="p">[</span><span class="nx">user</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">&quot;%wheel&quot;</span><span class="p">]</span><span class="o">/</span><span class="nx">host_group</span><span class="o">/</span><span class="nx">command</span><span class="o">/</span><span class="nx">runas_user</span><span class="w"> </span><span class="nx">ALL</span><span class="err">&#39;</span><span class="p">,</span>
+<span class="w">    </span><span class="p">]</span>
+<span class="p">}</span><span class="w"> </span>
+</code></pre></div>
+
+<p>现在来解释这些代码做了什么：<strong>spec</strong>定义了/etc/sudoers中的用户段，<strong>[user]</strong>定义了数组中给定的用户，所有的定义放在该用户的斜杠( / ) 后那部分。因此在典型的配置中这个可以这么表达：</p>
+<div class="highlight"><pre><span></span><code>user host_group/host host_group/command host_group/command/runas_user
+</code></pre></div>
+
+<p>这个将被转换成/etc/sudoers下的这一行：</p>
+<div class="highlight"><pre><span></span><code><span class="nf">%wheel</span><span class="w"> </span><span class="n">ALL</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">ALL</span><span class="p">)</span><span class="w"> </span><span class="n">ALL</span><span class="w"> </span>
+</code></pre></div>
+
+<ol>
+<li>添加命令别称</li>
+</ol>
+<p>下面这部分会向你展示如何定义命令别名，它可以在你的sudoer文件中使用。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> 创建新的SERVICE别名，包含了一些基本的特权命令。
+augeas { &#39;sudo_cmdalias&#39;:
+    context =&gt; &#39;/files/etc/sudoers&#39;, # 目标文件是 /etc/sudoers
+    changes =&gt; [
+      &quot;set Cmnd_Alias[alias/name = &#39;SERVICES&#39;]/alias/name SERVICES&quot;,
+      &quot;set Cmnd_Alias[alias/name = &#39;SERVICES&#39;]/alias/command[1] /sbin/service&quot;,
+      &quot;set Cmnd_Alias[alias/name = &#39;SERVICES&#39;]/alias/command[2] /sbin/chkconfig&quot;,
+      &quot;set Cmnd_Alias[alias/name = &#39;SERVICES&#39;]/alias/command[3] /bin/hostname&quot;,
+      &quot;set Cmnd_Alias[alias/name = &#39;SERVICES&#39;]/alias/command[4] /sbin/shutdown&quot;,
+    ]
+} 
+</code></pre></div>
+
+<p>sudo命令别名的语法很简单：<strong>Cmnd_Alias</strong>定义了命令别名字段，<strong>[alias/name]</strong>绑定所有给定的别名，/alias/name <strong>SERVICES</strong> 定义真实的别名，alias/command 是属于该别名的所有命令的数组。以上将被转换如下：</p>
+<div class="highlight"><pre><span></span><code>Cmnd_Alias SERVICES = /sbin/service , /sbin/chkconfig , /bin/hostname , /sbin/shutdown
+</code></pre></div>
+
+<p>关于/etc/sudoers的更多信息，请访问<a href="http://augeas.net/docs/references/lenses/files/sudoers-aug.html">官方文档</a>。</p>
+<h4>向一个组中加入用户</h4>
+<p>要使用Augeas向组中添加用户，你也许要添加一个新用户，不管是排在 gid 字段还是最后的用户 uid 之后。我们在这个例子中使用SVN组。这可以通过下面的命令达成：</p>
+<p>在Puppet中:</p>
+<div class="highlight"><pre><span></span><code>augeas { &#39;augeas_mod_group:
+    context =&gt; &#39;/files/etc/group&#39;, #目标文件是 /etc/group
+    changes =&gt; [
+        &quot;ins user after svn/*[self::gid or self::user][last()]&quot;,
+        &quot;set svn/user[last()] john&quot;,
+    ]
+}
+</code></pre></div>
+
+<p>使用 augtool:</p>
+<div class="highlight"><pre><span></span><code><span class="w"> </span><span class="n">augtool</span><span class="o">&gt;</span><span class="w"> </span><span class="n">ins</span><span class="w"> </span><span class="n">user</span><span class="w"> </span><span class="n">after</span><span class="w"> </span><span class="o">/</span><span class="n">files</span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">group</span><span class="o">/</span><span class="n">svn</span><span class="o">/*</span><span class="p">[</span><span class="bp">self</span><span class="p">::</span><span class="n">gid</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="bp">self</span><span class="p">::</span><span class="n">user</span><span class="p">][</span><span class="n">last</span><span class="p">()]</span><span class="w"> </span><span class="n">augtool</span><span class="o">&gt;</span><span class="w"> </span><span class="n">set</span><span class="w"> </span><span class="o">/</span><span class="n">files</span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">group</span><span class="o">/</span><span class="n">svn</span><span class="o">/</span><span class="n">user</span><span class="p">[</span><span class="n">last</span><span class="p">()]</span><span class="w"> </span><span class="n">john</span><span class="w"> </span>
+</code></pre></div>
+
+<h3>总结</h3>
+<p>目前为止，你应该对如何在Puppet项目中使用Augeas有点明白了。随意地试一下，你肯定需要浏览官方的Augeas文档。这会帮助你了解如何在你的个人项目中正确地使用Augeas，并且它会让你知道可以用它节省多少时间。</p>
+<p>如有任何问题，欢迎在下面的评论中发布，我会尽力解答和向你建议。</p>
+<h3>有用的链接</h3>
+<ul>
+<li><a href="http://www.watzmann.net/categories/augeas.html">http://www.watzmann.net/categories/augeas.html</a>: 包含许多关于 Augeas 使用的教程。</li>
+<li><a href="http://projects.puppetlabs.com/projects/1/wiki/puppet_augeas">http://projects.puppetlabs.com/projects/1/wiki/puppet_augeas</a>: Puppet wiki 带有许多实例。</li>
+</ul>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

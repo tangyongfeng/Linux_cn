@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Linux DNS 查询剖析（第三部分）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Zwischenzugs 在 Linux DNS 查询剖析（第一部分）中，我们介绍了： nsswitch /etc/hosts /etc/resolv.conf ping 与 host 查询方式的对比 而在 Linux DNS 查询剖析（第二部分），我们介 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/09/linux-dns-cha-xun-pou-xi-di-san-bu-fen.html" rel="bookmark"
+           title="Permalink to Linux DNS 查询剖析（第三部分）">Linux DNS 查询剖析（第三部分）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-09-01T21:30:59+02:00">
+                Published: Sat 01 September 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Zwischenzugs</p>
+<p><img alt="" src="/data/attachment/album/201809/01/213042p0w0wwdwhmh0w6wx.jpeg"></p>
+<p>在 <a href="/article-9943-1.html">Linux DNS 查询剖析（第一部分）</a>中，我们介绍了：</p>
+<ul>
+<li><code>nsswitch</code></li>
+<li><code>/etc/hosts</code></li>
+<li><code>/etc/resolv.conf</code></li>
+<li><code>ping</code> 与 <code>host</code> 查询方式的对比</li>
+</ul>
+<p>而在 <a href="/article-9949-1.html">Linux DNS 查询剖析（第二部分）</a>，我们介绍了：</p>
+<ul>
+<li><code>systemd</code> 和对应的 <code>networking</code> 服务</li>
+<li><code>ifup</code> 和 <code>ifdown</code></li>
+<li><code>dhclient</code></li>
+<li><code>resolvconf</code></li>
+</ul>
+<p>剖析进展如下：</p>
+<p><img alt="linux-dns-2 (2)" src="/data/attachment/album/201809/01/213100x97y0qsd7wsqry9n.png"></p>
+<p><em>（大致）准确的关系图</em></p>
+<p>很可惜，故事还没有结束，还有不少东西也会影响 DNS 查询。在第三部分中，我将介绍 <code>NetworkManager</code> 和 <code>dnsmasq</code>，简要说明它们如何影响 DNS 查询。</p>
+<h3>1) NetworkManager</h3>
+<p>在第二部分已经提到，我们现在介绍的内容已经偏离 POSIX 标准，涉及的 DNS 解析管理部分在各个发行版上形式并不统一。</p>
+<p>在我使用的发行版 （Ubuntu）中，有一个名为 <a href="https://en.wikipedia.org/wiki/NetworkManager">NetworkManager</a> 的<ruby> 可用 <rt>  available </rt></ruby>服务，它通常作为一些其它软件包的依赖被安装。它实际上是 RedHat 在 2004 年开发的一个服务，用于帮助你管理网络接口。</p>
+<p>它与 DNS 查询有什么关系呢？让我们安装这个服务并找出答案：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>network-manager
+</code></pre></div>
+
+<p>对于 Ubuntu，在软件包安装后，你可以发现一个新的配置文件：</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">NetworkManager</span><span class="o">/</span><span class="n">NetworkManager</span><span class="p">.</span><span class="n">conf</span>
+<span class="o">[</span><span class="n">main</span><span class="o">]</span>
+<span class="n">plugins</span><span class="o">=</span><span class="n">ifupdown</span><span class="p">,</span><span class="n">keyfile</span><span class="p">,</span><span class="n">ofono</span>
+<span class="n">dns</span><span class="o">=</span><span class="n">dnsmasq</span>
+
+<span class="o">[</span><span class="n">ifupdown</span><span class="o">]</span>
+<span class="n">managed</span><span class="o">=</span><span class="k">false</span>
+</code></pre></div>
+
+<p>看到 <code>dns=dnsmasq</code> 了吧？这意味着 <code>NetworkManager</code> 将使用 <code>dnsmasq</code> 管理主机上的 DNS。</p>
+<h3>2) dnsmasq</h3>
+<p><code>dnsmasq</code> 程序是我们很熟悉的程序：只是 <code>/etc/resolv.conf</code> 之上的又一个间接层。</p>
+<p>理论上，<code>dnsmasq</code> 有多种用途，但主要被用作 DNS 缓存服务器，缓存到其它 DNS 服务器的请求。<code>dnsmasq</code> 在本地所有网络接口上监听 53 端口（标准的 DNS 端口）。</p>
+<p>那么 <code>dnsmasq</code> 运行在哪里呢？<code>NetworkManager</code> 的运行情况如下：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ps<span class="w"> </span>-ef<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>NetworkManager
+root<span class="w">     </span><span class="m">15048</span><span class="w">     </span><span class="m">1</span><span class="w">  </span><span class="m">0</span><span class="w"> </span><span class="m">16</span>:39<span class="w"> </span>?<span class="w">        </span><span class="m">00</span>:00:00<span class="w"> </span>/usr/sbin/NetworkManager<span class="w"> </span>--no-daemon
+</code></pre></div>
+
+<p>但并没有找到 <code>dnsmasq</code> 相关的进程：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ps<span class="w"> </span>-ef<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>dnsmasq
+$
+</code></pre></div>
+
+<p>令人迷惑的是，虽然 <code>dnsmasq</code> 被配置用于管理 DNS，但其实并没有安装在系统上！因而，你需要自己安装它。</p>
+<p>安装之前，让我们查看一下 <code>/etc/resolv.conf</code> 文件的内容：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cat<span class="w"> </span>/etc/resolv.conf
+<span class="c1"># Dynamic resolv.conf(5) file for glibc resolver(3) generated by resolvconf(8)</span>
+<span class="c1">#     DO NOT EDIT THIS FILE BY HAND -- YOUR CHANGES WILL BE OVERWRITTEN</span>
+nameserver<span class="w"> </span><span class="m">10</span>.0.2.2
+search<span class="w"> </span>home
+</code></pre></div>
+
+<p>可见，并没有被 <code>NetworkManager</code> 修改。</p>
+<p>如果安装 <code>dnsmasq</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>dnsmasq
+</code></pre></div>
+
+<p>然后启动运行 <code>dnsmasq</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ps<span class="w"> </span>-ef<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>dnsmasq
+dnsmasq<span class="w">  </span><span class="m">15286</span><span class="w">     </span><span class="m">1</span><span class="w">  </span><span class="m">0</span><span class="w"> </span><span class="m">16</span>:54<span class="w"> </span>?<span class="w">        </span><span class="m">00</span>:00:00<span class="w"> </span>/usr/sbin/dnsmasq<span class="w"> </span>-x<span class="w"> </span>/var/run/dnsmasq/dnsmasq.pid<span class="w"> </span>-u<span class="w"> </span>dnsmasq<span class="w"> </span>-r<span class="w"> </span>/var/run/dnsmasq/resolv.conf<span class="w"> </span>-7<span class="w"> </span>/etc/dnsmasq.d,.dpkg-dist,.dpkg-old,.dpkg-new<span class="w"> </span>--local-service<span class="w"> </span>--trust-anchor<span class="o">=</span>.,19036,8,2,49AAC11D7B6F6446702E54A1607371607A1A41855200FD2CE1CDDE32F24E8FB5
+</code></pre></div>
+
+<p>然后，<code>/etc/resolv.conf</code> 文件内容又改变了！</p>
+<div class="highlight"><pre><span></span><code><span class="n">root</span><span class="nv">@linuxdns1</span><span class="err">:</span><span class="o">~</span><span class="err">#</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">resolv</span><span class="p">.</span><span class="n">conf</span><span class="w"> </span>
+<span class="err">#</span><span class="w"> </span><span class="k">Dynamic</span><span class="w"> </span><span class="n">resolv</span><span class="p">.</span><span class="n">conf</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span><span class="w"> </span><span class="k">file</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">glibc</span><span class="w"> </span><span class="n">resolver</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span><span class="w"> </span><span class="n">generated</span><span class="w"> </span><span class="k">by</span><span class="w"> </span><span class="n">resolvconf</span><span class="p">(</span><span class="mi">8</span><span class="p">)</span>
+<span class="err">#</span><span class="w">     </span><span class="n">DO</span><span class="w"> </span><span class="ow">NOT</span><span class="w"> </span><span class="n">EDIT</span><span class="w"> </span><span class="n">THIS</span><span class="w"> </span><span class="k">FILE</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">HAND</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="n">YOUR</span><span class="w"> </span><span class="n">CHANGES</span><span class="w"> </span><span class="n">WILL</span><span class="w"> </span><span class="n">BE</span><span class="w"> </span><span class="n">OVERWRITTEN</span>
+<span class="n">nameserver</span><span class="w"> </span><span class="mf">127.0.0.1</span>
+<span class="k">search</span><span class="w"> </span><span class="n">home</span>
+</code></pre></div>
+
+<p>运行 <code>netstat</code> 命令，可以看出 <code>dnsmasq</code> 在所有网络接口上监听 53 端口：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>netstat<span class="w"> </span>-nlp4
+Active<span class="w"> </span>Internet<span class="w"> </span>connections<span class="w"> </span><span class="o">(</span>only<span class="w"> </span>servers<span class="o">)</span>
+Proto<span class="w"> </span>Recv-Q<span class="w"> </span>Send-Q<span class="w"> </span>Local<span class="w"> </span>Address<span class="w">     </span>Foreign<span class="w"> </span>Address<span class="w"> </span>State<span class="w">   </span>PID/Program<span class="w"> </span>name
+tcp<span class="w">        </span><span class="m">0</span><span class="w">      </span><span class="m">0</span><span class="w"> </span><span class="m">127</span>.0.0.1:53<span class="w">      </span><span class="m">0</span>.0.0.0:*<span class="w">       </span>LISTEN<span class="w">  </span><span class="m">15286</span>/dnsmasq<span class="w"> </span>
+tcp<span class="w">        </span><span class="m">0</span><span class="w">      </span><span class="m">0</span><span class="w"> </span><span class="m">10</span>.0.2.15:53<span class="w">      </span><span class="m">0</span>.0.0.0:*<span class="w">       </span>LISTEN<span class="w">  </span><span class="m">15286</span>/dnsmasq
+tcp<span class="w">        </span><span class="m">0</span><span class="w">      </span><span class="m">0</span><span class="w"> </span><span class="m">172</span>.28.128.11:53<span class="w">  </span><span class="m">0</span>.0.0.0:*<span class="w">       </span>LISTEN<span class="w">  </span><span class="m">15286</span>/dnsmasq
+tcp<span class="w">        </span><span class="m">0</span><span class="w">      </span><span class="m">0</span><span class="w"> </span><span class="m">0</span>.0.0.0:22<span class="w">        </span><span class="m">0</span>.0.0.0:*<span class="w">       </span>LISTEN<span class="w">  </span><span class="m">1237</span>/sshd
+udp<span class="w">        </span><span class="m">0</span><span class="w">      </span><span class="m">0</span><span class="w"> </span><span class="m">127</span>.0.0.1:53<span class="w">      </span><span class="m">0</span>.0.0.0:*<span class="w">               </span><span class="m">15286</span>/dnsmasq
+udp<span class="w">        </span><span class="m">0</span><span class="w">      </span><span class="m">0</span><span class="w"> </span><span class="m">10</span>.0.2.15:53<span class="w">      </span><span class="m">0</span>.0.0.0:*<span class="w">               </span><span class="m">15286</span>/dnsmasq<span class="w">  </span>
+udp<span class="w">        </span><span class="m">0</span><span class="w">      </span><span class="m">0</span><span class="w"> </span><span class="m">172</span>.28.128.11:53<span class="w">  </span><span class="m">0</span>.0.0.0:*<span class="w">               </span><span class="m">15286</span>/dnsmasq<span class="w">  </span>
+udp<span class="w">        </span><span class="m">0</span><span class="w">      </span><span class="m">0</span><span class="w"> </span><span class="m">0</span>.0.0.0:68<span class="w">        </span><span class="m">0</span>.0.0.0:*<span class="w">               </span><span class="m">10758</span>/dhclient
+udp<span class="w">        </span><span class="m">0</span><span class="w">      </span><span class="m">0</span><span class="w"> </span><span class="m">0</span>.0.0.0:68<span class="w">        </span><span class="m">0</span>.0.0.0:*<span class="w">               </span><span class="m">10530</span>/dhclient
+udp<span class="w">        </span><span class="m">0</span><span class="w">      </span><span class="m">0</span><span class="w"> </span><span class="m">0</span>.0.0.0:68<span class="w">        </span><span class="m">0</span>.0.0.0:*<span class="w">               </span><span class="m">10185</span>/dhclient
+</code></pre></div>
+
+<h3>3) 分析 dnsmasq</h3>
+<p>在目前的情况下，所有的 DNS 查询都会使用 <code>127.0.0.1:53</code> 这个 DNS 服务器，下一步会发生什么呢？</p>
+<p>我再次查看 <code>/var/run</code> 目录，可以发现一个线索：<code>resolvconf</code> 目录下 <code>resolv.conf</code> 文件中的配置也相应变更，变更为 <code>dnsmasq</code> 对应的 DNS 服务器：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cat<span class="w"> </span>/var/run/resolvconf/resolv.conf<span class="w"> </span>
+<span class="c1"># Dynamic resolv.conf(5) file for glibc resolver(3) generated by resolvconf(8)</span>
+<span class="c1">#     DO NOT EDIT THIS FILE BY HAND -- YOUR CHANGES WILL BE OVERWRITTEN</span>
+nameserver<span class="w"> </span><span class="m">127</span>.0.0.1
+search<span class="w"> </span>home
+</code></pre></div>
+
+<p>同时，出现了一个新的 <code>dnsmasq</code> 目录，也包含一个 <code>resolv.conf</code> 文件：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cat<span class="w"> </span>/run/dnsmasq/resolv.conf
+nameserver<span class="w"> </span><span class="m">10</span>.0.2.2
+</code></pre></div>
+
+<p>（LCTT 译注：这里依次提到了 <code>/var/run</code> 和 <code>/run</code>，使用 Ubuntu 16.04 LTS 验证发现，<code>/var/run</code> 其实是指向 <code>/run/</code> 的软链接）</p>
+<p>该文件包含我们从 <code>DHCP</code> 获取的 <code>nameserver</code>。</p>
+<p>虽然可以推导出这个结论，但如何查看具体的调用逻辑呢？</p>
+<h3>4) 调试 dnsmasq</h3>
+<p>我经常思考 <code>dnsmasq</code> （在整个过程中）的功能定位。幸运的是，如果你将 <code>/etc/dnsmasq.conf</code> 中的一行做如下调整，你可以获取大量 <code>dnsmasq</code> 状态的信息：</p>
+<div class="highlight"><pre><span></span><code>#log-queries
+</code></pre></div>
+
+<p>修改为：</p>
+<div class="highlight"><pre><span></span><code>log-queries
+</code></pre></div>
+
+<p>然后重启 <code>dnsmasq</code>。</p>
+<p>接下来，只要运行一个简单的命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ping<span class="w"> </span>-c1<span class="w"> </span>bbc.co.uk
+</code></pre></div>
+
+<p>你就可以在 <code>/var/log/syslog</code> 中找到类似的内容（其中 <code>[...]</code> 表示行首内容与上一行相同）：</p>
+<div class="highlight"><pre><span></span><code><span class="n">Jul</span><span class="w">  </span><span class="mi">3</span><span class="w"> </span><span class="mi">19</span><span class="err">:</span><span class="mi">56</span><span class="err">:</span><span class="mi">07</span><span class="w"> </span><span class="n">ubuntu</span><span class="o">-</span><span class="n">xenial</span><span class="w"> </span><span class="n">dnsmasq</span><span class="o">[</span><span class="n">15372</span><span class="o">]</span><span class="err">:</span><span class="w"> </span><span class="n">query</span><span class="o">[</span><span class="n">A</span><span class="o">]</span><span class="w"> </span><span class="n">bbc</span><span class="p">.</span><span class="n">co</span><span class="p">.</span><span class="n">uk</span><span class="w"> </span><span class="k">from</span><span class="w"> </span><span class="mf">127.0.0.1</span>
+<span class="o">[</span><span class="n">...</span><span class="o">]</span><span class="w"> </span><span class="n">forwarded</span><span class="w"> </span><span class="n">bbc</span><span class="p">.</span><span class="n">co</span><span class="p">.</span><span class="n">uk</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="mf">10.0.2.2</span>
+<span class="o">[</span><span class="n">...</span><span class="o">]</span><span class="w"> </span><span class="n">reply</span><span class="w"> </span><span class="n">bbc</span><span class="p">.</span><span class="n">co</span><span class="p">.</span><span class="n">uk</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="mf">151.101.192.81</span>
+<span class="o">[</span><span class="n">...</span><span class="o">]</span><span class="w"> </span><span class="n">reply</span><span class="w"> </span><span class="n">bbc</span><span class="p">.</span><span class="n">co</span><span class="p">.</span><span class="n">uk</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="mf">151.101.0.81</span>
+<span class="o">[</span><span class="n">...</span><span class="o">]</span><span class="w"> </span><span class="n">reply</span><span class="w"> </span><span class="n">bbc</span><span class="p">.</span><span class="n">co</span><span class="p">.</span><span class="n">uk</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="mf">151.101.64.81</span>
+<span class="o">[</span><span class="n">...</span><span class="o">]</span><span class="w"> </span><span class="n">reply</span><span class="w"> </span><span class="n">bbc</span><span class="p">.</span><span class="n">co</span><span class="p">.</span><span class="n">uk</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="mf">151.101.128.81</span>
+<span class="o">[</span><span class="n">...</span><span class="o">]</span><span class="w"> </span><span class="n">query</span><span class="o">[</span><span class="n">PTR</span><span class="o">]</span><span class="w"> </span><span class="mf">81.192.101.151</span><span class="p">.</span><span class="ow">in</span><span class="o">-</span><span class="n">addr</span><span class="p">.</span><span class="n">arpa</span><span class="w"> </span><span class="k">from</span><span class="w"> </span><span class="mf">127.0.0.1</span>
+<span class="o">[</span><span class="n">...</span><span class="o">]</span><span class="w"> </span><span class="n">forwarded</span><span class="w"> </span><span class="mf">81.192.101.151</span><span class="p">.</span><span class="ow">in</span><span class="o">-</span><span class="n">addr</span><span class="p">.</span><span class="n">arpa</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="mf">10.0.2.2</span>
+<span class="o">[</span><span class="n">...</span><span class="o">]</span><span class="w"> </span><span class="n">reply</span><span class="w"> </span><span class="mf">151.101.192.81</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">NXDOMAIN</span>
+</code></pre></div>
+
+<p>可以清晰看出 <code>dnsmasq</code> 收到的查询、查询被转发到了哪里以及收到的回复。</p>
+<p>如果查询被缓存命中（或者说，本地的查询结果还在<ruby> 存活时间 <rt>  time-to-live </rt></ruby> TTL 内，并未过期），日志显示如下：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">...</span><span class="o">]</span><span class="w"> </span><span class="n">query</span><span class="o">[</span><span class="n">A</span><span class="o">]</span><span class="w"> </span><span class="n">bbc</span><span class="p">.</span><span class="n">co</span><span class="p">.</span><span class="n">uk</span><span class="w"> </span><span class="k">from</span><span class="w"> </span><span class="mf">127.0.0.1</span>
+<span class="o">[</span><span class="n">...</span><span class="o">]</span><span class="w"> </span><span class="n">cached</span><span class="w"> </span><span class="n">bbc</span><span class="p">.</span><span class="n">co</span><span class="p">.</span><span class="n">uk</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="mf">151.101.64.81</span>
+<span class="o">[</span><span class="n">...</span><span class="o">]</span><span class="w"> </span><span class="n">cached</span><span class="w"> </span><span class="n">bbc</span><span class="p">.</span><span class="n">co</span><span class="p">.</span><span class="n">uk</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="mf">151.101.128.81</span>
+<span class="o">[</span><span class="n">...</span><span class="o">]</span><span class="w"> </span><span class="n">cached</span><span class="w"> </span><span class="n">bbc</span><span class="p">.</span><span class="n">co</span><span class="p">.</span><span class="n">uk</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="mf">151.101.192.81</span>
+<span class="o">[</span><span class="n">...</span><span class="o">]</span><span class="w"> </span><span class="n">cached</span><span class="w"> </span><span class="n">bbc</span><span class="p">.</span><span class="n">co</span><span class="p">.</span><span class="n">uk</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="mf">151.101.0.81</span>
+<span class="o">[</span><span class="n">...</span><span class="o">]</span><span class="w"> </span><span class="n">query</span><span class="o">[</span><span class="n">PTR</span><span class="o">]</span><span class="w"> </span><span class="mf">81.64.101.151</span><span class="p">.</span><span class="ow">in</span><span class="o">-</span><span class="n">addr</span><span class="p">.</span><span class="n">arpa</span><span class="w"> </span><span class="k">from</span><span class="w"> </span><span class="mf">127.0.0.1</span>
+</code></pre></div>
+
+<p>如果你想了解缓存中有哪些记录，可以向 <code>dnsmasq</code> 进程 id 发送 <code>USR1</code> 信号，这样 <code>dnsmasq</code> 会将缓存记录导出并写入到相同的日志文件中：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">kill</span><span class="w"> </span>-SIGUSR1<span class="w"> </span><span class="k">$(</span>cat<span class="w"> </span>/run/dnsmasq/dnsmasq.pid<span class="k">)</span>
+</code></pre></div>
+
+<p>（LCTT 译注：原文中命令执行报错，已变更成最接近且符合作者意图的命令）</p>
+<p>导出记录对应如下输出：</p>
+<div class="highlight"><pre><span></span><code><span class="nv">Jul</span><span class="w">  </span><span class="mi">3</span><span class="w"> </span><span class="mi">15</span>:<span class="mi">08</span>:<span class="mi">08</span><span class="w"> </span><span class="nv">ubuntu</span><span class="o">-</span><span class="nv">xenial</span><span class="w"> </span><span class="nv">dnsmasq</span>[<span class="mi">15697</span>]:<span class="w"> </span><span class="nv">time</span><span class="w"> </span><span class="mi">1530630488</span>
+[...]<span class="w"> </span><span class="nv">cache</span><span class="w"> </span><span class="nv">size</span><span class="w"> </span><span class="mi">150</span>,<span class="w"> </span><span class="mi">0</span><span class="o">/</span><span class="mi">5</span><span class="w"> </span><span class="nv">cache</span><span class="w"> </span><span class="nv">insertions</span><span class="w"> </span><span class="nv">re</span><span class="o">-</span><span class="nv">used</span><span class="w"> </span><span class="nv">unexpired</span><span class="w"> </span><span class="nv">cache</span><span class="w"> </span><span class="nv">entries</span>.
+[...]<span class="w"> </span><span class="nv">queries</span><span class="w"> </span><span class="nv">forwarded</span><span class="w"> </span><span class="mi">2</span>,<span class="w"> </span><span class="nv">queries</span><span class="w"> </span><span class="nv">answered</span><span class="w"> </span><span class="nv">locally</span><span class="w"> </span><span class="mi">0</span>
+[...]<span class="w"> </span><span class="nv">queries</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nv">authoritative</span><span class="w"> </span><span class="nv">zones</span><span class="w"> </span><span class="mi">0</span>
+[...]<span class="w"> </span><span class="nv">server</span><span class="w"> </span><span class="mi">10</span>.<span class="mi">0</span>.<span class="mi">2</span>.<span class="mi">2</span><span class="sc">#53</span>:<span class="w"> </span><span class="nv">queries</span><span class="w"> </span><span class="nv">sent</span><span class="w"> </span><span class="mi">2</span>,<span class="w"> </span><span class="nv">retried</span><span class="w"> </span><span class="nv">or</span><span class="w"> </span><span class="nv">failed</span><span class="w"> </span><span class="mi">0</span>
+[...]<span class="w"> </span><span class="nv">Host</span><span class="w">             </span><span class="nv">Address</span><span class="w">         </span><span class="nv">Flags</span><span class="w">      </span><span class="nv">Expires</span>
+[...]<span class="w"> </span><span class="nv">linuxdns1</span><span class="w">        </span><span class="mi">172</span>.<span class="mi">28</span>.<span class="mi">128</span>.<span class="mi">8</span><span class="w">    </span><span class="mi">4</span><span class="nv">FRI</span><span class="w">   </span><span class="nv">H</span>
+[...]<span class="w"> </span><span class="nv">ip6</span><span class="o">-</span><span class="nv">localhost</span><span class="w">    </span>::<span class="mi">1</span><span class="w">             </span><span class="mi">6</span><span class="nv">FRI</span><span class="w">   </span><span class="nv">H</span>
+[...]<span class="w"> </span><span class="nv">ip6</span><span class="o">-</span><span class="nv">allhosts</span><span class="w">     </span><span class="nv">ff02</span>::<span class="mi">3</span><span class="w">         </span><span class="mi">6</span><span class="nv">FRI</span><span class="w">   </span><span class="nv">H</span>
+[...]<span class="w"> </span><span class="nv">ip6</span><span class="o">-</span><span class="nv">localnet</span><span class="w">     </span><span class="nv">fe00</span>::<span class="w">          </span><span class="mi">6</span><span class="nv">FRI</span><span class="w">   </span><span class="nv">H</span>
+[...]<span class="w"> </span><span class="nv">ip6</span><span class="o">-</span><span class="nv">mcastprefix</span><span class="w">  </span><span class="nv">ff00</span>::<span class="w">          </span><span class="mi">6</span><span class="nv">FRI</span><span class="w">   </span><span class="nv">H</span>
+[...]<span class="w"> </span><span class="nv">ip6</span><span class="o">-</span><span class="nv">loopback</span><span class="w">     </span>:<span class="w">               </span><span class="mi">6</span><span class="nv">F</span><span class="w"> </span><span class="nv">I</span><span class="w">   </span><span class="nv">H</span>
+[...]<span class="w"> </span><span class="nv">ip6</span><span class="o">-</span><span class="nv">allnodes</span><span class="w">     </span><span class="nv">ff02</span>:<span class="w">           </span><span class="mi">6</span><span class="nv">FRI</span><span class="w">   </span><span class="nv">H</span>
+[...]<span class="w"> </span><span class="nv">bbc</span>.<span class="nv">co</span>.<span class="nv">uk</span><span class="w">        </span><span class="mi">151</span>.<span class="mi">101</span>.<span class="mi">64</span>.<span class="mi">81</span><span class="w">   </span><span class="mi">4</span><span class="nv">F</span><span class="w">         </span><span class="nv">Tue</span><span class="w"> </span><span class="nv">Jul</span><span class="w">  </span><span class="mi">3</span><span class="w"> </span><span class="mi">15</span>:<span class="mi">11</span>:<span class="mi">41</span><span class="w"> </span><span class="mi">2018</span>
+[...]<span class="w"> </span><span class="nv">bbc</span>.<span class="nv">co</span>.<span class="nv">uk</span><span class="w">        </span><span class="mi">151</span>.<span class="mi">101</span>.<span class="mi">192</span>.<span class="mi">81</span><span class="w">  </span><span class="mi">4</span><span class="nv">F</span><span class="w">         </span><span class="nv">Tue</span><span class="w"> </span><span class="nv">Jul</span><span class="w">  </span><span class="mi">3</span><span class="w"> </span><span class="mi">15</span>:<span class="mi">11</span>:<span class="mi">41</span><span class="w"> </span><span class="mi">2018</span>
+[...]<span class="w"> </span><span class="nv">bbc</span>.<span class="nv">co</span>.<span class="nv">uk</span><span class="w">        </span><span class="mi">151</span>.<span class="mi">101</span>.<span class="mi">0</span>.<span class="mi">81</span><span class="w">    </span><span class="mi">4</span><span class="nv">F</span><span class="w">         </span><span class="nv">Tue</span><span class="w"> </span><span class="nv">Jul</span><span class="w">  </span><span class="mi">3</span><span class="w"> </span><span class="mi">15</span>:<span class="mi">11</span>:<span class="mi">41</span><span class="w"> </span><span class="mi">2018</span>
+[...]<span class="w"> </span><span class="nv">bbc</span>.<span class="nv">co</span>.<span class="nv">uk</span><span class="w">        </span><span class="mi">151</span>.<span class="mi">101</span>.<span class="mi">128</span>.<span class="mi">81</span><span class="w">  </span><span class="mi">4</span><span class="nv">F</span><span class="w">         </span><span class="nv">Tue</span><span class="w"> </span><span class="nv">Jul</span><span class="w">  </span><span class="mi">3</span><span class="w"> </span><span class="mi">15</span>:<span class="mi">11</span>:<span class="mi">41</span><span class="w"> </span><span class="mi">2018</span>
+[...]<span class="w">                  </span><span class="mi">151</span>.<span class="mi">101</span>.<span class="mi">64</span>.<span class="mi">81</span><span class="w">   </span><span class="mi">4</span><span class="w"> </span><span class="nv">R</span><span class="w">  </span><span class="nv">NX</span><span class="w">    </span><span class="nv">Tue</span><span class="w"> </span><span class="nv">Jul</span><span class="w">  </span><span class="mi">3</span><span class="w"> </span><span class="mi">15</span>:<span class="mi">34</span>:<span class="mi">17</span><span class="w"> </span><span class="mi">2018</span>
+[...]<span class="w"> </span><span class="nv">localhost</span><span class="w">        </span><span class="mi">127</span>.<span class="mi">0</span>.<span class="mi">0</span>.<span class="mi">1</span><span class="w">       </span><span class="mi">4</span><span class="nv">FRI</span><span class="w">   </span><span class="nv">H</span>
+[...]<span class="w"> </span><span class="o">&lt;</span><span class="nv">Root</span><span class="o">&gt;</span><span class="w">           </span><span class="mi">19036</span><span class="w">   </span><span class="mi">8</span><span class="w">   </span><span class="mi">2</span><span class="w">   </span><span class="nv">SF</span><span class="w"> </span><span class="nv">I</span>
+[...]<span class="w"> </span><span class="nv">ip6</span><span class="o">-</span><span class="nv">allrouters</span><span class="w">   </span><span class="nv">ff02</span>::<span class="mi">2</span><span class="w">         </span><span class="mi">6</span><span class="nv">FRI</span><span class="w">   </span><span class="nv">H</span>
+</code></pre></div>
+
+<p>在上面的输出中，我猜测（并不确认，<code>?</code> 代表我比较无根据的猜测）如下：</p>
+<ul>
+<li><code>4</code> 代表 IPv4</li>
+<li><code>6</code> 代表 IPv6</li>
+<li><code>H</code> 代表从 <code>/etc/hosts</code> 中读取 IP 地址</li>
+<li><code>I</code> ？ “永生”的 DNS 记录 ？ (例如，没有设置存活时间数值 ？)</li>
+<li><code>F</code> ？</li>
+<li><code>R</code> ？</li>
+<li><code>S</code> ？</li>
+<li><code>N</code> ？</li>
+<li><code>X</code></li>
+</ul>
+<p>（LCTT 译注：查看 <code>dnsmasq</code> 的源代码 <a href="https://github.com/imp/dnsmasq/blob/master/src/cache.c"><code>cache.c</code></a> 可知，<code>4</code> 代表 <code>IPV4</code>，<code>6</code> 代表 <code>IPV6</code>，<code>C</code> 代表 <code>CNAME</code>，<code>S</code> 代表 <code>DNSSEC</code>，<code>F</code> 代表 <code>FORWARD</code>，<code>R</code> 代表 <code>REVERSE</code>，<code>I</code> 代表 <code>IMMORTAL</code>，<code>N</code> 代表 <code>NEG</code>，<code>X</code> 代表 <code>NXDOMAIN</code>，<code>H</code> 代表 <code>HOSTS</code>。更具体的含义需要查看代码或相关文档）</p>
+<h4>dnsmasq 的替代品</h4>
+<p><code>NetworkManager</code> 配置中的 <code>dns</code> 字段并不是只能使用 <code>dnsmasq</code>，可选项包括 <code>none</code>，<code>default</code>，<code>unbound</code> 和 <code>dnssec-triggered</code> 等。使用 <code>none</code> 时，<code>NetworkManager</code> 不会改动 <code>/etc/resolv.conf</code>；使用 <code>default</code> 时，<code>NetworkManager</code> 会根据当前的<ruby> 活跃连接 <rt>  active connections </rt></ruby>更新 <code>resolv.conf</code>；使用 <code>unbound</code> 时，<code>NetworkManager</code> 会与 <code>unbound</code> 服务通信；<code>dnssec-triggered</code> 与 DNS 安全相关，不在本文讨论范围。</p>
+<h3>第三部分总结</h3>
+<p>第三部分到此结束，其中我们介绍了 <code>NetworkManager</code> 服务及其 <code>dns=dnsmasq</code> 的配置。</p>
+<p>下面简要罗列一下我们已经介绍过的全部内容：</p>
+<ul>
+<li><code>nsswitch</code></li>
+<li><code>/etc/hosts</code></li>
+<li><code>/etc/resolv.conf</code></li>
+<li><code>/run/resolvconf/resolv.conf</code></li>
+<li><code>systemd</code> 及对应的 <code>networking</code> 服务</li>
+<li><code>ifup</code> 和 <code>ifdown</code></li>
+<li><code>dhclient</code></li>
+<li><code>resolvconf</code></li>
+<li><code>NetworkManager</code></li>
+<li><code>dnsmasq</code></li>
+</ul>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

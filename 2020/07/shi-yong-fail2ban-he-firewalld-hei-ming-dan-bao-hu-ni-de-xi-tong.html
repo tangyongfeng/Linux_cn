@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 fail2ban 和 FirewallD 黑名单保护你的系统</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Hobbes1069 如果你运行的服务器有面向公众的 SSH 访问，你可能遇到过恶意登录尝试。本文介绍了如何使用两个实用程序来防止 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2020/07/shi-yong-fail2ban-he-firewalld-hei-ming-dan-bao-hu-ni-de-xi-tong.html" rel="bookmark"
+           title="Permalink to 使用 fail2ban 和 FirewallD 黑名单保护你的系统">使用 fail2ban 和 FirewallD 黑名单保护你的系统</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2020-07-15T12:46:00+02:00">
+                Published: Wed 15 July 2020
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Hobbes1069</p>
+<p><img alt="" src="/data/attachment/album/202007/15/124648wugu6bzpw7q5zg72.png"></p>
+<p>如果你运行的服务器有面向公众的 SSH 访问，你可能遇到过恶意登录尝试。本文介绍了如何使用两个实用程序来防止入侵者进入我们的系统。</p>
+<p>为了防止反复的 ssh 登录尝试，我们来看看 fail2ban。而且，如果你不经常旅行，基本上停留在一两个国家，你可以将 FirewallD 配置为只允许<a href="https://www.linode.com/community/questions/11143/top-tip-firewalld-and-ipset-country-blacklist">从你选择的国家访问</a>。</p>
+<p>首先，让我们为不熟悉这些应用程序的人员介绍一些术语，以完成这项工作：</p>
+<p><strong>fail2ban</strong>：一个守护进程，用于禁止发生多次认证错误的主机。fail2ban 将监控 SystemD 日志，以查找对任何已启用的“<ruby> 监狱 <rt>  jail </rt></ruby>”的失败的验证尝试。在达到指定失败次数后，它将添加一个防火墙规则，在配置的时间内阻止该特定 IP 地址。</p>
+<p><strong>FirewallD</strong>：一个带有 D-Bus 接口的防火墙守护进程，提供动态防火墙。除非你另行决定使用传统的 iptables，否则你已经在所有支持的 Fedora 和 CentOS 上安装了 FirewallD。</p>
+<h3>假定前提</h3>
+<ul>
+<li>主机系统有一个互联网连接，并且要么是直接暴露在互联网上，要么是通过 DMZ（这两个都是非常糟糕的想法，除非你知道你在做什么），要么是有一个端口从路由器转发过来。</li>
+<li>虽然大部分的内容可能适用于其他系统，但本文假设当前系统是 Fedora（31 及以上）或 RHEL/CentOS 8 版本。在 CentOS 上，你必须用 <code>sudo dnf install epel-release</code> 启用 Fedora EPEL 仓库。</li>
+</ul>
+<h3>安装与配置</h3>
+<h4>Fail2Ban</h4>
+<p>很有可能已经有某个 Firewalld 区已经允许 SSH 访问，但 sshd 服务本身默认没有启用。要手动启动它，并且不在启动时永久启用它：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>start<span class="w"> </span>sshd
+</code></pre></div>
+
+<p>或者在系统启动时启用，并同时启动它：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>--now<span class="w"> </span>sshd
+</code></pre></div>
+
+<p>下一步就是安装、配置、启用 fail2ban。和往常一样，安装可以通过命令行完成：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> </span>fail2ban
+</code></pre></div>
+
+<p>安装完毕后，下一步就是配置“监狱”（你要以设置的任何阈值监视并禁止的服务）。默认情况下，IP 会被禁止 1 小时（这其实不够长）。最好的做法是使用 <code>*.local</code> 文件覆盖系统默认值，而不是直接修改 <code>*.config</code> 文件。如果我们查看我的 <code>jail.local</code>，我们可以看到：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">fail2ban</span><span class="o">/</span><span class="n">jail</span><span class="p">.</span><span class="k">local</span>
+<span class="o">[</span><span class="n">DEFAULT</span><span class="o">]</span>
+
+<span class="err">#</span><span class="w"> </span><span class="ss">&quot;bantime&quot;</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">number</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="n">seconds</span><span class="w"> </span><span class="n">that</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="k">host</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">banned</span><span class="p">.</span>
+<span class="n">bantime</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="n">d</span>
+
+<span class="err">#</span><span class="w"> </span><span class="n">A</span><span class="w"> </span><span class="k">host</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">banned</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">it</span><span class="w"> </span><span class="n">has</span><span class="w"> </span><span class="n">generated</span><span class="w"> </span><span class="ss">&quot;maxretry&quot;</span><span class="w"> </span><span class="n">during</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="k">last</span><span class="w"> </span><span class="ss">&quot;findtime&quot;</span>
+<span class="n">findtime</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="n">h</span>
+
+<span class="err">#</span><span class="w"> </span><span class="ss">&quot;maxretry&quot;</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">number</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="n">failures</span><span class="w"> </span><span class="k">before</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="k">host</span><span class="w"> </span><span class="k">get</span><span class="w"> </span><span class="n">banned</span><span class="p">.</span>
+<span class="n">maxretry</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">5</span>
+</code></pre></div>
+
+<p>换成通俗的语言讲，就是在过去一小时内尝试 5 次后，该 IP 将被封禁 1 天。对于多次被封的 IP，也可以选择增加封禁时间，但这是另一篇文章的主题。</p>
+<p>下一步是配置“监狱”。在本教程中显示的是 <code>sshd</code>，但其他服务的步骤大致相同。在 <code>/etc/fail2ban/jail.d</code> 中创建一个配置文件。这是我的文件：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">fail2ban</span><span class="o">/</span><span class="n">jail</span><span class="p">.</span><span class="n">d</span><span class="o">/</span><span class="n">sshd</span><span class="p">.</span><span class="k">local</span>
+<span class="o">[</span><span class="n">sshd</span><span class="o">]</span>
+<span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">true</span>
+</code></pre></div>
+
+<p>就这么简单! 很多配置已经在为 Fedora 构建的软件包中处理了（提示：我是当前的维护者）。接下来启用并启动 fail2ban 服务：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>--now<span class="w"> </span>fail2ban
+</code></pre></div>
+
+<p>希望没有立即出错，如果没有，请使用下面的命令检查 fail2ban 的状态：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>status<span class="w"> </span>fail2ban
+</code></pre></div>
+
+<p>如果它没有错误地启动，应该是这样的：</p>
+<div class="highlight"><pre><span></span><code><span class="o">$</span><span class="w"> </span><span class="n">systemctl</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="n">fail2ban</span>
+<span class="err">●</span><span class="w"> </span><span class="n">fail2ban</span><span class="o">.</span><span class="n">service</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">Fail2Ban</span><span class="w"> </span><span class="n">Service</span>
+<span class="n">Loaded</span><span class="p">:</span><span class="w"> </span><span class="n">loaded</span><span class="w"> </span><span class="p">(</span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">systemd</span><span class="o">/</span><span class="n">system</span><span class="o">/</span><span class="n">fail2ban</span><span class="o">.</span><span class="n">service</span><span class="p">;</span><span class="w"> </span><span class="n">disabled</span><span class="p">;</span><span class="w"> </span><span class="n">vendor</span><span class="w"> </span><span class="n">preset</span><span class="p">:</span><span class="w"> </span><span class="n">disabled</span><span class="p">)</span>
+<span class="n">Active</span><span class="p">:</span><span class="w"> </span><span class="n">active</span><span class="w"> </span><span class="p">(</span><span class="n">running</span><span class="p">)</span><span class="w"> </span><span class="n">since</span><span class="w"> </span><span class="n">Tue</span><span class="w"> </span><span class="mi">2020</span><span class="o">-</span><span class="mi">06</span><span class="o">-</span><span class="mi">16</span><span class="w"> </span><span class="mi">07</span><span class="p">:</span><span class="mi">57</span><span class="p">:</span><span class="mi">40</span><span class="w"> </span><span class="n">CDT</span><span class="p">;</span><span class="w"> </span><span class="mi">5</span><span class="n">s</span><span class="w"> </span><span class="n">ago</span>
+<span class="n">Docs</span><span class="p">:</span><span class="w"> </span><span class="n">man</span><span class="p">:</span><span class="n">fail2ban</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">Process</span><span class="p">:</span><span class="w"> </span><span class="mi">11230</span><span class="w"> </span><span class="n">ExecStartPre</span><span class="o">=/</span><span class="n">bin</span><span class="o">/</span><span class="n">mkdir</span><span class="w"> </span><span class="o">-</span><span class="n">p</span><span class="w"> </span><span class="o">/</span><span class="n">run</span><span class="o">/</span><span class="n">fail2ban</span><span class="w"> </span><span class="p">(</span><span class="n">code</span><span class="o">=</span><span class="n">exited</span><span class="p">,</span><span class="w"> </span><span class="n">status</span><span class="o">=</span><span class="mi">0</span><span class="o">/</span><span class="n">SUCCESS</span><span class="p">)</span>
+<span class="n">Main</span><span class="w"> </span><span class="n">PID</span><span class="p">:</span><span class="w"> </span><span class="mi">11235</span><span class="w"> </span><span class="p">(</span><span class="n">f2b</span><span class="o">/</span><span class="n">server</span><span class="p">)</span>
+<span class="n">Tasks</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="w"> </span><span class="p">(</span><span class="n">limit</span><span class="p">:</span><span class="w"> </span><span class="mi">4630</span><span class="p">)</span>
+<span class="n">Memory</span><span class="p">:</span><span class="w"> </span><span class="mf">12.7</span><span class="n">M</span>
+<span class="n">CPU</span><span class="p">:</span><span class="w"> </span><span class="mi">109</span><span class="n">ms</span>
+<span class="n">CGroup</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="n">system</span><span class="o">.</span><span class="n">slice</span><span class="o">/</span><span class="n">fail2ban</span><span class="o">.</span><span class="n">service</span>
+<span class="err">└─</span><span class="mi">11235</span><span class="w"> </span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">python3</span><span class="w"> </span><span class="o">-</span><span class="n">s</span><span class="w"> </span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">fail2ban</span><span class="o">-</span><span class="n">server</span><span class="w"> </span><span class="o">-</span><span class="n">xf</span><span class="w"> </span><span class="n">start</span>
+<span class="n">Jun</span><span class="w"> </span><span class="mi">16</span><span class="w"> </span><span class="mi">07</span><span class="p">:</span><span class="mi">57</span><span class="p">:</span><span class="mi">40</span><span class="w"> </span><span class="n">localhost</span><span class="o">.</span><span class="n">localdomain</span><span class="w"> </span><span class="n">systemd</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span><span class="w"> </span><span class="n">Starting</span><span class="w"> </span><span class="n">Fail2Ban</span><span class="w"> </span><span class="n">Service</span><span class="err">…</span>
+<span class="n">Jun</span><span class="w"> </span><span class="mi">16</span><span class="w"> </span><span class="mi">07</span><span class="p">:</span><span class="mi">57</span><span class="p">:</span><span class="mi">40</span><span class="w"> </span><span class="n">localhost</span><span class="o">.</span><span class="n">localdomain</span><span class="w"> </span><span class="n">systemd</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span><span class="w"> </span><span class="n">Started</span><span class="w"> </span><span class="n">Fail2Ban</span><span class="w"> </span><span class="n">Service</span><span class="o">.</span>
+<span class="n">Jun</span><span class="w"> </span><span class="mi">16</span><span class="w"> </span><span class="mi">07</span><span class="p">:</span><span class="mi">57</span><span class="p">:</span><span class="mi">41</span><span class="w"> </span><span class="n">localhost</span><span class="o">.</span><span class="n">localdomain</span><span class="w"> </span><span class="n">fail2ban</span><span class="o">-</span><span class="n">server</span><span class="p">[</span><span class="mi">11235</span><span class="p">]:</span><span class="w"> </span><span class="n">Server</span><span class="w"> </span><span class="n">ready</span>
+</code></pre></div>
+
+<p>如果是刚刚启动的，fail2ban 不太可能显示任何有意思的信息，但要检查 fail2ban 的状态，并确保“监狱”被启用，请输入：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>fail2ban-client<span class="w"> </span>status
+Status
+<span class="p">|</span>-<span class="w"> </span>Number<span class="w"> </span>of<span class="w"> </span>jail:<span class="w">      </span><span class="m">1</span>
+<span class="sb">`</span>-<span class="w"> </span>Jail<span class="w"> </span>list:<span class="w">   </span>sshd
+</code></pre></div>
+
+<p>sshd “监狱”的上级状态也会显示出来。如果启用了多个“监狱”，它们会在这里显示出来。</p>
+<p>要查看一个“监狱”的详细状态，只需在前面的命令中添加“监狱”名称。下面是我的系统的输出，它已经运行了一段时间。我已经从输出中删除了被禁止的 IP：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>fail2ban-client<span class="w"> </span>status<span class="w"> </span>sshd
+Status<span class="w"> </span><span class="k">for</span><span class="w"> </span>the<span class="w"> </span>jail:<span class="w"> </span>sshd
+<span class="p">|</span>-<span class="w"> </span>Filter
+<span class="p">|</span><span class="w">  </span><span class="p">|</span>-<span class="w"> </span>Currently<span class="w"> </span>failed:<span class="w"> </span><span class="m">8</span>
+<span class="p">|</span><span class="w">  </span><span class="p">|</span>-<span class="w"> </span>Total<span class="w"> </span>failed:<span class="w">     </span><span class="m">4399</span>
+<span class="p">|</span><span class="w">  </span><span class="sb">`</span>-<span class="w"> </span>Journal<span class="w"> </span>matches:<span class="w">  </span><span class="nv">_SYSTEMD_UNIT</span><span class="o">=</span>sshd.service<span class="w"> </span>+<span class="w"> </span><span class="nv">_COMM</span><span class="o">=</span>sshd
+<span class="sb">`</span>-<span class="w"> </span>Actions
+<span class="w">   </span><span class="p">|</span>-<span class="w"> </span>Currently<span class="w"> </span>banned:<span class="w"> </span><span class="m">101</span>
+<span class="w">   </span><span class="p">|</span>-<span class="w"> </span>Total<span class="w"> </span>banned:<span class="w">     </span><span class="m">684</span>
+<span class="w">   </span><span class="sb">`</span>-<span class="w"> </span>Banned<span class="w"> </span>IP<span class="w"> </span>list:<span class="w">   </span>...
+</code></pre></div>
+
+<p>监控 fail2ban 日志文件是否有入侵尝试，可以通过“尾随”日志来实现：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>tail<span class="w"> </span>-f<span class="w"> </span>/var/log/fail2ban.log
+</code></pre></div>
+
+<p><code>tail</code> 是一个很好的命令行工具，默认情况下，它可以显示一个文件的最后 10 行。添加 <code>-f</code> 告诉它尾随文件，这是个观察一个仍在被写入的文件的很好方式。</p>
+<p>由于输出的内容中有真实的 IP，所以这里不会提供样本，但它的可读性很高。<code>INFO</code> 行通常是登录的尝试。如果从一个特定的 IP 地址进行了足够多的尝试，你会看到一个 <code>NOTICE</code> 行显示一个 IP 地址被禁止。在达到禁止时间后，你会看到一个 <code>NOTICE</code> 解禁行。</p>
+<p>注意几个警告行。最常见的情况是，当添加了一个禁止后，fail2ban 发现该 IP 地址已经在其禁止数据库中，这意味着禁止可能无法正常工作。如果是最近安装的 fail2ban 包，它应该被设置为 FirewallD 的富规则。这个包在 fail2ban-0.11.1-6 版本时从 ipset 方式切换到了富规则方式，所以如果你的 fail2ban 安装时间较早，它可能还在尝试使用 ipset 方式，这种方式使用的是传统的 iptables，不是很可靠。</p>
+<h4>FirewallD 配置</h4>
+<h5>被动还是主动？</h5>
+<p>有两种策略可以分开或一起使用：<strong>被动</strong>地将单个 IP 地址或<strong>主动</strong>地根据来源国将子网永久列入黑名单。</p>
+<p>对于被动方式，一旦 fail2ban 运行了一段时间，最好再运行 <code>sudo fail2ban-client status sshd</code> 来看看有哪些坏蛋。很可能会有很多被禁止的 IP 地址。选择一个，然后试着对它运行 <code>whois</code>。在输出结果中可能会有很多有趣的信息，但是对于这个方法来说，只有来源国是重要的。为了保持简单，让我们过滤掉除了国家以外的所有信息。</p>
+<p>在这个例子中，我们将使用一些著名的域名：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>whois<span class="w"> </span>google.com<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-i<span class="w"> </span>country
+Registrant<span class="w"> </span>Country:<span class="w"> </span>US
+Admin<span class="w"> </span>Country:<span class="w"> </span>US
+Tech<span class="w"> </span>Country:<span class="w"> </span>US
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>whois<span class="w"> </span>rpmfusion.org<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-i<span class="w"> </span>country
+Registrant<span class="w"> </span>Country:<span class="w"> </span>FR
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>whois<span class="w"> </span>aliexpress.com<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-i<span class="w"> </span>country
+Registrant<span class="w"> </span>Country:<span class="w"> </span>CN
+</code></pre></div>
+
+<p>使用 <code>grep -i</code> 的原因是为了使 <code>grep</code> 不区分大小写，而大多数条目都使用的是 “Country”，而有些条目则是全小写的 “country”，所以这种方法无论如何都能匹配。</p>
+<p>现在知道了尝试入侵的来源国，问题是，“是否有来自这个国家的人有合法的理由连接到这台计算机？”如果答案是否定的，那么封锁整个国家应该是可以接受的。</p>
+<p>从功能上看，主动式方法它与被动式方法没有太大区别，然而，来自有些国家的入侵企图是非常普遍的。如果你的系统既不放在这些国家里，也没有任何源自这些国家的客户，那么为什么不现在就把它们加入黑名单而是等待呢？（LCTT 译注：我的经验是，动辄以国家的范畴而列入黑名单有些过于武断。建议可以将该 IP 所属的 WHOIS 网段放入到黑名单，因为这些网段往往具有相同的使用性质，如都用于用户接入或 IDC 托管，其安全状况也大致相同，因此，如果有来自该网段的某个 IP 的恶意尝试，可以预期该网段内的其它 IP 也可能被利用来做这样的尝试。）</p>
+<h5>黑名单脚本和配置</h5>
+<p>那么如何做到这一点呢？用 FirewallD ipset。我开发了下面的脚本来尽可能地自动化这个过程：</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/bin/bash</span>
+<span class="c1"># Based on the below article</span>
+<span class="c1"># https://www.linode.com/community/questions/11143/top-tip-firewalld-and-ipset-country-blacklist</span>
+
+<span class="c1"># Source the blacklisted countries from the configuration file</span>
+.<span class="w"> </span>/etc/blacklist-by-country
+
+<span class="c1"># Create a temporary working directory</span>
+<span class="nv">ipdeny_tmp_dir</span><span class="o">=</span><span class="k">$(</span>mktemp<span class="w"> </span>-d<span class="w"> </span>-t<span class="w"> </span>blacklist-XXXXXXXXXX<span class="k">)</span>
+<span class="nb">pushd</span><span class="w"> </span><span class="nv">$ipdeny_tmp_dir</span>
+
+<span class="c1"># Download the latest network addresses by country file</span>
+curl<span class="w"> </span>-LO<span class="w"> </span>http://www.ipdeny.com/ipblocks/data/countries/all-zones.tar.gz
+tar<span class="w"> </span>xf<span class="w"> </span>all-zones.tar.gz
+
+<span class="c1"># For updates, remove the ipset blacklist and recreate</span>
+<span class="k">if</span><span class="w"> </span>firewall-cmd<span class="w"> </span>-q<span class="w"> </span>--zone<span class="o">=</span>drop<span class="w"> </span>--query-source<span class="o">=</span>ipset:blacklist<span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">    </span>firewall-cmd<span class="w"> </span>-q<span class="w"> </span>--permanent<span class="w"> </span>--delete-ipset<span class="o">=</span>blacklist
+<span class="k">fi</span>
+
+<span class="c1"># Create the ipset blacklist which accepts both IP addresses and networks</span>
+firewall-cmd<span class="w"> </span>-q<span class="w"> </span>--permanent<span class="w"> </span>--new-ipset<span class="o">=</span>blacklist<span class="w"> </span>--type<span class="o">=</span>hash:net<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--option<span class="o">=</span><span class="nv">family</span><span class="o">=</span>inet<span class="w"> </span>--option<span class="o">=</span><span class="nv">hashsize</span><span class="o">=</span><span class="m">4096</span><span class="w"> </span>--option<span class="o">=</span><span class="nv">maxelem</span><span class="o">=</span><span class="m">200000</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--set-description<span class="o">=</span><span class="s2">&quot;An ipset list of networks or ips to be dropped.&quot;</span>
+
+<span class="c1"># Add the address ranges by country per ipdeny.com to the blacklist</span>
+<span class="k">for</span><span class="w"> </span>country<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nv">$countries</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">    </span>firewall-cmd<span class="w"> </span>-q<span class="w"> </span>--permanent<span class="w"> </span>--ipset<span class="o">=</span>blacklist<span class="w"> </span><span class="se">\</span>
+<span class="w">        </span>--add-entries-from-file<span class="o">=</span>./<span class="nv">$country</span>.zone<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">        </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Added </span><span class="nv">$country</span><span class="s2"> to blacklist ipset.&quot;</span>
+<span class="k">done</span>
+
+<span class="c1"># Block individual IPs if the configuration file exists and is not empty</span>
+<span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-s<span class="w"> </span><span class="s2">&quot;/etc/blacklist-by-ip&quot;</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Adding IPs blacklists.&quot;</span>
+<span class="w">    </span>firewall-cmd<span class="w"> </span>-q<span class="w"> </span>--permanent<span class="w"> </span>--ipset<span class="o">=</span>blacklist<span class="w"> </span><span class="se">\</span>
+<span class="w">        </span>--add-entries-from-file<span class="o">=</span>/etc/blacklist-by-ip<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">        </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Added IPs to blacklist ipset.&quot;</span>
+<span class="k">fi</span>
+
+<span class="c1"># Add the blacklist ipset to the drop zone if not already setup</span>
+<span class="k">if</span><span class="w"> </span>firewall-cmd<span class="w"> </span>-q<span class="w"> </span>--zone<span class="o">=</span>drop<span class="w"> </span>--query-source<span class="o">=</span>ipset:blacklist<span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Blacklist already in firewalld drop zone.&quot;</span>
+<span class="k">else</span>
+<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Adding ipset blacklist to firewalld drop zone.&quot;</span>
+<span class="w">    </span>firewall-cmd<span class="w"> </span>--permanent<span class="w"> </span>--zone<span class="o">=</span>drop<span class="w"> </span>--add-source<span class="o">=</span>ipset:blacklist
+<span class="k">fi</span>
+
+firewall-cmd<span class="w"> </span>-q<span class="w"> </span>--reload
+
+<span class="nb">popd</span>
+rm<span class="w"> </span>-rf<span class="w"> </span><span class="nv">$ipdeny_tmp_dir</span>
+</code></pre></div>
+
+<p>这个应该安装到 <code>/usr/local/sbin</code>，不要忘了让它可执行！</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>chmod<span class="w"> </span>+x<span class="w"> </span>/usr/local/sbin/firewalld-blacklist
+</code></pre></div>
+
+<p>然后创建一个配置文件 <code>/etc/blacklist-by-country</code>：</p>
+<div class="highlight"><pre><span></span><code># Which countries should be blocked?
+# Use the two letter designation separated by a space.
+countries=&quot;&quot;
+</code></pre></div>
+
+<p>而另一个配置文件 <code>/etc/blacklist-by-ip</code>，每行只有一个 IP，没有任何额外的格式化。</p>
+<p>在这个例子中，从 ipdeny 的区文件中随机选择了 10 个国家：</p>
+<div class="highlight"><pre><span></span><code># ls | shuf -n 10 | sed &quot;s/\.zone//g&quot; | tr &#39;\n&#39; &#39; &#39;
+nl ee ie pk is sv na om gp bn
+</code></pre></div>
+
+<p>现在只要在配置文件中加入至少一个国家，就可以运行了！</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span> <span class="s s-Atom">sudo</span> <span class="s s-Atom">firewalld</span><span class="o">-</span><span class="s s-Atom">blacklist</span>
+  <span class="c1">% Total    % Received % Xferd  Average Speed   Time    Time     Time  Current</span>
+                                 <span class="nv">Dload</span>  <span class="nv">Upload</span>   <span class="nv">Total</span>   <span class="nv">Spent</span>    <span class="nv">Left</span>  <span class="nv">Speed</span>
+<span class="mi">100</span>   <span class="mi">142</span>  <span class="mi">100</span>   <span class="mi">142</span>    <span class="mi">0</span>     <span class="mi">0</span>   <span class="mi">1014</span>      <span class="mi">0</span> <span class="s s-Atom">--:--:--</span> <span class="s s-Atom">--:--:--</span> <span class="s s-Atom">--:--:--</span>  <span class="mi">1014</span>
+<span class="mi">100</span>  <span class="mi">662</span><span class="s s-Atom">k</span>  <span class="mi">100</span>  <span class="mi">662</span><span class="s s-Atom">k</span>    <span class="mi">0</span>     <span class="mi">0</span>   <span class="mi">989</span><span class="s s-Atom">k</span>      <span class="mi">0</span> <span class="s s-Atom">--:--:--</span> <span class="s s-Atom">--:--:--</span> <span class="s s-Atom">--:--:--</span>  <span class="mi">989</span><span class="s s-Atom">k</span>
+<span class="nv">Added</span> <span class="s s-Atom">nl</span> <span class="s s-Atom">to</span> <span class="s s-Atom">blacklist</span> <span class="s s-Atom">ipset</span><span class="p">.</span>
+<span class="nv">Added</span> <span class="s s-Atom">ee</span> <span class="s s-Atom">to</span> <span class="s s-Atom">blacklist</span> <span class="s s-Atom">ipset</span><span class="p">.</span>
+<span class="nv">Added</span> <span class="s s-Atom">ie</span> <span class="s s-Atom">to</span> <span class="s s-Atom">blacklist</span> <span class="s s-Atom">ipset</span><span class="p">.</span>
+<span class="nv">Added</span> <span class="s s-Atom">pk</span> <span class="s s-Atom">to</span> <span class="s s-Atom">blacklist</span> <span class="s s-Atom">ipset</span><span class="p">.</span>
+<span class="nv">Added</span> <span class="o">is</span> <span class="s s-Atom">to</span> <span class="s s-Atom">blacklist</span> <span class="s s-Atom">ipset</span><span class="p">.</span>
+<span class="nv">Added</span> <span class="s s-Atom">sv</span> <span class="s s-Atom">to</span> <span class="s s-Atom">blacklist</span> <span class="s s-Atom">ipset</span><span class="p">.</span>
+<span class="nv">Added</span> <span class="s s-Atom">na</span> <span class="s s-Atom">to</span> <span class="s s-Atom">blacklist</span> <span class="s s-Atom">ipset</span><span class="p">.</span>
+<span class="nv">Added</span> <span class="s s-Atom">om</span> <span class="s s-Atom">to</span> <span class="s s-Atom">blacklist</span> <span class="s s-Atom">ipset</span><span class="p">.</span>
+<span class="nv">Added</span> <span class="s s-Atom">gp</span> <span class="s s-Atom">to</span> <span class="s s-Atom">blacklist</span> <span class="s s-Atom">ipset</span><span class="p">.</span>
+<span class="nv">Added</span> <span class="s s-Atom">bn</span> <span class="s s-Atom">to</span> <span class="s s-Atom">blacklist</span> <span class="s s-Atom">ipset</span><span class="p">.</span>
+<span class="nv">Adding</span> <span class="s s-Atom">ipset</span> <span class="s s-Atom">blacklist</span> <span class="s s-Atom">to</span> <span class="s s-Atom">firewalld</span> <span class="s s-Atom">drop</span> <span class="s s-Atom">zone</span><span class="p">.</span>
+<span class="s s-Atom">success</span>
+</code></pre></div>
+
+<p>要验证 FirewallD 黑名单是否成功，请检查 <code>drop</code> 区和 <code>blacklist</code> ipset。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>firewall-cmd<span class="w"> </span>--info-zone<span class="o">=</span>drop
+drop<span class="w"> </span><span class="o">(</span>active<span class="o">)</span>
+<span class="w">  </span>target:<span class="w"> </span>DROP
+<span class="w">  </span>icmp-block-inversion:<span class="w"> </span>no
+<span class="w">  </span>interfaces:
+<span class="w">  </span>sources:<span class="w"> </span>ipset:blacklist
+<span class="w">  </span>services:
+<span class="w">  </span>ports:
+<span class="w">  </span>protocols:
+<span class="w">  </span>masquerade:<span class="w"> </span>no
+<span class="w">  </span>forward-ports:
+<span class="w">  </span>source-ports:
+<span class="w">  </span>icmp-blocks:
+<span class="w">  </span>rich<span class="w"> </span>rules:
+
+$<span class="w"> </span>sudo<span class="w"> </span>firewall-cmd<span class="w"> </span>--info-ipset<span class="o">=</span>blacklist<span class="w"> </span><span class="p">|</span><span class="w"> </span>less
+blacklist
+<span class="w">  </span>type:<span class="w"> </span>hash:net
+<span class="w">  </span>options:<span class="w"> </span><span class="nv">family</span><span class="o">=</span>inet<span class="w"> </span><span class="nv">hashsize</span><span class="o">=</span><span class="m">4096</span><span class="w"> </span><span class="nv">maxelem</span><span class="o">=</span><span class="m">200000</span>
+<span class="w">  </span>entries:
+</code></pre></div>
+
+<p>第二条命令将输出所有的子网，这些子网是基于被封杀的国家而添加的，可能会相当长。</p>
+<h3>那么现在我该怎么做？</h3>
+<p>虽然在开始的时候，监控的频率会比较高，但随着时间的推移，入侵尝试的次数应该会随着黑名单的增加而减少。那么目标应该是维护而不是主动监控。</p>
+<p>为此，我创建了一个 SystemD 服务文件和定时器，这样每月都会刷新由 ipdeny 维护的每个国家的子网。事实上，这里讨论的所有内容都可以从我的 <a href="https://pagure.io/firewalld-blacklist">pagure.io</a> 项目中下载。</p>
+<p>是不是很高兴你看完了整篇文章？现在只要把服务文件和定时器下载到 <code>/etc/systemd/system/</code>，并启用定时器就行了：</p>
+<div class="highlight"><pre><span></span><code><span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">systemctl</span><span class="w"> </span><span class="n">daemon</span><span class="o">-</span><span class="n">reload</span>
+<span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">systemctl</span><span class="w"> </span><span class="n">enable</span><span class="w"> </span><span class="o">--</span><span class="n">now</span><span class="w"> </span><span class="n">firewalld</span><span class="o">-</span><span class="n">blacklist</span><span class="o">.</span><span class="n">timer</span>
+</code></pre></div>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

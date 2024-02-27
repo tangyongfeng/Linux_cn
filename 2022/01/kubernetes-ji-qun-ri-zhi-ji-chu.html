@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Kubernetes 集群日志基础</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Mike Calizo 探索 Kubernetes 中不同容器日志记录模式的工作原理。 服务器和应用程序日志记录是开发人员、运维人员和安全团队了解 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2022/01/kubernetes-ji-qun-ri-zhi-ji-chu.html" rel="bookmark"
+           title="Permalink to Kubernetes 集群日志基础">Kubernetes 集群日志基础</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2022-01-02T10:58:21+01:00">
+                Published: Sun 02 January 2022
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Mike Calizo</p>
+<blockquote>
+<p>探索 Kubernetes 中不同容器日志记录模式的工作原理。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/202201/02/105801igujabattghwzkjw.jpg" title="Wheel of a ship"></p>
+<p>服务器和应用程序日志记录是开发人员、运维人员和安全团队了解应用程序在其生产环境中运行状态的重要工具。</p>
+<p>日志记录使运维人员能够确定应用程序和所需组件是否运行平稳，并检测是否发生了异常情况，以便他们能够对这种情况做出反应。</p>
+<p>对于开发人员，日志记录提供了在开发期间和之后对代码进行故障排除的可见性。在生产环境中，开发人员通常依赖于没有调试工具的日志记录工具。在加上系统的日志记录，开发人员可以与运维人员携手合作，有效地解决问题。</p>
+<p>日志记录工具最重要的受益者是安全团队，尤其是在云原生的环境中。能够从应用程序和系统日志中收集信息使得安全团队能够分析来自身份验证、应用程序访问恶意软件活动的数据，并在需要时进行响应。</p>
+<p>Kubernetes 是领先的容器平台，越来越多的应用程序通过 Kubernetes 部署到生产环境。我相信了解 Kubernetes 的日志架构是一项非常重要的工作，每个开发、运维和安全团队都需要认真对待。</p>
+<p>在本文中，我将讨论 Kubernetes 中不同容器日志记录模式的工作原理。</p>
+<h3>系统日志记录和应用日志记录</h3>
+<p>在深入研究 Kubernetes 日志记录架构之前，我想探索不同的日志记录方法以及这两种功能如何成为 Kubernetes 日志记录的关键特性。</p>
+<p>有两种类型的系统组件：在容器中运行的组件和不在容器中运行的组件。例如：</p>
+<ul>
+<li>Kubernetes 调度者和 <code>kube-proxy</code> 运行在容器中。</li>
+<li><code>kubelet</code> 和容器运行时不在容器中运行。</li>
+</ul>
+<p>与容器日志类似，系统容器日志存储在 <code>/var/log</code> 目录中，你应该定期轮换它们。</p>
+<p>在这里，我研究的是容器日志记录。首先，我看一下集群级别的日志记录以及为什么它对集群运维人员很重要。集群日志提供有关集群如何执行的信息。诸如为什么 <ruby> 吊舱 <rt>  Pod </rt></ruby> 被下线或节点死亡之类的信息。集群日志记录还可以捕获诸如集群和应用程序访问以及应用程序如何利用计算资源等信息。总体而言，集群日志记录工具为集群运维人员提供操作集群和安全有用的信息。</p>
+<p>捕获容器日志的另一种方法是通过应用程序的本机日志记录工具。现代应用程序设计很可能具有日志记录机制，可帮助开发人员通过标准输出 （<code>stdout</code>） 和错误流 （<code>stderr</code>） 解决应用程序性能问题。</p>
+<p>为了拥有有效的日志记录工具，Kubernetes 实现需要应用程序和系统日志记录组件。</p>
+<h3>Kubernetes 容器日志的 3 种类型</h3>
+<p>如今，在大多数的 Kubernetes 实现中，你可以看到三种主要的集群级日志记录方法。</p>
+<ol>
+<li>节点级日志代理</li>
+<li>用于日志记录的<ruby> 挎斗 <rt>  Sidecar </rt></ruby>容器应用程序</li>
+<li>将应用程序日志直接暴露给日志后端</li>
+</ol>
+<h4>节点级日志代理</h4>
+<p>我想考虑节点级日志代理。你通常使用 DaemonSet 作为部署策略来实现这些，以便在所有 Kubernetes 节点中部署一个吊舱（充当日志代理）。然后，该日志代理被配置为从所有 Kubernetes 节点读取日志。你通常将代理配置为读取节点 <code>/var/logs</code> 目录捕获 <code>stdout</code>/<code>stderr</code> 流并将其发送到日志记录后端存储。</p>
+<p>下图显示了在所有节点中作为代理运行的节点级日志记录。</p>
+<p><img alt="Node-level logging agent" src="/data/attachment/album/202201/02/105823jz5e65z3cb6e6iv0.png" title="Node-level logging agent"></p>
+<p>以使用 <code>fluentd</code> 方法为例设置节点级日志记录，你需要执行以下操作：</p>
+<p>1、首先，你需要创建一个名为 fluentdd 的服务账户。Fluentd 吊舱使用此服务账户来访问 Kubernetes API，你需要在日志命名空间中使用标签 <code>app: fluentd</code> 创建它们：</p>
+<div class="highlight"><pre><span></span><code>#fluentd-SA.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fluentd
+  namespace: logging
+  labels:
+    app: fluentd  
+</code></pre></div>
+
+<p>你可以在此 <a href="https://github.com/mikecali/kubernetes-logging-example-article">仓库</a> 中查看完整示例。</p>
+<p>2、接着，你需要创建一个名称为 <code>fluentd-configmap</code> 的 ConfigMap。这为 <code>fluentd daemonset</code> 提供了一个配置文件，其中包含所有必需的属性。</p>
+<div class="highlight"><pre><span></span><code><span class="c1">#fluentd-daemonset.yaml</span>
+<span class="n">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="n">extensions</span><span class="o">/</span><span class="n">v1beta1</span>
+<span class="n">kind</span><span class="p">:</span><span class="w"> </span><span class="n">DaemonSet</span>
+<span class="n">metadata</span><span class="p">:</span>
+<span class="w">  </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">fluentd</span>
+<span class="w">  </span><span class="n">namespace</span><span class="p">:</span><span class="w"> </span><span class="n">logging</span>
+<span class="w">  </span><span class="n">labels</span><span class="p">:</span>
+<span class="w">    </span><span class="n">app</span><span class="p">:</span><span class="w"> </span><span class="n">fluentd</span>
+<span class="w">    </span><span class="n">kubernetes</span><span class="o">.</span><span class="n">io</span><span class="o">/</span><span class="n">cluster</span><span class="o">-</span><span class="n">service</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;true&quot;</span>
+<span class="n">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="n">selector</span><span class="p">:</span>
+<span class="w">    </span><span class="n">matchLabels</span><span class="p">:</span>
+<span class="w">      </span><span class="n">app</span><span class="p">:</span><span class="w"> </span><span class="n">fluentd</span>
+<span class="w">      </span><span class="n">kubernetes</span><span class="o">.</span><span class="n">io</span><span class="o">/</span><span class="n">cluster</span><span class="o">-</span><span class="n">service</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;true&quot;</span>
+<span class="w">  </span><span class="n">template</span><span class="p">:</span>
+<span class="w">    </span><span class="n">metadata</span><span class="p">:</span>
+<span class="w">      </span><span class="n">labels</span><span class="p">:</span>
+<span class="w">        </span><span class="n">app</span><span class="p">:</span><span class="w"> </span><span class="n">fluentd</span>
+<span class="w">        </span><span class="n">kubernetes</span><span class="o">.</span><span class="n">io</span><span class="o">/</span><span class="n">cluster</span><span class="o">-</span><span class="n">service</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;true&quot;</span>
+<span class="w">    </span><span class="n">spec</span><span class="p">:</span>
+<span class="w">      </span><span class="n">serviceAccount</span><span class="p">:</span><span class="w"> </span><span class="n">fluentd</span>
+<span class="w">      </span><span class="n">containers</span><span class="p">:</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">fluentd</span>
+<span class="w">        </span><span class="n">image</span><span class="p">:</span><span class="w"> </span><span class="n">fluent</span><span class="o">/</span><span class="n">fluentd</span><span class="o">-</span><span class="n">kubernetes</span><span class="o">-</span><span class="n">daemonset</span><span class="p">:</span><span class="n">v1</span><span class="o">.</span><span class="mf">7.3</span><span class="o">-</span><span class="n">debian</span><span class="o">-</span><span class="n">elasticsearch7</span><span class="o">-</span><span class="mf">1.0</span>
+<span class="w">        </span><span class="n">env</span><span class="p">:</span>
+<span class="w">          </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">FLUENT_ELASTICSEARCH_HOST</span>
+<span class="w">            </span><span class="n">value</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;elasticsearch.logging.svc.cluster.local&quot;</span>
+<span class="w">          </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">FLUENT_ELASTICSEARCH_PORT</span>
+<span class="w">            </span><span class="n">value</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;9200&quot;</span>
+<span class="w">          </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">FLUENT_ELASTICSEARCH_SCHEME</span>
+<span class="w">            </span><span class="n">value</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;http&quot;</span>
+<span class="w">          </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">FLUENT_ELASTICSEARCH_USER</span>
+<span class="w">            </span><span class="n">value</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;elastic&quot;</span>
+<span class="w">          </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">FLUENT_ELASTICSEARCH_PASSWORD</span>
+<span class="w">            </span><span class="n">valueFrom</span><span class="p">:</span>
+<span class="w">              </span><span class="n">secretKeyRef</span><span class="p">:</span>
+<span class="w">                </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">efk</span><span class="o">-</span><span class="n">pw</span><span class="o">-</span><span class="n">elastic</span>
+<span class="w">                </span><span class="n">key</span><span class="p">:</span><span class="w"> </span><span class="n">password</span>
+<span class="w">          </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">FLUENT_ELASTICSEARCH_SED_DISABLE</span>
+<span class="w">            </span><span class="n">value</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;true&quot;</span>
+<span class="w">        </span><span class="n">resources</span><span class="p">:</span>
+<span class="w">          </span><span class="n">limits</span><span class="p">:</span>
+<span class="w">            </span><span class="n">memory</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="n">Mi</span>
+<span class="w">          </span><span class="n">requests</span><span class="p">:</span>
+<span class="w">            </span><span class="n">cpu</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="n">m</span>
+<span class="w">            </span><span class="n">memory</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="n">Mi</span>
+<span class="w">        </span><span class="n">volumeMounts</span><span class="p">:</span>
+<span class="w">        </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">varlog</span>
+<span class="w">          </span><span class="n">mountPath</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span>
+<span class="w">        </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">varlibdockercontainers</span>
+<span class="w">          </span><span class="n">mountPath</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">docker</span><span class="o">/</span><span class="n">containers</span>
+<span class="w">          </span><span class="n">readOnly</span><span class="p">:</span><span class="w"> </span><span class="bp">true</span>
+<span class="w">        </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">fluentconfig</span>
+<span class="w">          </span><span class="n">mountPath</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="n">fluentd</span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">fluent</span><span class="o">.</span><span class="n">conf</span>
+<span class="w">          </span><span class="n">subPath</span><span class="p">:</span><span class="w"> </span><span class="n">fluent</span><span class="o">.</span><span class="n">conf</span>
+<span class="w">      </span><span class="n">terminationGracePeriodSeconds</span><span class="p">:</span><span class="w"> </span><span class="mi">30</span>
+<span class="w">      </span><span class="n">volumes</span><span class="p">:</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">varlog</span>
+<span class="w">        </span><span class="n">hostPath</span><span class="p">:</span>
+<span class="w">          </span><span class="n">path</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">varlibdockercontainers</span>
+<span class="w">        </span><span class="n">hostPath</span><span class="p">:</span>
+<span class="w">          </span><span class="n">path</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">docker</span><span class="o">/</span><span class="n">containers</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">fluentconfig</span>
+<span class="w">        </span><span class="n">configMap</span><span class="p">:</span>
+<span class="w">          </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">fluentdconf</span>
+</code></pre></div>
+
+<p>你可以在此 <a href="https://github.com/mikecali/kubernetes-logging-example-article">仓库</a> 中查看完整示例。</p>
+<p>现在，我们来看看如何将 <code>fluentd daemonset</code> 部署为日志代理的代码。</p>
+<div class="highlight"><pre><span></span><code><span class="c1">#fluentd-daemonset.yaml</span>
+<span class="n">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="n">extensions</span><span class="o">/</span><span class="n">v1beta1</span>
+<span class="n">kind</span><span class="p">:</span><span class="w"> </span><span class="n">DaemonSet</span>
+<span class="n">metadata</span><span class="p">:</span>
+<span class="w">  </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">fluentd</span>
+<span class="w">  </span><span class="n">namespace</span><span class="p">:</span><span class="w"> </span><span class="n">logging</span>
+<span class="w">  </span><span class="n">labels</span><span class="p">:</span>
+<span class="w">    </span><span class="n">app</span><span class="p">:</span><span class="w"> </span><span class="n">fluentd</span>
+<span class="w">    </span><span class="n">kubernetes</span><span class="o">.</span><span class="n">io</span><span class="o">/</span><span class="n">cluster</span><span class="o">-</span><span class="n">service</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;true&quot;</span>
+<span class="n">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="n">selector</span><span class="p">:</span>
+<span class="w">    </span><span class="n">matchLabels</span><span class="p">:</span>
+<span class="w">      </span><span class="n">app</span><span class="p">:</span><span class="w"> </span><span class="n">fluentd</span>
+<span class="w">      </span><span class="n">kubernetes</span><span class="o">.</span><span class="n">io</span><span class="o">/</span><span class="n">cluster</span><span class="o">-</span><span class="n">service</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;true&quot;</span>
+<span class="w">  </span><span class="n">template</span><span class="p">:</span>
+<span class="w">    </span><span class="n">metadata</span><span class="p">:</span>
+<span class="w">      </span><span class="n">labels</span><span class="p">:</span>
+<span class="w">        </span><span class="n">app</span><span class="p">:</span><span class="w"> </span><span class="n">fluentd</span>
+<span class="w">        </span><span class="n">kubernetes</span><span class="o">.</span><span class="n">io</span><span class="o">/</span><span class="n">cluster</span><span class="o">-</span><span class="n">service</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;true&quot;</span>
+<span class="w">    </span><span class="n">spec</span><span class="p">:</span>
+<span class="w">      </span><span class="n">serviceAccount</span><span class="p">:</span><span class="w"> </span><span class="n">fluentd</span>
+<span class="w">      </span><span class="n">containers</span><span class="p">:</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">fluentd</span>
+<span class="w">        </span><span class="n">image</span><span class="p">:</span><span class="w"> </span><span class="n">fluent</span><span class="o">/</span><span class="n">fluentd</span><span class="o">-</span><span class="n">kubernetes</span><span class="o">-</span><span class="n">daemonset</span><span class="p">:</span><span class="n">v1</span><span class="o">.</span><span class="mf">7.3</span><span class="o">-</span><span class="n">debian</span><span class="o">-</span><span class="n">elasticsearch7</span><span class="o">-</span><span class="mf">1.0</span>
+<span class="w">        </span><span class="n">env</span><span class="p">:</span>
+<span class="w">          </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">FLUENT_ELASTICSEARCH_HOST</span>
+<span class="w">            </span><span class="n">value</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;elasticsearch.logging.svc.cluster.local&quot;</span>
+<span class="w">          </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">FLUENT_ELASTICSEARCH_PORT</span>
+<span class="w">            </span><span class="n">value</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;9200&quot;</span>
+<span class="w">          </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">FLUENT_ELASTICSEARCH_SCHEME</span>
+<span class="w">            </span><span class="n">value</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;http&quot;</span>
+<span class="w">          </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">FLUENT_ELASTICSEARCH_USER</span>
+<span class="w">            </span><span class="n">value</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;elastic&quot;</span>
+<span class="w">          </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">FLUENT_ELASTICSEARCH_PASSWORD</span>
+<span class="w">            </span><span class="n">valueFrom</span><span class="p">:</span>
+<span class="w">              </span><span class="n">secretKeyRef</span><span class="p">:</span>
+<span class="w">                </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">efk</span><span class="o">-</span><span class="n">pw</span><span class="o">-</span><span class="n">elastic</span>
+<span class="w">                </span><span class="n">key</span><span class="p">:</span><span class="w"> </span><span class="n">password</span>
+<span class="w">          </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">FLUENT_ELASTICSEARCH_SED_DISABLE</span>
+<span class="w">            </span><span class="n">value</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;true&quot;</span>
+<span class="w">        </span><span class="n">resources</span><span class="p">:</span>
+<span class="w">          </span><span class="n">limits</span><span class="p">:</span>
+<span class="w">            </span><span class="n">memory</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="n">Mi</span>
+<span class="w">          </span><span class="n">requests</span><span class="p">:</span>
+<span class="w">            </span><span class="n">cpu</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="n">m</span>
+<span class="w">            </span><span class="n">memory</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="n">Mi</span>
+<span class="w">        </span><span class="n">volumeMounts</span><span class="p">:</span>
+<span class="w">        </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">varlog</span>
+<span class="w">          </span><span class="n">mountPath</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span>
+<span class="w">        </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">varlibdockercontainers</span>
+<span class="w">          </span><span class="n">mountPath</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">docker</span><span class="o">/</span><span class="n">containers</span>
+<span class="w">          </span><span class="n">readOnly</span><span class="p">:</span><span class="w"> </span><span class="bp">true</span>
+<span class="w">        </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">fluentconfig</span>
+<span class="w">          </span><span class="n">mountPath</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="n">fluentd</span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">fluent</span><span class="o">.</span><span class="n">conf</span>
+<span class="w">          </span><span class="n">subPath</span><span class="p">:</span><span class="w"> </span><span class="n">fluent</span><span class="o">.</span><span class="n">conf</span>
+<span class="w">      </span><span class="n">terminationGracePeriodSeconds</span><span class="p">:</span><span class="w"> </span><span class="mi">30</span>
+<span class="w">      </span><span class="n">volumes</span><span class="p">:</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">varlog</span>
+<span class="w">        </span><span class="n">hostPath</span><span class="p">:</span>
+<span class="w">          </span><span class="n">path</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">varlibdockercontainers</span>
+<span class="w">        </span><span class="n">hostPath</span><span class="p">:</span>
+<span class="w">          </span><span class="n">path</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">docker</span><span class="o">/</span><span class="n">containers</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">fluentconfig</span>
+<span class="w">        </span><span class="n">configMap</span><span class="p">:</span>
+<span class="w">          </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">fluentdconf</span>
+</code></pre></div>
+
+<p>将这些放在一起执行：</p>
+<div class="highlight"><pre><span></span><code>kubectl apply -f fluentd-SA.yaml \
+              -f fluentd-configmap.yaml \
+              -f fluentd-daemonset.yaml
+</code></pre></div>
+
+<h4>用于日志记录的挎斗容器应用程序</h4>
+<p>另一种方法是使用带有日志代理的专用挎斗容器。容器最常见的实现是使用 <a href="https://www.fluentd.org/">Fluentd</a> 作为日志收集器。在企业部署中（你无需担心一点计算资源开销），使用 <code>fluentd</code>（或<a href="https://www.g2.com/products/fluentd/competitors/alternatives">类似</a>）实现的挎斗容器提供了集群级日志记录的灵活性。这是因为你可以根据需要捕获的日志类型、频率和其它可能的调整来调整和配置收集器代理。</p>
+<p>下图展示了作为日志代理的挎斗容器。</p>
+<p><img alt="Sidecar container as logging agent" src="/data/attachment/album/202201/02/105823jgueyuw38e3oawua.png" title="Sidecar container as logging agent"></p>
+<p>例如，一个吊舱运行单个容器，容器使用两种不同的格式写入两个不同的日志文件。吊舱的配置文件如下：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">#log-sidecar.yaml</span>
+<span class="n">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="n">v1</span>
+<span class="n">kind</span><span class="p">:</span><span class="w"> </span><span class="n">Pod</span>
+<span class="n">metadata</span><span class="p">:</span>
+<span class="w">  </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">counter</span>
+<span class="n">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="n">containers</span><span class="p">:</span>
+<span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">count</span>
+<span class="w">    </span><span class="n">image</span><span class="p">:</span><span class="w"> </span><span class="n">busybox</span>
+<span class="w">    </span><span class="n">args</span><span class="p">:</span>
+<span class="w">   </span><span class="o">-</span><span class="w"> </span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">sh</span>
+<span class="w">    </span><span class="o">-</span><span class="w"> </span><span class="o">-</span><span class="n">c</span>
+<span class="w">    </span><span class="o">-</span><span class="w"> </span><span class="o">&gt;</span>
+<span class="w">     </span><span class="n">i</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span>
+<span class="w">      </span><span class="k">while</span><span class="w"> </span><span class="bp">true</span><span class="p">;</span>
+<span class="w">      </span><span class="n">do</span>
+<span class="w">        </span><span class="n">echo</span><span class="w"> </span><span class="s2">&quot;$i: $(date)&quot;</span><span class="w"> </span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="mf">1.</span><span class="n">log</span><span class="p">;</span>
+<span class="w">        </span><span class="n">echo</span><span class="w"> </span><span class="s2">&quot;$(date) INFO $i&quot;</span><span class="w"> </span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="mf">2.</span><span class="n">log</span><span class="p">;</span>
+<span class="w">        </span><span class="n">i</span><span class="o">=$</span><span class="p">((</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">));</span>
+<span class="w">        </span><span class="n">sleep</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<span class="w">      </span><span class="n">done</span>
+<span class="w">    </span><span class="n">volumeMounts</span><span class="p">:</span>
+<span class="w">    </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">varlog</span>
+<span class="w">      </span><span class="n">mountPath</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span>
+<span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">count</span><span class="o">-</span><span class="nb">log</span>
+<span class="w">    </span><span class="n">image</span><span class="p">:</span><span class="w"> </span><span class="n">busybox</span>
+<span class="w">    </span><span class="n">args</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">sh</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="n">c</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;tail -n+1 -f /var/log/1.log&#39;</span><span class="p">]</span>
+<span class="w">    </span><span class="n">volumeMounts</span><span class="p">:</span>
+<span class="w">    </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">varlog</span>
+<span class="w">      </span><span class="n">mountPath</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span>
+<span class="w">  </span><span class="n">volumes</span><span class="p">:</span>
+<span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">varlog</span>
+<span class="w">    </span><span class="n">emptyDir</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span>
+</code></pre></div>
+
+<p>把它们放在一起，你可以运行这个吊舱：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>kubectl<span class="w"> </span>apply<span class="w"> </span>-f<span class="w"> </span>log-sidecar.yaml
+</code></pre></div>
+
+<p>要验证挎斗容器是否用作日志代理，你可以执行以下操作：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>kubectl<span class="w"> </span>logs<span class="w"> </span>counter<span class="w"> </span>count-log
+</code></pre></div>
+
+<p>预期的输出如下所示：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>kubectl<span class="w"> </span>logs<span class="w"> </span>counter<span class="w"> </span>count-log-1
+
+Thu<span class="w"> </span><span class="m">04</span><span class="w"> </span>Nov<span class="w"> </span><span class="m">2021</span><span class="w"> </span><span class="m">09</span>:23:21<span class="w"> </span>NZDT
+Thu<span class="w"> </span><span class="m">04</span><span class="w"> </span>Nov<span class="w"> </span><span class="m">2021</span><span class="w"> </span><span class="m">09</span>:23:22<span class="w"> </span>NZDT
+Thu<span class="w"> </span><span class="m">04</span><span class="w"> </span>Nov<span class="w"> </span><span class="m">2021</span><span class="w"> </span><span class="m">09</span>:23:23<span class="w"> </span>NZDT
+Thu<span class="w"> </span><span class="m">04</span><span class="w"> </span>Nov<span class="w"> </span><span class="m">2021</span><span class="w"> </span><span class="m">09</span>:23:24<span class="w"> </span>NZDT
+</code></pre></div>
+
+<h4>将应用程序日志直接暴露给日志后端</h4>
+<p>第三种方法（在我看来）是 Kubernetes 容器和应用程序日志最灵活的日志记录解决方案，是将日志直接推送到日志记录后端解决方案。尽管此模式不依赖于原生 Kubernetes 功能，但它提供了大多数企业需要的灵活性，例如：</p>
+<ol>
+<li>扩展对网络协议和输出格式的更广泛支持。</li>
+<li>提供负载均衡能力并提高性能。</li>
+<li>可配置为通过上游聚合接受复杂的日志记录要求。</li>
+</ol>
+<p>因为这第三种方法通过直接从每个应用程序推送日志来依赖非 Kubernetes 功能，所以它超出了 Kubernetes 的范围。</p>
+<h3>结论</h3>
+<p>Kubernetes 日志记录工具是企业部署 Kubernetes 集群的一个非常重要的组件。我讨论了三种可能的可用模式。你需要找到适合你需求的模式。</p>
+<p>如上所述，使用 <code>daemonset</code> 的节点级日志记录是最容易使用的部署模式，但它也有一些限制，可能不适合你的组织的需要。另一方面，挎斗 模式提供了灵活性和自定义，允许你自定义要捕获的日志类型，但是会提高计算机的资源开销。最后，将应用程序日志直接暴露给后端日志工具是另一种允许进一步定制的诱人方法。</p>
+<p>选择在你，你只需要找到适合你组织要求的方法。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

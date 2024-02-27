@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 K3s 在树莓派上运行 Kubernetes 集群</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Lee Carpenter 跟随接下来的介绍，自己搭建一个三节点的 Kubernetes 集群。 我对在树莓派上搭建 Kubernetes 集群已经感兴趣很长时间了，只要照着 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li class="active"><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2020/03/shi-yong-k3s-zai-shu-mei-pai-shang-yun-xing-kubernetes-ji-qun.html" rel="bookmark"
+           title="Permalink to 使用 K3s 在树莓派上运行 Kubernetes 集群">使用 K3s 在树莓派上运行 Kubernetes 集群</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2020-03-29T12:18:00+02:00">
+                Published: Sun 29 March 2020
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/shu-mei-pai">树莓派</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Lee Carpenter</p>
+<blockquote>
+<p>跟随接下来的介绍，自己搭建一个三节点的 Kubernetes 集群。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/202003/29/121559p44e3dfrerf3zver.jpg"></p>
+<p>我对在树莓派上搭建 <a href="https://opensource.com/resources/what-is-kubernetes">Kubernetes</a> 集群已经感兴趣很长时间了，只要照着网上的教程，我可以在由三个树莓派组成的集群中搭建一套 Kubernetes 并正常运行。但在这种情况下，主节点上的内存和 CPU 资源捉襟见肘，执行 Kubernetes 任务的时候往往性能不佳，想要升级 Kubernetes 就更不可能了。</p>
+<p>这个时候，我非常激动地发现了 <a href="https://k3s.io/">K3s</a> 这个项目。K3s 被誉为在可用于资源受限环境下的轻量级 Kubernetes，它还针对 ARM 处理器做出了优化，这让 Kubernetes 集群可以在树莓派上运行得更好。在下文中，我们将会使用 K3s 来创建一个 Kubernetes 集群。</p>
+<h3>准备</h3>
+<p>要按照本文介绍的方式创建 Kubernetes 集群，首先需要准备：</p>
+<ul>
+<li>至少一个树莓派（包括 SD 卡和电源）</li>
+<li>网线</li>
+<li>将所有树莓派连接到一起的交换机或路由器</li>
+</ul>
+<p>我们会通过在线安装的方式安装 K3s，因此还需要可以连接到互联网。</p>
+<h3>集群概览</h3>
+<p>在这个集群里，我们会使用三个树莓派。其中一个树莓派作为主节点，我们将它命名为 <code>kmaster</code>，并为其分配一个静态 IP <code>192.168.0.50</code>（注：假设使用的私有网段是 192.168.0.0/24），而另外两个树莓派作为工作节点，分别命名为 <code>knode1</code> 和 <code>knode2</code>，也分别分配 <code>192.168.0.51</code> 和 <code>192.168.0.52</code> 两个 IP 地址。</p>
+<p>当然，如果你实际的网络布局和上面不同，只要将文中所提及到的 IP 替换成你实际可用的 IP 就可以了。</p>
+<p>为了不需要通过 IP 来引用某一个节点，我们将每个节点的主机名记录到 PC 的 <code>/etc/hosts</code> 文件当中：</p>
+<div class="highlight"><pre><span></span><code>echo -e &quot;192.168.0.50\tkmaster&quot; | sudo tee -a /etc/hosts
+echo -e &quot;192.168.0.51\tknode1&quot; | sudo tee -a /etc/hosts
+echo -e &quot;192.168.0.52\tknode2&quot; | sudo tee -a /etc/hosts
+</code></pre></div>
+
+<h3>部署主节点</h3>
+<p>我们首先部署主节点。最开始的步骤当然是使用镜像安装最新的 Raspbian，这个步骤可以参考我的<a href="https://carpie.net/articles/headless-pi-with-static-ip-wired-edition">另一篇文章</a>，在这里就不展开介绍了。在安装完成之后，启动 SSH 服务，将主机名设置为 <code>kmaster</code>，然后分配静态 IP <code>192.168.0.50</code>。</p>
+<p>在主节点上安装 Raspbian 完成后，启动树莓派并通过 <code>ssh</code> 连接上去：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ssh</span><span class="w"> </span><span class="nf">pi</span><span class="nv">@kmaster</span>
+</code></pre></div>
+
+<p>在主节点上执行以下命令安装 K3s：</p>
+<div class="highlight"><pre><span></span><code>curl -sfL https://get.k3s.io | sh -
+</code></pre></div>
+
+<p>等到命令跑完以后，一个单节点集群就已经运行起来了。让我们检查一下，还在这个树莓派上执行：</p>
+<div class="highlight"><pre><span></span><code>sudo kubectl get nodes
+</code></pre></div>
+
+<p>就会看到这样的输出：</p>
+<div class="highlight"><pre><span></span><code>NAME     STATUS   ROLES    AGE    VERSION
+kmaster  Ready    master   2m13s  v1.14.3-k3s.1
+</code></pre></div>
+
+<h3>获取<ruby> 连接令牌 <rt>  join token </rt></ruby></h3>
+<p>之后我们需要部署工作节点。在工作节点上安装 K3s 的时候，会需要用到连接令牌，它放置在主节点的文件系统上。首先把连接令牌保存出来以便后续使用：</p>
+<div class="highlight"><pre><span></span><code><span class="n">sudo</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">rancher</span><span class="o">/</span><span class="n">k3s</span><span class="o">/</span><span class="n">server</span><span class="o">/</span><span class="n">node</span><span class="o">-</span><span class="n">token</span>
+</code></pre></div>
+
+<h3>部署工作节点</h3>
+<p>通过 SD 卡在每个作为工作节点的树莓派上安装 Raspbian。在这里，我们把其中一个树莓派的主机名设置为 <code>knode1</code>，为其分配 IP 地址 <code>192.168.0.51</code>，另一个树莓派的主机名设置为 <code>knode2</code>，分配 IP 地址 <code>192.168.0.52</code>。接下来就可以安装 K3s 了。</p>
+<p>启动主机名为 <code>knode1</code> 的树莓派，通过 <code>ssh</code> 连接上去：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ssh</span><span class="w"> </span><span class="nf">pi</span><span class="nv">@knode1</span>
+</code></pre></div>
+
+<p>在这个树莓派上，安装 K3s 的过程和之前差不多，但需要另外加上一些参数，表示它是一个工作节点，需要连接到一个已有的集群上：</p>
+<div class="highlight"><pre><span></span><code>curl -sfL http://get.k3s.io | K3S_URL=https://192.168.0.50:6443 \
+K3S_TOKEN=刚才保存下来的连接令牌 sh -
+</code></pre></div>
+
+<p><code>K3S_TOKEN</code> 的值需要替换成刚才保存下来的实际的连接令牌。完成之后，在主机名为 <code>knode2</code> 的树莓派上重复这个安装过程。</p>
+<h3>通过 PC 访问集群</h3>
+<p>现在如果我们想要查看或者更改集群，都必须 <code>ssh</code> 到集群的主节点才能使用 <code>kubectl</code>，这是比较麻烦的。因此我们会将 <code>kubectl</code> 放到 PC 上使用。首先，在主节点上获取一些必要的配置信息，<code>ssh</code> 到 <code>kmaster</code> 上执行：</p>
+<div class="highlight"><pre><span></span><code>sudo cat /etc/rancher/k3s/k3s.yaml
+</code></pre></div>
+
+<p>复制上面命令的输出，然后在你的 PC 上创建一个目录用来放置配置文件：</p>
+<div class="highlight"><pre><span></span><code>mkdir ~/.kube
+</code></pre></div>
+
+<p>将复制好的内容写入到 <code>~/.kube/config</code> 文件中，然后编辑该文件，将</p>
+<div class="highlight"><pre><span></span><code><span class="n">server</span><span class="o">:</span><span class="w"> </span><span class="n">https</span><span class="o">://</span><span class="n">localhost</span><span class="o">:</span><span class="mi">6443</span>
+</code></pre></div>
+
+<p>改为</p>
+<div class="highlight"><pre><span></span><code><span class="n">server</span><span class="o">:</span><span class="w"> </span><span class="n">https</span><span class="o">://</span><span class="n">kmaster</span><span class="o">:</span><span class="mi">6443</span>
+</code></pre></div>
+
+<p>出于安全考虑，只对自己保留这个配置文件的读写权限：</p>
+<div class="highlight"><pre><span></span><code>chmod 600 ~/.kube/config
+</code></pre></div>
+
+<p>如果 PC 上还没有安装 <code>kubectl</code> 的话，就可以开始安装了。Kubernetes 官方网站上有各种平台安装 <code>kubectl</code> 的<a href="https://kubernetes.io/docs/tasks/tools/install-kubectl/">方法说明</a>，我使用的是 Ubuntu 的衍生版 Linux Mint，所以我的安装方法是这样的：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">sudo</span><span class="w"> </span><span class="nx">apt</span><span class="w"> </span><span class="nx">update</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">sudo</span><span class="w"> </span><span class="nx">apt</span><span class="w"> </span><span class="nx">install</span><span class="w"> </span><span class="o">-</span><span class="nx">y</span><span class="w"> </span><span class="nx">apt</span><span class="o">-</span><span class="nx">transport</span><span class="o">-</span><span class="nx">https</span>
+<span class="nx">curl</span><span class="w"> </span><span class="o">-</span><span class="nx">s</span><span class="w"> </span><span class="nx">https</span><span class="p">:</span><span class="c1">//packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -</span>
+<span class="nx">echo</span><span class="w"> </span><span class="s">&quot;deb https://apt.kubernetes.io/ kubernetes-xenial main&quot;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nx">sudo</span><span class="w"> </span><span class="nx">tee</span><span class="w"> </span><span class="o">-</span><span class="nx">a</span><span class="w"> </span><span class="o">/</span><span class="nx">etc</span><span class="o">/</span><span class="nx">apt</span><span class="o">/</span><span class="nx">sources</span><span class="p">.</span><span class="nx">list</span><span class="p">.</span><span class="nx">d</span><span class="o">/</span><span class="nx">kubernetes</span><span class="p">.</span><span class="nx">list</span>
+<span class="nx">sudo</span><span class="w"> </span><span class="nx">apt</span><span class="w"> </span><span class="nx">update</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">sudo</span><span class="w"> </span><span class="nx">apt</span><span class="w"> </span><span class="nx">install</span><span class="w"> </span><span class="nx">kubectl</span>
+</code></pre></div>
+
+<p>上面几个命令的作用是添加了一个包含 Kubernetes 的 Debian 软件库，获取 GPG 密钥以确保安全，然后更新软件包列表并安装 <code>kubectl</code>。如果 <code>kubectl</code> 有更新，我们将会通过<ruby> 标准软件更新机制 <rt>  standard software update mechanism </rt></ruby>收到通知。</p>
+<p>现在在 PC 上就可以查看 Kubernetes 集群了：</p>
+<div class="highlight"><pre><span></span><code>kubectl get nodes
+</code></pre></div>
+
+<p>输出大概会是这样：</p>
+<div class="highlight"><pre><span></span><code>NAME     STATUS  ROLES   AGE   VERSION
+kmaster  Ready   master  12m   v1.14.3-k3s.1
+knode1   Ready   worker  103s  v1.14.3-k3s.1
+knode1   Ready   worker  103s  v1.14.3-k3s.1
+</code></pre></div>
+
+<p>至此，我们已经搭建了一个三节点的 Kubernetes 集群。</p>
+<h3>K3s 的彩蛋</h3>
+<p>如果执行 <code>kubectl get pods --all-namespaces</code>，就会看到其它服务的一些 Pod，比如 <a href="https://traefik.io/">Traefik</a>。Traefik 在这里起到是反向代理和负载均衡器的作用，它可以让流量从单个入口进入集群后引导到集群中的各个服务。Kubernetes 支持这种机制，但 Kubernetes 本身不提供这个功能，因此 Traefik 是一个不错的选择，K3s 安装后立即可用的优点也得益于此。</p>
+<p>在后续的文章中，我们会继续探讨 Traefik 在 Kubernetes ingress 中的应用，以及在集群中部署其它组件。敬请关注。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

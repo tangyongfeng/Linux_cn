@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>一个使用 asyncio 协程的网络爬虫（三）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: A. Jesse Jiryu Davis , Guido van Rossum 本文作者： A. Jesse Jiryu Davis 是纽约 MongoDB 的工程师。他编写了异步 MongoDB Python 驱动程序 Motor，也是 MongoDB C 驱动程序的开发领袖 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/03/yi-ge-shi-yong-asyncio-xie-cheng-de-wang-luo-pa-chong-san.html" rel="bookmark"
+           title="Permalink to 一个使用 asyncio 协程的网络爬虫（三）">一个使用 asyncio 协程的网络爬虫（三）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-03-06T10:31:00+01:00">
+                Published: Mon 06 March 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: A. Jesse Jiryu Davis , Guido van Rossum</p>
+<blockquote>
+<p>本文作者：</p>
+<p>A. Jesse Jiryu Davis 是纽约 MongoDB 的工程师。他编写了异步 MongoDB Python 驱动程序 Motor，也是 MongoDB C 驱动程序的开发领袖和 PyMongo 团队成员。 他也为 asyncio 和 Tornado 做了贡献，在 <a href="http://emptysqua.re">http://emptysqua.re</a> 上写作。</p>
+<p>Guido van Rossum 是主流编程语言 Python 的创造者，Python 社区称他为 BDFL （仁慈的终生大独裁者 (Benevolent Dictator For Life)）——这是一个来自 Monty Python 短剧的称号。他的主页是 <a href="http://www.python.org/%7Eguido/">http://www.python.org/~guido/</a> 。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/201703/04/160319vrfrrsl2x2lrlpzp.jpg"></p>
+<h3>使用协程</h3>
+<p>我们将从描述爬虫如何工作开始。现在是时候用 asynio 去实现它了。</p>
+<p>我们的爬虫从获取第一个网页开始，解析出链接并把它们加到队列中。此后它开始傲游整个网站，并发地获取网页。但是由于客户端和服务端的负载限制，我们希望有一个最大数目的运行的 worker，不能再多。任何时候一个 worker 完成一个网页的获取，它应该立即从队列中取出下一个链接。我们会遇到没有那么多事干的时候，所以一些 worker 必须能够暂停。一旦又有 worker 获取一个有很多链接的网页，队列会突增，暂停的 worker 立马被唤醒干活。最后，当任务完成后我们的程序必须马上退出。</p>
+<p>假如你的 worker 是线程，怎样去描述你的爬虫算法？我们可以使用 Python 标准库中的<a href="https://docs.python.org/3/library/queue.html">同步队列</a>。每次有新的一项加入，队列增加它的 “tasks” 计数器。线程 worker 完成一个任务后调用 <code>task_done</code>。主线程阻塞在 <code>Queue.join</code>，直到“tasks”计数器与 <code>task_done</code> 调用次数相匹配，然后退出。</p>
+<p>协程通过 asyncio 队列，使用和线程一样的模式来实现！首先我们<a href="https://docs.python.org/3/library/asyncio-sync.html">导入它</a>：</p>
+<div class="highlight"><pre><span></span><code><span class="k">try</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">asyncio</span> <span class="kn">import</span> <span class="n">JoinableQueue</span> <span class="k">as</span> <span class="n">Queue</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="c1"># In Python 3.5, asyncio.JoinableQueue is</span>
+    <span class="c1"># merged into Queue.</span>
+    <span class="kn">from</span> <span class="nn">asyncio</span> <span class="kn">import</span> <span class="n">Queue</span>
+</code></pre></div>
+
+<p>我们把 worker 的共享状态收集在一个 crawler 类中，主要的逻辑写在 <code>crawl</code> 方法中。我们在一个协程中启动 <code>crawl</code>,运行 asyncio 的事件循环直到 <code>crawl</code> 完成：</p>
+<div class="highlight"><pre><span></span><code>loop = asyncio.get_event_loop()
+
+crawler = crawling.Crawler(&#39;http://xkcd.com&#39;,
+                           max_redirect=10)
+
+loop.run_until_complete(crawler.crawl())
+</code></pre></div>
+
+<p>crawler 用一个根 URL 和最大重定向数 <code>max_redirect</code> 来初始化，它把 <code>(URL, max_redirect)</code> 序对放入队列中。（为什么要这样做，请看下文）</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span> <span class="n">Crawler:</span>
+    <span class="n">def</span> <span class="n">__init__</span>(<span class="nb">self</span>, <span class="n">root_url</span>, <span class="n">max_redirect</span>):
+        <span class="nb">self</span>.<span class="n">max_tasks</span> = <span class="mi">10</span>
+        <span class="nb">self</span>.<span class="n">max_redirect</span> = <span class="n">max_redirect</span>
+        <span class="nb">self</span>.<span class="s">q = Queue()</span>
+<span class="s">        self.seen_urls =</span> <span class="n">set</span>()
+
+        <span class="c1"># aiohttp&#39;s ClientSession does connection pooling and</span>
+        <span class="c1"># HTTP keep-alives for us.</span>
+        <span class="nb">self</span>.<span class="n">session</span> = <span class="n">aiohttp</span>.<span class="n">ClientSession</span>(<span class="k">loop</span>=<span class="k">loop</span>)
+
+        <span class="c1"># Put (URL, max_redirect) in the queue.</span>
+        <span class="nb">self</span>.<span class="s">q.put((root_url, self.</span><span class="n">max_redirect</span>))
+</code></pre></div>
+
+<p>现在队列中未完成的任务数是 1。回到我们的主程序，启动事件循环和 <code>crawl</code> 方法：</p>
+<div class="highlight"><pre><span></span><code>loop.run_until_complete(crawler.crawl())
+</code></pre></div>
+
+<p><code>crawl</code> 协程把 worker 们赶起来干活。它像一个主线程：阻塞在 <code>join</code> 上直到所有任务完成，同时 worker 们在后台运行。</p>
+<div class="highlight"><pre><span></span><code><span class="w">    </span><span class="nv">@asyncio</span><span class="p">.</span><span class="n">coroutine</span>
+<span class="w">    </span><span class="n">def</span><span class="w"> </span><span class="n">crawl</span><span class="p">(</span><span class="n">self</span><span class="p">)</span><span class="err">:</span>
+<span class="w">        </span><span class="ss">&quot;&quot;&quot;Run the crawler until all work is done.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="n">workers</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">[</span><span class="n">asyncio.Task(self.work())</span>
+<span class="n">                   for _ in range(self.max_tasks)</span><span class="o">]</span>
+
+<span class="w">        </span><span class="err">#</span><span class="w"> </span><span class="k">When</span><span class="w"> </span><span class="ow">all</span><span class="w"> </span><span class="k">work</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">done</span><span class="p">,</span><span class="w"> </span><span class="k">exit</span><span class="p">.</span>
+<span class="w">        </span><span class="n">yield</span><span class="w"> </span><span class="k">from</span><span class="w"> </span><span class="n">self</span><span class="p">.</span><span class="n">q</span><span class="p">.</span><span class="k">join</span><span class="p">()</span>
+<span class="w">        </span><span class="k">for</span><span class="w"> </span><span class="n">w</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="nl">workers</span><span class="p">:</span>
+<span class="w">            </span><span class="n">w</span><span class="p">.</span><span class="n">cancel</span><span class="p">()</span>
+</code></pre></div>
+
+<p>如果 worker 是线程，可能我们不会一次把它们全部创建出来。为了避免创建线程的昂贵代价，通常一个线程池会按需增长。但是协程很廉价，我们可以直接把他们全部创建出来。</p>
+<p>怎么关闭这个 <code>crawler</code> 很有趣。当 <code>join</code> 完成，worker 存活但是被暂停：他们等待更多的 URL，所以主协程要在退出之前清除它们。否则 Python 解释器关闭并调用所有对象的析构函数时，活着的 worker 会哭喊到：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ERROR</span><span class="o">:</span><span class="n">asyncio</span><span class="o">:</span><span class="n">Task</span><span class="w"> </span><span class="n">was</span><span class="w"> </span><span class="n">destroyed</span><span class="w"> </span><span class="n">but</span><span class="w"> </span><span class="n">it</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">pending</span><span class="o">!</span>
+</code></pre></div>
+
+<p><code>cancel</code> 又是如何工作的呢？生成器还有一个我们还没介绍的特点。你可以从外部抛一个异常给它：</p>
+<div class="highlight"><pre><span></span><code>&gt;&gt;&gt; gen = gen_fn()
+&gt;&gt;&gt; gen.send(None)  # Start the generator as usual.
+1
+&gt;&gt;&gt; gen.throw(Exception(&#39;error&#39;))
+Traceback (most recent call last):
+  File &quot;&lt;input&gt;&quot;, line 3, in &lt;module&gt;
+  File &quot;&lt;input&gt;&quot;, line 2, in gen_fn
+Exception: error
+</code></pre></div>
+
+<p>生成器被 <code>throw</code> 恢复，但是它现在抛出一个异常。如过生成器的调用堆栈中没有捕获异常的代码，这个异常被传递到顶层。所以注销一个协程：</p>
+<div class="highlight"><pre><span></span><code>    # Method of Task class.
+    def cancel(self):
+        self.coro.throw(CancelledError)
+</code></pre></div>
+
+<p>任何时候生成器暂停，在某些 <code>yield from</code> 语句它恢复并且抛出一个异常。我们在 task 的 <code>step</code> 方法中处理注销。</p>
+<div class="highlight"><pre><span></span><code>    # Method of Task class.
+    def step(self, future):
+        try:
+            next_future = self.coro.send(future.result)
+        except CancelledError:
+            self.cancelled = True
+            return
+        except StopIteration:
+            return
+
+        next_future.add_done_callback(self.step)
+</code></pre></div>
+
+<p>现在 task 知道它被注销了，所以当它被销毁时，它不再抱怨。</p>
+<p>一旦 <code>crawl</code> 注销了 worker，它就退出。同时事件循环看见这个协程结束了（我们后面会见到的），也就退出。</p>
+<div class="highlight"><pre><span></span><code>loop.run_until_complete(crawler.crawl())
+</code></pre></div>
+
+<p><code>crawl</code> 方法包含了所有主协程需要做的事。而 worker 则完成从队列中获取 URL、获取网页、解析它们得到新的链接。每个 worker 独立地运行 <code>work</code> 协程：</p>
+<div class="highlight"><pre><span></span><code><span class="w">    </span><span class="err">@</span><span class="n">asyncio</span><span class="o">.</span><span class="n">coroutine</span>
+<span class="w">    </span><span class="n">def</span><span class="w"> </span><span class="n">work</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="k">while</span><span class="w"> </span><span class="n">True</span><span class="p">:</span>
+<span class="w">            </span><span class="n">url</span><span class="p">,</span><span class="w"> </span><span class="n">max_redirect</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">yield</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="bp">self</span><span class="o">.</span><span class="n">q</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
+
+<span class="w">            </span><span class="c1"># Download page and add new links to self.q.</span>
+<span class="w">            </span><span class="nb">yield</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="bp">self</span><span class="o">.</span><span class="n">fetch</span><span class="p">(</span><span class="n">url</span><span class="p">,</span><span class="w"> </span><span class="n">max_redirect</span><span class="p">)</span>
+<span class="w">            </span><span class="bp">self</span><span class="o">.</span><span class="n">q</span><span class="o">.</span><span class="n">task_done</span><span class="p">()</span>
+</code></pre></div>
+
+<p>Python 看见这段代码包含 <code>yield from</code> 语句，就把它编译成生成器函数。所以在 <code>crawl</code> 方法中，我们调用了 10 次 <code>self.work</code>，但并没有真正执行，它仅仅创建了 10 个指向这段代码的生成器对象并把它们包装成 Task 对象。task 接收每个生成器所 yield 的 future，通过调用 <code>send</code> 方法，当 future 解决时，用 future 的结果做为 <code>send</code> 的参数，来驱动它。由于生成器有自己的栈帧，它们可以独立运行，带有独立的局部变量和指令指针。</p>
+<p>worker 使用队列来协调其小伙伴。它这样等待新的 URL：</p>
+<div class="highlight"><pre><span></span><code>    url, max_redirect = yield from self.q.get()
+</code></pre></div>
+
+<p>队列的 <code>get</code> 方法自身也是一个协程，它一直暂停到有新的 URL 进入队列，然后恢复并返回该条目。</p>
+<p>碰巧，这也是当主协程注销 worker 时，最后 crawl 停止，worker 协程暂停的地方。从协程的角度，<code>yield from</code> 抛出<code>CancelledError</code> 结束了它在循环中的最后旅程。</p>
+<p>worker 获取一个网页，解析链接，把新的链接放入队列中，接着调用<code>task_done</code>减小计数器。最终一个worker遇到一个没有新链接的网页，并且队列里也没有任务，这次<code>task_done</code>的调用使计数器减为0，而<code>crawl</code>正阻塞在<code>join</code>方法上，现在它就可以结束了。</p>
+<p>我们承诺过要解释为什么队列中要使用序对，像这样：</p>
+<div class="highlight"><pre><span></span><code># URL to fetch, and the number of redirects left.
+(&#39;http://xkcd.com/353&#39;, 10)
+</code></pre></div>
+
+<p>新的 URL 的重定向次数是10。获取一个特别的 URL 会重定向一个新的位置。我们减小重定向次数，并把新的 URL 放入队列中。</p>
+<div class="highlight"><pre><span></span><code># URL with a trailing slash. Nine redirects left.
+(&#39;http://xkcd.com/353/&#39;, 9)
+</code></pre></div>
+
+<p>我们使用的 <code>aiohttp</code> 默认会跟踪重定向并返回最终结果。但是，我们告诉它不要这样做，爬虫自己来处理重定向，以便它可以合并那些目的相同的重定向路径：如果我们已经在 <code>self.seen_urls</code> 看到一个 URL，说明它已经从其他的地方走过这条路了。</p>
+<p><img alt="Figure 5.4 - Redirects" src="/data/attachment/album/201703/04/160327uc6a40g8xq4apx4x.png"></p>
+<p>crawler 获取“foo”并发现它重定向到了“baz”，所以它会加“baz”到队列和 <code>seen_urls</code> 中。如果它获取的下一个页面“bar” 也重定向到“baz”，fetcher 不会再次将 “baz”加入到队列中。如果该响应是一个页面，而不是一个重定向，<code>fetch</code> 会解析它的链接，并把新链接放到队列中。</p>
+<div class="highlight"><pre><span></span><code><span class="w">    </span><span class="nv">@asyncio</span><span class="p">.</span><span class="n">coroutine</span>
+<span class="w">    </span><span class="n">def</span><span class="w"> </span><span class="k">fetch</span><span class="p">(</span><span class="n">self</span><span class="p">,</span><span class="w"> </span><span class="n">url</span><span class="p">,</span><span class="w"> </span><span class="n">max_redirect</span><span class="p">)</span><span class="err">:</span>
+<span class="w">        </span><span class="err">#</span><span class="w"> </span><span class="n">Handle</span><span class="w"> </span><span class="n">redirects</span><span class="w"> </span><span class="n">ourselves</span><span class="p">.</span>
+<span class="w">        </span><span class="n">response</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">yield</span><span class="w"> </span><span class="k">from</span><span class="w"> </span><span class="n">self</span><span class="p">.</span><span class="k">session</span><span class="p">.</span><span class="k">get</span><span class="p">(</span>
+<span class="w">            </span><span class="n">url</span><span class="p">,</span><span class="w"> </span><span class="n">allow_redirects</span><span class="o">=</span><span class="k">False</span><span class="p">)</span>
+
+<span class="w">        </span><span class="k">try</span><span class="err">:</span>
+<span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="n">is_redirect</span><span class="p">(</span><span class="n">response</span><span class="p">)</span><span class="err">:</span>
+<span class="w">                </span><span class="k">if</span><span class="w"> </span><span class="n">max_redirect</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="err">:</span>
+<span class="w">                    </span><span class="n">next_url</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">response</span><span class="p">.</span><span class="n">headers</span><span class="o">[</span><span class="n">&#39;location&#39;</span><span class="o">]</span>
+<span class="w">                    </span><span class="k">if</span><span class="w"> </span><span class="n">next_url</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">self</span><span class="p">.</span><span class="nl">seen_urls</span><span class="p">:</span>
+<span class="w">                        </span><span class="err">#</span><span class="w"> </span><span class="n">We</span><span class="w"> </span><span class="n">have</span><span class="w"> </span><span class="n">been</span><span class="w"> </span><span class="n">down</span><span class="w"> </span><span class="n">this</span><span class="w"> </span><span class="k">path</span><span class="w"> </span><span class="k">before</span><span class="p">.</span>
+<span class="w">                        </span><span class="k">return</span>
+
+<span class="w">                    </span><span class="err">#</span><span class="w"> </span><span class="n">Remember</span><span class="w"> </span><span class="n">we</span><span class="w"> </span><span class="n">have</span><span class="w"> </span><span class="n">seen</span><span class="w"> </span><span class="n">this</span><span class="w"> </span><span class="n">URL</span><span class="p">.</span>
+<span class="w">                    </span><span class="n">self</span><span class="p">.</span><span class="n">seen_urls</span><span class="p">.</span><span class="k">add</span><span class="p">(</span><span class="n">next_url</span><span class="p">)</span>
+
+<span class="w">                    </span><span class="err">#</span><span class="w"> </span><span class="n">Follow</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">redirect</span><span class="p">.</span><span class="w"> </span><span class="n">One</span><span class="w"> </span><span class="k">less</span><span class="w"> </span><span class="n">redirect</span><span class="w"> </span><span class="n">remains</span><span class="p">.</span>
+<span class="w">                    </span><span class="n">self</span><span class="p">.</span><span class="n">q</span><span class="p">.</span><span class="n">put_nowait</span><span class="p">((</span><span class="n">next_url</span><span class="p">,</span><span class="w"> </span><span class="n">max_redirect</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">))</span>
+<span class="w">             </span><span class="k">else</span><span class="err">:</span>
+<span class="w">                 </span><span class="n">links</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">yield</span><span class="w"> </span><span class="k">from</span><span class="w"> </span><span class="n">self</span><span class="p">.</span><span class="n">parse_links</span><span class="p">(</span><span class="n">response</span><span class="p">)</span>
+<span class="w">                 </span><span class="err">#</span><span class="w"> </span><span class="n">Python</span><span class="w"> </span><span class="k">set</span><span class="o">-</span><span class="nl">logic</span><span class="p">:</span>
+<span class="w">                 </span><span class="k">for</span><span class="w"> </span><span class="n">link</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">links</span><span class="p">.</span><span class="nf">difference</span><span class="p">(</span><span class="n">self</span><span class="p">.</span><span class="n">seen_urls</span><span class="p">)</span><span class="err">:</span>
+<span class="w">                    </span><span class="n">self</span><span class="p">.</span><span class="n">q</span><span class="p">.</span><span class="n">put_nowait</span><span class="p">((</span><span class="n">link</span><span class="p">,</span><span class="w"> </span><span class="n">self</span><span class="p">.</span><span class="n">max_redirect</span><span class="p">))</span>
+<span class="w">                </span><span class="n">self</span><span class="p">.</span><span class="n">seen_urls</span><span class="p">.</span><span class="k">update</span><span class="p">(</span><span class="n">links</span><span class="p">)</span>
+<span class="w">        </span><span class="nl">finally</span><span class="p">:</span>
+<span class="w">            </span><span class="err">#</span><span class="w"> </span><span class="k">Return</span><span class="w"> </span><span class="k">connection</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">pool</span><span class="p">.</span>
+<span class="w">            </span><span class="n">yield</span><span class="w"> </span><span class="k">from</span><span class="w"> </span><span class="n">response</span><span class="p">.</span><span class="k">release</span><span class="p">()</span>
+</code></pre></div>
+
+<p>如果这是多进程代码，就有可能遇到讨厌的竞争条件。比如，一个 worker 检查一个链接是否在 <code>seen_urls</code> 中，如果没有它就把这个链接加到队列中并把它放到 <code>seen_urls</code> 中。如果它在这两步操作之间被中断，而另一个 worker 解析到相同的链接，发现它并没有出现在 <code>seen_urls</code> 中就把它加入队列中。这（至少）导致同样的链接在队列中出现两次，做了重复的工作和错误的统计。</p>
+<p>然而，一个协程只在 <code>yield from</code> 时才会被中断。这是协程比多线程少遇到竞争条件的关键。多线程必须获得锁来明确的进入一个临界区，否则它就是可中断的。而 Python 的协程默认是不会被中断的，只有它明确 yield 时才主动放弃控制权。</p>
+<p>我们不再需要在用回调方式时用的 fetcher 类了。这个类只是不高效回调的一个变通方法：在等待 I/O 时，它需要一个存储状态的地方，因为局部变量并不能在函数调用间保留。倒是 <code>fetch</code> 协程可以像普通函数一样用局部变量保存它的状态，所以我们不再需要一个类。</p>
+<p>当 <code>fetch</code> 完成对服务器响应的处理，它返回到它的调用者 <code>work</code>。<code>work</code> 方法对队列调用 <code>task_done</code>，接着从队列中取出一个要获取的 URL。</p>
+<p>当 <code>fetch</code> 把新的链接放入队列中，它增加未完成的任务计数器，并停留在主协程，主协程在等待 <code>q.join</code>，处于暂停状态。而当没有新的链接并且这是队列中最后一个 URL 时，当 <code>work 调用</code>task_done<code>，任务计数器变为 0，主协程从</code>join` 中退出。</p>
+<p>与 worker 和主协程一起工作的队列代码像这样（实际的 <code>asyncio.Queue</code> 实现在 Future 所展示的地方使用 <code>asyncio.Event</code> 。不同之处在于 Event 是可以重置的，而 Future 不能从已解决返回变成待决。）</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nl">Queue</span><span class="p">:</span>
+<span class="w">    </span><span class="n">def</span><span class="w"> </span><span class="n">__init__</span><span class="p">(</span><span class="n">self</span><span class="p">)</span><span class="err">:</span>
+<span class="w">        </span><span class="n">self</span><span class="p">.</span><span class="n">_join_future</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Future</span><span class="p">()</span>
+<span class="w">        </span><span class="n">self</span><span class="p">.</span><span class="n">_unfinished_tasks</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">        </span><span class="err">#</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="n">other</span><span class="w"> </span><span class="n">initialization</span><span class="w"> </span><span class="p">...</span>
+
+<span class="w">    </span><span class="n">def</span><span class="w"> </span><span class="n">put_nowait</span><span class="p">(</span><span class="n">self</span><span class="p">,</span><span class="w"> </span><span class="n">item</span><span class="p">)</span><span class="err">:</span>
+<span class="w">        </span><span class="n">self</span><span class="p">.</span><span class="n">_unfinished_tasks</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">1</span>
+<span class="w">        </span><span class="err">#</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="n">store</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">item</span><span class="w"> </span><span class="p">...</span>
+
+<span class="w">    </span><span class="n">def</span><span class="w"> </span><span class="n">task_done</span><span class="p">(</span><span class="n">self</span><span class="p">)</span><span class="err">:</span>
+<span class="w">        </span><span class="n">self</span><span class="p">.</span><span class="n">_unfinished_tasks</span><span class="w"> </span><span class="o">-=</span><span class="w"> </span><span class="mi">1</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="n">self</span><span class="p">.</span><span class="n">_unfinished_tasks</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="err">:</span>
+<span class="w">            </span><span class="n">self</span><span class="p">.</span><span class="n">_join_future</span><span class="p">.</span><span class="n">set_result</span><span class="p">(</span><span class="k">None</span><span class="p">)</span>
+
+<span class="w">    </span><span class="nv">@asyncio</span><span class="p">.</span><span class="n">coroutine</span>
+<span class="w">    </span><span class="n">def</span><span class="w"> </span><span class="k">join</span><span class="p">(</span><span class="n">self</span><span class="p">)</span><span class="err">:</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="n">self</span><span class="p">.</span><span class="n">_unfinished_tasks</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="err">:</span>
+<span class="w">            </span><span class="n">yield</span><span class="w"> </span><span class="k">from</span><span class="w"> </span><span class="n">self</span><span class="p">.</span><span class="n">_join_future</span>
+</code></pre></div>
+
+<p>主协程 <code>crawl</code> yield from <code>join</code>。所以当最后一个 worker 把计数器减为 0，它告诉 <code>crawl</code> 恢复运行并结束。</p>
+<p>旅程快要结束了。我们的程序从 <code>crawl</code> 调用开始：</p>
+<div class="highlight"><pre><span></span><code>loop.run_until_complete(self.crawler.crawl())
+</code></pre></div>
+
+<p>程序如何结束？因为 <code>crawl</code> 是一个生成器函数，调用它返回一个生成器。为了驱动它，asyncio 把它包装成一个 task：</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span> <span class="n">EventLoop:</span>
+    <span class="n">def</span> <span class="n">run_until_complete</span>(<span class="nb">self</span>, <span class="n">coro</span>):
+        <span class="s">&quot;&quot;&quot;Run until the coroutine is done.&quot;&quot;&quot;</span>
+        <span class="n">task</span> = <span class="n">Task</span>(<span class="n">coro</span>)
+        <span class="n">task</span>.<span class="n">add_done_callback</span>(<span class="n">stop_callback</span>)
+        <span class="n">try:</span>
+            <span class="nb">self</span>.<span class="n">run_forever</span>()
+        <span class="n">except</span> <span class="n">StopError:</span>
+            <span class="nb">pass</span>
+
+<span class="k">class</span> <span class="n">StopError</span>(<span class="n">BaseException</span>):
+    <span class="s">&quot;&quot;&quot;Raised to stop the event loop.&quot;&quot;&quot;</span>
+
+<span class="n">def</span> <span class="n">stop_callback</span>(<span class="n">future</span>):
+    <span class="n">raise</span> <span class="n">StopError</span>
+</code></pre></div>
+
+<p>当这个任务完成，它抛出 <code>StopError</code>，事件循环把这个异常当作正常退出的信号。</p>
+<p>但是，task 的 <code>add_done_callbock</code> 和 <code>result</code> 方法又是什么呢？你可能认为 task 就像一个 future，不错，你的直觉是对的。我们必须承认一个向你隐藏的细节，task 是 future。</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span> <span class="n">Task</span>(<span class="n">Future</span>):
+    <span class="s">&quot;&quot;&quot;A coroutine wrapped in a Future.&quot;&quot;&quot;</span>
+</code></pre></div>
+
+<p>通常，一个 future 被别人调用 <code>set_result</code> 解决。但是 task，当协程结束时，它自己解决自己。记得我们解释过当 Python 生成器返回时，它抛出一个特殊的 <code>StopIteration</code> 异常：</p>
+<div class="highlight"><pre><span></span><code>    # Method of class Task.
+    def step(self, future):
+        try:
+            next_future = self.coro.send(future.result)
+        except CancelledError:
+            self.cancelled = True
+            return
+        except StopIteration as exc:
+
+            # Task resolves itself with coro&#39;s return
+            # value.
+            self.set_result(exc.value)
+            return
+
+        next_future.add_done_callback(self.step)
+</code></pre></div>
+
+<p>所以当事件循环调用 <code>task.add_done_callback(stop_callback)</code>，它就准备被这个 task 停止。在看一次<code>run_until_complete</code>：</p>
+<div class="highlight"><pre><span></span><code>    # Method of event loop.
+    def run_until_complete(self, coro):
+        task = Task(coro)
+        task.add_done_callback(stop_callback)
+        try:
+            self.run_forever()
+        except StopError:
+            pass
+</code></pre></div>
+
+<p>当 task 捕获 <code>StopIteration</code> 并解决自己，这个回调从循环中抛出 <code>StopError</code>。循环结束，调用栈回到<code>run_until_complete</code>。我们的程序结束。</p>
+<h3>总结</h3>
+<p>现代的程序越来越多是 I/O 密集型而不是 CPU 密集型。对于这样的程序，Python 的线程在两个方面不合适：全局解释器锁阻止真正的并行计算，并且抢占切换也导致他们更容易出现竞争。异步通常是正确的选择。但是随着基于回调的异步代码增加，它会变得非常混乱。协程是一个更整洁的替代者。它们自然地重构成子过程，有健全的异常处理和栈追溯。</p>
+<p>如果我们换个角度看 <code>yield from</code> 语句，一个协程看起来像一个传统的做阻塞 I/O 的线程。甚至我们可以采用经典的多线程模式编程，不需要重新发明。因此，与回调相比，协程更适合有经验的多线程的编码者。</p>
+<p>但是当我们睁开眼睛关注 <code>yield from</code> 语句，我们能看到协程放弃控制权、允许其它人运行的标志点。不像多线程，协程展示出我们的代码哪里可以被中断哪里不能。在 Glyph Lefkowitz 富有启发性的文章“<a href="https://glyph.twistedmatrix.com/2014/02/unyielding.html">Unyielding</a>”：“线程让局部推理变得困难，然而局部推理可能是软件开发中最重要的事”。然而，明确的 yield，让“通过过程本身而不是整个系统理解它的行为（和因此、正确性）”成为可能。</p>
+<p>这章写于 Python 和异步的复兴时期。你刚学到的基于生成器的的协程，在 2014 年发布在 Python 3.4 的 asyncio 模块中。2015 年 9 月，Python 3.5 发布，协程成为语言的一部分。这个原生的协程通过“async def”来声明, 使用“await”而不是“yield from”委托一个协程或者等待 Future。</p>
+<p>除了这些优点，核心的思想不变。Python 新的原生协程与生成器只是在语法上不同，工作原理非常相似。事实上，在 Python 解释器中它们共用同一个实现方法。Task、Future 和事件循环在 asynico 中扮演着同样的角色。</p>
+<p>你已经知道 asyncio 协程是如何工作的了，现在你可以忘记大部分的细节。这些机制隐藏在一个整洁的接口下。但是你对这基本原理的理解能让你在现代异步环境下正确而高效的编写代码。</p>
+<p>（题图素材来自：<a href="http://ruth-tay.deviantart.com/art/Bearded-Vulture-553800995">ruth-tay.deviantart.com</a>）</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

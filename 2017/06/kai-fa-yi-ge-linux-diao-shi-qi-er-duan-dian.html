@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>开发一个 Linux 调试器（二）：断点</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Simon Brand 在该系列的第一部分，我们写了一个小的进程启动器，作为我们调试器的基础。在这篇博客中，我们会学习在 x86 Linux 上 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/06/kai-fa-yi-ge-linux-diao-shi-qi-er-duan-dian.html" rel="bookmark"
+           title="Permalink to 开发一个 Linux 调试器（二）：断点">开发一个 Linux 调试器（二）：断点</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-06-27T08:53:00+02:00">
+                Published: Tue 27 June 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Simon Brand</p>
+<p><img alt="" src="/data/attachment/album/201706/27/085227v29kih3cftuftnk5.jpg"></p>
+<p>在该系列的第一部分，我们写了一个小的进程启动器，作为我们调试器的基础。在这篇博客中，我们会学习在 x86 Linux 上断点是如何工作的，以及如何给我们工具添加设置断点的能力。</p>
+<h3>系列文章索引</h3>
+<p>随着后面文章的发布，这些链接会逐渐生效。</p>
+<ol>
+<li><a href="/article-8626-1.html">准备环境</a></li>
+<li><a href="https://github.com/TartanLlama/minidbg/tree/tut_break">断点</a></li>
+<li>寄存器和内存</li>
+<li>Elves 和 dwarves</li>
+<li>源码和信号</li>
+<li>源码层逐步执行</li>
+<li>源码层断点</li>
+<li>调用栈</li>
+<li>读取变量 10.之后步骤</li>
+</ol>
+<h3>断点是如何形成的？</h3>
+<p>有两种类型的断点：硬件和软件。硬件断点通常涉及到设置与体系结构相关的寄存器来为你产生断点，而软件断点则涉及到修改正在执行的代码。在这篇文章中我们只会关注软件断点，因为它们比较简单，而且可以设置任意多断点。在 x86 机器上任一时刻你最多只能有 4 个硬件断点，但是它们能让你在读取或者写入给定地址时触发，而不是只有当代码执行到那里的时候。</p>
+<p>我前面说软件断点是通过修改正在执行的代码实现的，那么问题就来了：</p>
+<ul>
+<li>我们如何修改代码？</li>
+<li>为了设置断点我们要做什么修改？</li>
+<li>如何告知调试器？</li>
+</ul>
+<p>第一个问题的答案显然是 <code>ptrace</code>。我们之前已经用它为我们的程序设置跟踪并继续程序的执行，但我们也可以用它来读或者写内存。</p>
+<p>当执行到断点时，我们的更改要让处理器暂停并给程序发送信号。在 x86 机器上这是通过 <code>int 3</code> 重写该地址上的指令实现的。x86 机器有个<ruby> 中断向量表 <rp>  （ </rp> <rt>  interrupt vector table </rt> <rp>  ） </rp></ruby>，操作系统能用它来为多种事件注册处理程序，例如页故障、保护故障和无效操作码。它就像是注册错误处理回调函数，但是是在硬件层面的。当处理器执行 <code>int 3</code> 指令时，控制权就被传递给断点中断处理器，对于 Linux 来说，就是给进程发送 <code>SIGTRAP</code> 信号。你可以在下图中看到这个进程，我们用 <code>0xcc</code> 覆盖了 <code>mov</code> 指令的第一个字节，它是 <code>init 3</code> 的指令代码。</p>
+<p><img alt="断点" src="/data/attachment/album/201706/27/085310slyjyd6m1l01lv25.png"></p>
+<p>谜题的最后一个部分是调试器如何被告知中断的。如果你回顾前面的文章，我们可以用 <code>waitpid</code> 来监听被发送给被调试的程序的信号。这里我们也可以这样做：设置断点、继续执行程序、调用 <code>waitpid</code> 并等待直到发生 <code>SIGTRAP</code>。然后就可以通过打印已运行到的源码位置、或改变有图形用户界面的调试器中关注的代码行，将这个断点传达给用户。</p>
+<h3>实现软件断点</h3>
+<p>我们会实现一个 <code>breakpoint</code> 类来表示某个位置的断点，我们可以根据需要启用或者停用该断点。</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="k">breakpoint</span><span class="w"> </span><span class="p">{</span>
+<span class="n">public</span><span class="p">:</span>
+<span class="w">    </span><span class="k">breakpoint</span><span class="p">(</span><span class="n">pid_t</span><span class="w"> </span><span class="n">pid</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">intptr_t</span><span class="w"> </span><span class="n">addr</span><span class="p">)</span>
+<span class="w">        </span><span class="p">:</span><span class="w"> </span><span class="n">m_pid</span><span class="p">{</span><span class="n">pid</span><span class="p">},</span><span class="w"> </span><span class="n">m_addr</span><span class="p">{</span><span class="n">addr</span><span class="p">},</span><span class="w"> </span><span class="n">m_enabled</span><span class="p">{</span><span class="bp">false</span><span class="p">},</span><span class="w"> </span><span class="n">m_saved_data</span><span class="p">{}</span>
+<span class="w">    </span><span class="p">{}</span>
+
+<span class="w">    </span><span class="nb nb-Type">void</span><span class="w"> </span><span class="n">enable</span><span class="p">();</span>
+<span class="w">    </span><span class="nb nb-Type">void</span><span class="w"> </span><span class="n">disable</span><span class="p">();</span>
+
+<span class="w">    </span><span class="n">auto</span><span class="w"> </span><span class="n">is_enabled</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nb nb-Type">bool</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">m_enabled</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<span class="w">    </span><span class="n">auto</span><span class="w"> </span><span class="n">get_address</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">intptr_t</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">m_addr</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+
+<span class="n">private</span><span class="p">:</span>
+<span class="w">    </span><span class="n">pid_t</span><span class="w"> </span><span class="n">m_pid</span><span class="p">;</span>
+<span class="w">    </span><span class="n">std</span><span class="p">::</span><span class="n">intptr_t</span><span class="w"> </span><span class="n">m_addr</span><span class="p">;</span>
+<span class="w">    </span><span class="nb nb-Type">bool</span><span class="w"> </span><span class="n">m_enabled</span><span class="p">;</span>
+<span class="w">    </span><span class="n">uint64_t</span><span class="w"> </span><span class="n">m_saved_data</span><span class="p">;</span><span class="w"> </span><span class="o">//</span><span class="n">data</span><span class="w"> </span><span class="n">which</span><span class="w"> </span><span class="n">used</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">at</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="k">breakpoint</span><span class="w"> </span><span class="n">address</span>
+<span class="p">};</span>
+</code></pre></div>
+
+<p>这里的大部分代码都是跟踪状态；真正神奇的地方是 <code>enable</code> 和 <code>disable</code> 函数。</p>
+<p>正如我们上面学到的，我们要用 <code>int 3</code> 指令 - 编码为 <code>0xcc</code> - 替换当前指定地址的指令。我们还要保存该地址之前的值，以便后面恢复该代码；我们不想忘了执行用户（原来）的代码。</p>
+<div class="highlight"><pre><span></span><code><span class="nx">void</span><span class="w"> </span><span class="nx">breakpoint</span><span class="o">::</span><span class="nx">enable</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">m_saved_data</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">ptrace</span><span class="p">(</span><span class="nx">PTRACE_PEEKDATA</span><span class="p">,</span><span class="w"> </span><span class="nx">m_pid</span><span class="p">,</span><span class="w"> </span><span class="nx">m_addr</span><span class="p">,</span><span class="w"> </span><span class="nx">nullptr</span><span class="p">);</span>
+<span class="w">    </span><span class="nx">uint64_t</span><span class="w"> </span><span class="nx">int3</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mh">0xcc</span><span class="p">;</span>
+<span class="w">    </span><span class="nx">uint64_t</span><span class="w"> </span><span class="nx">data_with_int3</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="p">((</span><span class="nx">m_saved_data</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="o">~</span><span class="mh">0xff</span><span class="p">)</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nx">int3</span><span class="p">);</span><span class="w"> </span><span class="c1">//set bottom byte to 0xcc</span>
+<span class="w">    </span><span class="nx">ptrace</span><span class="p">(</span><span class="nx">PTRACE_POKEDATA</span><span class="p">,</span><span class="w"> </span><span class="nx">m_pid</span><span class="p">,</span><span class="w"> </span><span class="nx">m_addr</span><span class="p">,</span><span class="w"> </span><span class="nx">data_with_int3</span><span class="p">);</span>
+
+<span class="w">    </span><span class="nx">m_enabled</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kc">true</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><code>PTRACE_PEEKDATA</code> 请求告知 <code>ptrace</code> 如何读取被跟踪进程的内存。我们给它一个进程 ID 和一个地址，然后它返回给我们该地址当前的 64 位内容。 <code>(m_saved_data &amp; ~0xff)</code> 把这个数据的低位字节置零，然后我们用它和我们的 <code>int 3</code> 指令按位或（<code>OR</code>）来设置断点。最后我们通过 <code>PTRACE_POKEDATA</code> 用我们的新数据覆盖那部分内存来设置断点。</p>
+<p><code>disable</code> 的实现比较简单，我们只需要恢复用 <code>0xcc</code> 所覆盖的原始数据。</p>
+<div class="highlight"><pre><span></span><code><span class="nx">void</span><span class="w"> </span><span class="nx">breakpoint</span><span class="o">::</span><span class="nx">disable</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">ptrace</span><span class="p">(</span><span class="nx">PTRACE_POKEDATA</span><span class="p">,</span><span class="w"> </span><span class="nx">m_pid</span><span class="p">,</span><span class="w"> </span><span class="nx">m_addr</span><span class="p">,</span><span class="w"> </span><span class="nx">m_saved_data</span><span class="p">);</span>
+<span class="w">    </span><span class="nx">m_enabled</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kc">false</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3>在调试器中增加断点</h3>
+<p>为了支持通过用户界面设置断点，我们要在 debugger 类修改三个地方：</p>
+<ol>
+<li>给 <code>debugger</code> 添加断点存储数据结构</li>
+<li>添加 <code>set_breakpoint_at_address</code> 函数</li>
+<li>给我们的 <code>handle_command</code> 函数添加 <code>break</code> 命令</li>
+</ol>
+<p>我会将我的断点保存到 <code>std::unordered_map&lt;std::intptr_t, breakpoint&gt;</code> 结构，以便能简单快速地判断一个给定的地址是否有断点，如果有的话，取回该 breakpoint 对象。</p>
+<div class="highlight"><pre><span></span><code><span class="kd">class</span><span class="w"> </span><span class="nx">debugger</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="c1">//...</span>
+<span class="w">    </span><span class="nx">void</span><span class="w"> </span><span class="nx">set_breakpoint_at_address</span><span class="p">(</span><span class="nx">std</span><span class="o">::</span><span class="nx">intptr_t</span><span class="w"> </span><span class="kd">addr</span><span class="p">);</span>
+<span class="w">    </span><span class="c1">//...</span>
+<span class="k">private</span><span class="p">:</span>
+<span class="w">    </span><span class="c1">//...</span>
+<span class="w">    </span><span class="nx">std</span><span class="o">::</span><span class="nx">unordered_map</span><span class="p">&lt;</span><span class="nx">std</span><span class="o">::</span><span class="nx">intptr_t</span><span class="p">,</span><span class="nx">breakpoint</span><span class="p">&gt;</span><span class="w"> </span><span class="nx">m_breakpoints</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>在 <code>set_breakpoint_at_address</code> 函数中我们会新建一个 breakpoint 对象，启用它，把它添加到数据结构里，并给用户打印一条信息。如果你喜欢的话，你可以重构所有的输出信息，从而你可以将调试器作为库或者命令行工具使用，为了简便，我把它们都整合到了一起。</p>
+<div class="highlight"><pre><span></span><code><span class="n">void</span><span class="w"> </span><span class="nl">debugger</span><span class="p">:</span><span class="err">:</span><span class="n">set_breakpoint_at_address</span><span class="p">(</span><span class="nl">std</span><span class="p">:</span><span class="err">:</span><span class="n">intptr_t</span><span class="w"> </span><span class="n">addr</span><span class="p">)</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="nl">std</span><span class="p">:</span><span class="err">:</span><span class="n">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="ss">&quot;Set breakpoint at address 0x&quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="nl">std</span><span class="p">:</span><span class="err">:</span><span class="n">hex</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">addr</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="nl">std</span><span class="p">:</span><span class="err">:</span><span class="n">endl</span><span class="p">;</span>
+<span class="w">    </span><span class="n">breakpoint</span><span class="w"> </span><span class="n">bp</span><span class="w"> </span><span class="err">{</span><span class="n">m_pid</span><span class="p">,</span><span class="w"> </span><span class="n">addr</span><span class="err">}</span><span class="p">;</span>
+<span class="w">    </span><span class="n">bp</span><span class="p">.</span><span class="n">enable</span><span class="p">();</span>
+<span class="w">    </span><span class="n">m_breakpoints</span><span class="o">[</span><span class="n">addr</span><span class="o">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">bp</span><span class="p">;</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<p>现在我们会在我们的命令处理程序中增加对我们新函数的调用。</p>
+<div class="highlight"><pre><span></span><code><span class="nb nb-Type">void</span><span class="w"> </span><span class="n">debugger</span><span class="p">::</span><span class="n">handle_command</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">line</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">auto</span><span class="w"> </span><span class="n">args</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">split</span><span class="p">(</span><span class="n">line</span><span class="p">,</span><span class="s1">&#39; &#39;</span><span class="p">);</span>
+<span class="w">    </span><span class="n">auto</span><span class="w"> </span><span class="n">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">];</span>
+
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">is_prefix</span><span class="p">(</span><span class="n">command</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;cont&quot;</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">continue_execution</span><span class="p">();</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="p">(</span><span class="n">is_prefix</span><span class="p">(</span><span class="n">command</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;break&quot;</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">std</span><span class="p">::</span><span class="n">string</span><span class="w"> </span><span class="n">addr</span><span class="w"> </span><span class="p">{</span><span class="n">args</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span><span class="w"> </span><span class="mi">2</span><span class="p">};</span><span class="w"> </span><span class="o">//</span><span class="n">naively</span><span class="w"> </span><span class="n">assume</span><span class="w"> </span><span class="n">that</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">user</span><span class="w"> </span><span class="n">has</span><span class="w"> </span><span class="n">written</span><span class="w"> </span><span class="mh">0xADD</span><span class="n">RESS</span>
+<span class="w">        </span><span class="n">set_breakpoint_at_address</span><span class="p">(</span><span class="n">std</span><span class="p">::</span><span class="n">stol</span><span class="p">(</span><span class="n">addr</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">16</span><span class="p">));</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">std</span><span class="p">::</span><span class="n">cerr</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s2">&quot;Unknown command</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>我删除了字符串中的前两个字符并对结果调用 <code>std::stol</code>，你也可以让该解析更健壮一些。<code>std::stol</code> 可以将字符串按照所给基数转化为整数。</p>
+<h3>从断点继续执行</h3>
+<p>如果你尝试这样做，你可能会发现，如果你从断点处继续执行，不会发生任何事情。这是因为断点仍然在内存中，因此一直被重复命中。简单的解决办法就是停用这个断点、运行到下一步、再次启用这个断点、然后继续执行。不过我们还需要更改程序计数器，指回到断点前面，这部分内容会留到下一篇关于操作寄存器的文章中介绍。</p>
+<h3>测试它</h3>
+<p>当然，如果你不知道要在哪个地址设置，那么在某些地址设置断点并非很有用。后面我们会学习如何在函数名或者代码行设置断点，但现在我们可以通过手动实现。</p>
+<p>测试你调试器的简单方法是写一个 hello world 程序，这个程序输出到 <code>std::err</code>（为了避免缓存），并在调用输出操作符的地方设置断点。如果你继续执行被调试的程序，执行很可能会停止而不会输出任何东西。然后你可以重启调试器并在调用之后设置一个断点，现在你应该看到成功地输出了消息。</p>
+<p>查找地址的一个方法是使用 <code>objdump</code>。如果你打开一个终端并执行 <code>objdump -d &lt;your program&gt;</code>，然后你应该看到你的程序的反汇编代码。你就可以找到 <code>main</code> 函数并定位到你想设置断点的 <code>call</code> 指令。例如，我编译了一个 hello world 程序，反汇编它，然后得到了如下的 <code>main</code> 的反汇编代码：</p>
+<div class="highlight"><pre><span></span><code><span class="mf">0000000000400936</span><span class="w"> </span><span class="o">&lt;</span><span class="n">main</span><span class="o">&gt;</span><span class="p">:</span>
+<span class="w">  </span><span class="mf">400936</span><span class="p">:</span><span class="w">   </span><span class="mf">55</span><span class="w">                      </span><span class="n">push</span><span class="w">   </span><span class="err">%</span><span class="n">rbp</span>
+<span class="w">  </span><span class="mf">400937</span><span class="p">:</span><span class="w">   </span><span class="mf">48</span><span class="w"> </span><span class="mf">89</span><span class="w"> </span><span class="n">e5</span><span class="w">                </span><span class="n">mov</span><span class="w">    </span><span class="err">%</span><span class="n">rsp</span><span class="p">,</span><span class="err">%</span><span class="n">rbp</span>
+<span class="w">  </span><span class="mf">40093</span><span class="n">a</span><span class="p">:</span><span class="w">   </span><span class="n">be</span><span class="w"> </span><span class="mf">35</span><span class="w"> </span><span class="mf">0</span><span class="n">a</span><span class="w"> </span><span class="mf">40</span><span class="w"> </span><span class="mf">00</span><span class="w">          </span><span class="n">mov</span><span class="w">    </span><span class="err">$</span><span class="mf">0</span><span class="n">x400a35</span><span class="p">,</span><span class="err">%</span><span class="n">esi</span>
+<span class="w">  </span><span class="mf">40093</span><span class="n">f</span><span class="p">:</span><span class="w">   </span><span class="n">bf</span><span class="w"> </span><span class="mf">60</span><span class="w"> </span><span class="mf">10</span><span class="w"> </span><span class="mf">60</span><span class="w"> </span><span class="mf">00</span><span class="w">          </span><span class="n">mov</span><span class="w">    </span><span class="err">$</span><span class="mf">0</span><span class="n">x601060</span><span class="p">,</span><span class="err">%</span><span class="n">edi</span>
+<span class="w">  </span><span class="mf">400944</span><span class="p">:</span><span class="w">   </span><span class="n">e8</span><span class="w"> </span><span class="n">d7</span><span class="w"> </span><span class="n">fe</span><span class="w"> </span><span class="n">ff</span><span class="w"> </span><span class="n">ff</span><span class="w">          </span><span class="n">callq</span><span class="w">  </span><span class="mf">400820</span><span class="w"> </span><span class="o">&lt;</span><span class="n">_ZStlsISt11char_traitsIcEERSt13basic_ostreamIcT_ES5_PKc</span><span class="err">@</span><span class="n">plt</span><span class="o">&gt;</span>
+<span class="w">  </span><span class="mf">400949</span><span class="p">:</span><span class="w">   </span><span class="n">b8</span><span class="w"> </span><span class="mf">00</span><span class="w"> </span><span class="mf">00</span><span class="w"> </span><span class="mf">00</span><span class="w"> </span><span class="mf">00</span><span class="w">          </span><span class="n">mov</span><span class="w">    </span><span class="err">$</span><span class="mf">0</span><span class="n">x0</span><span class="p">,</span><span class="err">%</span><span class="n">eax</span>
+<span class="w">  </span><span class="mf">40094</span><span class="n">e</span><span class="p">:</span><span class="w">   </span><span class="mf">5</span><span class="n">d</span><span class="w">                      </span><span class="n">pop</span><span class="w">    </span><span class="err">%</span><span class="n">rbp</span>
+<span class="w">  </span><span class="mf">40094</span><span class="n">f</span><span class="p">:</span><span class="w">   </span><span class="n">c3</span><span class="w">                      </span><span class="n">retq</span>
+</code></pre></div>
+
+<p>正如你看到的，要没有输出，我们要在 <code>0x400944</code> 设置断点，要看到输出，要在 <code>0x400949</code> 设置断点。</p>
+<h3>总结</h3>
+<p>现在你应该有了一个可以启动程序、允许在内存地址上设置断点的调试器。后面我们会添加读写内存和寄存器的功能。再次说明，如果你有任何问题请在评论框中告诉我。</p>
+<p>你可以在<a href="https://github.com/TartanLlama/minidbg/tree/tut_break">这里</a> 找到该项目的代码。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

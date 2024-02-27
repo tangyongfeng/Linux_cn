@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Python 函数式编程：不可变数据结构</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Moshe Zadka 不可变性可以帮助我们更好地理解我们的代码。下面我将讲述如何在不牺牲性能的条件下来实现它。 在这个由两 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/11/python-han-shu-shi-bian-cheng-bu-ke-bian-shu-ju-jie-gou.html" rel="bookmark"
+           title="Permalink to Python 函数式编程：不可变数据结构">Python 函数式编程：不可变数据结构</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-11-11T22:41:16+01:00">
+                Published: Sun 11 November 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Moshe Zadka</p>
+<blockquote>
+<p>不可变性可以帮助我们更好地理解我们的代码。下面我将讲述如何在不牺牲性能的条件下来实现它。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/201811/11/224129ysll52s353dsnvyd.png"></p>
+<p>在这个由两篇文章构成的系列中，我将讨论如何将函数式编程方法论中的思想引入至 Python 中，来充分发挥这两个领域的优势。</p>
+<p>本文（也就是第一篇文章）中，我们将探讨不可变数据结构的优势。第二部分会探讨如何在 <code>toolz</code> 库的帮助下，用 Python 实现高层次的函数式编程理念。</p>
+<p>为什么要用函数式编程？因为变化的东西更难推理。如果你已经确信变化会带来麻烦，那很棒。如果你还没有被说服，在文章结束时，你会明白这一点的。</p>
+<p>我们从思考正方形和矩形开始。如果我们抛开实现细节，单从接口的角度考虑，正方形是矩形的子类吗？</p>
+<p>子类的定义基于<a href="https://en.wikipedia.org/wiki/Liskov_substitution_principle">里氏替换原则</a>。一个子类必须能够完成超类所做的一切。</p>
+<p>如何为矩形定义接口？</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">zope.interface</span> <span class="kn">import</span> <span class="n">Interface</span>
+
+<span class="k">class</span> <span class="nc">IRectangle</span><span class="p">(</span><span class="n">Interface</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">get_length</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;正方形能做到&quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">get_width</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;正方形能做到&quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">set_dimensions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">length</span><span class="p">,</span> <span class="n">width</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;啊哦&quot;&quot;&quot;</span>
+</code></pre></div>
+
+<p>如果我们这么定义，那正方形就不能成为矩形的子类：如果长度和宽度不等，它就无法对 <code>set_dimensions</code> 方法做出响应。</p>
+<p>另一种方法，是选择将矩形做成不可变对象。</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span> <span class="n">IRectangle</span>(<span class="n">Interface</span>):
+    <span class="n">def</span> <span class="n">get_length</span>(<span class="nb">self</span>):
+        <span class="s">&quot;&quot;&quot;正方形能做到&quot;&quot;&quot;</span>
+    <span class="n">def</span> <span class="n">get_width</span>(<span class="nb">self</span>):
+        <span class="s">&quot;&quot;&quot;正方形能做到&quot;&quot;&quot;</span>
+    <span class="n">def</span> <span class="n">with_dimensions</span>(<span class="nb">self</span>, <span class="n">length</span>, <span class="n">width</span>):
+        <span class="s">&quot;&quot;&quot;返回一个新矩形&quot;&quot;&quot;</span>
+</code></pre></div>
+
+<p>现在，我们可以将正方形视为矩形了。在调用 <code>with_dimensions</code> 时，它可以返回一个新的矩形（它不一定是个正方形），但它本身并没有变，依然是一个正方形。</p>
+<p>这似乎像是个学术问题 —— 直到我们认为正方形和矩形可以在某种意义上看做一个容器的侧面。在理解了这个例子以后，我们会处理更传统的容器，以解决更现实的案例。比如，考虑一下随机存取数组。</p>
+<p>我们现在有 <code>ISquare</code> 和 <code>IRectangle</code>，而且 <code>ISequere</code> 是 <code>IRectangle</code> 的子类。</p>
+<p>我们希望把矩形放进随机存取数组中：</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span> <span class="n">IArrayOfRectangles</span>(<span class="n">Interface</span>):
+    <span class="n">def</span> <span class="n">get_element</span>(<span class="nb">self</span>, <span class="n">i</span>):
+        <span class="s">&quot;&quot;&quot;返回一个矩形&quot;&quot;&quot;</span>
+    <span class="n">def</span> <span class="n">set_element</span>(<span class="nb">self</span>, <span class="n">i</span>, <span class="n">rectangle</span>):
+        <span class="s">&quot;&quot;&quot;&#39;rectangle&#39; 可以是任意 IRectangle 对象&quot;&quot;&quot;</span>
+</code></pre></div>
+
+<p>我们同样希望把正方形放进随机存取数组：</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span> <span class="n">IArrayOfSquare</span>(<span class="n">Interface</span>):
+    <span class="n">def</span> <span class="n">get_element</span>(<span class="nb">self</span>, <span class="n">i</span>):
+        <span class="s">&quot;&quot;&quot;返回一个正方形&quot;&quot;&quot;</span>
+    <span class="n">def</span> <span class="n">set_element</span>(<span class="nb">self</span>, <span class="n">i</span>, <span class="n">square</span>):
+        <span class="s">&quot;&quot;&quot;&#39;square&#39; 可以是任意 ISquare 对象&quot;&quot;&quot;</span>
+</code></pre></div>
+
+<p>尽管 <code>ISquare</code> 是 <code>IRectangle</code> 的子集，但没有任何一个数组可以同时实现 <code>IArrayOfSquare</code> 和 <code>IArrayOfRectangle</code>.</p>
+<p>为什么不能呢？假设 <code>bucket</code> 实现了这两个类的功能。</p>
+<div class="highlight"><pre><span></span><code>&gt;&gt;&gt; rectangle = make_rectangle(3, 4)
+&gt;&gt;&gt; bucket.set_element(0, rectangle) # 这是 IArrayOfRectangle 中的合法操作
+&gt;&gt;&gt; thing = bucket.get_element(0) # IArrayOfSquare 要求 thing 必须是一个正方形
+&gt;&gt;&gt; assert thing.height == thing.width
+Traceback (most recent call last):
+  File &quot;&lt;stdin&gt;&quot;, line 1, in &lt;module&gt;
+AssertionError
+</code></pre></div>
+
+<p>无法同时实现这两类功能，意味着这两个类无法构成继承关系，即使 <code>ISquare</code> 是 <code>IRectangle</code> 的子类。问题来自 <code>set_element</code> 方法：如果我们实现一个只读的数组，那 <code>IArrayOfSquare</code> 就可以是 <code>IArrayOfRectangle</code> 的子类了。</p>
+<p>在可变的 <code>IRectangle</code> 和可变的 <code>IArrayOf*</code> 接口中，可变性都会使得对类型和子类的思考变得更加困难 —— 放弃变换的能力，意味着我们的直觉所希望的类型间关系能够成立了。</p>
+<p>可变性还会带来作用域方面的影响。当一个共享对象被两个地方的代码改变时，这种问题就会发生。一个经典的例子是两个线程同时改变一个共享变量。不过在单线程程序中，即使在两个相距很远的地方共享一个变量，也是一件简单的事情。从 Python 语言的角度来思考，大多数对象都可以从很多位置来访问：比如在模块全局变量，或在一个堆栈跟踪中，或者以类属性来访问。</p>
+<p>如果我们无法对共享做出约束，那我们可能要考虑对可变性来进行约束了。</p>
+<p>这是一个不可变的矩形，它利用了 <a href="https://www.attrs.org/en/stable/">attr</a> 库：</p>
+<div class="highlight"><pre><span></span><code><span class="nv">@attr</span><span class="p">.</span><span class="n">s</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="k">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="n">Rectange</span><span class="p">(</span><span class="k">object</span><span class="p">)</span><span class="err">:</span>
+<span class="w">    </span><span class="n">length</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">attr</span><span class="p">.</span><span class="n">ib</span><span class="p">()</span>
+<span class="w">    </span><span class="n">width</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">attr</span><span class="p">.</span><span class="n">ib</span><span class="p">()</span>
+<span class="w">    </span><span class="nv">@classmethod</span>
+<span class="w">    </span><span class="n">def</span><span class="w"> </span><span class="n">with_dimensions</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span><span class="w"> </span><span class="n">length</span><span class="p">,</span><span class="w"> </span><span class="n">width</span><span class="p">)</span><span class="err">:</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">cls</span><span class="p">(</span><span class="n">length</span><span class="p">,</span><span class="w"> </span><span class="n">width</span><span class="p">)</span>
+</code></pre></div>
+
+<p>这是一个正方形：</p>
+<div class="highlight"><pre><span></span><code><span class="nv">@attr</span><span class="p">.</span><span class="n">s</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="k">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nf">Square</span><span class="p">(</span><span class="k">object</span><span class="p">)</span><span class="err">:</span>
+<span class="w">    </span><span class="n">side</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">attr</span><span class="p">.</span><span class="n">ib</span><span class="p">()</span>
+<span class="w">    </span><span class="nv">@classmethod</span>
+<span class="w">    </span><span class="n">def</span><span class="w"> </span><span class="n">with_dimensions</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span><span class="w"> </span><span class="n">length</span><span class="p">,</span><span class="w"> </span><span class="n">width</span><span class="p">)</span><span class="err">:</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">Rectangle</span><span class="p">(</span><span class="n">length</span><span class="p">,</span><span class="w"> </span><span class="n">width</span><span class="p">)</span>
+</code></pre></div>
+
+<p>使用 <code>frozen</code> 参数，我们可以轻易地使 <code>attrs</code> 创建的类成为不可变类型。正确实现 <code>__setitem__</code> 方法的工作都交给别人完成了，对我们是不可见的。</p>
+<p>修改对象仍然很容易；但是我们不可能改变它的本质。</p>
+<div class="highlight"><pre><span></span><code>too_long = Rectangle(100, 4)
+reasonable = attr.evolve(too_long, length=10)
+</code></pre></div>
+
+<p><a href="https://pyrsistent.readthedocs.io/en/latest/">Pyrsistent</a> 能让我们拥有不可变的容器。</p>
+<div class="highlight"><pre><span></span><code># 由整数构成的向量
+a = pyrsistent.v(1, 2, 3)
+# 并非由整数构成的向量
+b = a.set(1, &quot;hello&quot;)
+</code></pre></div>
+
+<p>尽管 <code>b</code> 不是一个由整数构成的向量，但没有什么能够改变 <code>a</code> 只由整数构成的性质。</p>
+<p>如果 <code>a</code> 有一百万个元素呢？<code>b</code> 会将其中的 999999 个元素复制一遍吗？<code>Pyrsistent</code> 具有“大 O”性能保证：所有操作的时间复杂度都是 <code>O(log n)</code>. 它还带有一个可选的 C 语言扩展，以在“大 O”性能之上进行提升。</p>
+<p>修改嵌套对象时，会涉及到“变换器”的概念：</p>
+<div class="highlight"><pre><span></span><code>blog = pyrsistent.m(
+    title=&quot;My blog&quot;,
+    links=pyrsistent.v(&quot;github&quot;, &quot;twitter&quot;),
+    posts=pyrsistent.v(
+        pyrsistent.m(title=&quot;no updates&quot;,
+                     content=&quot;I&#39;m busy&quot;),
+        pyrsistent.m(title=&quot;still no updates&quot;,
+                     content=&quot;still busy&quot;)))
+new_blog = blog.transform([&quot;posts&quot;, 1, &quot;content&quot;],
+                          &quot;pretty busy&quot;)
+</code></pre></div>
+
+<p><code>new_blog</code> 现在将是如下对象的不可变等价物：</p>
+<div class="highlight"><pre><span></span><code>{&#39;links&#39;: [&#39;github&#39;, &#39;twitter&#39;],
+ &#39;posts&#39;: [{&#39;content&#39;: &quot;I&#39;m busy&quot;,
+            &#39;title&#39;: &#39;no updates&#39;},
+           {&#39;content&#39;: &#39;pretty busy&#39;,
+            &#39;title&#39;: &#39;still no updates&#39;}],
+ &#39;title&#39;: &#39;My blog&#39;}
+</code></pre></div>
+
+<p>不过 <code>blog</code> 依然不变。这意味着任何拥有旧对象引用的人都没有受到影响：转换只会有局部效果。</p>
+<p>当共享行为猖獗时，这会很有用。例如，函数的默认参数：</p>
+<div class="highlight"><pre><span></span><code>def silly_sum(a, b, extra=v(1, 2)):
+    extra = extra.extend([a, b])
+    return sum(extra)
+</code></pre></div>
+
+<p>在本文中，我们了解了为什么不可变性有助于我们来思考我们的代码，以及如何在不带来过大性能负担的条件下实现它。下一篇，我们将学习如何借助不可变对象来实现强大的程序结构。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

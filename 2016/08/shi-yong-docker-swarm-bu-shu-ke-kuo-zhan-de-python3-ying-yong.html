@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 Docker Swarm 部署可扩展的 Python3 应用</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Chad Lung Ben Firshman 最近在 Dockercon 做了一个关于使用 Docker 构建无服务应用的演讲，你可以在这里查看详情（还有视频）。之后，我写了一篇关 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2016/08/shi-yong-docker-swarm-bu-shu-ke-kuo-zhan-de-python3-ying-yong.html" rel="bookmark"
+           title="Permalink to 使用 Docker Swarm 部署可扩展的 Python3 应用">使用 Docker Swarm 部署可扩展的 Python3 应用</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2016-08-24T09:00:00+02:00">
+                Published: Wed 24 August 2016
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Chad Lung</p>
+<p><a href="https://blog.docker.com/author/bfirshman/">Ben Firshman</a> 最近在 <a href="http://dockercon.com/">Dockercon</a> 做了一个关于使用 Docker 构建无服务应用的演讲，你可以在<a href="https://blog.docker.com/author/bfirshman/">这里查看详情</a>（还有视频）。之后，我写了一篇关于如何使用 <a href="https://aws.amazon.com/lambda/">AWS Lambda</a> 构建微服务系统的<a href="http://www.giantflyingsaucer.com/blog/?p=5730">文章</a>。</p>
+<p><img alt="" src="/data/attachment/album/201608/24/085955kwrcach76z1zrncc.jpg"></p>
+<p>今天，我想展示给你的就是如何使用 <a href="https://docs.docker.com/swarm/">Docker Swarm</a> 部署一个简单的 Python Falcon REST 应用。这里我不会使用<a href="https://github.com/bfirsh/dockerrun">dockerrun</a> 或者是其他无服务特性，你可能会惊讶，使用 Docker Swarm 部署（复制）一个 Python（Java、Go 都一样）应用是如此的简单。</p>
+<p>注意：这展示的部分步骤是截取自 <a href="https://docs.docker.com/engine/swarm/swarm-tutorial/">Swarm Tutorial</a>，我已经修改了部分内容，并且<a href="https://github.com/chadlung/vagrant-docker-swarm">增加了一个 Vagrant Helper 的仓库</a>来启动一个可以让 Docker Swarm 工作起来的本地测试环境。请确保你使用的是 1.12 或以上版本的 Docker Engine。我写这篇文章的时候，使用的是 1.12RC2 版本。注意的是，这只是一个测试版本，可能还会有修改。</p>
+<p>你要做的第一件事，就是如果你想本地运行的话，你要保证 <a href="https://www.vagrantup.com/">Vagrant</a> 已经正确的安装和运行了。你也可以按如下步骤使用你最喜欢的云服务提供商部署 Docker Swarm 虚拟机系统。</p>
+<p>我们将会使用这三台 VM：一个简单的 Docker Swarm 管理平台和两台 worker。</p>
+<p>安全注意事项：Vagrantfile 代码中包含了部分位于 Docker 测试服务器上的 shell 脚本。这是一个潜在的安全问题，它会运行你不能控制的脚本，所以请确保你会在运行代码之前<a href="https://test.docker.com/">审查过这部分的脚本</a>。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/chadlung/vagrant-docker-swarm
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>vagrant-docker-swarm
+$<span class="w"> </span>vagrant<span class="w"> </span>plugin<span class="w"> </span>install<span class="w"> </span>vagrant-vbguest
+$<span class="w"> </span>vagrant<span class="w"> </span>up
+</code></pre></div>
+
+<p>Vagrant up 命令需要一些时间才能完成。</p>
+<p>SSH 登录进入 manager1 虚拟机：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>vagrant<span class="w"> </span>ssh<span class="w"> </span>manager1
+</code></pre></div>
+
+<p>在 manager1 的 ssh 终端会话中执行如下命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>docker<span class="w"> </span>swarm<span class="w"> </span>init<span class="w"> </span>--listen-addr<span class="w"> </span><span class="m">192</span>.168.99.100:2377
+</code></pre></div>
+
+<p>现在还没有 worker 注册上来：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>docker<span class="w"> </span>node<span class="w"> </span>ls
+</code></pre></div>
+
+<p>让我们注册两个新的 worker，请打开两个新的终端会话（保持 manager1 会话继续运行）：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>vagrant<span class="w"> </span>ssh<span class="w"> </span>worker1
+</code></pre></div>
+
+<p>在 worker1 的 ssh 终端会话上执行如下命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>docker<span class="w"> </span>swarm<span class="w"> </span>join<span class="w"> </span><span class="m">192</span>.168.99.100:2377
+</code></pre></div>
+
+<p>在 worker2 的 ssh 终端会话上重复这些命令。</p>
+<p>在 manager1 终端上执行如下命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>docker<span class="w"> </span>node<span class="w"> </span>ls
+</code></pre></div>
+
+<p>你将会看到：</p>
+<p><img alt="" src="/data/attachment/album/201608/24/100853ey7a897wz1raw0aa.png"></p>
+<p>在 manager1 的终端里部署一个简单的服务。</p>
+<div class="highlight"><pre><span></span><code>sudo docker service create --replicas 1 --name pinger alpine ping google.com
+</code></pre></div>
+
+<p>这个命令将会部署一个服务，它会从 worker 之一 ping google.com。（或者 manager，manager 也可以运行服务，不过如果你只是想 worker 运行容器的话，<a href="https://docs.docker.com/engine/reference/commandline/swarm_init/">也可以禁用这一点</a>）。可以使用如下命令，查看哪些节点正在执行服务:</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>docker<span class="w"> </span>service<span class="w"> </span>tasks<span class="w"> </span>pinger
+</code></pre></div>
+
+<p>结果会和这个比较类似：</p>
+<p><img alt="" src="/data/attachment/album/201608/24/100927l9c02c8zmcl62yyq.png"></p>
+<p>所以，我们知道了服务正跑在 worker1 上。我们可以回到 worker1 的会话里，然后进入正在运行的容器：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>docker<span class="w"> </span>ps
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/201608/24/100956x0u0ze9neibb124u.png"></p>
+<p>你可以看到容器的 id 是: ae56769b9d4d，在我的例子中，我运行如下的代码：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>docker<span class="w"> </span>attach<span class="w"> </span>ae56769b9d4d
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/201608/24/101022ktqizbgbpnntsbpo.png"></p>
+<p>你可以按下 CTRL-C 来停止服务。</p>
+<p>回到 manager1，然后移除这个 pinger 服务。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>docker<span class="w"> </span>service<span class="w"> </span>rm<span class="w"> </span>pinger
+</code></pre></div>
+
+<p>现在，我们将会部署可复制的 Python 应用。注意，为了保持文章的简洁，而且容易复制，所以部署的是一个简单的应用。</p>
+<p>你需要做的第一件事就是将镜像放到 <a href="https://hub.docker.com/">Docker Hub</a>上，或者使用我<a href="https://hub.docker.com/r/chadlung/hello-app/">已经上传的一个</a>。这是一个简单的 Python 3 Falcon REST 应用。它有一个简单的入口: /hello 带一个 value 参数。</p>
+<p>放在 <a href="https://hub.docker.com/r/chadlung/hello-app/">chadlung/hello-app</a> 上的 Python 代码看起来像这样：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">from</span> <span class="nn">wsgiref</span> <span class="kn">import</span> <span class="n">simple_server</span>
+
+<span class="kn">import</span> <span class="nn">falcon</span>
+
+
+<span class="k">class</span> <span class="nc">HelloResource</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">on_get</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">req</span><span class="p">,</span> <span class="n">resp</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">req</span><span class="o">.</span><span class="n">get_param</span><span class="p">(</span><span class="s1">&#39;value&#39;</span><span class="p">)</span>
+
+            <span class="n">resp</span><span class="o">.</span><span class="n">content_type</span> <span class="o">=</span> <span class="s1">&#39;application/json&#39;</span>
+            <span class="n">resp</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="n">falcon</span><span class="o">.</span><span class="n">HTTP_200</span>
+            <span class="n">resp</span><span class="o">.</span><span class="n">body</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span><span class="s1">&#39;message&#39;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">)})</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">ex</span><span class="p">:</span>
+            <span class="n">resp</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="n">falcon</span><span class="o">.</span><span class="n">HTTP_500</span>
+            <span class="n">resp</span><span class="o">.</span><span class="n">body</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">ex</span><span class="p">)</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">app</span> <span class="o">=</span> <span class="n">falcon</span><span class="o">.</span><span class="n">API</span><span class="p">()</span>
+    <span class="n">hello_resource</span> <span class="o">=</span> <span class="n">HelloResource</span><span class="p">()</span>
+    <span class="n">app</span><span class="o">.</span><span class="n">add_route</span><span class="p">(</span><span class="s1">&#39;/hello&#39;</span><span class="p">,</span> <span class="n">hello_resource</span><span class="p">)</span>
+    <span class="n">httpd</span> <span class="o">=</span> <span class="n">simple_server</span><span class="o">.</span><span class="n">make_server</span><span class="p">(</span><span class="s1">&#39;0.0.0.0&#39;</span><span class="p">,</span> <span class="mi">8080</span><span class="p">,</span> <span class="n">app</span><span class="p">)</span>
+    <span class="n">httpd</span><span class="o">.</span><span class="n">serve_forever</span><span class="p">()</span>
+</code></pre></div>
+
+<p>Dockerfile 很简单：</p>
+<div class="highlight"><pre><span></span><code>FROM python:3.4.4
+
+RUN pip install -U pip
+RUN pip install -U falcon
+
+EXPOSE 8080
+
+COPY . /hello-app
+WORKDIR /hello-app
+
+CMD [&quot;python&quot;, &quot;app.py&quot;]
+</code></pre></div>
+
+<p>上面表示的意思很简单，如果你想，你可以在本地运行该进行来访问这个入口： <a href="http://127.0.0.1:8080/hello?value=Fred">http://127.0.0.1:8080/hello?value=Fred</a></p>
+<p>这将返回如下结果：</p>
+<div class="highlight"><pre><span></span><code>{&quot;message&quot;: &quot;Fred&quot;}
+</code></pre></div>
+
+<p>在 Docker Hub 上构建和部署这个 hello-app（修改成你自己的 Docker Hub 仓库或者<a href="https://hub.docker.com/r/chadlung/hello-app/">使用这个</a>）：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>docker<span class="w"> </span>build<span class="w"> </span>.<span class="w"> </span>-t<span class="w"> </span>chadlung/hello-app:2
+$<span class="w"> </span>sudo<span class="w"> </span>docker<span class="w"> </span>push<span class="w"> </span>chadlung/hello-app:2
+</code></pre></div>
+
+<p>现在，我们可以将应用部署到之前的 Docker Swarm 了。登录 manager1 的 ssh 终端会话，并且执行：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>docker<span class="w"> </span>service<span class="w"> </span>create<span class="w"> </span>-p<span class="w"> </span><span class="m">8080</span>:8080<span class="w"> </span>--replicas<span class="w"> </span><span class="m">2</span><span class="w"> </span>--name<span class="w"> </span>hello-app<span class="w"> </span>chadlung/hello-app:2
+$<span class="w"> </span>sudo<span class="w"> </span>docker<span class="w"> </span>service<span class="w"> </span>inspect<span class="w"> </span>--pretty<span class="w"> </span>hello-app
+$<span class="w"> </span>sudo<span class="w"> </span>docker<span class="w"> </span>service<span class="w"> </span>tasks<span class="w"> </span>hello-app
+</code></pre></div>
+
+<p>现在，我们已经可以测试了。使用任何一个 Swarm 节点的 IP 来访问 /hello 入口。在本例中，我在 manager1 的终端里使用 curl 命令：</p>
+<p>注意，Swarm 中的所有的 IP 都可以，不管这个服务是运行在一台还是更多的节点上。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>curl<span class="w"> </span>-v<span class="w"> </span>-X<span class="w"> </span>GET<span class="w"> </span><span class="s2">&quot;http://192.168.99.100:8080/hello?value=Chad&quot;</span>
+$<span class="w"> </span>curl<span class="w"> </span>-v<span class="w"> </span>-X<span class="w"> </span>GET<span class="w"> </span><span class="s2">&quot;http://192.168.99.101:8080/hello?value=Test&quot;</span>
+$<span class="w"> </span>curl<span class="w"> </span>-v<span class="w"> </span>-X<span class="w"> </span>GET<span class="w"> </span><span class="s2">&quot;http://192.168.99.102:8080/hello?value=Docker&quot;</span>
+</code></pre></div>
+
+<p>结果：</p>
+<div class="highlight"><pre><span></span><code><span class="o">*</span><span class="w"> </span><span class="nx">Hostname</span><span class="w"> </span><span class="nx">was</span><span class="w"> </span><span class="nx">NOT</span><span class="w"> </span><span class="nx">found</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">DNS</span><span class="w"> </span><span class="nx">cache</span>
+<span class="o">*</span><span class="w">   </span><span class="nx">Trying</span><span class="w"> </span><span class="m m-Double">192.168.99.101</span><span class="o">...</span>
+<span class="o">*</span><span class="w"> </span><span class="nx">Connected</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="m m-Double">192.168.99.101</span><span class="w"> </span><span class="p">(</span><span class="m m-Double">192.168.99.101</span><span class="p">)</span><span class="w"> </span><span class="nx">port</span><span class="w"> </span><span class="mi">8080</span><span class="w"> </span><span class="p">(</span><span class="err">#</span><span class="mi">0</span><span class="p">)</span>
+<span class="p">&gt;</span><span class="w"> </span><span class="nx">GET</span><span class="w"> </span><span class="o">/</span><span class="nx">hello</span><span class="p">?</span><span class="nx">value</span><span class="p">=</span><span class="nx">Chad</span><span class="w"> </span><span class="nx">HTTP</span><span class="o">/</span><span class="m m-Double">1.1</span>
+<span class="p">&gt;</span><span class="w"> </span><span class="nx">User</span><span class="o">-</span><span class="nx">Agent</span><span class="p">:</span><span class="w"> </span><span class="nx">curl</span><span class="o">/</span><span class="m m-Double">7.35.0</span>
+<span class="p">&gt;</span><span class="w"> </span><span class="nx">Host</span><span class="p">:</span><span class="w"> </span><span class="m m-Double">192.168.99.101</span><span class="p">:</span><span class="mi">8080</span>
+<span class="p">&gt;</span><span class="w"> </span><span class="nx">Accept</span><span class="p">:</span><span class="w"> </span><span class="o">*/*</span>
+<span class="p">&gt;</span><span class="w"> </span>
+<span class="o">*</span><span class="w"> </span><span class="nx">HTTP</span><span class="w"> </span><span class="m m-Double">1.0</span><span class="p">,</span><span class="w"> </span><span class="nx">assume</span><span class="w"> </span><span class="nx">close</span><span class="w"> </span><span class="nx">after</span><span class="w"> </span><span class="nx">body</span>
+<span class="p">&lt;</span><span class="w"> </span><span class="nx">HTTP</span><span class="o">/</span><span class="m m-Double">1.0</span><span class="w"> </span><span class="mi">200</span><span class="w"> </span><span class="nx">OK</span>
+<span class="p">&lt;</span><span class="w"> </span><span class="nx">Date</span><span class="p">:</span><span class="w"> </span><span class="nx">Tue</span><span class="p">,</span><span class="w"> </span><span class="mi">28</span><span class="w"> </span><span class="nx">Jun</span><span class="w"> </span><span class="mi">2016</span><span class="w"> </span><span class="mi">23</span><span class="p">:</span><span class="mi">52</span><span class="p">:</span><span class="mi">55</span><span class="w"> </span><span class="nx">GMT</span>
+<span class="p">&lt;</span><span class="w"> </span><span class="nx">Server</span><span class="p">:</span><span class="w"> </span><span class="nx">WSGIServer</span><span class="o">/</span><span class="m m-Double">0.2</span><span class="w"> </span><span class="nx">CPython</span><span class="o">/</span><span class="m m-Double">3.4.4</span>
+<span class="p">&lt;</span><span class="w"> </span><span class="nx">content</span><span class="o">-</span><span class="k">type</span><span class="p">:</span><span class="w"> </span><span class="nx">application</span><span class="o">/</span><span class="nx">json</span>
+<span class="p">&lt;</span><span class="w"> </span><span class="nx">content</span><span class="o">-</span><span class="nx">length</span><span class="p">:</span><span class="w"> </span><span class="mi">19</span>
+<span class="p">&lt;</span><span class="w"> </span>
+<span class="p">{</span><span class="s">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Chad&quot;</span><span class="p">}</span>
+</code></pre></div>
+
+<p>从浏览器中访问其他节点：</p>
+<p><img alt="" src="/data/attachment/album/201608/24/101056s9l9yqtoyll69jh9.png"></p>
+<p>如果你想看运行的所有服务，你可以在 manager1 节点上运行如下代码：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>docker<span class="w"> </span>service<span class="w"> </span>ls
+</code></pre></div>
+
+<p>如果你想添加可视化控制平台，你可以安装 <a href="https://github.com/ManoMarks/docker-swarm-visualizer">Docker Swarm Visualizer</a>（这对于展示非常方便）。在 manager1 的终端中执行如下代码：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>docker<span class="w"> </span>run<span class="w"> </span>-it<span class="w"> </span>-d<span class="w"> </span>-p<span class="w"> </span><span class="m">5000</span>:5000<span class="w"> </span>-e<span class="w"> </span><span class="nv">HOST</span><span class="o">=</span><span class="m">192</span>.168.99.100<span class="w"> </span>-e<span class="w"> </span><span class="nv">PORT</span><span class="o">=</span><span class="m">5000</span><span class="w"> </span>-v<span class="w"> </span>/var/run/docker.sock:/var/run/docker.sock<span class="w"> </span>manomarks/visualizer
+</code></pre></div>
+
+<p>打开你的浏览器，并且访问： <a href="http://192.168.99.100:5000/">http://192.168.99.100:5000/</a></p>
+<p>结果如下（假设已经运行了两个 Docker Swarm 服务）：</p>
+<p><img alt="" src="/data/attachment/album/201608/24/101143ry1518zi0p1gpwcy.png"></p>
+<p>要停止运行 hello-app（已经在两个节点上运行了），可以在 manager1 上执行这个代码：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>docker<span class="w"> </span>service<span class="w"> </span>rm<span class="w"> </span>hello-app
+</code></pre></div>
+
+<p>如果想停止 Visualizer， 那么在 manager1 的终端中执行：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>docker<span class="w"> </span>ps
+</code></pre></div>
+
+<p>获得容器的 ID，这里是： f71fec0d3ce1，从 manager1 的终端会话中执行这个代码：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>docker<span class="w"> </span>stop<span class="w"> </span>f71fec0d3ce1
+</code></pre></div>
+
+<p>祝你成功使用 Docker Swarm。这篇文章主要是以 1.12 版本来进行描述的。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

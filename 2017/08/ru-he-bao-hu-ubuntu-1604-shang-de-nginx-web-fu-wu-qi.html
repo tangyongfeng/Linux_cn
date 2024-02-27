@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何保护 Ubuntu 16.04 上的 NGINX Web 服务器</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Giuseppe Molica 什么是 Let’s Encrypt Let’s Encrypt 是互联网安全研究组织 （ISRG） 提供的免费证书认证机构。它提供了一种轻松自动的方式来获取 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/08/ru-he-bao-hu-ubuntu-1604-shang-de-nginx-web-fu-wu-qi.html" rel="bookmark"
+           title="Permalink to 如何保护 Ubuntu 16.04 上的 NGINX Web 服务器">如何保护 Ubuntu 16.04 上的 NGINX Web 服务器</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-08-02T14:33:00+02:00">
+                Published: Wed 02 August 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Giuseppe Molica</p>
+<p><img alt="" src="/data/attachment/album/201708/02/143330iaahap07p77wubho.png"></p>
+<h3>什么是 Let’s Encrypt</h3>
+<p><a href="https://letsencrypt.org/">Let’s Encrypt</a> 是互联网安全研究组织 （ISRG） 提供的免费证书认证机构。它提供了一种轻松自动的方式来获取免费的 SSL/TLS 证书 - 这是在 Web 服务器上启用加密和 HTTPS 流量的必要步骤。获取和安装证书的大多数步骤可以通过使用名为 <a href="https://certbot.eff.org/">Certbot</a> 的工具进行自动化。</p>
+<p>特别地，该软件可在可以使用 shell 的服务器上使用：换句话说，它可以通过 SSH 连接使用。</p>
+<p>在本教程中，我们将看到如何使用 <code>certbot</code> 获取免费的 SSL 证书，并在 Ubuntu 16.04 服务器上使用 Nginx。</p>
+<h3>安装 Certbot</h3>
+<p>第一步是安装 <code>certbot</code>，该软件客户端可以几乎自动化所有的过程。 Certbot 开发人员维护自己的 Ubuntu 仓库，其中包含比 Ubuntu 仓库中存在的软件更新的软件。</p>
+<p>添加 Certbot 仓库：</p>
+<div class="highlight"><pre><span></span><code># add-apt-repository ppa:certbot/certbot
+</code></pre></div>
+
+<p>接下来，更新 APT 源列表：</p>
+<div class="highlight"><pre><span></span><code># apt-get update
+</code></pre></div>
+
+<p>此时，可以使用以下 <code>apt</code> 命令安装 <code>certbot</code>：</p>
+<div class="highlight"><pre><span></span><code># apt-get install certbot
+</code></pre></div>
+
+<p>Certbot 现已安装并可使用。</p>
+<h3>获得证书</h3>
+<p>有各种 Certbot 插件可用于获取 SSL 证书。这些插件有助于获取证书，而证书的安装和 Web 服务器配置都留给管理员。</p>
+<p>我们使用一个名为 <strong>Webroot</strong> 的插件来获取 SSL 证书。</p>
+<p>在有能力修改正在提供的内容的情况下，建议使用此插件。在证书颁发过程中不需要停止 Web 服务器。</p>
+<h4>配置 NGINX</h4>
+<p>Webroot 会在 Web 根目录下的 <code>.well-known</code> 目录中为每个域创建一个临时文件。在我们的例子中，Web 根目录是 <code>/var/www/html</code>。确保该目录在 Let’s Encrypt 验证时可访问。为此，请编辑 NGINX 配置。使用文本编辑器打开 <code>/etc/nginx/sites-available/default</code>：</p>
+<div class="highlight"><pre><span></span><code># $EDITOR /etc/nginx/sites-available/default
+</code></pre></div>
+
+<p>在该文件中，在 <code>server</code> 块内，输入以下内容：</p>
+<div class="highlight"><pre><span></span><code> location ~ /.well-known {
+    allow all;
+ }
+</code></pre></div>
+
+<p>保存，退出并检查 NGINX 配置：</p>
+<div class="highlight"><pre><span></span><code># nginx -t
+</code></pre></div>
+
+<p>没有错误的话应该会显示如下：</p>
+<div class="highlight"><pre><span></span><code><span class="n">nginx</span><span class="o">:</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">configuration</span><span class="w"> </span><span class="n">file</span><span class="w"> </span><span class="sr">/etc/nginx/</span><span class="n">nginx</span><span class="o">.</span><span class="na">conf</span><span class="w"> </span><span class="n">syntax</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">ok</span>
+<span class="n">nginx</span><span class="o">:</span><span class="w"> </span><span class="n">configuration</span><span class="w"> </span><span class="n">file</span><span class="w"> </span><span class="sr">/etc/nginx/</span><span class="n">nginx</span><span class="o">.</span><span class="na">conf</span><span class="w"> </span><span class="n">test</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">successful</span>
+</code></pre></div>
+
+<p>重启 NGINX：</p>
+<div class="highlight"><pre><span></span><code># systemctl restart nginx
+</code></pre></div>
+
+<h4>使用 Certbot 获取证书</h4>
+<p>下一步是使用 Certbot 的 Webroot 插件获取新证书。在本教程中，我们将保护示例域 www.example.com。需要指定应由证书保护的每个域。执行以下命令：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># certbot certonly --webroot --webroot-path=/var/www/html -d www.example.com</span>
+</code></pre></div>
+
+<p>在此过程中，Cerbot 将询问有效的电子邮件地址，用于进行通知。还会要求与 EFF 分享，但这不是必需的。在同意服务条款之后，它将获得一个新的证书。</p>
+<p>最后，目录 <code>/etc/letsencrypt/archive</code> 将包含以下文件：</p>
+<ul>
+<li><code>chain.pem</code>：Let’s Encrypt 加密链证书。</li>
+<li><code>cert.pem</code>：域名证书。</li>
+<li><code>fullchain.pem</code>：<code>cert.pem</code>和 <code>chain.pem</code> 的组合。</li>
+<li><code>privkey.pem</code>：证书的私钥。</li>
+</ul>
+<p>Certbot 还将创建符号链接到 <code>/etc/letsencrypt/live/domain_name/</code> 中的最新证书文件。这是我们将在服务器配置中使用的路径。</p>
+<h3>在 NGINX 上配置 SSL/TLS</h3>
+<p>下一步是服务器配置。在 <code>/etc/nginx/snippets/</code> 中创建一个新的代码段。 <strong>snippet</strong> 是指一段配置，可以包含在虚拟主机配置文件中。如下创建一个新的文件：</p>
+<div class="highlight"><pre><span></span><code># $EDITOR /etc/nginx/snippets/secure-example.conf
+</code></pre></div>
+
+<p>该文件的内容将指定证书和密钥位置。粘贴以下内容：</p>
+<div class="highlight"><pre><span></span><code>ssl_certificate /etc/letsencrypt/live/domain_name/fullchain.pem;
+ssl_certificate_key /etc/letsencrypt/live/domain_name/privkey.pem;
+</code></pre></div>
+
+<p>在我们的例子中，<code>domain_name</code> 是 <code>example.com</code>。</p>
+<h4>编辑 NGINX 配置</h4>
+<p>编辑默认虚拟主机文件：</p>
+<div class="highlight"><pre><span></span><code># $EDITOR /etc/nginx/sites-available/default
+</code></pre></div>
+
+<p>如下：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">server</span><span class="w"> </span><span class="p">{</span>
+<span class="w"> </span><span class="err">listen</span><span class="w"> </span><span class="err">80</span><span class="w"> </span><span class="err">default_server</span><span class="p">;</span>
+<span class="w"> </span><span class="n">listen</span><span class="w"> </span><span class="cp">[</span><span class="p">::</span><span class="cp">]</span><span class="p">:</span><span class="mi">80</span><span class="w"> </span><span class="n">default_server</span><span class="p">;</span>
+<span class="w"> </span><span class="err">server_name</span><span class="w"> </span><span class="err">www.example.com</span>
+<span class="w"> </span><span class="err">return</span><span class="w"> </span><span class="err">301</span><span class="w"> </span><span class="n">https</span><span class="p">:</span><span class="o">//</span><span class="err">$</span><span class="n">server_name</span><span class="err">$</span><span class="n">request_uri</span><span class="p">;</span>
+
+<span class="w"> </span><span class="err">#</span><span class="w"> </span><span class="err">SSL</span><span class="w"> </span><span class="err">configuration</span>
+<span class="w"> </span><span class="err">#</span>
+<span class="w"> </span><span class="err">listen</span><span class="w"> </span><span class="err">443</span><span class="w"> </span><span class="err">ssl</span><span class="w"> </span><span class="err">default_server</span><span class="p">;</span>
+<span class="w"> </span><span class="n">listen</span><span class="w"> </span><span class="cp">[</span><span class="p">::</span><span class="cp">]</span><span class="p">:</span><span class="mi">443</span><span class="w"> </span><span class="n">ssl</span><span class="w"> </span><span class="n">default_server</span><span class="p">;</span>
+<span class="w"> </span><span class="err">include</span><span class="w"> </span><span class="err">snippets/secure-example.conf</span>
+<span class="w"> </span><span class="err">#</span>
+<span class="w"> </span><span class="err">#</span><span class="w"> </span><span class="n">Note</span><span class="p">:</span><span class="w"> </span><span class="n">You</span><span class="w"> </span><span class="n">should</span><span class="w"> </span><span class="n">disable</span><span class="w"> </span><span class="n">gzip</span><span class="w"> </span><span class="n">for</span><span class="w"> </span><span class="n">SSL</span><span class="w"> </span><span class="n">traffic</span><span class="o">.</span>
+<span class="w"> </span><span class="err">#</span><span class="w"> </span><span class="n">See</span><span class="o">:</span><span class="w"> </span><span class="n">https</span><span class="o">://</span><span class="n">bugs</span><span class="o">.</span><span class="n">debian</span><span class="o">.</span><span class="n">org</span><span class="o">/</span><span class="mi">773332</span>
+<span class="w"> </span><span class="err">#</span><span class="w"> </span><span class="o">...</span><span class="w">  </span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这将启用 NGINX 加密功能。</p>
+<p>保存、退出并检查 NGINX 配置文件：</p>
+<div class="highlight"><pre><span></span><code># nginx -t
+
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+</code></pre></div>
+
+<p>重启 NGINX：</p>
+<div class="highlight"><pre><span></span><code># systemctl restart nginx
+</code></pre></div>
+
+<h3>总结</h3>
+<p>按照上述步骤，此时我们已经拥有了一个安全的基于 NGINX 的 Web 服务器，它由 Certbot 和 Let’s Encrypt 提供加密。这只是一个基本配置，当然你可以使用许多 NGINX 配置参数来个性化所有东西，但这取决于特定的 Web 服务器要求。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

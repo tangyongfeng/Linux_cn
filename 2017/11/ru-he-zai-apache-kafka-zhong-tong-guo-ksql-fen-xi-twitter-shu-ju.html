@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何在 Apache Kafka 中通过 KSQL 分析 Twitter 数据</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Robin Moffatt 介绍 KSQL 是 Apache Kafka 中的开源的流式 SQL 引擎。它可以让你在 Kafka 主题 topic 上，使用一个简单的并且是交互式的 SQL 接口，很容易 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/11/ru-he-zai-apache-kafka-zhong-tong-guo-ksql-fen-xi-twitter-shu-ju.html" rel="bookmark"
+           title="Permalink to 如何在 Apache Kafka 中通过 KSQL 分析 Twitter 数据">如何在 Apache Kafka 中通过 KSQL 分析 Twitter 数据</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-11-03T23:03:00+01:00">
+                Published: Fri 03 November 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Robin Moffatt</p>
+<p><img alt="" src="/data/attachment/album/201711/03/230240ei0izdx0ldzlviyl.jpg"></p>
+<h3>介绍</h3>
+<p><a href="https://github.com/confluentinc/ksql/">KSQL</a> 是 Apache Kafka 中的开源的流式 SQL 引擎。它可以让你在 Kafka <ruby> 主题 <rt>  topic </rt></ruby>上，使用一个简单的并且是交互式的 SQL 接口，很容易地做一些复杂的流处理。在这个短文中，我们将看到如何轻松地配置并运行在一个沙箱中去探索它，并使用大家都喜欢的演示数据库源： Twitter。我们将从推文的原始流中获取，通过使用 KSQL 中的条件去过滤它，来构建一个聚合，如统计每个用户每小时的推文数量。</p>
+<h3>Confluent</h3>
+<p><img alt="" src="/data/attachment/album/201711/03/230309xi4qjpw5qqgej6i4.png"></p>
+<p>首先， <a href="https://www.confluent.io/download/">获取一个 Confluent 平台的副本</a>。我使用的是 RPM 包，但是，如果你需要的话，你也可以使用 <a href="https://docs.confluent.io/current/installation.html?">tar、 zip 等等</a> 。启动 Confluent 系统：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>confluent<span class="w"> </span>start
+</code></pre></div>
+
+<p>（如果你感兴趣，这里有一个 <a href="https://www.youtube.com/watch?v=ZKqBptBHZTg">Confluent 命令行的快速教程</a>）</p>
+<p>我们将使用 Kafka Connect 从 Twitter 上拉取数据。 这个 Twitter 连接器可以在 <a href="https://github.com/jcustenborder/kafka-connect-twitter">GitHub</a> 上找到。要安装它，像下面这样操作：</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span><span class="nv">Clone</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="nv">git</span><span class="w"> </span><span class="nv">repo</span>
+<span class="nv">cd</span><span class="w"> </span><span class="o">/</span><span class="nv">home</span><span class="o">/</span><span class="nv">rmoff</span>
+<span class="nv">git</span><span class="w"> </span><span class="nv">clone</span><span class="w"> </span><span class="nv">https</span>:<span class="o">//</span><span class="nv">github</span>.<span class="nv">com</span><span class="o">/</span><span class="nv">jcustenborder</span><span class="o">/</span><span class="nv">kafka</span><span class="o">-</span><span class="k">connect</span><span class="o">-</span><span class="nv">twitter</span>.<span class="nv">git</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="nx">Compile</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">code</span>
+<span class="nx">cd</span><span class="w"> </span><span class="nx">kafka</span><span class="o">-</span><span class="nx">connect</span><span class="o">-</span><span class="nx">twitter</span>
+<span class="nx">mvn</span><span class="w"> </span><span class="nx">clean</span><span class="w"> </span><span class="kn">package</span>
+</code></pre></div>
+
+<p>要让 Kafka Connect 去使用我们构建的<a href="https://docs.confluent.io/current/connect/userguide.html#connect-installing-plugins">连接器</a>， 你要去修改配置文件。因为我们使用 Confluent 命令行，真实的配置文件是在 <code>etc/schema-registry/connect-avro-distributed.properties</code>，因此去修改它并增加如下内容：</p>
+<div class="highlight"><pre><span></span><code><span class="nv">plugin</span>.<span class="nv">path</span><span class="o">=/</span><span class="nv">home</span><span class="o">/</span><span class="nv">rmoff</span><span class="o">/</span><span class="nv">kafka</span><span class="o">-</span><span class="k">connect</span><span class="o">-</span><span class="nv">twitter</span><span class="o">/</span><span class="nv">target</span><span class="o">/</span><span class="nv">kafka</span><span class="o">-</span><span class="k">connect</span><span class="o">-</span><span class="nv">twitter</span><span class="o">-</span><span class="mi">0</span>.<span class="mi">2</span><span class="o">-</span><span class="nv">SNAPSHOT</span>.<span class="nv">tar</span>.<span class="nv">gz</span>
+</code></pre></div>
+
+<p>重启动 Kafka Connect：</p>
+<div class="highlight"><pre><span></span><code><span class="nv">confluent</span><span class="w"> </span><span class="nv">stop</span><span class="w"> </span><span class="k">connect</span>
+<span class="nv">confluent</span><span class="w"> </span><span class="nv">start</span><span class="w"> </span><span class="k">connect</span>
+</code></pre></div>
+
+<p>一旦你安装好插件，你可以很容易地去配置它。你可以直接使用 Kafka Connect 的 REST API ，或者创建你的配置文件，这就是我要在这里做的。如果你需要全部的方法，请首先访问 Twitter 来获取你的 <a href="https://apps.twitter.com/">API 密钥</a>。</p>
+<div class="highlight"><pre><span></span><code>{
+ &quot;name&quot;: &quot;twitter_source_json_01&quot;,
+ &quot;config&quot;: {
+   &quot;connector.class&quot;: &quot;com.github.jcustenborder.kafka.connect.twitter.TwitterSourceConnector&quot;,
+   &quot;twitter.oauth.accessToken&quot;: &quot;xxxx&quot;,
+   &quot;twitter.oauth.consumerSecret&quot;: &quot;xxxxx&quot;,
+   &quot;twitter.oauth.consumerKey&quot;: &quot;xxxx&quot;,
+   &quot;twitter.oauth.accessTokenSecret&quot;: &quot;xxxxx&quot;,
+   &quot;kafka.delete.topic&quot;: &quot;twitter_deletes_json_01&quot;,
+   &quot;value.converter&quot;: &quot;org.apache.kafka.connect.json.JsonConverter&quot;,
+   &quot;key.converter&quot;: &quot;org.apache.kafka.connect.json.JsonConverter&quot;,
+   &quot;value.converter.schemas.enable&quot;: false,
+   &quot;key.converter.schemas.enable&quot;: false,
+   &quot;kafka.status.topic&quot;: &quot;twitter_json_01&quot;,
+   &quot;process.deletes&quot;: true,
+   &quot;filter.keywords&quot;: &quot;rickastley,kafka,ksql,rmoff&quot;
+ }
+}
+</code></pre></div>
+
+<p>假设你写这些到 <code>/home/rmoff/twitter-source.json</code>，你可以现在运行：</p>
+<div class="highlight"><pre><span></span><code><span class="o">$</span><span class="w"> </span><span class="n">confluent</span><span class="w"> </span><span class="nb">load</span><span class="w"> </span><span class="n">twitter_source</span><span class="w"> </span><span class="o">-</span><span class="n">d</span><span class="w"> </span><span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">rmoff</span><span class="o">/</span><span class="n">twitter</span><span class="o">-</span><span class="n">source</span><span class="o">.</span><span class="n">json</span>
+</code></pre></div>
+
+<p>然后推文就从大家都喜欢的网络明星 [rick] 滚滚而来……</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>kafka-console-consumer<span class="w"> </span>--bootstrap-server<span class="w"> </span>localhost:9092<span class="w"> </span>--from-beginning<span class="w"> </span>--topic<span class="w"> </span>twitter_json_01<span class="p">|</span>jq<span class="w"> </span><span class="s1">&#39;.Text&#39;</span>
+<span class="o">{</span>
+<span class="w">  </span><span class="s2">&quot;string&quot;</span>:<span class="w"> </span><span class="s2">&quot;RT @rickastley: 30 years ago today I said I was Never Gonna Give You Up. I am a man of my word - Rick x https://t.co/VmbMQA6tQB&quot;</span>
+<span class="o">}</span>
+<span class="o">{</span>
+<span class="w">  </span><span class="s2">&quot;string&quot;</span>:<span class="w"> </span><span class="s2">&quot;RT @mariteg10: @rickastley @Carfestevent Wonderful Rick!!\nDo not forget Chile!!\nWe hope you get back someday!!\nHappy weekend for you!!\n❤…&quot;</span>
+<span class="o">}</span>
+</code></pre></div>
+
+<h3>KSQL</h3>
+<p>现在我们从 KSQL 开始 ! 马上去下载并构建它：</p>
+<div class="highlight"><pre><span></span><code>cd /home/rmoff
+git clone https://github.com/confluentinc/ksql.git
+cd /home/rmoff/ksql
+mvn clean compile install -DskipTests
+</code></pre></div>
+
+<p>构建完成后，让我们来运行它：</p>
+<div class="highlight"><pre><span></span><code>./bin/ksql-cli local --bootstrap-server localhost:9092
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code>                       ======================================
+                       =      _  __ _____  ____  _          =
+                       =     | |/ // ____|/ __ \| |         =
+                       =     | &#39; /| (___ | |  | | |         =
+                       =     |  &lt;  \___ \| |  | | |         =
+                       =     | . \ ____) | |__| | |____     =
+                       =     |_|\_\_____/ \___\_\______|    =
+                       =                                    =
+                       =   Streaming SQL Engine for Kafka   =
+Copyright 2017 Confluent Inc.
+
+CLI v0.1, Server v0.1 located at http://localhost:9098
+
+Having trouble? Type &#39;help&#39; (case-insensitive) for a rundown of how things work!
+
+ksql&gt; 
+</code></pre></div>
+
+<p>使用 KSQL， 我们可以让我们的数据保留在 Kafka 主题上并可以查询它。首先，我们需要去告诉 KSQL 主题上的<ruby> 数据模式 <rt>  schema </rt></ruby>是什么，一个 twitter 消息实际上是一个非常巨大的 JSON 对象， 但是，为了简洁，我们只选出其中几行：</p>
+<div class="highlight"><pre><span></span><code>ksql&gt; CREATE STREAM twitter_raw (CreatedAt BIGINT, Id BIGINT, Text VARCHAR) WITH (KAFKA_TOPIC=&#39;twitter_json_01&#39;, VALUE_FORMAT=&#39;JSON&#39;);
+
+Message  
+----------------
+Stream created
+</code></pre></div>
+
+<p>在定义的模式中，我们可以查询这些流。要让 KSQL 从该主题的开始展示数据（而不是默认的当前时间点），运行如下命令：</p>
+<div class="highlight"><pre><span></span><code>ksql&gt; SET &#39;auto.offset.reset&#39; = &#39;earliest&#39;;  
+Successfully changed local property &#39;auto.offset.reset&#39; from &#39;null&#39; to &#39;earliest&#39;
+</code></pre></div>
+
+<p>现在，让我们看看这些数据，我们将使用 LIMIT 从句仅检索一行：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ksql</span><span class="o">&gt;</span><span class="w"> </span><span class="k">SELECT</span><span class="w"> </span><span class="nc">text</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">twitter_raw</span><span class="w"> </span><span class="k">LIMIT</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w">  </span>
+<span class="n">RT</span><span class="w"> </span><span class="nv">@rickastley</span><span class="err">:</span><span class="w"> </span><span class="mi">30</span><span class="w"> </span><span class="n">years</span><span class="w"> </span><span class="n">ago</span><span class="w"> </span><span class="n">today</span><span class="w"> </span><span class="n">I</span><span class="w"> </span><span class="n">said</span><span class="w"> </span><span class="n">I</span><span class="w"> </span><span class="n">was</span><span class="w"> </span><span class="n">Never</span><span class="w"> </span><span class="n">Gonna</span><span class="w"> </span><span class="n">Give</span><span class="w"> </span><span class="n">You</span><span class="w"> </span><span class="n">Up</span><span class="p">.</span><span class="w"> </span><span class="n">I</span><span class="w"> </span><span class="n">am</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">man</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="n">my</span><span class="w"> </span><span class="n">word</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">Rick</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="nl">https</span><span class="p">:</span><span class="o">//</span><span class="n">t</span><span class="p">.</span><span class="n">co</span><span class="o">/</span><span class="n">VmbMQA6tQB</span>
+<span class="k">LIMIT</span><span class="w"> </span><span class="n">reached</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="k">partition</span><span class="p">.</span><span class="w">  </span>
+<span class="n">Query</span><span class="w"> </span><span class="n">terminated</span>
+<span class="n">ksql</span><span class="o">&gt;</span>
+</code></pre></div>
+
+<p>现在，让我们使用刚刚定义和可用的推文内容的全部数据重新定义该流：</p>
+<div class="highlight"><pre><span></span><code>ksql&gt; DROP stream twitter_raw;
+Message
+--------------------------------
+Source TWITTER_RAW was dropped
+
+ksql&gt; CREATE STREAM twitter_raw (CreatedAt bigint,Id bigint, Text VARCHAR, SOURCE VARCHAR, Truncated VARCHAR, InReplyToStatusId VARCHAR, InReplyToUserId VARCHAR, InReplyToScreenName VARCHAR, GeoLocation VARCHAR, Place VARCHAR, Favorited VARCHAR, Retweeted VARCHAR, FavoriteCount VARCHAR, User VARCHAR, Retweet VARCHAR, Contributors VARCHAR, RetweetCount VARCHAR, RetweetedByMe VARCHAR, CurrentUserRetweetId VARCHAR, PossiblySensitive VARCHAR, Lang VARCHAR, WithheldInCountries VARCHAR, HashtagEntities VARCHAR, UserMentionEntities VARCHAR, MediaEntities VARCHAR, SymbolEntities VARCHAR, URLEntities VARCHAR) WITH (KAFKA_TOPIC=&#39;twitter_json_01&#39;,VALUE_FORMAT=&#39;JSON&#39;);
+Message
+----------------
+Stream created
+
+ksql&gt;
+</code></pre></div>
+
+<p>现在，我们可以操作和检查更多的最近的数据，使用一般的 SQL 查询：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ksql</span><span class="o">&gt;</span><span class="w"> </span><span class="k">SELECT</span><span class="w"> </span><span class="n">TIMESTAMPTOSTRING</span><span class="p">(</span><span class="n">CreatedAt</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;yyyy-MM-dd HH:mm:ss.SSS&#39;</span><span class="p">)</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">CreatedAt</span><span class="p">,</span><span class="err">\</span>
+<span class="n">EXTRACTJSONFIELD</span><span class="p">(</span><span class="k">user</span><span class="p">,</span><span class="s1">&#39;$.ScreenName&#39;</span><span class="p">)</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">ScreenName</span><span class="p">,</span><span class="nc">Text</span><span class="w"> </span><span class="err">\</span>
+<span class="k">FROM</span><span class="w"> </span><span class="n">twitter_raw</span><span class="w"> </span><span class="err">\</span>
+<span class="k">WHERE</span><span class="w"> </span><span class="n">LCASE</span><span class="p">(</span><span class="n">hashtagentities</span><span class="p">)</span><span class="w"> </span><span class="ow">LIKE</span><span class="w"> </span><span class="s1">&#39;%oow%&#39;</span><span class="w"> </span><span class="ow">OR</span><span class="w"> </span><span class="err">\</span>
+<span class="n">LCASE</span><span class="p">(</span><span class="n">hashtagentities</span><span class="p">)</span><span class="w"> </span><span class="ow">LIKE</span><span class="w"> </span><span class="s1">&#39;%ksql%&#39;</span><span class="p">;</span><span class="w">  </span>
+
+<span class="mi">2017</span><span class="o">-</span><span class="mi">09</span><span class="o">-</span><span class="mi">29</span><span class="w"> </span><span class="mi">13</span><span class="err">:</span><span class="mi">59</span><span class="err">:</span><span class="mf">58.000</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">rmoff</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">Looking</span><span class="w"> </span><span class="n">forward</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">talking</span><span class="w"> </span><span class="ow">all</span><span class="w"> </span><span class="n">about</span><span class="w"> </span><span class="nv">@apachekafka</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="nv">@confluentinc</span><span class="err">’</span><span class="n">s</span><span class="w"> </span><span class="n">#KSQL</span><span class="w"> </span><span class="k">at</span><span class="w"> </span><span class="n">#OOW17</span><span class="w"> </span><span class="k">on</span><span class="w"> </span><span class="n">Sunday</span><span class="w"> </span><span class="mi">13</span><span class="err">:</span><span class="mi">45</span><span class="w"> </span><span class="nl">https</span><span class="p">:</span><span class="o">//</span><span class="n">t</span><span class="p">.</span><span class="n">co</span><span class="o">/</span><span class="n">XbM4eIuzeG</span>
+</code></pre></div>
+
+<p>注意这里没有 LIMIT 从句，因此，你将在屏幕上看到 “continuous query” 的结果。不像关系型数据表中返回一个确定数量结果的查询，一个持续查询会运行在无限的流式数据上， 因此，它总是可能返回更多的记录。点击 Ctrl-C 去中断然后返回到 KSQL 提示符。在以上的查询中我们做了一些事情：</p>
+<ul>
+<li><strong>TIMESTAMPTOSTRING</strong> 将时间戳从 epoch 格式转换到人类可读格式。（LCTT 译注： epoch 指的是一个特定的时间 1970-01-01 00:00:00 UTC）</li>
+<li><strong>EXTRACTJSONFIELD</strong> 来展示数据源中嵌套的用户域中的一个字段，它看起来像：</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="err">{</span>
+<span class="ss">&quot;CreatedAt&quot;</span><span class="err">:</span><span class="w"> </span><span class="mi">1506570308000</span><span class="p">,</span>
+<span class="ss">&quot;Text&quot;</span><span class="err">:</span><span class="w"> </span><span class="ss">&quot;RT @gwenshap: This is the best thing since partitioned bread :) https://t.co/1wbv3KwRM6&quot;</span><span class="p">,</span>
+<span class="o">[</span><span class="n">...</span><span class="o">]</span>
+<span class="ss">&quot;User&quot;</span><span class="err">:</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="ss">&quot;Id&quot;</span><span class="err">:</span><span class="w"> </span><span class="mi">82564066</span><span class="p">,</span>
+<span class="w">    </span><span class="ss">&quot;Name&quot;</span><span class="err">:</span><span class="w"> </span><span class="ss">&quot;Robin Moffatt \uD83C\uDF7B\uD83C\uDFC3\uD83E\uDD53&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="ss">&quot;ScreenName&quot;</span><span class="err">:</span><span class="w"> </span><span class="ss">&quot;rmoff&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="o">[</span><span class="n">...</span><span class="o">]</span>
+</code></pre></div>
+
+<ul>
+<li>应用断言去展示内容，对 #（hashtag）使用模式匹配， 使用 LCASE 去强制小写字母。（LCTT 译注：hashtag 是twitter 中用来标注线索主题的标签）</li>
+</ul>
+<p>关于支持的函数列表，请查看 <a href="https://github.com/confluentinc/ksql/blob/0.1.x/docs/syntax-reference.md">KSQL 文档</a>。</p>
+<p>我们可以创建一个从这个数据中得到的流：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">ksql</span><span class="o">&gt;</span><span class="w"> </span><span class="nt">CREATE</span><span class="w"> </span><span class="nt">STREAM</span><span class="w"> </span><span class="nt">twitter</span><span class="w"> </span><span class="nt">AS</span><span class="w"> </span><span class="err">\</span>
+<span class="nt">SELECT</span><span class="w"> </span><span class="nt">TIMESTAMPTOSTRING</span><span class="o">(</span><span class="nt">CreatedAt</span><span class="o">,</span><span class="w"> </span><span class="s1">&#39;yyyy-MM-dd HH:mm:ss.SSS&#39;</span><span class="o">)</span><span class="w"> </span><span class="nt">AS</span><span class="w"> </span><span class="nt">CreatedAt</span><span class="o">,</span><span class="err">\</span>
+<span class="nt">EXTRACTJSONFIELD</span><span class="o">(</span><span class="nt">user</span><span class="o">,</span><span class="s1">&#39;$.Name&#39;</span><span class="o">)</span><span class="w"> </span><span class="nt">AS</span><span class="w"> </span><span class="nt">user_Name</span><span class="o">,</span><span class="err">\</span>
+<span class="nt">EXTRACTJSONFIELD</span><span class="o">(</span><span class="nt">user</span><span class="o">,</span><span class="s1">&#39;$.ScreenName&#39;</span><span class="o">)</span><span class="w"> </span><span class="nt">AS</span><span class="w"> </span><span class="nt">user_ScreenName</span><span class="o">,</span><span class="err">\</span>
+<span class="nt">EXTRACTJSONFIELD</span><span class="o">(</span><span class="nt">user</span><span class="o">,</span><span class="s1">&#39;$.Location&#39;</span><span class="o">)</span><span class="w"> </span><span class="nt">AS</span><span class="w"> </span><span class="nt">user_Location</span><span class="o">,</span><span class="err">\</span>
+<span class="nt">EXTRACTJSONFIELD</span><span class="o">(</span><span class="nt">user</span><span class="o">,</span><span class="s1">&#39;$.Description&#39;</span><span class="o">)</span><span class="w"> </span><span class="nt">AS</span><span class="w">  </span><span class="nt">user_Description</span><span class="o">,</span><span class="err">\</span>
+<span class="nt">Text</span><span class="o">,</span><span class="nt">hashtagentities</span><span class="o">,</span><span class="nt">lang</span><span class="w"> </span><span class="err">\</span>
+<span class="nt">FROM</span><span class="w"> </span><span class="nt">twitter_raw</span><span class="w"> </span><span class="o">;</span>
+
+<span class="nt">Message</span><span class="w">  </span>
+<span class="nt">----------------------------</span><span class="w">  </span>
+<span class="nt">Stream</span><span class="w"> </span><span class="nt">created</span><span class="w"> </span><span class="nt">and</span><span class="w"> </span><span class="nt">running</span><span class="w">  </span>
+
+<span class="nt">ksql</span><span class="o">&gt;</span><span class="w"> </span><span class="nt">DESCRIBE</span><span class="w"> </span><span class="nt">twitter</span><span class="o">;</span>
+<span class="nt">Field</span><span class="w">            </span><span class="o">|</span><span class="w"> </span><span class="nt">Type</span><span class="w">  </span>
+<span class="nt">------------------------------------</span><span class="w">  </span>
+<span class="nt">ROWTIME</span><span class="w">          </span><span class="o">|</span><span class="w"> </span><span class="nt">BIGINT</span><span class="w">  </span>
+<span class="nt">ROWKEY</span><span class="w">           </span><span class="o">|</span><span class="w"> </span><span class="nt">VARCHAR</span><span class="o">(</span><span class="nt">STRING</span><span class="o">)</span><span class="w">  </span>
+<span class="nt">CREATEDAT</span><span class="w">        </span><span class="o">|</span><span class="w"> </span><span class="nt">VARCHAR</span><span class="o">(</span><span class="nt">STRING</span><span class="o">)</span><span class="w">  </span>
+<span class="nt">USER_NAME</span><span class="w">        </span><span class="o">|</span><span class="w"> </span><span class="nt">VARCHAR</span><span class="o">(</span><span class="nt">STRING</span><span class="o">)</span><span class="w">  </span>
+<span class="nt">USER_SCREENNAME</span><span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="nt">VARCHAR</span><span class="o">(</span><span class="nt">STRING</span><span class="o">)</span><span class="w">  </span>
+<span class="nt">USER_LOCATION</span><span class="w">    </span><span class="o">|</span><span class="w"> </span><span class="nt">VARCHAR</span><span class="o">(</span><span class="nt">STRING</span><span class="o">)</span><span class="w">  </span>
+<span class="nt">USER_DESCRIPTION</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nt">VARCHAR</span><span class="o">(</span><span class="nt">STRING</span><span class="o">)</span><span class="w">  </span>
+<span class="nt">TEXT</span><span class="w">             </span><span class="o">|</span><span class="w"> </span><span class="nt">VARCHAR</span><span class="o">(</span><span class="nt">STRING</span><span class="o">)</span><span class="w">  </span>
+<span class="nt">HASHTAGENTITIES</span><span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="nt">VARCHAR</span><span class="o">(</span><span class="nt">STRING</span><span class="o">)</span><span class="w">  </span>
+<span class="nt">LANG</span><span class="w">             </span><span class="o">|</span><span class="w"> </span><span class="nt">VARCHAR</span><span class="o">(</span><span class="nt">STRING</span><span class="o">)</span><span class="w">  </span>
+<span class="nt">ksql</span><span class="o">&gt;</span>
+</code></pre></div>
+
+<p>并且查询这个得到的流：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ksql</span><span class="o">&gt;</span><span class="w"> </span><span class="k">SELECT</span><span class="w"> </span><span class="n">CREATEDAT</span><span class="p">,</span><span class="w"> </span><span class="nf">USER_NAME</span><span class="p">,</span><span class="w"> </span><span class="nc">TEXT</span><span class="w"> </span><span class="err">\</span>
+<span class="k">FROM</span><span class="w"> </span><span class="n">TWITTER</span><span class="w"> </span><span class="err">\</span>
+<span class="k">WHERE</span><span class="w"> </span><span class="nc">TEXT</span><span class="w"> </span><span class="ow">LIKE</span><span class="w"> </span><span class="s1">&#39;%KSQL%&#39;</span><span class="p">;</span><span class="w">  </span>
+
+<span class="mi">2017</span><span class="o">-</span><span class="mi">10</span><span class="o">-</span><span class="mi">03</span><span class="w"> </span><span class="mi">23</span><span class="err">:</span><span class="mi">39</span><span class="err">:</span><span class="mf">37.000</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">Nicola</span><span class="w"> </span><span class="n">Ferraro</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">RT</span><span class="w"> </span><span class="nv">@flashdba</span><span class="err">:</span><span class="w"> </span><span class="n">Again</span><span class="p">,</span><span class="w"> </span><span class="n">I</span><span class="s1">&#39;m really taken with the possibilities opened up by @confluentinc&#39;</span><span class="n">s</span><span class="w"> </span><span class="n">KSQL</span><span class="w"> </span><span class="n">engine</span><span class="w"> </span><span class="n">#Kafka</span><span class="w"> </span><span class="nl">https</span><span class="p">:</span><span class="o">//</span><span class="n">t</span><span class="p">.</span><span class="n">co</span><span class="o">/</span><span class="n">aljnScgvvs</span>
+</code></pre></div>
+
+<h3>聚合</h3>
+<p>在我们结束之前，让我们去看一下怎么去做一些聚合。</p>
+<div class="highlight"><pre><span></span><code>ksql&gt; SELECT user_screenname, COUNT(*) \
+FROM twitter WINDOW TUMBLING (SIZE 1 HOUR) \
+GROUP BY user_screenname HAVING COUNT(*) &gt; 1;  
+
+oracleace | 2  
+rojulman | 2
+smokeinpublic | 2  
+ArtFlowMe | 2  
+[...]
+</code></pre></div>
+
+<p>你将可能得到满屏幕的结果；这是因为 KSQL 在每次给定的时间窗口更新时实际发出聚合值。因为我们设置 KSQL 去读取在主题上的全部消息（<code>SET 'auto.offset.reset' = 'earliest';</code>），它是一次性读取这些所有的消息并计算聚合更新。这里有一个微妙之处值得去深入研究。我们的入站推文流正好就是一个流。但是，现有它不能创建聚合，我们实际上是创建了一个表。一个表是在给定时间点的给定键的值的一个快照。 KSQL 聚合数据基于消息的事件时间，并且如果它更新了，通过简单的相关窗口重申去操作后面到达的数据。困惑了吗？ 我希望没有，但是，让我们看一下，如果我们可以用这个例子去说明。 我们将申明我们的聚合作为一个真实的表：</p>
+<div class="highlight"><pre><span></span><code>ksql&gt; CREATE TABLE user_tweet_count AS \
+SELECT user_screenname, count(*) AS  tweet_count \
+FROM twitter WINDOW TUMBLING (SIZE 1 HOUR) \
+GROUP BY user_screenname ;
+
+Message  
+---------------------------  
+Table created and running
+</code></pre></div>
+
+<p>看表中的列，这里除了我们要求的外，还有两个隐含列：</p>
+<div class="highlight"><pre><span></span><code>ksql&gt; DESCRIBE user_tweet_count;
+
+Field           | Type  
+-----------------------------------  
+ROWTIME         | BIGINT  
+ROWKEY          | VARCHAR(STRING)  
+USER_SCREENNAME | VARCHAR(STRING)  
+TWEET_COUNT     | BIGINT  
+ksql&gt;
+</code></pre></div>
+
+<p>我们看一下这些是什么：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">ksql</span><span class="o">&gt;</span><span class="w"> </span><span class="nt">SELECT</span><span class="w"> </span><span class="nt">TIMESTAMPTOSTRING</span><span class="o">(</span><span class="nt">ROWTIME</span><span class="o">,</span><span class="w"> </span><span class="s1">&#39;yyyy-MM-dd HH:mm:ss.SSS&#39;</span><span class="o">)</span><span class="w"> </span><span class="o">,</span><span class="w"> </span><span class="err">\</span>
+<span class="nt">ROWKEY</span><span class="o">,</span><span class="w"> </span><span class="nt">USER_SCREENNAME</span><span class="o">,</span><span class="w"> </span><span class="nt">TWEET_COUNT</span><span class="w"> </span><span class="err">\</span>
+<span class="nt">FROM</span><span class="w"> </span><span class="nt">user_tweet_count</span><span class="w"> </span><span class="err">\</span>
+<span class="nt">WHERE</span><span class="w"> </span><span class="nt">USER_SCREENNAME</span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;rmoff&#39;</span><span class="o">;</span><span class="w">  </span>
+
+<span class="nt">2017-09-29</span><span class="w"> </span><span class="nt">11</span><span class="p">:</span><span class="nd">00</span><span class="p">:</span><span class="nd">00</span><span class="p">.</span><span class="nc">000</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nt">rmoff</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="nt">Window</span><span class="p">{</span><span class="err">start=1506708000000</span><span class="w"> </span><span class="err">end=-</span><span class="p">}</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nt">rmoff</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nt">2</span><span class="w">  </span>
+<span class="nt">2017-09-29</span><span class="w"> </span><span class="nt">12</span><span class="p">:</span><span class="nd">00</span><span class="p">:</span><span class="nd">00</span><span class="p">.</span><span class="nc">000</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nt">rmoff</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="nt">Window</span><span class="p">{</span><span class="err">start=1506711600000</span><span class="w"> </span><span class="err">end=-</span><span class="p">}</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nt">rmoff</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nt">4</span><span class="w">  </span>
+<span class="nt">2017-09-28</span><span class="w"> </span><span class="nt">22</span><span class="p">:</span><span class="nd">00</span><span class="p">:</span><span class="nd">00</span><span class="p">.</span><span class="nc">000</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nt">rmoff</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="nt">Window</span><span class="p">{</span><span class="err">start=1506661200000</span><span class="w"> </span><span class="err">end=-</span><span class="p">}</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nt">rmoff</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nt">2</span><span class="w">  </span>
+<span class="nt">2017-09-29</span><span class="w"> </span><span class="nt">09</span><span class="p">:</span><span class="nd">00</span><span class="p">:</span><span class="nd">00</span><span class="p">.</span><span class="nc">000</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nt">rmoff</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="nt">Window</span><span class="p">{</span><span class="err">start=1506700800000</span><span class="w"> </span><span class="err">end=-</span><span class="p">}</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nt">rmoff</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nt">4</span><span class="w">  </span>
+<span class="nt">2017-09-29</span><span class="w"> </span><span class="nt">15</span><span class="p">:</span><span class="nd">00</span><span class="p">:</span><span class="nd">00</span><span class="p">.</span><span class="nc">000</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nt">rmoff</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="nt">Window</span><span class="p">{</span><span class="err">start=1506722400000</span><span class="w"> </span><span class="err">end=-</span><span class="p">}</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nt">rmoff</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nt">2</span><span class="w">  </span>
+<span class="nt">2017-09-29</span><span class="w"> </span><span class="nt">13</span><span class="p">:</span><span class="nd">00</span><span class="p">:</span><span class="nd">00</span><span class="p">.</span><span class="nc">000</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nt">rmoff</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="nt">Window</span><span class="p">{</span><span class="err">start=1506715200000</span><span class="w"> </span><span class="err">end=-</span><span class="p">}</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nt">rmoff</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nt">6</span>
+</code></pre></div>
+
+<p><code>ROWTIME</code> 是窗口开始时间， <code>ROWKEY</code> 是 <code>GROUP BY</code>（<code>USER_SCREENNAME</code>）加上窗口的组合。因此，我们可以通过创建另外一个衍生的表来整理一下：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">ksql</span><span class="o">&gt;</span><span class="w"> </span><span class="nt">CREATE</span><span class="w"> </span><span class="nt">TABLE</span><span class="w"> </span><span class="nt">USER_TWEET_COUNT_DISPLAY</span><span class="w"> </span><span class="nt">AS</span><span class="w"> </span><span class="err">\</span>
+<span class="nt">SELECT</span><span class="w"> </span><span class="nt">TIMESTAMPTOSTRING</span><span class="o">(</span><span class="nt">ROWTIME</span><span class="o">,</span><span class="w"> </span><span class="s1">&#39;yyyy-MM-dd HH:mm:ss.SSS&#39;</span><span class="o">)</span><span class="w"> </span><span class="nt">AS</span><span class="w"> </span><span class="nt">WINDOW_START</span><span class="w"> </span><span class="o">,</span><span class="err">\</span>
+<span class="nt">USER_SCREENNAME</span><span class="o">,</span><span class="w"> </span><span class="nt">TWEET_COUNT</span><span class="w"> </span><span class="err">\</span>
+<span class="nt">FROM</span><span class="w"> </span><span class="nt">user_tweet_count</span><span class="o">;</span>
+
+<span class="nt">Message</span><span class="w">  </span>
+<span class="nt">---------------------------</span><span class="w">  </span>
+<span class="nt">Table</span><span class="w"> </span><span class="nt">created</span><span class="w"> </span><span class="nt">and</span><span class="w"> </span><span class="nt">running</span>
+</code></pre></div>
+
+<p>现在它更易于查询和查看我们感兴趣的数据：</p>
+<div class="highlight"><pre><span></span><code>ksql&gt; SELECT WINDOW_START ,  USER_SCREENNAME, TWEET_COUNT \
+FROM USER_TWEET_COUNT_DISPLAY WHERE TWEET_COUNT&gt; 20;  
+
+2017-09-29 12:00:00.000 | VikasAatOracle | 22  
+2017-09-28 14:00:00.000 | Throne_ie | 50  
+2017-09-28 14:00:00.000 | pikipiki_net | 22  
+2017-09-29 09:00:00.000 | johanlouwers | 22  
+2017-09-28 09:00:00.000 | yvrk1973 | 24  
+2017-09-28 13:00:00.000 | cmosoares | 22  
+2017-09-29 11:00:00.000 | ypoirier | 24  
+2017-09-28 14:00:00.000 | pikisec | 22  
+2017-09-29 07:00:00.000 | Throne_ie | 22  
+2017-09-29 09:00:00.000 | ChrisVoyance | 24  
+2017-09-28 11:00:00.000 | ChrisVoyance | 28
+</code></pre></div>
+
+<h3>结论</h3>
+<p>所以我们有了它！ 我们可以从 Kafka 中取得数据， 并且很容易使用 KSQL 去探索它。 而不仅是去浏览和转换数据，我们可以很容易地使用 KSQL 从流和表中建立流处理。</p>
+<p><img alt="" src="/data/attachment/album/201711/03/230317ly8bg2k2es9suyy6.png"></p>
+<p>如果你对 KSQL 能够做什么感兴趣，去查看：</p>
+<ul>
+<li><a href="https://www.confluent.io/blog/ksql-open-source-streaming-sql-for-apache-kafka/">KSQL 公告</a></li>
+<li><a href="https://www.confluent.io/online-talk/ksql-streaming-sql-for-apache-kafka/">我们最近的 KSQL 在线研讨会</a> 和 <a href="https://www.confluent.io/kafka-summit-sf17/Databases-and-Stream-Processing-1">Kafka 峰会讲演</a></li>
+<li><a href="https://www.youtube.com/watch?v=A45uRzJiv7I">clickstream 演示</a>，它是 <a href="https://github.com/confluentinc/ksql">KSQL 的 GitHub 仓库</a> 的一部分</li>
+<li><a href="https://speakerdeck.com/rmoff/look-ma-no-code-building-streaming-data-pipelines-with-apache-kafka">我最近做的演讲</a> 展示了 KSQL 如何去支持基于流的 ETL 平台</li>
+</ul>
+<p>记住，KSQL 现在正处于开发者预览阶段。 欢迎在 KSQL 的 GitHub 仓库上提出任何问题， 或者去我们的 <a href="https://slackpass.io/confluentcommunity">community Slack group</a> 的 #KSQL 频道。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

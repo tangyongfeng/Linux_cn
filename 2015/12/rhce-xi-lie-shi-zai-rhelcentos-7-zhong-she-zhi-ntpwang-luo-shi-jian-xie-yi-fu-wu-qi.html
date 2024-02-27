@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>RHCE 系列（十）：在 RHEL/CentOS 7 中设置 NTP（网络时间协议）服务器</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Matei Cezar 网络时间协议 - NTP - 是运行在传输层 123 号端口的 UDP 协议，它允许计算机通过网络同步准确时间。随着时间的流逝，计算 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/12/rhce-xi-lie-shi-zai-rhelcentos-7-zhong-she-zhi-ntpwang-luo-shi-jian-xie-yi-fu-wu-qi.html" rel="bookmark"
+           title="Permalink to RHCE 系列（十）：在 RHEL/CentOS 7 中设置 NTP（网络时间协议）服务器">RHCE 系列（十）：在 RHEL/CentOS 7 中设置 NTP（网络时间协议）服务器</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-12-08T10:21:00+01:00">
+                Published: Tue 08 December 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Matei Cezar</p>
+<p>网络时间协议 - NTP - 是运行在传输层 123 号端口的 UDP 协议，它允许计算机通过网络同步准确时间。随着时间的流逝，计算机内部时间会出现漂移，这会导致时间不一致问题，尤其是对于服务器和客户端日志文件，或者你想要复制服务器的资源或数据库。</p>
+<p><img alt="在 CentOS 上安装 NTP 服务器" src="/data/attachment/album/201512/06/222345zvhza8nvpwlhwxoo.png"></p>
+<p><em>在 CentOS 和 RHEL 7 上安装 NTP 服务器</em></p>
+<h4>前置要求：</h4>
+<ul>
+<li><a href="http://www.tecmint.com/centos-7-installation/">CentOS 7 安装过程</a></li>
+<li><a href="http://www.tecmint.com/redhat-enterprise-linux-7-installation/">RHEL 安装过程</a></li>
+</ul>
+<h4>额外要求：</h4>
+<ul>
+<li><a href="http://www.tecmint.com/enable-redhat-subscription-reposiories-and-updates-for-rhel-7/">注册并启用 RHEL 7 更新订阅</a></li>
+<li><a href="http://www.tecmint.com/configure-network-interface-in-rhel-centos-7-0/">在 CentOS/RHCE 7 上配置静态 IP</a></li>
+<li><a href="http://www.tecmint.com/remove-unwanted-services-in-centos-7/">在 CentOS/RHEL 7 上停用并移除不需要的服务</a></li>
+</ul>
+<p>这篇指南会告诉你如何在 CentOS/RHCE 7 上安装和配置 NTP 服务器，并使用 <ruby> NTP 公共时间服务器池 <rp>  （ </rp> <rt>  NTP Public Pool Time Servers </rt> <rp>  ） </rp></ruby>列表中和你服务器地理位置最近的可用节点中同步时间。</p>
+<h4>步骤一：安装和配置 NTP 守护进程</h4>
+<p>1、 官方 CentOS /RHEL 7 库默认提供 NTP 服务器安装包，可以通过使用下面的命令安装。</p>
+<div class="highlight"><pre><span></span><code># yum install ntp
+</code></pre></div>
+
+<p><img alt="在 CentOS 上安装 NTP 服务器" src="/data/attachment/album/201512/06/222347s2ygmygxymxr16qg.png"></p>
+<p><em>安装 NTP 服务器</em></p>
+<p>2、 安装完服务器之后，首先到官方 <ruby> <a href="http://www.pool.ntp.org/en/">  NTP 公共时间服务器池 </a> <rp>  （ </rp> <rt>  NTP Public Pool Time Servers </rt> <rp>  ） </rp></ruby>，选择你服务器物理位置所在的洲，然后搜索你的国家位置，然后会出现 NTP 服务器列表。</p>
+<p><img alt="NTP 服务器池" src="/data/attachment/album/201512/06/222404q543a8948t4ojgto.png"></p>
+<p><em>NTP 服务器池</em></p>
+<p>3、 然后打开编辑 NTP 守护进程的主配置文件，注释掉来自 pool.ntp.org 项目的公共服务器默认列表，并用类似下面截图中提供给你所在国家的列表替换。（LCTT 译注：中国使用 0.cn.pool.ntp.org 等）</p>
+<p><img alt="在 CentOS 中配置 NTP 服务器" src="/data/attachment/album/201512/06/222408sgrlkgg9erg70r90.png"></p>
+<p><em>配置 NTP 服务器</em></p>
+<p>4、 下一步，你需要允许来自你的网络的客户端和这台服务器同步时间。为了做到这点，添加下面一行到 NTP 配置文件，其中 <strong>restrict</strong> 语句控制允许哪些网络查询和同步时间 - 请根据需要替换网络 IP。</p>
+<div class="highlight"><pre><span></span><code>restrict 192.168.1.0 netmask 255.255.255.0 nomodify notrap
+</code></pre></div>
+
+<p><strong>nomodify notrap</strong> 语句意味着不允许你的客户端配置服务器或者作为同步时间的节点。</p>
+<p>5、 如果你需要用于错误处理的额外信息，以防你的 NTP 守护进程出现问题，添加一个 logfile 语句，用于记录所有 NTP 服务器问题到一个指定的日志文件。</p>
+<div class="highlight"><pre><span></span><code><span class="n">logfile</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="n">ntp</span><span class="o">.</span><span class="n">log</span>
+</code></pre></div>
+
+<p><img alt="在 CentOS 中启用 NTP 日志" src="/data/attachment/album/201512/06/222417s4fzngrwdsk6fzok.png"></p>
+<p><em>启用 NTP 日志</em></p>
+<p>6、 在你编辑完所有上面解释的配置并保存关闭 ntp.conf 文件后，你最终的配置看起来像下面的截图。</p>
+<p><img alt="CentOS 中 NTP 服务器的配置" src="/data/attachment/album/201512/06/222444ovcx7mm3cjccmwck.png"></p>
+<p><em>NTP 服务器配置</em></p>
+<h3>步骤二：添加防火墙规则并启动 NTP 守护进程</h3>
+<p>7、 NTP 服务使用 OSI 传输层（第四层）的 123 号 UDP 端口。它是为了避免可变延迟的影响所特别设计的。要在 RHEL/CentOS 7 中开放这个端口，可以对 Firewalld 服务使用下面的命令。</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># firewall-cmd --add-service=ntp --permanent</span>
+<span class="c1"># firewall-cmd --reload</span>
+</code></pre></div>
+
+<p><img alt="在 Firewall 中开放 NTP 端口" src="/data/attachment/album/201512/06/222448j7fk2gyi3g43dk2f.png"></p>
+<p><em>在 Firewall 中开放 NTP 端口</em></p>
+<p>8、 你在防火墙中开放了 123 号端口之后，启动 NTP 服务器并确保系统范围内可用。用下面的命令管理服务。</p>
+<div class="highlight"><pre><span></span><code># systemctl start ntpd
+# systemctl enable ntpd
+# systemctl status ntpd
+</code></pre></div>
+
+<p><img alt="启动 NTP 服务" src="/data/attachment/album/201512/06/222523ubmy38e8umy8rryb.png"></p>
+<p><em>启动 NTP 服务</em></p>
+<h3>步骤三：验证服务器时间同步</h3>
+<p>9、 启动了 NTP 守护进程后，用几分钟等服务器和它的服务器池列表同步时间，然后运行下面的命令验证 NTP 节点同步状态和你的系统时间。</p>
+<div class="highlight"><pre><span></span><code># ntpq -p
+# date -R
+</code></pre></div>
+
+<p><img alt="验证 NTP 服务器时间" src="/data/attachment/album/201512/06/222527tzo4h2a4b28bcdbh.png"></p>
+<p><em>验证 NTP 时间同步</em></p>
+<p>10、 如果你想查询或者和你选择的服务器池同步，你可以使用 ntpdate 命令，后面跟服务器名或服务器地址，类似下面建议的命令行示例。</p>
+<div class="highlight"><pre><span></span><code># ntpdate -q  0.ro.pool.ntp.org  1.ro.pool.ntp.org
+</code></pre></div>
+
+<p><img alt="同步 NTP 同步" src="/data/attachment/album/201512/06/222535x1i841o1cu1r8h4y.png"></p>
+<p><em>同步 NTP 时间</em></p>
+<h3>步骤四：设置 Windows NTP 客户端</h3>
+<p>11、 如果你的 windows 机器不是域名控制器的一部分，你可以配置 Windows 和你的 NTP服务器同步时间。在任务栏右边 -&gt; 时间 -&gt; 更改日期和时间设置 -&gt; 网络时间标签 -&gt; 更改设置 -&gt; 和一个网络时间服务器检查同步 -&gt; 在 Server 空格输入服务器 IP 或 FQDN -&gt; 马上更新 -&gt; OK。</p>
+<p><img alt="和 NTP 同步 Windows 时间" src="/data/attachment/album/201512/06/222552nmgjhzhttwupuuaj.png"></p>
+<p><em>和 NTP 同步 Windows 时间</em></p>
+<p>就是这些。在你的网络中配置一个本地 NTP 服务器能确保你所有的服务器和客户端有相同的时间设置，以防出现网络连接失败，并且它们彼此都相互同步。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

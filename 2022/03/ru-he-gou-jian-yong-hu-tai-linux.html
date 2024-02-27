@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何构建用户态 Linux</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Calvinlin “用户态 Linux” 是什么？它是一种可以在用户态运行的 Linux 内核。（用户态是什么，这里就不解释了） 它有什么用？它用于内核隔离 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2022/03/ru-he-gou-jian-yong-hu-tai-linux.html" rel="bookmark"
+           title="Permalink to 如何构建用户态 Linux">如何构建用户态 Linux</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2022-03-25T11:58:00+01:00">
+                Published: Fri 25 March 2022
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Calvinlin</p>
+<p><img alt="" src="/data/attachment/album/202203/25/115607eqtmmuuiklimazqt.jpg"></p>
+<p>“用户态 Linux” 是什么？它是一种可以在用户态运行的 Linux 内核。（用户态是什么，这里就不解释了）</p>
+<p>它有什么用？它用于内核隔离、替代 QEMU/Bochs 来调试 Linux 内核，也可以在低性能设备上代替 KVM 进行虚拟化。</p>
+<p>但它也存在一些缺陷，比如不支持 ARM 架构以及多核系统。</p>
+<h3>编译 Linux 内核</h3>
+<p>首先通过 <code>git</code> 下载 Linux 内核源代码：</p>
+<div class="highlight"><pre><span></span><code>git clone --depth 1 https://mirrors.tuna.tsinghua.edu.cn/git/linux.git
+</code></pre></div>
+
+<p>（这里使用了清华大学的镜像站，<a href="http://kernel.org">kernel.org</a> 也是可以的。）</p>
+<p>然后采用如下步骤编译它：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>linux
+$<span class="w"> </span><span class="nb">export</span><span class="w"> </span><span class="nv">ARCH</span><span class="o">=</span>um<span class="w"> </span><span class="c1"># 非常重要 设置架构为用户态</span>
+$<span class="w"> </span>make<span class="w"> </span>defconfig
+$<span class="w"> </span>make<span class="w"> </span>-j8
+
+<span class="w"> </span>LD<span class="w">      </span>.tmp_vmlinux.kallsyms1
+<span class="w"> </span>KSYMS<span class="w">   </span>.tmp_vmlinux.kallsyms1.S
+<span class="w"> </span>AS<span class="w">      </span>.tmp_vmlinux.kallsyms1.S
+<span class="w"> </span>LD<span class="w">      </span>.tmp_vmlinux.kallsyms2
+<span class="w"> </span>KSYMS<span class="w">   </span>.tmp_vmlinux.kallsyms2.S
+<span class="w"> </span>AS<span class="w">      </span>.tmp_vmlinux.kallsyms2.S
+<span class="w"> </span>LD<span class="w">      </span>vmlinux
+<span class="w"> </span>SYSMAP<span class="w">  </span>System.map
+<span class="w"> </span>LINK<span class="w"> </span>linux
+<span class="w"> </span>MODPOST<span class="w"> </span>modules-only.symvers
+<span class="w"> </span>GEN<span class="w">     </span>Module.symvers
+</code></pre></div>
+
+<p>经过漫长的编译之后，你获得了一个 <code>vmlinux</code> 文件。它和正常的 Linux 内核的区别是，这个 <code>vmlinux</code> 可以在用户态运行。</p>
+<h3>准备根文件系统</h3>
+<p>先别着急启动，先来准备内核所使用的根文件系统。</p>
+<p>以下内容以 Debian Linux 为例。</p>
+<p>首先安装 <code>debootstrap</code> 软件包：</p>
+<div class="highlight"><pre><span></span><code>sudo apt install debootstrap
+</code></pre></div>
+
+<p>以下命令皆需要 root 权限，先切换到 root 用户：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>su
+</code></pre></div>
+
+<p>然后构建根文件系统，存放在 <code>rootfs</code> 文件中：</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span><span class="nv">dd</span><span class="w"> </span><span class="k">if</span><span class="o">=/</span><span class="nv">dev</span><span class="o">/</span><span class="nv">zero</span><span class="w"> </span><span class="nv">of</span><span class="o">=</span><span class="nv">rootfs</span><span class="w"> </span><span class="nv">seek</span><span class="o">=</span><span class="mi">2</span><span class="nv">G</span><span class="w"> </span>#<span class="w"> </span>创建一个<span class="w"> </span><span class="mi">2</span><span class="nv">GB</span><span class="w"> </span>大小的空<span class="w"> </span><span class="nv">rootfs</span><span class="w"> </span>文件
+<span class="w"> </span><span class="mi">2000000000</span>字节（<span class="mi">2</span><span class="w"> </span><span class="nv">GB</span>，<span class="mi">2</span><span class="w"> </span><span class="nv">GB</span>）已复制，<span class="mi">0</span>.<span class="mi">137825</span><span class="w"> </span><span class="nv">s</span>，<span class="mi">570</span><span class="w"> </span><span class="nv">MB</span><span class="o">/</span><span class="nv">s</span>`
+
+#<span class="w"> </span><span class="nv">mkfs</span>.<span class="nv">ext4</span><span class="w"> </span><span class="nv">rootfs</span><span class="w"> </span>#<span class="w"> </span>将其格式化为<span class="w"> </span><span class="nv">ext4</span><span class="w"> </span>格式
+<span class="w"> </span><span class="nv">mke2fs</span><span class="w"> </span><span class="mi">1</span>.<span class="mi">46</span>.<span class="mi">5</span><span class="w"> </span><span class="ss">(</span><span class="mi">30</span><span class="o">-</span><span class="nv">Dec</span><span class="o">-</span><span class="mi">2021</span><span class="ss">)</span>
+<span class="w"> </span><span class="nv">Discarding</span><span class="w"> </span><span class="nv">device</span><span class="w"> </span><span class="nv">blocks</span>:<span class="w"> </span><span class="nv">done</span><span class="w">                            </span>
+<span class="w"> </span><span class="nv">Creating</span><span class="w"> </span><span class="nv">filesystem</span><span class="w"> </span><span class="nv">with</span><span class="w"> </span><span class="mi">76748</span><span class="w"> </span><span class="mi">1</span><span class="nv">k</span><span class="w"> </span><span class="nv">blocks</span><span class="w"> </span><span class="nv">and</span><span class="w"> </span><span class="mi">19200</span><span class="w"> </span><span class="nv">inodes</span>
+<span class="w"> </span><span class="nv">Filesystem</span><span class="w"> </span><span class="nv">UUID</span>:<span class="w"> </span><span class="mi">9</span><span class="nv">dc7f1f6</span><span class="o">-</span><span class="mi">8</span><span class="nv">b16</span><span class="o">-</span><span class="mi">4</span><span class="nv">c64</span><span class="o">-</span><span class="mi">9</span><span class="nv">e22</span><span class="o">-</span><span class="mi">94</span><span class="nv">ede327c532</span>
+<span class="w"> </span><span class="nv">Superblock</span><span class="w"> </span><span class="nv">backups</span><span class="w"> </span><span class="nv">stored</span><span class="w"> </span><span class="nv">on</span><span class="w"> </span><span class="nv">blocks</span>:<span class="w"> </span>
+<span class="w">    </span><span class="mi">8193</span>,<span class="w"> </span><span class="mi">24577</span>,<span class="w"> </span><span class="mi">40961</span>,<span class="w"> </span><span class="mi">57345</span>,<span class="w"> </span><span class="mi">73729</span>
+
+<span class="nv">Allocating</span><span class="w"> </span><span class="nv">group</span><span class="w"> </span><span class="nv">tables</span>:<span class="w"> </span><span class="nv">done</span><span class="w">                            </span>
+<span class="nv">Writing</span><span class="w"> </span><span class="nv">inode</span><span class="w"> </span><span class="nv">tables</span>:<span class="w"> </span><span class="nv">done</span><span class="w">                            </span>
+<span class="nv">Creating</span><span class="w"> </span><span class="nv">journal</span><span class="w"> </span><span class="ss">(</span><span class="mi">4096</span><span class="w"> </span><span class="nv">blocks</span><span class="ss">)</span>:<span class="w"> </span><span class="nv">done</span>
+<span class="nv">Writing</span><span class="w"> </span><span class="nv">superblocks</span><span class="w"> </span><span class="nv">and</span><span class="w"> </span><span class="nv">filesystem</span><span class="w"> </span><span class="nv">accounting</span><span class="w"> </span><span class="nv">information</span>:<span class="w"> </span><span class="nv">done</span><span class="w"> </span>
+</code></pre></div>
+
+<p>然后挂载 <code>rootfs</code> 到 <code>/mnt</code> 下：</p>
+<div class="highlight"><pre><span></span><code># mount rootfs /mnt
+</code></pre></div>
+
+<p>在其中创建 Debian Linux 的根文件系统（<code>/</code>）：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># cd /mnt</span>
+<span class="c1"># debootstrap sid ./ https://mirrors.tuna.tsinghua.edu.cn/debian</span>
+<span class="w"> </span><span class="n">I</span><span class="p">:</span><span class="w"> </span><span class="n">Configuring</span><span class="w"> </span><span class="n">python</span><span class="o">-</span><span class="n">central</span><span class="o">...</span><span class="w"> </span>
+<span class="w"> </span><span class="n">I</span><span class="p">:</span><span class="w"> </span><span class="n">Configuring</span><span class="w"> </span><span class="n">ubuntu</span><span class="o">-</span><span class="n">minimal</span><span class="o">...</span><span class="w"> </span>
+<span class="w"> </span><span class="n">I</span><span class="p">:</span><span class="w"> </span><span class="n">Configuring</span><span class="w"> </span><span class="n">libc</span><span class="o">-</span><span class="n">bin</span><span class="o">...</span><span class="w"> </span>
+<span class="w"> </span><span class="n">I</span><span class="p">:</span><span class="w"> </span><span class="n">Configuring</span><span class="w"> </span><span class="n">initramfs</span><span class="o">-</span><span class="n">tools</span><span class="o">...</span><span class="w"> </span>
+<span class="w"> </span><span class="n">I</span><span class="p">:</span><span class="w"> </span><span class="n">Base</span><span class="w"> </span><span class="n">system</span><span class="w"> </span><span class="n">installed</span><span class="w"> </span><span class="n">successfully</span><span class="o">.</span>
+</code></pre></div>
+
+<p>通过 <code>chroot</code> 将其改变为根目录：</p>
+<div class="highlight"><pre><span></span><code># chroot ./
+</code></pre></div>
+
+<p>设置 root 密码：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="nx">passwd</span><span class="w"> </span>
+<span class="w"> </span><span class="nx">New</span><span class="w"> </span><span class="nx">password</span><span class="p">:</span><span class="w"> </span>
+<span class="w"> </span><span class="nx">Retype</span><span class="w"> </span><span class="nx">new</span><span class="w"> </span><span class="nx">password</span><span class="p">:</span><span class="w"> </span>
+</code></pre></div>
+
+<p>然后退出 chroot 环境，并卸载：</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span><span class="k">exit</span><span class="w"> </span>#<span class="w"> </span>退出<span class="w"> </span><span class="nv">chroot</span><span class="w"> </span>环境
+#<span class="w"> </span><span class="nv">cd</span><span class="w"> </span>..
+#<span class="w"> </span><span class="nv">umount</span><span class="w"> </span><span class="o">/</span><span class="nv">mnt</span>
+#<span class="w"> </span><span class="k">exit</span><span class="w"> </span>#<span class="w"> </span>退出<span class="w"> </span><span class="nv">sudo</span><span class="w"> </span>环境
+</code></pre></div>
+
+<p>设置 rootfs 的所有权为普通用户：</p>
+<div class="highlight"><pre><span></span><code><span class="n">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">chown</span><span class="w"> </span><span class="n n-Quoted">`whoami`</span><span class="w"> </span><span class="n">rootfs</span>
+</code></pre></div>
+
+<p>这样，这个用户态 Linux 的根文件系统就准备好了。</p>
+<h3>测试用户态 Linux</h3>
+<p>然后就可以用这个内核启动了，只需要一行命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>screen<span class="w"> </span>./vmlinux<span class="w"> </span><span class="nv">mem</span><span class="o">=</span>1G<span class="w"> </span><span class="nv">root</span><span class="o">=</span>/dev/root<span class="w"> </span><span class="nv">rootfstype</span><span class="o">=</span>hostfs<span class="w"> </span><span class="nv">hostfs</span><span class="o">=</span>./rootfs<span class="w">  </span><span class="nv">con</span><span class="o">=</span>null<span class="w"> </span><span class="nv">con0</span><span class="o">=</span>null,fd:2<span class="w"> </span><span class="nv">con1</span><span class="o">=</span>fd:0,fd:1
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/202203/25/115830idpxpqxr5hqddnqu.png"></p>
+<p>启动后，使用你前面设置的 root 用户/密码登录，便可以进入到用户态 Linux 容器中了。</p>
+<p>有别于 Docker，这个容器的内核和宿主的内核是隔离的，可以使用这个容器作为一个调试内核的工具，如：</p>
+<div class="highlight"><pre><span></span><code>echo 1 &gt; /proc/sys/kernel/sysrq
+echo c &gt; /proc/sysrq-trigger
+</code></pre></div>
+
+<p>即可手动触发一个“<ruby> 内核恐慌 <rt>  Kernel Panic </rt></ruby>”错误。</p>
+<p>延伸阅读：</p>
+<ul>
+<li><a href="https://www.kernel.org/doc/html/latest/virt/uml/user_mode_linux_howto_v2.html">https://www.kernel.org/doc/html/latest/virt/uml/user_mode_linux_howto_v2.html</a></li>
+<li><a href="https://wiki.archlinux.org/title/User-mode_Linux">https://wiki.archlinux.org/title/User-mode_Linux</a></li>
+</ul>
+<p>作者简介：</p>
+<p>calvinlin：一个普通的深圳初中生。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

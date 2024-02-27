@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何在 Linux 中扩展/增加 LVM 大小（逻辑卷调整）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Magesh Maruthamuthu 扩展逻辑卷非常简单，只需要很少的步骤，而且不需要卸载某个逻辑卷就可以在线完成。 LVM 的主要目的是灵活的磁 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2020/10/ru-he-zai-linux-zhong-kuo-zhan-zeng-jia-lvm-da-xiao-luo-ji-juan-diao-zheng.html" rel="bookmark"
+           title="Permalink to 如何在 Linux 中扩展/增加 LVM 大小（逻辑卷调整）">如何在 Linux 中扩展/增加 LVM 大小（逻辑卷调整）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2020-10-01T23:41:59+02:00">
+                Published: Thu 01 October 2020
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Magesh Maruthamuthu</p>
+<p><img alt="" src="/data/attachment/album/202010/01/234018qgnwilmmzom8xarb.jpg"></p>
+<p>扩展逻辑卷非常简单，只需要很少的步骤，而且不需要卸载某个逻辑卷就可以在线完成。</p>
+<p>LVM 的主要目的是灵活的磁盘管理，当你需要的时候，可以很方便地调整、扩展和缩小逻辑卷的大小。</p>
+<p>如果你是逻辑卷管理（LVM） 新手，我建议你从我们之前的文章开始学习。</p>
+<ul>
+<li><strong>第一部分：<a href="/article-12670-1.html">如何在 Linux 中创建/配置 LVM（逻辑卷管理）</a></strong></li>
+</ul>
+<p><img alt="" src="/data/attachment/album/202010/01/233946ybwbnw4zanjbn00e.jpeg"></p>
+<p>扩展逻辑卷涉及到以下步骤：</p>
+<ul>
+<li>检查逻辑卷（LV）所在的卷组中是否有足够的未分配磁盘空间</li>
+<li>如果有，你可以使用这些空间来扩展逻辑卷</li>
+<li>如果没有，请向系统中添加新的磁盘或 LUN</li>
+<li>将物理磁盘转换为物理卷（PV）</li>
+<li>扩展卷组</li>
+<li>增加逻辑卷大小</li>
+<li>扩大文件系统</li>
+<li>检查扩展的文件系统大小</li>
+</ul>
+<h3>如何创建 LVM 物理卷？</h3>
+<p>使用 <code>pvcreate</code> 命令创建 LVM 物理卷。</p>
+<p>当在操作系统中检测到磁盘，使用 <code>pvcreate</code> 命令初始化 LVM 物理卷：</p>
+<div class="highlight"><pre><span></span><code># pvcreate /dev/sdc
+Physical volume &quot;/dev/sdc&quot; successfully created
+</code></pre></div>
+
+<p><strong>请注意：</strong></p>
+<ul>
+<li>上面的命令将删除磁盘 <code>/dev/sdc</code> 上的所有数据。</li>
+<li>物理磁盘可以直接添加到 LVM 物理卷中，而不是磁盘分区。</li>
+</ul>
+<p>使用 <code>pvdisplay</code> 命令来显示你所创建的物理卷：</p>
+<div class="highlight"><pre><span></span><code># pvdisplay /dev/sdc
+
+&quot;/dev/sdc&quot; is a new physical volume of &quot;10.00 GiB&quot;
+--- NEW Physical volume ---
+PV Name               /dev/sdc
+VG Name
+PV Size               10.00 GiB
+Allocatable           NO
+PE Size               0
+Total PE              0
+Free PE               0
+Allocated PE          0
+PV UUID               69d9dd18-36be-4631-9ebb-78f05fe3217f
+</code></pre></div>
+
+<h3>如何扩展卷组</h3>
+<p>使用以下命令在现有的卷组（VG）中添加一个新的物理卷：</p>
+<div class="highlight"><pre><span></span><code># vgextend vg01 /dev/sdc
+Volume group &quot;vg01&quot; successfully extended
+</code></pre></div>
+
+<p>使用 <code>vgdisplay</code> 命令来显示你所创建的物理卷：</p>
+<div class="highlight"><pre><span></span><code># vgdisplay vg01
+--- Volume group ---
+VG Name              vg01
+System ID
+Format               lvm2
+Metadata Areas       2
+Metadata Sequence No 1
+VG Access            read/write
+VG Status            resizable
+MAX LV               0
+Cur LV               0
+Open LV              0
+Max PV               0
+Cur PV               2
+Act PV               2
+VG Size              14.99 GiB
+PE Size              4.00 MiB
+Total PE             3840
+Alloc PE / Size      1280 / 4.99
+Free PE / Size       2560 / 9.99 GiB
+VG UUID              d17e3c31-e2c9-4f11-809c-94a549bc43b7
+</code></pre></div>
+
+<h3>如何扩展逻辑卷？</h3>
+<p>使用以下命令增加现有逻辑卷大小。</p>
+<p><strong>逻辑卷扩展（<code>lvextend</code>）的常用语法：</strong></p>
+<div class="highlight"><pre><span></span><code>lvextend [要增加的额外空间] [现有逻辑卷名称]
+</code></pre></div>
+
+<p>使用下面的命令将现有的逻辑卷增加 10GB：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># lvextend -L +10G /dev/mapper/vg01-lv002</span>
+<span class="n">Rounding</span><span class="w"> </span><span class="n">size</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">boundary</span><span class="w"> </span><span class="n">between</span><span class="w"> </span><span class="n">physical</span><span class="w"> </span><span class="n">extents</span><span class="p">:</span><span class="w"> </span><span class="mf">5.90</span><span class="w"> </span><span class="n">GiB</span>
+<span class="n">Size</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="n">logical</span><span class="w"> </span><span class="n">volume</span><span class="w"> </span><span class="n">vg01</span><span class="o">/</span><span class="n">lv002</span><span class="w"> </span><span class="n">changed</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="mf">5.00</span><span class="w"> </span><span class="n">GiB</span><span class="w"> </span><span class="p">(</span><span class="mi">1280</span><span class="w"> </span><span class="n">extents</span><span class="p">)</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="mf">15.00</span><span class="w"> </span><span class="n">GiB</span><span class="w"> </span><span class="p">(</span><span class="mi">3840</span><span class="w"> </span><span class="n">extents</span><span class="p">)</span><span class="o">.</span>
+<span class="n">Logical</span><span class="w"> </span><span class="n">volume</span><span class="w"> </span><span class="k">var</span><span class="w"> </span><span class="n">successfully</span><span class="w"> </span><span class="n">resized</span>
+</code></pre></div>
+
+<p>使用 PE 大小来扩展逻辑卷：</p>
+<div class="highlight"><pre><span></span><code># lvextend -l +2560 /dev/mapper/vg01-lv002
+</code></pre></div>
+
+<p>要使用百分比（%）扩展逻辑卷，请使用以下命令：</p>
+<div class="highlight"><pre><span></span><code># lvextend -l +40%FREE /dev/mapper/vg01-lv002
+</code></pre></div>
+
+<p>现在，逻辑卷已经扩展，你需要调整文件系统的大小以扩展逻辑卷内的空间：</p>
+<p>对于基于 ext3 和 ext4 的文件系统，运行以下命令：</p>
+<div class="highlight"><pre><span></span><code># resize2fs /dev/mapper/vg01-lv002
+</code></pre></div>
+
+<p>对于 xfs 文件系统，使用以下命令：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> xfs_growfs /dev/mapper/vg01-lv002
+</code></pre></div>
+
+<p>使用 <a href="https://www.2daygeek.com/linux-check-disk-space-usage-df-command/">df 命令</a>查看文件系统大小：</p>
+<div class="highlight"><pre><span></span><code># df -h /lvmtest1
+Filesystem Size Used Avail Use% Mounted on
+/dev/mapper/vg01-lv002 15360M 34M 15326M 4% /lvmtest1
+</code></pre></div>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

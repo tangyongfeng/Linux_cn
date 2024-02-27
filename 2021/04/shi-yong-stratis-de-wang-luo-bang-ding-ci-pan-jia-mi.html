@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 Stratis 的网络绑定磁盘加密</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Briansmith 在一个有许多加密磁盘的环境中，解锁所有的磁盘是一项困难的任务。 网络绑定磁盘加密 Network bound disk encryption （NBDE）有助于自动解 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2021/04/shi-yong-stratis-de-wang-luo-bang-ding-ci-pan-jia-mi.html" rel="bookmark"
+           title="Permalink to 使用 Stratis 的网络绑定磁盘加密">使用 Stratis 的网络绑定磁盘加密</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2021-04-27T22:18:35+02:00">
+                Published: Tue 27 April 2021
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Briansmith</p>
+<p><img alt="" src="/data/attachment/album/202104/27/221704gyzyvyroyyrybany.jpg"></p>
+<p>在一个有许多加密磁盘的环境中，解锁所有的磁盘是一项困难的任务。<ruby> 网络绑定磁盘加密 <rt>  Network bound disk encryption </rt></ruby>（NBDE）有助于自动解锁 Stratis 卷的过程。这是在大型环境中的一个关键要求。Stratis 2.1 版本增加了对加密的支持，这在《<a href="/article-13311-1.html">Stratis 加密入门</a>》一文中介绍过。Stratis 2.3 版本最近在使用加密的 Stratis 池时引入了对网络绑定磁盘加密（NBDE）的支持，这是本文的主题。</p>
+<p><a href="https://stratis-storage.github.io/">Stratis 网站</a> 将 Stratis 描述为一个“<em>易于使用的 Linux 本地存储管理</em>”。短视频《<a href="https://www.youtube.com/watch?v=CJu3kmY-f5o">使用 Stratis 管理存储</a>》对基础知识进行了快速演示。该视频是在 Red Hat Enterprise Linux 8 系统上录制的，然而，视频中显示的概念也适用于 Fedora Linux 中的 Stratis。</p>
+<h3>先决条件</h3>
+<p>本文假设你熟悉 Stratis，也熟悉 Stratis 池加密。如果你不熟悉这些主题，请参考这篇 <a href="/article-13311-1.html">文章</a> 和前面提到的 <a href="https://www.youtube.com/watch?v=CJu3kmY-f5o">Stratis 概述视频</a>。</p>
+<p>NBDE 需要 Stratis 2.3 或更高版本。本文中的例子使用的是 Fedora Linux 34 的预发布版本。Fedora Linux 34 的最终版本将包含 Stratis 2.3。</p>
+<h3>网络绑定磁盘加密（NBDE）概述</h3>
+<p>加密存储的主要挑战之一是有一个安全的方法在系统重启后再次解锁存储。在大型环境中，手动输入加密口令并不能很好地扩展。NBDE 解决了这一问题，允许以自动方式解锁加密存储。</p>
+<p>在更高层次上，NBDE 需要环境中的 Tang 服务器。客户端系统（使用 Clevis Pin）只要能与 Tang 服务器建立网络连接，就可以自动解密存储。如果网络没有连接到 Tang 服务器，则必须手动解密存储。</p>
+<p>这背后的想法是，Tang 服务器只能在内部网络上使用，因此，如果加密设备丢失或被盗，它将不再能够访问内部网络连接到 Tang 服务器，因此不会被自动解密。</p>
+<p>关于 Tang 和 Clevis 的更多信息，请参见手册页（<code>man tang</code>、<code>man clevis</code>）、<a href="https://github.com/latchset/tang">Tang 的 GitHub 页面</a> 和 <a href="https://github.com/latchset/clevis">Clevis 的 GitHub 页面</a>。</p>
+<h3>设置 Tang 服务器</h3>
+<p>本例使用另一个 Fedora Linux 系统作为 Tang 服务器，主机名为 <code>tang-server</code>。首先安装 <code>tang</code> 包。</p>
+<div class="highlight"><pre><span></span><code>dnf install tang
+</code></pre></div>
+
+<p>然后用 <code>systemctl</code> 启用并启动 <code>tangd.socket</code>。</p>
+<div class="highlight"><pre><span></span><code>systemctl enable tangd.socket --now
+</code></pre></div>
+
+<p>Tang 使用的是 TCP 80 端口，所以你也需要在防火墙中打开该端口。</p>
+<div class="highlight"><pre><span></span><code>firewall-cmd --add-port=80/tcp --permanent
+firewall-cmd --add-port=80/tcp
+</code></pre></div>
+
+<p>最后，运行 <code>tang-show-keys</code> 来显示输出签名密钥指纹。你以后会需要这个。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> tang-show-keys
+l3fZGUCmnvKQF_OA6VZF9jf8z2s
+</code></pre></div>
+
+<h3>创建加密的 Stratis 池</h3>
+<p>上一篇关于 Stratis 加密的文章详细介绍了如何设置加密的 Stratis 池，所以本文不会深入介绍。</p>
+<p>第一步是捕获一个将用于解密 Stratis 池的密钥。即使使用 NBDE，也需要设置这个，因为在 NBDE 服务器无法到达的情况下，可以用它来手动解锁池。使用以下命令捕获 <code>pool1</code> 密钥。</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span><span class="nv">stratis</span><span class="w"> </span><span class="nv">key</span><span class="w"> </span><span class="nv">set</span><span class="w"> </span><span class="o">--</span><span class="nv">capture</span><span class="o">-</span><span class="nv">key</span><span class="w"> </span><span class="nv">pool1key</span>
+<span class="nv">Enter</span><span class="w"> </span><span class="nv">key</span><span class="w"> </span><span class="nv">data</span><span class="w"> </span><span class="nv">followed</span><span class="w"> </span><span class="nv">by</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nv">key</span>:
+</code></pre></div>
+
+<p>然后我将使用 <code>/dev/vdb</code> 设备创建一个加密的 Stratis 池（使用刚才创建的 <code>pool1key</code>），命名为 <code>pool1</code>。</p>
+<div class="highlight"><pre><span></span><code># stratis pool create --key-desc pool1key pool1 /dev/vdb。
+</code></pre></div>
+
+<p>接下来，在这个 Stratis 池中创建一个名为 <code>filesystem1</code> 的文件系统，创建一个挂载点，挂载文件系统，并在其中创建一个测试文件：</p>
+<div class="highlight"><pre><span></span><code># stratis filesystem create pool1 filesystem1
+# mkdir /filesystem1
+# mount /dev/stratis/pool1/filesystem1 /filesystem1
+# cd /filesystem1
+# echo &quot;this is a test file&quot; &gt; testfile
+</code></pre></div>
+
+<h3>将 Stratis 池绑定到 Tang 服务器上</h3>
+<p>此时，我们已经创建了加密的 Stratis 池，并在池中创建了一个文件系统。下一步是将你的 Stratis 池绑定到刚刚设置的 Tang 服务器上。使用 <code>stratis pool bind nbde</code> 命令进行。</p>
+<p>当你进行 Tang 绑定时，需要向该命令传递几个参数：</p>
+<ul>
+<li>池名（在本例中，<code>pool1</code>）</li>
+<li>钥匙描述符名称（本例中为 <code>pool1key</code>）</li>
+<li>Tang 服务器名称（在本例中，<code>http://tang-server</code>）</li>
+</ul>
+<p>记得之前在 Tang 服务器上，运行了 <code>tang-show-keys</code>，显示 Tang 输出的签名密钥指纹是 <code>l3fZGUCmnvKQF_OA6VZF9jf8z2s</code>。除了前面的参数外，还需要用参数 <code>-thumbprint l3fZGUCmnvKQF_OA6VZF9jf8z2s</code> 传递这个指纹，或者用 <code>-trust-url</code> 参数跳过对指纹的验证。</p>
+<p>使用 <code>-thumbprint</code> 参数更安全。例如：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> stratis pool bind nbde pool1 pool1key http://tang-server --thumbprint l3fZGUCmnvKQF_OA6VZF9jf8z2s
+</code></pre></div>
+
+<h3>用 NBDE 解锁 Stratis 池</h3>
+<p>接下来重启主机，并验证你可以用 NBDE 解锁 Stratis 池，而不需要使用密钥口令。重启主机后，该池不再可用：</p>
+<div class="highlight"><pre><span></span><code># stratis pool list
+Name Total Physical Properties
+</code></pre></div>
+
+<p>要使用 NBDE 解锁池，请运行以下命令：</p>
+<div class="highlight"><pre><span></span><code># stratis pool unlock clevis
+</code></pre></div>
+
+<p>注意，你不需要使用密钥口令。这个命令可以在系统启动时自动运行。</p>
+<p>此时，Stratis 池已经可以使用了：</p>
+<div class="highlight"><pre><span></span><code># stratis pool list
+Name Total Physical Properties
+pool1 4.98 GiB / 583.65 MiB / 4.41 GiB ~Ca, Cr
+</code></pre></div>
+
+<p>你可以挂载文件系统，访问之前创建的文件：</p>
+<div class="highlight"><pre><span></span><code># mount /dev/stratis/pool1/filesystem1 /filesystem1/
+# cat /filesystem1/testfile
+this is a test file
+</code></pre></div>
+
+<h3>轮换 Tang 服务器密钥</h3>
+<p>最好定期轮换 Tang 服务器密钥，并更新 Stratis 客户服务器以使用新的 Tang 密钥。</p>
+<p>要生成新的 Tang 密钥，首先登录到 Tang 服务器，查看 <code>/var/db/tang</code> 目录的当前状态。然后，运行 <code>tang-show-keys</code> 命令：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># ls -al /var/db/tang</span>
+<span class="n">total</span><span class="w"> </span><span class="mi">8</span>
+<span class="n">drwx</span><span class="o">------.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">tang</span><span class="w"> </span><span class="n">tang</span><span class="w"> </span><span class="mi">124</span><span class="w"> </span><span class="n">Mar</span><span class="w"> </span><span class="mi">15</span><span class="w"> </span><span class="mi">15</span><span class="p">:</span><span class="mi">51</span><span class="w"> </span><span class="o">.</span>
+<span class="n">drwxr</span><span class="o">-</span><span class="n">xr</span><span class="o">-</span><span class="n">x</span><span class="o">.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="mi">16</span><span class="w"> </span><span class="n">Mar</span><span class="w"> </span><span class="mi">15</span><span class="w"> </span><span class="mi">15</span><span class="p">:</span><span class="mi">48</span><span class="w"> </span><span class="o">..</span>
+<span class="o">-</span><span class="n">rw</span><span class="o">-</span><span class="n">r</span><span class="o">--</span><span class="n">r</span><span class="o">--.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">tang</span><span class="w"> </span><span class="n">tang</span><span class="w"> </span><span class="mi">361</span><span class="w"> </span><span class="n">Mar</span><span class="w"> </span><span class="mi">15</span><span class="w"> </span><span class="mi">15</span><span class="p">:</span><span class="mi">51</span><span class="w"> </span><span class="n">hbjJEDXy8G8wynMPqiq8F47nJwo</span><span class="o">.</span><span class="n">jwk</span>
+<span class="o">-</span><span class="n">rw</span><span class="o">-</span><span class="n">r</span><span class="o">--</span><span class="n">r</span><span class="o">--.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">tang</span><span class="w"> </span><span class="n">tang</span><span class="w"> </span><span class="mi">367</span><span class="w"> </span><span class="n">Mar</span><span class="w"> </span><span class="mi">15</span><span class="w"> </span><span class="mi">15</span><span class="p">:</span><span class="mi">51</span><span class="w"> </span><span class="n">l3fZGUCmnvKQF_OA6VZF9jf8z2s</span><span class="o">.</span><span class="n">jwk</span>
+<span class="c1"># tang-show-keys</span>
+<span class="n">l3fZGUCmnvKQF_OA6VZF9jf8z2s</span>
+</code></pre></div>
+
+<p>要生成新的密钥，运行 <code>tangd-keygen</code> 并将其指向 <code>/var/db/tang</code> 目录：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># /usr/libexec/tangd-keygen /var/db/tang</span>
+</code></pre></div>
+
+<p>如果你再看看 <code>/var/db/tang</code> 目录，你会看到两个新文件：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># ls -al /var/db/tang</span>
+<span class="n">total</span><span class="w"> </span><span class="mi">16</span>
+<span class="n">drwx</span><span class="o">------.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">tang</span><span class="w"> </span><span class="n">tang</span><span class="w"> </span><span class="mi">248</span><span class="w"> </span><span class="n">Mar</span><span class="w"> </span><span class="mi">22</span><span class="w"> </span><span class="mi">10</span><span class="p">:</span><span class="mi">41</span><span class="w"> </span><span class="o">.</span>
+<span class="n">drwxr</span><span class="o">-</span><span class="n">xr</span><span class="o">-</span><span class="n">x</span><span class="o">.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="mi">16</span><span class="w"> </span><span class="n">Mar</span><span class="w"> </span><span class="mi">15</span><span class="w"> </span><span class="mi">15</span><span class="p">:</span><span class="mi">48</span><span class="w"> </span><span class="o">..</span>
+<span class="o">-</span><span class="n">rw</span><span class="o">-</span><span class="n">r</span><span class="o">--</span><span class="n">r</span><span class="o">--.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">tang</span><span class="w"> </span><span class="n">tang</span><span class="w"> </span><span class="mi">361</span><span class="w"> </span><span class="n">Mar</span><span class="w"> </span><span class="mi">15</span><span class="w"> </span><span class="mi">15</span><span class="p">:</span><span class="mi">51</span><span class="w"> </span><span class="n">hbjJEDXy8G8wynMPqiq8F47nJwo</span><span class="o">.</span><span class="n">jwk</span>
+<span class="o">-</span><span class="n">rw</span><span class="o">-</span><span class="n">r</span><span class="o">--</span><span class="n">r</span><span class="o">--.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="mi">354</span><span class="w"> </span><span class="n">Mar</span><span class="w"> </span><span class="mi">22</span><span class="w"> </span><span class="mi">10</span><span class="p">:</span><span class="mi">41</span><span class="w"> </span><span class="n">iyG5HcF01zaPjaGY6L_3WaslJ_E</span><span class="o">.</span><span class="n">jwk</span>
+<span class="o">-</span><span class="n">rw</span><span class="o">-</span><span class="n">r</span><span class="o">--</span><span class="n">r</span><span class="o">--.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="mi">349</span><span class="w"> </span><span class="n">Mar</span><span class="w"> </span><span class="mi">22</span><span class="w"> </span><span class="mi">10</span><span class="p">:</span><span class="mi">41</span><span class="w"> </span><span class="n">jHxerkqARY1Ww_H_8YjQVZ5OHao</span><span class="o">.</span><span class="n">jwk</span>
+<span class="o">-</span><span class="n">rw</span><span class="o">-</span><span class="n">r</span><span class="o">--</span><span class="n">r</span><span class="o">--.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">tang</span><span class="w"> </span><span class="n">tang</span><span class="w"> </span><span class="mi">367</span><span class="w"> </span><span class="n">Mar</span><span class="w"> </span><span class="mi">15</span><span class="w"> </span><span class="mi">15</span><span class="p">:</span><span class="mi">51</span><span class="w"> </span><span class="n">l3fZGUCmnvKQF_OA6VZF9jf8z2s</span><span class="o">.</span><span class="n">jwk</span>
+</code></pre></div>
+
+<p>如果你运行 <code>tang-show-keys</code>，就会显示出 Tang 所公布的密钥：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> tang-show-keys
+l3fZGUCmnvKQF_OA6VZF9jf8z2s
+iyG5HcF01zaPjaGY6L_3WaslJ_E
+</code></pre></div>
+
+<p>你可以通过将两个原始文件改名为以句号开头的隐藏文件，来防止旧的密钥（以 <code>l3fZ</code> 开头）被公布。通过这种方法，旧的密钥将不再被公布，但是它仍然可以被任何没有更新为使用新密钥的现有客户端使用。一旦所有的客户端都更新使用了新密钥，这些旧密钥文件就可以删除了。</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># cd /var/db/tang</span>
+<span class="c1"># mv hbjJEDXy8G8wynMPqiq8F47nJwo.jwk   .hbjJEDXy8G8wynMPqiq8F47nJwo.jwk</span>
+<span class="c1"># mv l3fZGUCmnvKQF_OA6VZF9jf8z2s.jwk   .l3fZGUCmnvKQF_OA6VZF9jf8z2s.jwk</span>
+</code></pre></div>
+
+<p>此时，如果再运行 <code>tang-show-keys</code>，Tang 只公布新钥匙：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> tang-show-keys
+iyG5HcF01zaPjaGY6L_3WaslJ_E
+</code></pre></div>
+
+<p>下一步，切换到你的 Stratis 系统并更新它以使用新的 Tang 密钥。当文件系统在线时， Stratis 支持这样做。</p>
+<p>首先，解除对池的绑定：</p>
+<div class="highlight"><pre><span></span><code># stratis pool unbind pool1
+</code></pre></div>
+
+<p>接下来，用创建加密池时使用的原始口令设置密钥：</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span><span class="nv">stratis</span><span class="w"> </span><span class="nv">key</span><span class="w"> </span><span class="nv">set</span><span class="w"> </span><span class="o">--</span><span class="nv">capture</span><span class="o">-</span><span class="nv">key</span><span class="w"> </span><span class="nv">pool1key</span>
+<span class="nv">Enter</span><span class="w"> </span><span class="nv">key</span><span class="w"> </span><span class="nv">data</span><span class="w"> </span><span class="nv">followed</span><span class="w"> </span><span class="nv">by</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nv">key</span>:
+</code></pre></div>
+
+<p>最后，用更新后的密钥指纹将 Stratis 池绑定到 Tang 服务器上：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> stratis pool bind nbde pool1 pool1key http://tang-server --thumbprint iyG5HcF01zaPjaGY6L_3WaslJ_E
+</code></pre></div>
+
+<p>Stratis 系统现在配置为使用更新的 Tang 密钥。一旦使用旧的 Tang 密钥的任何其他客户系统被更新，在 Tang 服务器上的 <code>/var/db/tang</code> 目录中被重命名为隐藏文件的两个原始密钥文件就可以被备份和删除了。</p>
+<h3>如果 Tang 服务器不可用怎么办？</h3>
+<p>接下来，关闭 Tang 服务器，模拟它不可用，然后重启 Stratis 系统。</p>
+<p>重启后，Stratis 池又不可用了：</p>
+<div class="highlight"><pre><span></span><code># stratis pool list
+Name Total Physical Properties
+</code></pre></div>
+
+<p>如果你试图用 NBDE 解锁，会因为 Tang 服务器不可用而失败：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="nx">stratis</span><span class="w"> </span><span class="nx">pool</span><span class="w"> </span><span class="nx">unlock</span><span class="w"> </span><span class="nx">clevis</span>
+<span class="nx">Execution</span><span class="w"> </span><span class="nx">failed</span><span class="p">:</span>
+<span class="nx">An</span><span class="w"> </span><span class="nx">iterative</span><span class="w"> </span><span class="nx">command</span><span class="w"> </span><span class="nx">generated</span><span class="w"> </span><span class="nx">one</span><span class="w"> </span><span class="k">or</span><span class="w"> </span><span class="nx">more</span><span class="w"> </span><span class="nx">errors</span><span class="p">:</span><span class="w"> </span><span class="nx">The</span><span class="w"> </span><span class="nx">operation</span><span class="w"> </span><span class="err">&#39;</span><span class="nx">unlock</span><span class="err">&#39;</span><span class="w"> </span><span class="nx">on</span><span class="w"> </span><span class="nx">a</span><span class="w"> </span><span class="nx">resource</span><span class="w"> </span><span class="nx">of</span><span class="w"> </span><span class="k">type</span><span class="w"> </span><span class="nx">pool</span><span class="w"> </span><span class="nx">failed</span><span class="p">.</span><span class="w"> </span><span class="nx">The</span><span class="w"> </span><span class="nx">following</span><span class="w"> </span><span class="nx">errors</span><span class="w"> </span><span class="nx">occurred</span><span class="p">:</span>
+<span class="nx">Partial</span><span class="w"> </span><span class="nx">action</span><span class="w"> </span><span class="s">&quot;unlock&quot;</span><span class="w"> </span><span class="nx">failed</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nx">pool</span><span class="w"> </span><span class="nx">with</span><span class="w"> </span><span class="nx">UUID</span><span class="w"> </span><span class="mi">4</span><span class="nx">d62f840f2bb4ec9ab53a44b49da3f48</span><span class="p">:</span><span class="w"> </span><span class="nx">Cryptsetup</span><span class="w"> </span><span class="nx">error</span><span class="p">:</span><span class="w"> </span><span class="nx">Failed</span><span class="w"> </span><span class="nx">with</span><span class="w"> </span><span class="nx">error</span><span class="p">:</span><span class="w"> </span><span class="nx">Error</span><span class="p">:</span><span class="w"> </span><span class="nx">Command</span><span class="w"> </span><span class="nx">failed</span><span class="p">:</span><span class="w"> </span><span class="nx">cmd</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;clevis&quot;</span><span class="w"> </span><span class="s">&quot;luks&quot;</span><span class="w"> </span><span class="s">&quot;unlock&quot;</span><span class="w"> </span><span class="s">&quot;-d&quot;</span><span class="w"> </span><span class="s">&quot;/dev/vdb&quot;</span><span class="w"> </span><span class="s">&quot;-n&quot;</span><span class="w"> </span><span class="s">&quot;stratis-1-private-42142fedcb4c47cea2e2b873c08fcf63-crypt&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">exit</span><span class="w"> </span><span class="nx">reason</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="nx">stdout</span><span class="p">:</span><span class="w"> </span><span class="nx">stderr</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="nx">dev</span><span class="o">/</span><span class="nx">vdb</span><span class="w"> </span><span class="nx">could</span><span class="w"> </span><span class="k">not</span><span class="w"> </span><span class="nx">be</span><span class="w"> </span><span class="nx">opened</span><span class="p">.</span>
+</code></pre></div>
+
+<p>此时，在 Tang 服务器无法到达的情况下，解锁池的唯一选择就是使用原密钥口令：</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span><span class="nv">stratis</span><span class="w"> </span><span class="nv">key</span><span class="w"> </span><span class="nv">set</span><span class="w"> </span><span class="o">--</span><span class="nv">capture</span><span class="o">-</span><span class="nv">key</span><span class="w"> </span><span class="nv">pool1key</span>
+<span class="nv">Enter</span><span class="w"> </span><span class="nv">key</span><span class="w"> </span><span class="nv">data</span><span class="w"> </span><span class="nv">followed</span><span class="w"> </span><span class="nv">by</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nv">key</span>:
+</code></pre></div>
+
+<p>然后你可以使用钥匙解锁池：</p>
+<div class="highlight"><pre><span></span><code># stratis pool unlock keyring
+</code></pre></div>
+
+<p>接下来，验证池是否成功解锁：</p>
+<div class="highlight"><pre><span></span><code># stratis pool list
+Name Total Physical Properties
+pool1 4.98 GiB / 583.65 MiB / 4.41 GiB ~Ca, Cr
+</code></pre></div>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

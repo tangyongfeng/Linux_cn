@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>管理大型 Postgres 数据库的 3 个技巧</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Elizabeth Garrett Christensen 在处理庞大的数据库时，请尝试这些方便的解决方案，以解决常见的问题。 关系型数据库 PostgreSQL（也被称为 Postgres）已经越来 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2023/03/guan-li-da-xing-postgres-shu-ju-ku-de-3-ge-ji-qiao.html" rel="bookmark"
+           title="Permalink to 管理大型 Postgres 数据库的 3 个技巧">管理大型 Postgres 数据库的 3 个技巧</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2023-03-06T11:30:50+01:00">
+                Published: Mon 06 March 2023
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Elizabeth Garrett Christensen</p>
+<p><img alt="" src="/data/attachment/album/202303/06/113049bkunsxun1clzuca8.jpg"></p>
+<blockquote>
+<p>在处理庞大的数据库时，请尝试这些方便的解决方案，以解决常见的问题。</p>
+</blockquote>
+<p>关系型数据库 PostgreSQL（也被称为 Postgres）已经越来越流行，全球各地的企业和公共部门都在使用它。随着这种广泛的采用，数据库已经变得比以前更大了。在 Crunchy Data，我们经常与 20TB 以上的数据库打交道，而且我们现有的数据库还在继续增长。我的同事 David Christensen 和我收集了一些关于管理拥有巨大表的数据库的技巧。</p>
+<h3>大表</h3>
+<p>生产数据库通常由许多具有不同数据、大小和模式的表组成。常见的情况是，最终有一个巨大的、无序的数据库表，远远大于你数据库中的任何其他表。这个表经常存储活动日志或有时间戳的事件，而且对你的应用或用户来说是必要的。</p>
+<p>真正的大表会因为很多原因造成挑战，但一个常见的原因是锁。对表的定期维护往往需要锁，但对大表的锁可能会使你的应用瘫痪，或导致堵塞和许多令人头痛的问题。我有一些做基本维护的技巧，比如添加列或索引，同时避免长期运行的锁。</p>
+<p><strong>添加索引的问题</strong>：在创建索引的过程中锁住表。如果你有一个庞大的表，这可能需要几个小时。</p>
+<div class="highlight"><pre><span></span><code>CREATE INDEX ON customers (last_name)
+</code></pre></div>
+
+<p><strong>方案</strong>：使用 <code>CREATE INDEX CONCURRENTLY</code> 功能。这种方法将索引创建分成两部分，一部分是短暂的锁定，以创建索引，立即开始跟踪变化，但尽量减少应用阻塞，然后是完全建立该索引，之后查询可以开始使用它。</p>
+<div class="highlight"><pre><span></span><code>CREATE INDEX CONCURRENTLY ON customers (last_name)
+</code></pre></div>
+
+<h3>添加列</h3>
+<p>在数据库的使用过程中，添加列是一个常见的请求，但是对于一个巨大的表来说，这可能是很棘手的，同样是由于锁的问题。</p>
+<p><strong>问题</strong>：当你添加一个新的默认值为一个函数的列时，Postgres 需要重写表。对于大表，这可能需要几个小时。</p>
+<p><strong>方案</strong>：将操作拆分为多条基本语句，总效果一致，但控制锁的时间。</p>
+<p>添加列：</p>
+<div class="highlight"><pre><span></span><code>ALTER TABLE all_my_exes ADD COLUMN location text
+</code></pre></div>
+
+<p>添加默认值：</p>
+<div class="highlight"><pre><span></span><code>ALTER TABLE all_my_exes ALTER COLUMN location SET DEFAULT texas()
+</code></pre></div>
+
+<p>使用 <code>UPDATE</code> 来添加默认值：</p>
+<div class="highlight"><pre><span></span><code>UPDATE all_my_exes SET location = DEFAULT
+</code></pre></div>
+
+<h3>添加约束条件</h3>
+<p><strong>问题</strong>: 你想添加一个用于数据验证的检查约束。但是如果你使用直接的方法来添加约束，它将锁定表，同时验证表中的所有现有数据。另外，如果在验证的任何时候出现错误，它将回滚。</p>
+<div class="highlight"><pre><span></span><code>ALTER TABLE favorite_bands ADD CONSTRAINT name_check CHECK (name = &#39;Led Zeppelin&#39;)
+</code></pre></div>
+
+<p><strong>方案</strong>：告诉 Postgres 这个约束，但不要验证它。在第二步中进行验证。这将在第一步中进行短暂的锁定，确保所有新的/修改过的行都符合约束条件，然后在另一步骤中进行验证，以确认所有现有的数据都通过约束条件。</p>
+<p>告诉 Postgres 这个约束，但不要强制执行它：</p>
+<div class="highlight"><pre><span></span><code>ALTER TABLE favorite_bands ADD CONSTRAINT name_check CHECK (name = &#39;Led Zeppelin&#39;) NOT VALID
+</code></pre></div>
+
+<p>然后在创建后<strong>验证</strong>它：</p>
+<div class="highlight"><pre><span></span><code>ALTER TABLE favorite_bands VALIDATE CONSTRAINT name_check
+</code></pre></div>
+
+<h3>想了解更多？</h3>
+<p>David Christensen 和我将在 3 月 9 号到 10 到在加州帕萨迪纳参加 SCaLE 的 Postgres Days。很多来自 Postgres 社区的优秀人士也会在那里。加入我们吧！</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

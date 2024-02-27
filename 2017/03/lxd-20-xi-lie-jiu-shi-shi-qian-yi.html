@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>LXD 2.0 系列（九）：实时迁移</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Stéphane Graber 这是 LXD 2.0 系列介绍文章的第九篇。 LXD 入门 安装与配置 你的第一个 LXD 容器 资源控制 镜像管理 远程主机及容器迁 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/03/lxd-20-xi-lie-jiu-shi-shi-qian-yi.html" rel="bookmark"
+           title="Permalink to LXD 2.0 系列（九）：实时迁移">LXD 2.0 系列（九）：实时迁移</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-03-04T10:17:00+01:00">
+                Published: Sat 04 March 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Stéphane Graber</p>
+<p>这是 LXD 2.0 系列介绍文章的第九篇。</p>
+<ol>
+<li><a href="/article-7618-1.html">LXD 入门</a></li>
+<li><a href="/article-7687-1.html">安装与配置</a></li>
+<li><a href="/article-7706-1.html">你的第一个 LXD 容器</a></li>
+<li><a href="/article-8072-1.html">资源控制</a></li>
+<li><a href="/article-8107-1.html">镜像管理</a></li>
+<li><a href="/article-8169-1.html">远程主机及容器迁移</a></li>
+<li><a href="/article-8235-1.html">LXD 中的 Docker</a></li>
+<li><a href="/article-8257-1.html">LXD 中的 LXD</a></li>
+<li><a href="/article-8263-1.html">实时迁移</a></li>
+<li><a href="/article-8273-1.html">LXD 和 Juju</a></li>
+<li><a href="/article-8274-1.html">LXD 和 OpenStack</a></li>
+<li><a href="/article-8282-1.html">调试，及给 LXD 做贡献</a></li>
+</ol>
+<p><img alt="" src="/data/attachment/album/201703/04/101550m3kxz4fjxpoyo6pn.jpg"></p>
+<h3>介绍</h3>
+<p>LXD 2.0 中的有一个尽管是实验性质的但非常令人兴奋的功能，那就是支持容器检查点和恢复。</p>
+<p>简单地说，检查点/恢复意味着正在运行的容器状态可以被序列化到磁盘，要么可以作为同一主机上的有状态快照，要么放到另一主机上相当于实时迁移。</p>
+<h3>要求</h3>
+<p>要使用容器实时迁移和有状态快照，你需要以下条件：</p>
+<ul>
+<li>一个非常新的 Linux 内核，4.4 或更高版本。</li>
+<li>CRIU 2.0，可能需要一些 cherry-pick 的提交，具体取决于你确切的内核配置。</li>
+<li>直接在主机上运行 LXD。 不能在容器嵌套下使用这些功能。</li>
+<li>对于迁移，目标主机必须至少实现源主机的指令集，目标主机内核必须至少提供与源主机相同的系统调用，并且在源主机上挂载的任何内核文件系统也必须可挂载到目标主机上。</li>
+</ul>
+<p>Ubuntu 16.04 LTS 已经提供了所有需要的依赖，在这种情况下，您只需要安装 CRIU 本身：</p>
+<div class="highlight"><pre><span></span><code>apt install criu
+</code></pre></div>
+
+<h3>使用 CRIU</h3>
+<h4>有状态快照</h4>
+<p>一个普通的快照看上去像这样：</p>
+<div class="highlight"><pre><span></span><code><span class="n">stgraber</span><span class="nv">@dakara</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">snapshot</span><span class="w"> </span><span class="n">c1</span><span class="w"> </span><span class="k">first</span>
+<span class="n">stgraber</span><span class="nv">@dakara</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">info</span><span class="w"> </span><span class="n">c1</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="k">first</span>
+<span class="w"> </span><span class="k">first</span><span class="w"> </span><span class="p">(</span><span class="n">taken</span><span class="w"> </span><span class="k">at</span><span class="w"> </span><span class="mi">2016</span><span class="o">/</span><span class="mi">04</span><span class="o">/</span><span class="mi">25</span><span class="w"> </span><span class="mi">19</span><span class="err">:</span><span class="mi">35</span><span class="w"> </span><span class="n">UTC</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="n">stateless</span><span class="p">)</span>
+</code></pre></div>
+
+<p>一个有状态快照看上去像这样：</p>
+<div class="highlight"><pre><span></span><code><span class="n">stgraber</span><span class="nv">@dakara</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">snapshot</span><span class="w"> </span><span class="n">c1</span><span class="w"> </span><span class="k">second</span><span class="w"> </span><span class="o">--</span><span class="n">stateful</span>
+<span class="n">stgraber</span><span class="nv">@dakara</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">info</span><span class="w"> </span><span class="n">c1</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="k">second</span>
+<span class="w"> </span><span class="k">second</span><span class="w"> </span><span class="p">(</span><span class="n">taken</span><span class="w"> </span><span class="k">at</span><span class="w"> </span><span class="mi">2016</span><span class="o">/</span><span class="mi">04</span><span class="o">/</span><span class="mi">25</span><span class="w"> </span><span class="mi">19</span><span class="err">:</span><span class="mi">36</span><span class="w"> </span><span class="n">UTC</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="n">stateful</span><span class="p">)</span>
+</code></pre></div>
+
+<p>这意味着所有容器运行时状态都被序列化到磁盘并且作为了快照的一部分。可以像你还原无状态快照那样还原一个有状态快照：</p>
+<div class="highlight"><pre><span></span><code><span class="n">stgraber</span><span class="nv">@dakara</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="k">restore</span><span class="w"> </span><span class="n">c1</span><span class="w"> </span><span class="k">second</span>
+<span class="n">stgraber</span><span class="nv">@dakara</span><span class="err">:</span><span class="o">~</span><span class="err">$</span>
+</code></pre></div>
+
+<h4>有状态快照的停止/启动</h4>
+<p>比方说你由于升级内核或者其他类似的维护而需要重启机器。与其等待重启后启动所有的容器，你可以：</p>
+<div class="highlight"><pre><span></span><code><span class="n">stgraber</span><span class="nv">@dakara</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">stop</span><span class="w"> </span><span class="n">c1</span><span class="w"> </span><span class="c1">--stateful</span>
+</code></pre></div>
+
+<p>容器状态将会写入到磁盘，会在下次启动时读取。</p>
+<p>你甚至可以看到像下面那样的状态：</p>
+<div class="highlight"><pre><span></span><code><span class="n">root</span><span class="err">@</span><span class="n">dakara</span><span class="p">:</span><span class="o">~</span><span class="c1"># tree /var/lib/lxd/containers/c1/rootfs/state/</span>
+<span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">lxd</span><span class="o">/</span><span class="n">containers</span><span class="o">/</span><span class="n">c1</span><span class="o">/</span><span class="n">rootfs</span><span class="o">/</span><span class="n">state</span><span class="o">/</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">cgroup</span><span class="o">.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">core</span><span class="o">-</span><span class="mf">101.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">core</span><span class="o">-</span><span class="mf">102.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">core</span><span class="o">-</span><span class="mf">107.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">core</span><span class="o">-</span><span class="mf">108.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">core</span><span class="o">-</span><span class="mf">109.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">core</span><span class="o">-</span><span class="mf">113.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">core</span><span class="o">-</span><span class="mf">114.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">core</span><span class="o">-</span><span class="mf">122.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">core</span><span class="o">-</span><span class="mf">125.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">core</span><span class="o">-</span><span class="mf">126.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">core</span><span class="o">-</span><span class="mf">127.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">core</span><span class="o">-</span><span class="mf">183.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">core</span><span class="o">-</span><span class="mf">1.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">core</span><span class="o">-</span><span class="mf">245.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">core</span><span class="o">-</span><span class="mf">246.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">core</span><span class="o">-</span><span class="mf">50.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">core</span><span class="o">-</span><span class="mf">52.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">core</span><span class="o">-</span><span class="mf">95.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">core</span><span class="o">-</span><span class="mf">96.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">core</span><span class="o">-</span><span class="mf">97.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">core</span><span class="o">-</span><span class="mf">98.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">dump</span><span class="o">.</span><span class="n">log</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">eventfd</span><span class="o">.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">eventpoll</span><span class="o">.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fdinfo</span><span class="o">-</span><span class="mf">10.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fdinfo</span><span class="o">-</span><span class="mf">11.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fdinfo</span><span class="o">-</span><span class="mf">12.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fdinfo</span><span class="o">-</span><span class="mf">13.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fdinfo</span><span class="o">-</span><span class="mf">14.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fdinfo</span><span class="o">-</span><span class="mf">2.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fdinfo</span><span class="o">-</span><span class="mf">3.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fdinfo</span><span class="o">-</span><span class="mf">4.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fdinfo</span><span class="o">-</span><span class="mf">5.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fdinfo</span><span class="o">-</span><span class="mf">6.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fdinfo</span><span class="o">-</span><span class="mf">7.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fdinfo</span><span class="o">-</span><span class="mf">8.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fdinfo</span><span class="o">-</span><span class="mf">9.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fifo</span><span class="o">-</span><span class="n">data</span><span class="o">.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fifo</span><span class="o">.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">filelocks</span><span class="o">.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fs</span><span class="o">-</span><span class="mf">101.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fs</span><span class="o">-</span><span class="mf">113.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fs</span><span class="o">-</span><span class="mf">122.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fs</span><span class="o">-</span><span class="mf">183.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fs</span><span class="o">-</span><span class="mf">1.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fs</span><span class="o">-</span><span class="mf">245.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fs</span><span class="o">-</span><span class="mf">246.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fs</span><span class="o">-</span><span class="mf">50.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fs</span><span class="o">-</span><span class="mf">52.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fs</span><span class="o">-</span><span class="mf">95.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fs</span><span class="o">-</span><span class="mf">96.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fs</span><span class="o">-</span><span class="mf">97.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">fs</span><span class="o">-</span><span class="mf">98.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">ids</span><span class="o">-</span><span class="mf">101.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">ids</span><span class="o">-</span><span class="mf">113.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">ids</span><span class="o">-</span><span class="mf">122.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">ids</span><span class="o">-</span><span class="mf">183.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">ids</span><span class="o">-</span><span class="mf">1.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">ids</span><span class="o">-</span><span class="mf">245.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">ids</span><span class="o">-</span><span class="mf">246.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">ids</span><span class="o">-</span><span class="mf">50.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">ids</span><span class="o">-</span><span class="mf">52.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">ids</span><span class="o">-</span><span class="mf">95.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">ids</span><span class="o">-</span><span class="mf">96.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">ids</span><span class="o">-</span><span class="mf">97.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">ids</span><span class="o">-</span><span class="mf">98.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">ifaddr</span><span class="o">-</span><span class="mf">9.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">inetsk</span><span class="o">.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">inotify</span><span class="o">.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">inventory</span><span class="o">.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">ip6tables</span><span class="o">-</span><span class="mf">9.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">ipcns</span><span class="o">-</span><span class="k">var</span><span class="o">-</span><span class="mf">10.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">iptables</span><span class="o">-</span><span class="mf">9.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">mm</span><span class="o">-</span><span class="mf">101.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">mm</span><span class="o">-</span><span class="mf">113.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">mm</span><span class="o">-</span><span class="mf">122.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">mm</span><span class="o">-</span><span class="mf">183.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">mm</span><span class="o">-</span><span class="mf">1.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">mm</span><span class="o">-</span><span class="mf">245.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">mm</span><span class="o">-</span><span class="mf">246.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">mm</span><span class="o">-</span><span class="mf">50.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">mm</span><span class="o">-</span><span class="mf">52.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">mm</span><span class="o">-</span><span class="mf">95.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">mm</span><span class="o">-</span><span class="mf">96.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">mm</span><span class="o">-</span><span class="mf">97.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">mm</span><span class="o">-</span><span class="mf">98.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">mountpoints</span><span class="o">-</span><span class="mf">12.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">netdev</span><span class="o">-</span><span class="mf">9.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">netlinksk</span><span class="o">.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">netns</span><span class="o">-</span><span class="mf">9.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">netns</span><span class="o">-</span><span class="n">ct</span><span class="o">-</span><span class="mf">9.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">netns</span><span class="o">-</span><span class="nb">exp</span><span class="o">-</span><span class="mf">9.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">packetsk</span><span class="o">.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pagemap</span><span class="o">-</span><span class="mf">101.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pagemap</span><span class="o">-</span><span class="mf">113.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pagemap</span><span class="o">-</span><span class="mf">122.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pagemap</span><span class="o">-</span><span class="mf">183.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pagemap</span><span class="o">-</span><span class="mf">1.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pagemap</span><span class="o">-</span><span class="mf">245.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pagemap</span><span class="o">-</span><span class="mf">246.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pagemap</span><span class="o">-</span><span class="mf">50.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pagemap</span><span class="o">-</span><span class="mf">52.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pagemap</span><span class="o">-</span><span class="mf">95.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pagemap</span><span class="o">-</span><span class="mf">96.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pagemap</span><span class="o">-</span><span class="mf">97.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pagemap</span><span class="o">-</span><span class="mf">98.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pages</span><span class="o">-</span><span class="mf">10.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pages</span><span class="o">-</span><span class="mf">11.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pages</span><span class="o">-</span><span class="mf">12.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pages</span><span class="o">-</span><span class="mf">13.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pages</span><span class="o">-</span><span class="mf">1.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pages</span><span class="o">-</span><span class="mf">2.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pages</span><span class="o">-</span><span class="mf">3.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pages</span><span class="o">-</span><span class="mf">4.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pages</span><span class="o">-</span><span class="mf">5.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pages</span><span class="o">-</span><span class="mf">6.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pages</span><span class="o">-</span><span class="mf">7.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pages</span><span class="o">-</span><span class="mf">8.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pages</span><span class="o">-</span><span class="mf">9.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pipes</span><span class="o">-</span><span class="n">data</span><span class="o">.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pipes</span><span class="o">.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">pstree</span><span class="o">.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">reg</span><span class="o">-</span><span class="n">files</span><span class="o">.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">remap</span><span class="o">-</span><span class="n">fpath</span><span class="o">.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">route6</span><span class="o">-</span><span class="mf">9.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">route</span><span class="o">-</span><span class="mf">9.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">rule</span><span class="o">-</span><span class="mf">9.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">seccomp</span><span class="o">.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">sigacts</span><span class="o">-</span><span class="mf">101.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">sigacts</span><span class="o">-</span><span class="mf">113.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">sigacts</span><span class="o">-</span><span class="mf">122.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">sigacts</span><span class="o">-</span><span class="mf">183.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">sigacts</span><span class="o">-</span><span class="mf">1.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">sigacts</span><span class="o">-</span><span class="mf">245.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">sigacts</span><span class="o">-</span><span class="mf">246.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">sigacts</span><span class="o">-</span><span class="mf">50.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">sigacts</span><span class="o">-</span><span class="mf">52.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">sigacts</span><span class="o">-</span><span class="mf">95.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">sigacts</span><span class="o">-</span><span class="mf">96.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">sigacts</span><span class="o">-</span><span class="mf">97.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">sigacts</span><span class="o">-</span><span class="mf">98.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">signalfd</span><span class="o">.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">stats</span><span class="o">-</span><span class="n">dump</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">timerfd</span><span class="o">.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">tmpfs</span><span class="o">-</span><span class="n">dev</span><span class="o">-</span><span class="mf">104.</span><span class="n">tar</span><span class="o">.</span><span class="n">gz</span><span class="o">.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">tmpfs</span><span class="o">-</span><span class="n">dev</span><span class="o">-</span><span class="mf">109.</span><span class="n">tar</span><span class="o">.</span><span class="n">gz</span><span class="o">.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">tmpfs</span><span class="o">-</span><span class="n">dev</span><span class="o">-</span><span class="mf">110.</span><span class="n">tar</span><span class="o">.</span><span class="n">gz</span><span class="o">.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">tmpfs</span><span class="o">-</span><span class="n">dev</span><span class="o">-</span><span class="mf">112.</span><span class="n">tar</span><span class="o">.</span><span class="n">gz</span><span class="o">.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">tmpfs</span><span class="o">-</span><span class="n">dev</span><span class="o">-</span><span class="mf">114.</span><span class="n">tar</span><span class="o">.</span><span class="n">gz</span><span class="o">.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">tty</span><span class="o">.</span><span class="n">info</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">unixsk</span><span class="o">.</span><span class="n">img</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">userns</span><span class="o">-</span><span class="mf">13.</span><span class="n">img</span>
+<span class="err">└──</span><span class="w"> </span><span class="n">utsns</span><span class="o">-</span><span class="mf">11.</span><span class="n">img</span>
+
+<span class="mi">0</span><span class="w"> </span><span class="n">directories</span><span class="p">,</span><span class="w"> </span><span class="mi">154</span><span class="w"> </span><span class="n">files</span>
+</code></pre></div>
+
+<p>还原容器也很简单：</p>
+<div class="highlight"><pre><span></span><code><span class="n">stgraber</span><span class="nv">@dakara</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="k">start</span><span class="w"> </span><span class="n">c1</span>
+</code></pre></div>
+
+<h3>实时迁移</h3>
+<p>实时迁移基本上与上面的有状态快照的停止/启动相同，除了容器目录和配置被移动到另一台机器上。</p>
+<div class="highlight"><pre><span></span><code><span class="c">stgraber@dakara:~$ lxc list c1</span>
+<span class="nb">+------+---------+-----------------------+----------------------------------------------+------------+-----------+</span>
+<span class="c">| NAME |  STATE  |          IPV4         |                     IPV6                     |    TYPE    | SNAPSHOTS |</span>
+<span class="nb">+------+---------+-----------------------+----------------------------------------------+------------+-----------+</span>
+<span class="c">| c1   | RUNNING | 10</span><span class="nt">.</span><span class="c">178</span><span class="nt">.</span><span class="c">150</span><span class="nt">.</span><span class="c">197 (eth0) | 2001:470:b368:4242:216:3eff:fe19:27b0 (eth0) | PERSISTENT | 2         |</span>
+<span class="nb">+------+---------+-----------------------+----------------------------------------------+------------+-----------+</span>
+
+<span class="c">stgraber@dakara:~$ lxc list s</span><span class="nb">-</span><span class="c">tollana:</span>
+<span class="nb">+------+-------+------+------+------+-----------+</span>
+<span class="c">| NAME | STATE | IPV4 | IPV6 | TYPE | SNAPSHOTS |</span>
+<span class="nb">+------+-------+------+------+------+-----------+</span>
+
+<span class="c">stgraber@dakara:~$ lxc move c1 s</span><span class="nb">-</span><span class="c">tollana:</span>
+
+<span class="c">stgraber@dakara:~$ lxc list c1</span>
+<span class="nb">+------+-------+------+------+------+-----------+</span>
+<span class="c">| NAME | STATE | IPV4 | IPV6 | TYPE | SNAPSHOTS |</span>
+<span class="nb">+------+-------+------+------+------+-----------+</span>
+
+<span class="c">stgraber@dakara:~$ lxc list s</span><span class="nb">-</span><span class="c">tollana:</span>
+<span class="nb">+------+---------+-----------------------+----------------------------------------------+------------+-----------+</span>
+<span class="c">| NAME |  STATE  |          IPV4         |                     IPV6                     |    TYPE    | SNAPSHOTS |</span>
+<span class="nb">+------+---------+-----------------------+----------------------------------------------+------------+-----------+</span>
+<span class="c">| c1   | RUNNING | 10</span><span class="nt">.</span><span class="c">178</span><span class="nt">.</span><span class="c">150</span><span class="nt">.</span><span class="c">197 (eth0) | 2001:470:b368:4242:216:3eff:fe19:27b0 (eth0) | PERSISTENT | 2         |</span>
+<span class="nb">+------+---------+-----------------------+----------------------------------------------+------------+-----------+</span>
+</code></pre></div>
+
+<h3>限制</h3>
+<p>正如我之前说的，容器的检查点/恢复还是非常新的功能，我们还在努力地开发这个功能、修复已知的问题。我们确实需要更多的人来尝试这个功能，并给我们反馈，但我不建议在生产中使用这个功能。</p>
+<p>我们跟踪的问题列表在 <a href="https://bugs.launchpad.net/ubuntu/+source/criu/+bugs">Launchpad上</a>。</p>
+<p>我们估计在带有 CRIU 的 Ubuntu 16.04 上带有几个服务的基本的 Ubuntu 容器能够正常工作。然而在更复杂的容器、使用了设备直通、复杂的网络服务或特殊的存储配置下可能会失败。</p>
+<p>要是有问题，CRIU 会尽可能地在转储时失败，而不是在恢复时。在这种情况下，源容器将继续运行，快照或迁移将会失败，并生成一个日志文件用于调试。</p>
+<p>在极少数情况下，CRIU 无法恢复容器，在这种情况下，源容器仍然存在但将被停止，并且必须手动重新启动。</p>
+<h3>发送 bug 报告</h3>
+<p>我们正在跟踪 Launchpad 上关于 CRIU Ubuntu 软件包的检查点/恢复相关的错误。大多数修复 bug 工作是在上游的 CRIU 或 Linux 内核上进行，但是这种方式我们更容易跟踪。</p>
+<p>要提交新的 bug 报告，请看这里。</p>
+<p>请务必包括：</p>
+<ul>
+<li>你运行的命令和显示给你的错误消息</li>
+<li><code>lxc info</code> 的输出（*）</li>
+<li><code>lxc info &lt;container name&gt;</code>的输出</li>
+<li><code>lxc config show -expanded &lt;container name&gt;</code> 的输出</li>
+<li><code>dmesg</code>（*）的输出</li>
+<li><code>/proc/self/mountinfo</code> 的输出（*）</li>
+<li><code>lxc exec &lt;container name&gt; - cat /proc/self/mountinfo</code> 的输出</li>
+<li><code>uname -a</code>（*）的输出</li>
+<li><code>/var/log/lxd.log</code>（*）的内容</li>
+<li><code>/etc/default/lxd-bridge</code>（*）的内容</li>
+<li><code>/var/log/lxd/&lt;container name&gt;/</code> 的 tarball（*）</li>
+</ul>
+<p>如果报告迁移错误，而不是状态快照或有状态停止的错误，请将上面所有含有（*）标记的源与目标主机的信息发来。</p>
+<h3>额外信息</h3>
+<p>CRIU 的网站在： <a href="https://criu.org">https://criu.org</a></p>
+<p>LXD 的主站在： <a href="https://linuxcontainers.org/lxd">https://linuxcontainers.org/lxd</a></p>
+<p>LXD 的 GitHub 仓库： <a href="https://github.com/lxc/lxd">https://github.com/lxc/lxd</a></p>
+<p>LXD 的邮件列表： <a href="https://lists.linuxcontainers.org">https://lists.linuxcontainers.org</a></p>
+<p>LXD 的 IRC 频道： #lxcontainers on irc.freenode.net</p>
+<p>via: <a href="https://stgraber.org/2016/04/25/lxd-2-0-live-migration-912/">https://stgraber.org/2016/04/25/lxd-2-0-live-migration-912/</a></p>
+<p>作者：<a href="https://www.stgraber.org/author/stgraber/">Stéphane Graber</a> 译者：<a href="https://github.com/geekpi">geekpi</a> 校对：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 组织翻译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

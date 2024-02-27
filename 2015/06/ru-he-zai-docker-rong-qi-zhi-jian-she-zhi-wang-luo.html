@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何在 Docker 容器之间设置网络</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Dan Nanni 你也许已经知道了，Docker 容器技术是现有的成熟虚拟化技术的一个替代方案。它被企业应用在越来越多的领域中，比 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/06/ru-he-zai-docker-rong-qi-zhi-jian-she-zhi-wang-luo.html" rel="bookmark"
+           title="Permalink to 如何在 Docker 容器之间设置网络">如何在 Docker 容器之间设置网络</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-06-02T15:23:00+02:00">
+                Published: Tue 02 June 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Dan Nanni</p>
+<p>你也许已经知道了，Docker 容器技术是现有的成熟虚拟化技术的一个替代方案。它被企业应用在越来越多的领域中，比如快速部署环境、简化基础设施的配置流程、多客户环境间的互相隔离等等。当你开始在真实的生产环境使用 Docker 容器去部署应用沙箱时，你可能需要用到多个容器部署一套复杂的多层应用系统，其中每个容器负责一个特定的功能（例如负载均衡、LAMP 栈、数据库、UI 等）。</p>
+<p>那么问题来了：有多台宿主机，我们事先不知道会在哪台宿主机上创建容器，如果保证在这些宿主机上创建的容器们可以互相联网？</p>
+<p>联网技术哪家强？开源方案找 <a href="https://github.com/zettio/weave">weave</a>。这个工具可以为你省下不少烦恼。听我的准没错，谁用谁知道。</p>
+<p>于是本教程的主题就变成了“<strong>如何使用 weave 在不同主机上的 Docker 容器之间设置网络</strong>”。</p>
+<h3>Weave 是如何工作的</h3>
+<p><img alt="" src="/data/attachment/album/201506/02/152326tsxqr899mi8zgmdi.png"></p>
+<p>让我们先来看看 weave 怎么工作：先创建一个由多个 peer 组成的对等网络，每个 peer 是一个虚拟路由器容器，叫做“weave 路由器”，它们分布在不同的宿主机上。这个对等网络的每个 peer 之间会维持一个 TCP 链接，用于互相交换拓扑信息，它们也会建立 UDP 链接用于容器间通信。一个 weave 路由器通过桥接技术连接到本宿主机上的其他容器。当处于不同宿主机上的两个容器想要通信，一台宿主机上的 weave 路由器通过网桥截获数据包，使用 UDP 协议封装后发给另一台宿主机上的 weave 路由器。</p>
+<p>每个 weave 路由器会刷新整个对等网络的拓扑信息，可以称作容器的 MAC 地址（如同交换机的 MAC 地址学习一样获取其他容器的 MAC 地址），因此它可以决定数据包的下一跳是往哪个容器的。weave 能让两个处于不同宿主机的容器进行通信，只要这两台宿主机在 weave 拓扑结构内连到同一个 weave 路由器。另外，weave 路由器还能使用公钥加密技术将 TCP 和 UDP 数据包进行加密。</p>
+<h3>准备工作</h3>
+<p>在使用 weave 之前，你需要在所有宿主机上安装 <a href="http://xmodulo.com/recommend/dockerbook">Docker</a> 环境，参考<a href="http://xmodulo.com/manage-linux-containers-docker-ubuntu.html">这些</a><a href="http://xmodulo.com/docker-containers-centos-fedora.html">教程</a>，在 <a href="http://xmodulo.com/manage-linux-containers-docker-ubuntu.html">Ubuntu</a> 或 <a href="http://xmodulo.com/docker-containers-centos-fedora.html">CentOS/Fedora</a> 发行版中安装 Docker。</p>
+<p>Docker 环境部署完成后，使用下面的命令安装 weave：</p>
+<div class="highlight"><pre><span></span><code><span class="o">$</span><span class="w"> </span><span class="n">wget</span><span class="w"> </span><span class="n">https</span><span class="p">:</span><span class="o">//</span><span class="n">github</span><span class="o">.</span><span class="n">com</span><span class="o">/</span><span class="n">zettio</span><span class="o">/</span><span class="n">weave</span><span class="o">/</span><span class="n">releases</span><span class="o">/</span><span class="n">download</span><span class="o">/</span><span class="n">latest_release</span><span class="o">/</span><span class="n">weave</span>
+<span class="o">$</span><span class="w"> </span><span class="n">chmod</span><span class="w"> </span><span class="n">a</span><span class="o">+</span><span class="n">x</span><span class="w"> </span><span class="n">weave</span>
+<span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">cp</span><span class="w"> </span><span class="n">weave</span><span class="w"> </span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">local</span><span class="o">/</span><span class="n">bin</span><span class="w"> </span>
+</code></pre></div>
+
+<p>注意你的 PATH 环境变量要包含 /usr/local/bin 这个路径，请在 /etc/profile 文件中加入一行（LCTT 译注：要使环境变量生效，你需要执行这个命令： source /etc/profile）：</p>
+<div class="highlight"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="n">PATH</span><span class="o">=</span><span class="s2">&quot;$PATH:/usr/local/bin&quot;</span>
+</code></pre></div>
+
+<p>在每台宿主机上重复上面的操作。</p>
+<p>Weave 在 TCP 和 UDP 上都使用 6783 端口，如果你的系统开启了防火墙，请确保这两个端口不会被防火墙挡住。</p>
+<h3>在每台宿主机上启动 Weave 路由器</h3>
+<p>当你想要让处于在不同宿主机上的容器能够互相通信，第一步要做的就是在每台宿主机上启动 weave 路由器。</p>
+<p>第一台宿主机，运行下面的命令，就会创建并开启一个 weave 路由器容器（LCTT 译注：前面说过了，weave 路由器也是一个容器）：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>weave<span class="w"> </span>launch<span class="w"> </span>
+</code></pre></div>
+
+<p>第一次运行这个命令的时候，它会下载一个 weave 镜像，这会花一些时间。下载完成后就会自动运行这个镜像。成功启动后，终端会输出这个 weave 路由器的 ID 号。</p>
+<p>下面的命令用于查看路由器状态：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>weave<span class="w"> </span>status<span class="w"> </span>
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/201506/02/152332l5vfgob7bcf3fg7b.jpg"></p>
+<p>第一个 weave 路由器就绪了，目前为止整个 peer 对等网络中只有一个 peer 成员。</p>
+<p>你也可以使用 docker 的命令来查看 weave 路由器的状态：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>docker<span class="w"> </span>ps<span class="w"> </span>
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/201506/02/152335al9lwelhzl9iawqh.jpg"></p>
+<p>第二台宿主机部署步骤稍微有点不同，我们需要为这台宿主机的 weave 路由器指定第一台宿主机的 IP 地址，命令如下：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>weave<span class="w"> </span>launch<span class="w"> </span>&lt;first-host-IP-address&gt;<span class="w"> </span>
+</code></pre></div>
+
+<p>当你查看路由器状态，你会看到两个 peer 成员：当前宿主机和第一个宿主机。</p>
+<p><img alt="" src="/data/attachment/album/201506/02/152336jhfaaraia8a0xnch.jpg"></p>
+<p>当你开启更多路由器，这个 peer 成员列表会更长。当你新开一个路由器时，要指定前一个宿主机的 IP 地址，请注意不是第一个宿主机的 IP 地址（LCTT 译注：链状结构）。</p>
+<p>现在你已经有了一个 weave 网络了，它由位于不同宿主机的 weave 路由器组成。</p>
+<h3>把不同宿主机上的容器互联起来</h3>
+<p>接下来要做的就是在不同宿主机上开启 Docker 容器，并使用虚拟网络将它们互联起来。</p>
+<p>假设我们创建一个私有网络 10.0.0.0/24 来互联 Docker 容器，并为这些容器随机分配 IP 地址。</p>
+<p>如果你想新建一个能加入 weave 网络的容器，你就需要使用 weave 命令来创建，而不是 docker 命令。原因是 weave 命令内部会调用 docker 命令来新建容器然后为它设置网络。</p>
+<p>下面的命令是在宿主机 hostA 上建立一个 Ubuntu 容器，然后将它放到 10.0.0.0/24 网络中，分配的 IP 地址为 10.0.0.1：</p>
+<div class="highlight"><pre><span></span><code>hostA:~$ sudo weave run 10.0.0.1/24 -t -i ubuntu 
+</code></pre></div>
+
+<p>成功运行后，终端会显示出容器的 ID 号。你可以使用这个 ID 来访问这个容器：</p>
+<div class="highlight"><pre><span></span><code>hostA:~$ docker attach &lt;container-id&gt; 
+</code></pre></div>
+
+<p>在宿主机 hostB 上，也创建一个 Ubuntu 容器，IP 地址为 10.0.0.2：</p>
+<div class="highlight"><pre><span></span><code>hostB:~$ sudo weave run 10.0.0.2/24 -t -i ubuntu 
+</code></pre></div>
+
+<p>访问下这个容器的控制台：</p>
+<div class="highlight"><pre><span></span><code>hostB:~$ docker attach &lt;container-id&gt; 
+</code></pre></div>
+
+<p>这两个容器能够互相 ping 通，你可以通过容器的控制台检查一下。</p>
+<p><img alt="" src="/data/attachment/album/201506/02/152338dvmpc44jc477mdgn.jpg"></p>
+<p>如果你检查一下每个容器的网络配置，你会发现有一块名为“ethwe”的网卡，你分配给容器的 IP 地址出现在它们那里（比如这里分别是 10.0.0.1 和 10.0.0.2）。</p>
+<p><img alt="" src="/data/attachment/album/201506/02/152342l3m9bbhmqq88gz8v.jpg"></p>
+<h3>Weave 的其他高级用法</h3>
+<p>weave 提供了一些非常巧妙的特性，我在这里作下简单的介绍。</p>
+<h4>应用分离</h4>
+<p>使用 weave，你可以创建多个虚拟网络，并为每个网络设置不同的应用。比如你可以为一群容器创建 10.0.0.0/24 网络，为另一群容器创建 10.10.0.0/24 网络，weave 会自动帮你维护这些网络，并将这两个网络互相隔离。另外，你可以灵活地将一个容器从一个网络移到另一个网络而不需要重启容器。举个例子：</p>
+<p>首先开启一个容器，运行在 10.0.0.0/24 网络上：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>weave<span class="w"> </span>run<span class="w"> </span><span class="m">10</span>.0.0.2/24<span class="w"> </span>-t<span class="w"> </span>-i<span class="w"> </span>ubuntu
+</code></pre></div>
+
+<p>然后让它脱离这个网络：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>weave<span class="w"> </span>detach<span class="w"> </span><span class="m">10</span>.0.0.2/24<span class="w"> </span>&lt;container-id&gt;
+</code></pre></div>
+
+<p>最后将它加入到 10.10.0.0/24 网络中：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>weave<span class="w"> </span>attach<span class="w"> </span><span class="m">10</span>.10.0.2/24<span class="w"> </span>&lt;container-id&gt;<span class="w"> </span>
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/201506/02/152349ynem6o64dkzfb4ob.jpg"></p>
+<p>现在这个容器可以与 10.10.0.0/24 网络上的其它容器进行通信了。这在当你创建一个容器而网络信息还不确定时就很有帮助了。</p>
+<h4>将 weave 网络与宿主机网络整合起来</h4>
+<p>有时候你想让虚拟网络中的容器能访问物理主机的网络。或者相反，宿主机需要访问容器。为满足这个功能，weave 允许虚拟网络与宿主机网络整合。</p>
+<p>举个例子，在宿主机 hostA 上一个容器运行在 10.0.0.0/24 中，运行使用下面的命令：</p>
+<div class="highlight"><pre><span></span><code>hostA:~$ sudo weave expose 10.0.0.100/24 
+</code></pre></div>
+
+<p>这个命令把 IP 地址 10.0.0.100 分配给宿主机 hostA，这样一来宿主机 hostA 也连到了 10.0.0.0/24 网络上了。显然，你在为宿主机选择 IP 地址的时候，需要选一个没有被其他容器使用的地址。</p>
+<p>现在 hostA 就可以访问 10.0.0.0/24 上的所有容器了，不管这些容器是否位于 hostA 上。好巧妙的设定啊，32 个赞！</p>
+<h3>总结</h3>
+<p>如你所见，weave 是一个很有用的 docker 网络配置工具。这个教程只是它<a href="http://zettio.github.io/weave/features.html">强悍功能</a>的冰山一角。如果你想进一步玩玩，你可以试试它的以下功能：多跳路由功能，这个在 multi-cloud 环境（LCTT 译注：多云，企业使用多个不同的云服务提供商的产品，比如 IaaS 和 SaaS，来承载不同的业务）下还是很有用的；动态重路由功能是一个很巧妙的容错技术；或者它的分布式 DNS 服务，它允许你为你的容器命名。如果你决定使用这个好东西，欢迎分享你的使用心得。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

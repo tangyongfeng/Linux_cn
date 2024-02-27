@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Linux 内核里的数据结构——位数组</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: 0xAX Linux 内核中的位数组和位操作 除了不同的基于链式和树的数据结构以外，Linux 内核也为位数组（或称为 位图 （ bitmap ） ）提供了 API …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2016/08/linux-nei-he-li-de-shu-ju-jie-gou-wei-shu-zu.html" rel="bookmark"
+           title="Permalink to Linux 内核里的数据结构——位数组">Linux 内核里的数据结构——位数组</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2016-08-23T11:05:00+02:00">
+                Published: Tue 23 August 2016
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: 0xAX</p>
+<h3>Linux 内核中的位数组和位操作</h3>
+<p><img alt="" src="/data/attachment/album/201608/23/110922nrtd4oex2b2eedt8.jpg"></p>
+<p>除了不同的基于<a href="https://en.wikipedia.org/wiki/Linked_data_structure">链式</a>和<a href="https://en.wikipedia.org/wiki/Tree_%28data_structure%29">树</a>的数据结构以外，Linux 内核也为<a href="https://en.wikipedia.org/wiki/Bit_array">位数组</a>（或称为<ruby> 位图 <rp>  （ </rp> <rt>  bitmap </rt> <rp>  ） </rp></ruby>）提供了 <a href="https://en.wikipedia.org/wiki/Application_programming_interface">API</a>。位数组在 Linux 内核里被广泛使用，并且在以下的源代码文件中包含了与这样的结构搭配使用的通用 <code>API</code>：</p>
+<ul>
+<li><a href="https://github.com/torvalds/linux/blob/master/lib/bitmap.c">lib/bitmap.c</a></li>
+<li><a href="https://github.com/torvalds/linux/blob/master/include/linux/bitmap.h">include/linux/bitmap.h</a></li>
+</ul>
+<p>除了这两个文件之外，还有体系结构特定的头文件，它们为特定的体系结构提供优化的位操作。我们将探讨 <a href="https://en.wikipedia.org/wiki/X86-64">x86_64</a> 体系结构，因此在我们的例子里，它会是</p>
+<ul>
+<li><a href="https://github.com/torvalds/linux/blob/master/arch/x86/include/asm/bitops.h">arch/x86/include/asm/bitops.h</a></li>
+</ul>
+<p>头文件。正如我上面所写的，<code>位图</code>在 Linux 内核中被广泛地使用。例如，<code>位数组</code>常常用于保存一组在线/离线处理器，以便系统支持<a href="https://www.kernel.org/doc/Documentation/cpu-hotplug.txt">热插拔</a>的 CPU（你可以在 <a href="https://0xax.gitbooks.io/linux-insides/content/Concepts/cpumask.html">cpumasks</a> 部分阅读更多相关知识 ），一个<ruby> 位数组 <rp>  （ </rp> <rt>  bit array </rt> <rp>  ） </rp></ruby>可以在 Linux 内核初始化等期间保存一组已分配的<a href="https://en.wikipedia.org/wiki/Interrupt_request_%28PC_architecture%29">中断处理</a>。</p>
+<p>因此，本部分的主要目的是了解<ruby> 位数组 <rp>  （ </rp> <rt>  bit array </rt> <rp>  ） </rp></ruby>是如何在 Linux 内核中实现的。让我们现在开始吧。</p>
+<h3>位数组声明</h3>
+<p>在我们开始查看<code>位图</code>操作的 <code>API</code> 之前，我们必须知道如何在 Linux 内核中声明它。有两种声明位数组的通用方法。第一种简单的声明一个位数组的方法是，定义一个 <code>unsigned long</code> 的数组，例如：</p>
+<div class="highlight"><pre><span></span><code>unsigned long my_bitmap[8]
+</code></pre></div>
+
+<p>第二种方法，是使用 <code>DECLARE_BITMAP</code> 宏，它定义于 <a href="https://github.com/torvalds/linux/blob/master/include/linux/types.h">include/linux/types.h</a> 头文件：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span>define DECLARE_BITMAP(name,bits) \
+    unsigned long name[BITS_TO_LONGS(bits)]
+</code></pre></div>
+
+<p>我们可以看到 <code>DECLARE_BITMAP</code> 宏使用两个参数：</p>
+<ul>
+<li><code>name</code> - 位图名称;</li>
+<li><code>bits</code> - 位图中位数;</li>
+</ul>
+<p>并且只是使用 <code>BITS_TO_LONGS(bits)</code> 元素展开 <code>unsigned long</code> 数组的定义。 <code>BITS_TO_LONGS</code> 宏将一个给定的位数转换为 <code>long</code> 的个数，换言之，就是计算 <code>bits</code> 中有多少个 <code>8</code> 字节元素：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span>define BITS_PER_BYTE           8
+<span class="gh">#</span>define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d))
+<span class="gh">#</span>define BITS_TO_LONGS(nr)       DIV_ROUND_UP(nr, BITS_PER_BYTE * sizeof(long))
+</code></pre></div>
+
+<p>因此，例如 <code>DECLARE_BITMAP(my_bitmap, 64)</code> 将产生：</p>
+<div class="highlight"><pre><span></span><code>&gt;&gt;&gt; (((64) + (64) - 1) / (64))
+1
+</code></pre></div>
+
+<p>与：</p>
+<div class="highlight"><pre><span></span><code>unsigned long my_bitmap[1];
+</code></pre></div>
+
+<p>在能够声明一个位数组之后，我们便可以使用它了。</p>
+<h3>体系结构特定的位操作</h3>
+<p>我们已经看了上面提及的一对源文件和头文件，它们提供了位数组操作的 <a href="https://en.wikipedia.org/wiki/Application_programming_interface">API</a>。其中重要且广泛使用的位数组 API 是体系结构特定的且位于已提及的头文件中 <a href="https://github.com/torvalds/linux/blob/master/arch/x86/include/asm/bitops.h">arch/x86/include/asm/bitops.h</a>。</p>
+<p>首先让我们查看两个最重要的函数：</p>
+<ul>
+<li><code>set_bit</code>;</li>
+<li><code>clear_bit</code>.</li>
+</ul>
+<p>我认为没有必要解释这些函数的作用。从它们的名字来看，这已经很清楚了。让我们直接查看它们的实现。如果你浏览 <a href="https://github.com/torvalds/linux/blob/master/arch/x86/include/asm/bitops.h">arch/x86/include/asm/bitops.h</a> 头文件，你将会注意到这些函数中的每一个都有<a href="https://en.wikipedia.org/wiki/Linearizability">原子性</a>和非原子性两种变体。在我们开始深入这些函数的实现之前，首先，我们必须了解一些有关<ruby> 原子 <rp>  （ </rp> <rt>  atomic </rt> <rp>  ） </rp></ruby>操作的知识。</p>
+<p>简而言之，原子操作保证两个或以上的操作不会并发地执行同一数据。<code>x86</code> 体系结构提供了一系列原子指令，例如， <a href="http://x86.renejeschke.de/html/file_module_x86_id_328.html">xchg</a>、<a href="http://x86.renejeschke.de/html/file_module_x86_id_41.html">cmpxchg</a> 等指令。除了原子指令，一些非原子指令可以在 <a href="http://x86.renejeschke.de/html/file_module_x86_id_159.html">lock</a> 指令的帮助下具有原子性。现在你已经对原子操作有了足够的了解，我们可以接着探讨 <code>set_bit</code> 和 <code>clear_bit</code> 函数的实现。</p>
+<p>我们先考虑函数的<ruby> 非原子性 <rp>  （ </rp> <rt>  non-atomic </rt> <rp>  ） </rp></ruby>变体。非原子性的 <code>set_bit</code> 和 <code>clear_bit</code> 的名字以双下划线开始。正如我们所知道的，所有这些函数都定义于 <a href="https://github.com/torvalds/linux/blob/master/arch/x86/include/asm/bitops.h">arch/x86/include/asm/bitops.h</a> 头文件，并且第一个函数就是 <code>__set_bit</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="nx">static</span><span class="w"> </span><span class="nx">inline</span><span class="w"> </span><span class="nx">void</span><span class="w"> </span><span class="nx">__set_bit</span><span class="p">(</span><span class="nx">long</span><span class="w"> </span><span class="nx">nr</span><span class="p">,</span><span class="w"> </span><span class="nx">volatile</span><span class="w"> </span><span class="nx">unsigned</span><span class="w"> </span><span class="nx">long</span><span class="w"> </span><span class="o">*</span><span class="kd">addr</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="nx">asm</span><span class="w"> </span><span class="nx">volatile</span><span class="p">(</span><span class="s">&quot;bts %1,%0&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="nx">ADDR</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Ir&quot;</span><span class="w"> </span><span class="p">(</span><span class="nx">nr</span><span class="p">)</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="s">&quot;memory&quot;</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>正如我们所看到的，它使用了两个参数：</p>
+<ul>
+<li><code>nr</code> - 位数组中的位号（LCTT 译注：从 0 开始）</li>
+<li><code>addr</code> - 我们需要置位的位数组地址</li>
+</ul>
+<p>注意，<code>addr</code> 参数使用 <code>volatile</code> 关键字定义，以告诉编译器给定地址指向的变量可能会被修改。 <code>__set_bit</code> 的实现相当简单。正如我们所看到的，它仅包含一行<a href="https://en.wikipedia.org/wiki/Inline_assembler">内联汇编代码</a>。在我们的例子中，我们使用 <a href="http://x86.renejeschke.de/html/file_module_x86_id_25.html">bts</a> 指令，从位数组中选出一个第一操作数（我们的例子中的 <code>nr</code>）所指定的位，存储选出的位的值到 <a href="https://en.wikipedia.org/wiki/FLAGS_register">CF</a> 标志寄存器并设置该位（LCTT 译注：即 <code>nr</code> 指定的位置为 1）。</p>
+<p>注意，我们了解了 <code>nr</code> 的用法，但这里还有一个参数 <code>addr</code> 呢！你或许已经猜到秘密就在 <code>ADDR</code>。 <code>ADDR</code> 是一个定义在同一个头文件中的宏，它展开为一个包含给定地址和 <code>+m</code> 约束的字符串：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="nx">define</span><span class="w"> </span><span class="nx">ADDR</span><span class="w">                </span><span class="nx">BITOP_ADDR</span><span class="p">(</span><span class="kd">addr</span><span class="p">)</span>
+<span class="err">#</span><span class="nx">define</span><span class="w"> </span><span class="nx">BITOP_ADDR</span><span class="p">(</span><span class="nx">x</span><span class="p">)</span><span class="w"> </span><span class="s">&quot;+m&quot;</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="nx">volatile</span><span class="w"> </span><span class="nx">long</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nx">x</span><span class="p">))</span>
+</code></pre></div>
+
+<p>除了 <code>+m</code> 之外，在 <code>__set_bit</code> 函数中我们可以看到其他约束。让我们查看并试着理解它们所表示的意义：</p>
+<ul>
+<li><code>+m</code> - 表示内存操作数，这里的 <code>+</code> 表明给定的操作数为输入输出操作数；</li>
+<li><code>I</code> - 表示整型常量；</li>
+<li><code>r</code> - 表示寄存器操作数</li>
+</ul>
+<p>除了这些约束之外，我们也能看到 <code>memory</code> 关键字，其告诉编译器这段代码会修改内存中的变量。到此为止，现在我们看看相同的<ruby> 原子性 <rp>  （ </rp> <rt>  atomic </rt> <rp>  ） </rp></ruby>变体函数。它看起来比<ruby> 非原子性 <rp>  （ </rp> <rt>  non-atomic </rt> <rp>  ） </rp></ruby>变体更加复杂：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">static</span><span class="w"> </span><span class="nx">__always_inline</span><span class="w"> </span><span class="nx">void</span>
+<span class="nx">set_bit</span><span class="p">(</span><span class="nx">long</span><span class="w"> </span><span class="nx">nr</span><span class="p">,</span><span class="w"> </span><span class="nx">volatile</span><span class="w"> </span><span class="nx">unsigned</span><span class="w"> </span><span class="nx">long</span><span class="w"> </span><span class="o">*</span><span class="kd">addr</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">IS_IMMEDIATE</span><span class="p">(</span><span class="nx">nr</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">asm</span><span class="w"> </span><span class="nx">volatile</span><span class="p">(</span><span class="nx">LOCK_PREFIX</span><span class="w"> </span><span class="s">&quot;orb %1,%0&quot;</span>
+<span class="w">            </span><span class="p">:</span><span class="w"> </span><span class="nx">CONST_MASK_ADDR</span><span class="p">(</span><span class="nx">nr</span><span class="p">,</span><span class="w"> </span><span class="kd">addr</span><span class="p">)</span>
+<span class="w">            </span><span class="p">:</span><span class="w"> </span><span class="s">&quot;iq&quot;</span><span class="w"> </span><span class="p">((</span><span class="kt">u8</span><span class="p">)</span><span class="nx">CONST_MASK</span><span class="p">(</span><span class="nx">nr</span><span class="p">))</span>
+<span class="w">            </span><span class="p">:</span><span class="w"> </span><span class="s">&quot;memory&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">asm</span><span class="w"> </span><span class="nx">volatile</span><span class="p">(</span><span class="nx">LOCK_PREFIX</span><span class="w"> </span><span class="s">&quot;bts %1,%0&quot;</span>
+<span class="w">            </span><span class="p">:</span><span class="w"> </span><span class="nx">BITOP_ADDR</span><span class="p">(</span><span class="kd">addr</span><span class="p">)</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Ir&quot;</span><span class="w"> </span><span class="p">(</span><span class="nx">nr</span><span class="p">)</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="s">&quot;memory&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>（LCTT 译注：BITOP_ADDR 的定义为：<code>#define BITOP_ADDR(x) "=m" (*(volatile long *) (x))</code>，ORB 为字节按位或。）</p>
+<p>首先注意，这个函数使用了与 <code>__set_bit</code> 相同的参数集合，但额外地使用了 <code>__always_inline</code> 属性标记。 <code>__always_inline</code> 是一个定义于 <a href="https://github.com/torvalds/linux/blob/master/include/linux/compiler-gcc.h">include/linux/compiler-gcc.h</a> 的宏，并且只是展开为 <code>always_inline</code> 属性：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span>define __always_inline inline __attribute__((always_inline))
+</code></pre></div>
+
+<p>其意味着这个函数总是内联的，以减少 Linux 内核映像的大小。现在让我们试着了解下 <code>set_bit</code> 函数的实现。首先我们在 <code>set_bit</code> 函数的开头检查给定的位的数量。<code>IS_IMMEDIATE</code> 宏定义于相同的<a href="https://github.com/torvalds/linux/blob/master/arch/x86/include/asm/bitops.h">头文件</a>，并展开为 <a href="https://en.wikipedia.org/wiki/GNU_Compiler_Collection">gcc</a> 内置函数的调用：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">#define IS_IMMEDIATE(nr)        (__builtin_constant_p(nr))</span>
+</code></pre></div>
+
+<p>如果给定的参数是编译期已知的常量，<code>__builtin_constant_p</code> 内置函数则返回 <code>1</code>，其他情况返回 <code>0</code>。假若给定的位数是编译期已知的常量，我们便无须使用效率低下的 <code>bts</code> 指令去设置位。我们可以只需在给定地址指向的字节上执行 <a href="https://en.wikipedia.org/wiki/Bitwise_operation#OR">按位或</a> 操作，其字节包含给定的位，掩码位数表示高位为 <code>1</code>，其他位为 0 的掩码。在其他情况下，如果给定的位号不是编译期已知常量，我们便做和 <code>__set_bit</code> 函数一样的事。<code>CONST_MASK_ADDR</code> 宏：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="nx">define</span><span class="w"> </span><span class="nx">CONST_MASK_ADDR</span><span class="p">(</span><span class="nx">nr</span><span class="p">,</span><span class="w"> </span><span class="kd">addr</span><span class="p">)</span><span class="w">   </span><span class="nx">BITOP_ADDR</span><span class="p">((</span><span class="nx">void</span><span class="w"> </span><span class="o">*</span><span class="p">)(</span><span class="kd">addr</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">((</span><span class="nx">nr</span><span class="p">)</span><span class="o">&gt;&gt;</span><span class="mi">3</span><span class="p">))</span>
+</code></pre></div>
+
+<p>展开为带有到包含给定位的字节偏移的给定地址，例如，我们拥有地址 <code>0x1000</code> 和位号 <code>0x9</code>。因为 <code>0x9</code> 代表 <code>一个字节 + 一位</code>，所以我们的地址是 <code>addr + 1</code>:</p>
+<div class="highlight"><pre><span></span><code>&gt;&gt;&gt; hex(0x1000 + (0x9 &gt;&gt; 3))
+&#39;0x1001&#39;
+</code></pre></div>
+
+<p><code>CONST_MASK</code> 宏将我们给定的位号表示为字节，位号对应位为高位 <code>1</code>，其他位为 <code>0</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span>define CONST_MASK(nr)          (1 &lt;&lt; ((nr) &amp; 7))
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code>&gt;&gt;&gt; bin(1 &lt;&lt; (0x9 &amp; 7))
+&#39;0b10&#39;
+</code></pre></div>
+
+<p>最后，我们应用 <code>按位或</code> 运算到这些变量上面，因此，假如我们的地址是 <code>0x4097</code> ，并且我们需要置位号为 <code>9</code> 的位为 1：</p>
+<div class="highlight"><pre><span></span><code>&gt;&gt;&gt; bin(0x4097)
+&#39;0b100000010010111&#39;
+&gt;&gt;&gt; bin((0x4097 &gt;&gt; 0x9) | (1 &lt;&lt; (0x9 &amp; 7)))
+&#39;0b100010&#39;
+</code></pre></div>
+
+<p><code>第 9 位</code> 将会被置位。（LCTT 译注：这里的 9 是从 0 开始计数的，比如0010，按照作者的意思，其中的 1 是第 1 位）</p>
+<p>注意，所有这些操作使用 <code>LOCK_PREFIX</code> 标记，其展开为 <a href="http://x86.renejeschke.de/html/file_module_x86_id_159.html">lock</a> 指令，保证该操作的原子性。</p>
+<p>正如我们所知，除了 <code>set_bit</code> 和 <code>__set_bit</code> 操作之外，Linux 内核还提供了两个功能相反的函数，在原子性和非原子性的上下文中清位。它们是 <code>clear_bit</code> 和 <code>__clear_bit</code>。这两个函数都定义于同一个<a href="https://github.com/torvalds/linux/blob/master/arch/x86/include/asm/bitops.h">头文件</a> 并且使用相同的参数集合。不仅参数相似，一般而言，这些函数与 <code>set_bit</code> 和 <code>__set_bit</code> 也非常相似。让我们查看非原子性 <code>__clear_bit</code> 的实现吧：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">static</span><span class="w"> </span><span class="nx">inline</span><span class="w"> </span><span class="nx">void</span><span class="w"> </span><span class="nx">__clear_bit</span><span class="p">(</span><span class="nx">long</span><span class="w"> </span><span class="nx">nr</span><span class="p">,</span><span class="w"> </span><span class="nx">volatile</span><span class="w"> </span><span class="nx">unsigned</span><span class="w"> </span><span class="nx">long</span><span class="w"> </span><span class="o">*</span><span class="kd">addr</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="nx">asm</span><span class="w"> </span><span class="nx">volatile</span><span class="p">(</span><span class="s">&quot;btr %1,%0&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="nx">ADDR</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Ir&quot;</span><span class="w"> </span><span class="p">(</span><span class="nx">nr</span><span class="p">));</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>没错，正如我们所见，<code>__clear_bit</code> 使用相同的参数集合，并包含极其相似的内联汇编代码块。它只是使用 <a href="http://x86.renejeschke.de/html/file_module_x86_id_24.html">btr</a> 指令替换了 <code>bts</code>。正如我们从函数名所理解的一样，通过给定地址，它清除了给定的位。<code>btr</code> 指令表现得像 <code>bts</code>（LCTT 译注：原文这里为 btr，可能为笔误，修正为 bts）。该指令选出第一操作数所指定的位，存储它的值到 <code>CF</code> 标志寄存器，并且清除第二操作数指定的位数组中的对应位。</p>
+<p><code>__clear_bit</code> 的原子性变体为 <code>clear_bit</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">static</span><span class="w"> </span><span class="nx">__always_inline</span><span class="w"> </span><span class="nx">void</span>
+<span class="nx">clear_bit</span><span class="p">(</span><span class="nx">long</span><span class="w"> </span><span class="nx">nr</span><span class="p">,</span><span class="w"> </span><span class="nx">volatile</span><span class="w"> </span><span class="nx">unsigned</span><span class="w"> </span><span class="nx">long</span><span class="w"> </span><span class="o">*</span><span class="kd">addr</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">IS_IMMEDIATE</span><span class="p">(</span><span class="nx">nr</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">asm</span><span class="w"> </span><span class="nx">volatile</span><span class="p">(</span><span class="nx">LOCK_PREFIX</span><span class="w"> </span><span class="s">&quot;andb %1,%0&quot;</span>
+<span class="w">            </span><span class="p">:</span><span class="w"> </span><span class="nx">CONST_MASK_ADDR</span><span class="p">(</span><span class="nx">nr</span><span class="p">,</span><span class="w"> </span><span class="kd">addr</span><span class="p">)</span>
+<span class="w">            </span><span class="p">:</span><span class="w"> </span><span class="s">&quot;iq&quot;</span><span class="w"> </span><span class="p">((</span><span class="kt">u8</span><span class="p">)</span><span class="o">~</span><span class="nx">CONST_MASK</span><span class="p">(</span><span class="nx">nr</span><span class="p">)));</span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">asm</span><span class="w"> </span><span class="nx">volatile</span><span class="p">(</span><span class="nx">LOCK_PREFIX</span><span class="w"> </span><span class="s">&quot;btr %1,%0&quot;</span>
+<span class="w">            </span><span class="p">:</span><span class="w"> </span><span class="nx">BITOP_ADDR</span><span class="p">(</span><span class="kd">addr</span><span class="p">)</span>
+<span class="w">            </span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Ir&quot;</span><span class="w"> </span><span class="p">(</span><span class="nx">nr</span><span class="p">));</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>并且正如我们所看到的，它与 <code>set_bit</code> 非常相似，只有两处不同。第一处差异为 <code>clear_bit</code> 使用 <code>btr</code> 指令来清位，而 <code>set_bit</code> 使用 <code>bts</code> 指令来置位。第二处差异为 <code>clear_bit</code> 使用否定的位掩码和 <code>按位与</code> 在给定的字节上置位，而 <code>set_bit</code> 使用 <code>按位或</code> 指令。</p>
+<p>到此为止，我们可以在任意位数组置位和清位了，我们将看看位掩码上的其他操作。</p>
+<p>在 Linux 内核中对位数组最广泛使用的操作是设置和清除位，但是除了这两个操作外，位数组上其他操作也是非常有用的。Linux 内核里另一种广泛使用的操作是知晓位数组中一个给定的位是否被置位。我们能够通过 <code>test_bit</code> 宏的帮助实现这一功能。这个宏定义于 <a href="https://github.com/torvalds/linux/blob/master/arch/x86/include/asm/bitops.h">arch/x86/include/asm/bitops.h</a> 头文件，并根据位号分别展开为 <code>constant_test_bit</code> 或 <code>variable_test_bit</code> 调用。</p>
+<div class="highlight"><pre><span></span><code><span class="c1">#define test_bit(nr, addr)          \</span>
+<span class="w">    </span><span class="p">(</span><span class="n">__builtin_constant_p</span><span class="p">((</span><span class="n">nr</span><span class="p">))</span><span class="w">                 </span>\
+<span class="w">     </span><span class="err">?</span><span class="w"> </span><span class="n">constant_test_bit</span><span class="p">((</span><span class="n">nr</span><span class="p">),</span><span class="w"> </span><span class="p">(</span><span class="n">addr</span><span class="p">))</span><span class="w">          </span>\
+<span class="w">     </span><span class="p">:</span><span class="w"> </span><span class="n">variable_test_bit</span><span class="p">((</span><span class="n">nr</span><span class="p">),</span><span class="w"> </span><span class="p">(</span><span class="n">addr</span><span class="p">)))</span>
+</code></pre></div>
+
+<p>因此，如果 <code>nr</code> 是编译期已知常量，<code>test_bit</code> 将展开为 <code>constant_test_bit</code> 函数的调用，而其他情况则为 <code>variable_test_bit</code>。现在让我们看看这些函数的实现，让我们从 <code>variable_test_bit</code> 开始看起：</p>
+<div class="highlight"><pre><span></span><code><span class="k">static</span><span class="w"> </span><span class="n">inline</span><span class="w"> </span><span class="nb nb-Type">int</span><span class="w"> </span><span class="n">variable_test_bit</span><span class="p">(</span><span class="n">long</span><span class="w"> </span><span class="n">nr</span><span class="p">,</span><span class="w"> </span><span class="n">volatile</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">unsigned</span><span class="w"> </span><span class="n">long</span><span class="w"> </span><span class="o">*</span><span class="n">addr</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="nb nb-Type">int</span><span class="w"> </span><span class="n">oldbit</span><span class="p">;</span>
+
+<span class="w">    </span><span class="n">asm</span><span class="w"> </span><span class="n">volatile</span><span class="p">(</span><span class="s2">&quot;bt %2,%1</span><span class="se">\n\t</span><span class="s2">&quot;</span>
+<span class="w">             </span><span class="s2">&quot;sbb %0,%0&quot;</span>
+<span class="w">             </span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;=r&quot;</span><span class="w"> </span><span class="p">(</span><span class="n">oldbit</span><span class="p">)</span>
+<span class="w">             </span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;m&quot;</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="n">unsigned</span><span class="w"> </span><span class="n">long</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="n">addr</span><span class="p">),</span><span class="w"> </span><span class="s2">&quot;Ir&quot;</span><span class="w"> </span><span class="p">(</span><span class="n">nr</span><span class="p">));</span>
+
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">oldbit</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><code>variable_test_bit</code> 函数使用了与 <code>set_bit</code> 及其他函数使用的相似的参数集合。我们也可以看到执行 <a href="http://x86.renejeschke.de/html/file_module_x86_id_22.html">bt</a> 和 <a href="http://x86.renejeschke.de/html/file_module_x86_id_286.html">sbb</a> 指令的内联汇编代码。<code>bt</code> （或称 <code>bit test</code>）指令从第二操作数指定的位数组选出第一操作数指定的一个指定位，并且将该位的值存进标志寄存器的 <a href="https://en.wikipedia.org/wiki/FLAGS_register">CF</a> 位。第二个指令 <code>sbb</code> 从第二操作数中减去第一操作数，再减去 <code>CF</code> 的值。因此，这里将一个从给定位数组中的给定位号的值写进标志寄存器的 <code>CF</code> 位，并且执行 <code>sbb</code> 指令计算： <code>00000000 - CF</code>，并将结果写进 <code>oldbit</code> 变量。</p>
+<p><code>constant_test_bit</code> 函数做了和我们在 <code>set_bit</code> 所看到的一样的事：</p>
+<div class="highlight"><pre><span></span><code><span class="k">static</span><span class="w"> </span><span class="n">__always_inline</span><span class="w"> </span><span class="nb nb-Type">int</span><span class="w"> </span><span class="n">constant_test_bit</span><span class="p">(</span><span class="n">long</span><span class="w"> </span><span class="n">nr</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">volatile</span><span class="w"> </span><span class="n">unsigned</span><span class="w"> </span><span class="n">long</span><span class="w"> </span><span class="o">*</span><span class="n">addr</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="p">((</span><span class="mi">1</span><span class="n">UL</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="p">(</span><span class="n">nr</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="p">(</span><span class="n">BITS_PER_LONG</span><span class="o">-</span><span class="mi">1</span><span class="p">)))</span><span class="w"> </span><span class="o">&amp;</span>
+<span class="w">        </span><span class="p">(</span><span class="n">addr</span><span class="p">[</span><span class="n">nr</span><span class="w"> </span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">_BITOPS_LONG_SHIFT</span><span class="p">]))</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>它生成了一个位号对应位为高位 <code>1</code>，而其他位为 <code>0</code> 的字节（正如我们在 <code>CONST_MASK</code> 所看到的），并将 <a href="https://en.wikipedia.org/wiki/Bitwise_operation#AND">按位与</a> 应用于包含给定位号的字节。</p>
+<p>下一个被广泛使用的位数组相关操作是改变一个位数组中的位。为此，Linux 内核提供了两个辅助函数：</p>
+<ul>
+<li><code>__change_bit</code>;</li>
+<li><code>change_bit</code>.</li>
+</ul>
+<p>你可能已经猜测到，就拿 <code>set_bit</code> 和 <code>__set_bit</code> 例子说，这两个变体分别是原子和非原子版本。首先，让我们看看 <code>__change_bit</code> 函数的实现：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">static</span><span class="w"> </span><span class="nx">inline</span><span class="w"> </span><span class="nx">void</span><span class="w"> </span><span class="nx">__change_bit</span><span class="p">(</span><span class="nx">long</span><span class="w"> </span><span class="nx">nr</span><span class="p">,</span><span class="w"> </span><span class="nx">volatile</span><span class="w"> </span><span class="nx">unsigned</span><span class="w"> </span><span class="nx">long</span><span class="w"> </span><span class="o">*</span><span class="kd">addr</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="nx">asm</span><span class="w"> </span><span class="nx">volatile</span><span class="p">(</span><span class="s">&quot;btc %1,%0&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="nx">ADDR</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Ir&quot;</span><span class="w"> </span><span class="p">(</span><span class="nx">nr</span><span class="p">));</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>相当简单，不是吗？ <code>__change_bit</code> 的实现和 <code>__set_bit</code> 一样，只是我们使用 <a href="http://x86.renejeschke.de/html/file_module_x86_id_23.html">btc</a> 替换 <code>bts</code> 指令而已。 该指令从一个给定位数组中选出一个给定位，将该为位的值存进 <code>CF</code> 并使用求反操作改变它的值，因此值为 <code>1</code> 的位将变为 <code>0</code>，反之亦然：</p>
+<div class="highlight"><pre><span></span><code>&gt;&gt;&gt; int(not 1)
+0
+&gt;&gt;&gt; int(not 0)
+1
+</code></pre></div>
+
+<p><code>__change_bit</code> 的原子版本为 <code>change_bit</code> 函数：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">static</span><span class="w"> </span><span class="nx">inline</span><span class="w"> </span><span class="nx">void</span><span class="w"> </span><span class="nx">change_bit</span><span class="p">(</span><span class="nx">long</span><span class="w"> </span><span class="nx">nr</span><span class="p">,</span><span class="w"> </span><span class="nx">volatile</span><span class="w"> </span><span class="nx">unsigned</span><span class="w"> </span><span class="nx">long</span><span class="w"> </span><span class="o">*</span><span class="kd">addr</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">IS_IMMEDIATE</span><span class="p">(</span><span class="nx">nr</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">asm</span><span class="w"> </span><span class="nx">volatile</span><span class="p">(</span><span class="nx">LOCK_PREFIX</span><span class="w"> </span><span class="s">&quot;xorb %1,%0&quot;</span>
+<span class="w">            </span><span class="p">:</span><span class="w"> </span><span class="nx">CONST_MASK_ADDR</span><span class="p">(</span><span class="nx">nr</span><span class="p">,</span><span class="w"> </span><span class="kd">addr</span><span class="p">)</span>
+<span class="w">            </span><span class="p">:</span><span class="w"> </span><span class="s">&quot;iq&quot;</span><span class="w"> </span><span class="p">((</span><span class="kt">u8</span><span class="p">)</span><span class="nx">CONST_MASK</span><span class="p">(</span><span class="nx">nr</span><span class="p">)));</span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">asm</span><span class="w"> </span><span class="nx">volatile</span><span class="p">(</span><span class="nx">LOCK_PREFIX</span><span class="w"> </span><span class="s">&quot;btc %1,%0&quot;</span>
+<span class="w">            </span><span class="p">:</span><span class="w"> </span><span class="nx">BITOP_ADDR</span><span class="p">(</span><span class="kd">addr</span><span class="p">)</span>
+<span class="w">            </span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Ir&quot;</span><span class="w"> </span><span class="p">(</span><span class="nx">nr</span><span class="p">));</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>它和 <code>set_bit</code> 函数很相似，但也存在两点不同。第一处差异为 <code>xor</code> 操作而不是 <code>or</code>。第二处差异为 <code>btc</code>（ LCTT 译注：原文为 <code>bts</code>，为作者笔误） 而不是 <code>bts</code>。</p>
+<p>目前，我们了解了最重要的体系特定的位数组操作，是时候看看一般的位图 API 了。</p>
+<h3>通用位操作</h3>
+<p>除了 <a href="https://github.com/torvalds/linux/blob/master/arch/x86/include/asm/bitops.h">arch/x86/include/asm/bitops.h</a> 中体系特定的 API 外，Linux 内核提供了操作位数组的通用 API。正如我们本部分开头所了解的一样，我们可以在 <a href="https://github.com/torvalds/linux/blob/master/include/linux/bitmap.h">include/linux/bitmap.h</a> 头文件和 <a href="https://github.com/torvalds/linux/blob/master/lib/bitmap.c">lib/bitmap.c</a> 源文件中找到它。但在查看这些源文件之前，我们先看看 <a href="https://github.com/torvalds/linux/blob/master/include/linux/bitops.h">include/linux/bitops.h</a> 头文件，其提供了一系列有用的宏，让我们看看它们当中一部分。</p>
+<p>首先我们看看以下 4 个 宏：</p>
+<ul>
+<li><code>for_each_set_bit</code></li>
+<li><code>for_each_set_bit_from</code></li>
+<li><code>for_each_clear_bit</code></li>
+<li><code>for_each_clear_bit_from</code></li>
+</ul>
+<p>所有这些宏都提供了遍历位数组中某些位集合的迭代器。第一个宏迭代那些被置位的位。第二个宏也是一样，但它是从某一个确定的位开始。最后两个宏做的一样，但是迭代那些被清位的位。让我们看看 <code>for_each_set_bit</code> 宏：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="nx">define</span><span class="w"> </span><span class="nx">for_each_set_bit</span><span class="p">(</span><span class="nx">bit</span><span class="p">,</span><span class="w"> </span><span class="kd">addr</span><span class="p">,</span><span class="w"> </span><span class="nx">size</span><span class="p">)</span><span class="w"> </span>\
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">((</span><span class="nx">bit</span><span class="p">)</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">find_first_bit</span><span class="p">((</span><span class="kd">addr</span><span class="p">),</span><span class="w"> </span><span class="p">(</span><span class="nx">size</span><span class="p">));</span><span class="w">        </span>\
+<span class="w">         </span><span class="p">(</span><span class="nx">bit</span><span class="p">)</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="p">(</span><span class="nx">size</span><span class="p">);</span><span class="w">                    </span>\
+<span class="w">         </span><span class="p">(</span><span class="nx">bit</span><span class="p">)</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">find_next_bit</span><span class="p">((</span><span class="kd">addr</span><span class="p">),</span><span class="w"> </span><span class="p">(</span><span class="nx">size</span><span class="p">),</span><span class="w"> </span><span class="p">(</span><span class="nx">bit</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">))</span>
+</code></pre></div>
+
+<p>正如我们所看到的，它使用了三个参数，并展开为一个循环，该循环从作为 <code>find_first_bit</code> 函数返回结果的第一个置位开始，到小于给定大小的最后一个置位为止。</p>
+<p>除了这四个宏， <a href="https://github.com/torvalds/linux/blob/master/arch/x86/include/asm/bitops.h">arch/x86/include/asm/bitops.h</a> 也提供了 <code>64-bit</code> 或 <code>32-bit</code> 变量循环的 API 等等。</p>
+<p>下一个 <a href="https://github.com/torvalds/linux/blob/master/include/linux/bitmap.h">头文件</a> 提供了操作位数组的 API。例如，它提供了以下两个函数：</p>
+<ul>
+<li><code>bitmap_zero</code>;</li>
+<li><code>bitmap_fill</code>.</li>
+</ul>
+<p>它们分别可以清除一个位数组和用 <code>1</code> 填充位数组。让我们看看 <code>bitmap_zero</code> 函数的实现：</p>
+<div class="highlight"><pre><span></span><code><span class="k">static</span><span class="w"> </span><span class="n">inline</span><span class="w"> </span><span class="nb nb-Type">void</span><span class="w"> </span><span class="n">bitmap_zero</span><span class="p">(</span><span class="n">unsigned</span><span class="w"> </span><span class="n">long</span><span class="w"> </span><span class="o">*</span><span class="n">dst</span><span class="p">,</span><span class="w"> </span><span class="n">unsigned</span><span class="w"> </span><span class="nb nb-Type">int</span><span class="w"> </span><span class="n">nbits</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">small_const_nbits</span><span class="p">(</span><span class="n">nbits</span><span class="p">))</span>
+<span class="w">        </span><span class="o">*</span><span class="n">dst</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="n">UL</span><span class="p">;</span>
+<span class="w">    </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">unsigned</span><span class="w"> </span><span class="nb nb-Type">int</span><span class="w"> </span><span class="n">len</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BITS_TO_LONGS</span><span class="p">(</span><span class="n">nbits</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">sizeof</span><span class="p">(</span><span class="n">unsigned</span><span class="w"> </span><span class="n">long</span><span class="p">);</span>
+<span class="w">        </span><span class="n">memset</span><span class="p">(</span><span class="n">dst</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">len</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>首先我们可以看到对 <code>nbits</code> 的检查。 <code>small_const_nbits</code> 是一个定义在同一个<a href="https://github.com/torvalds/linux/blob/master/include/linux/bitmap.h">头文件</a> 的宏：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">#define small_const_nbits(nbits) \</span>
+<span class="w">    </span><span class="p">(</span><span class="n">__builtin_constant_p</span><span class="p">(</span><span class="n">nbits</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="p">(</span><span class="n">nbits</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="n">BITS_PER_LONG</span><span class="p">)</span>
+</code></pre></div>
+
+<p>正如我们可以看到的，它检查 <code>nbits</code> 是否为编译期已知常量，并且其值不超过 <code>BITS_PER_LONG</code> 或 <code>64</code>。如果位数目没有超过一个 <code>long</code> 变量的位数，我们可以仅仅设置为 0。在其他情况，我们需要计算有多少个需要填充位数组的 <code>long</code> 变量并且使用 <a href="http://man7.org/linux/man-pages/man3/memset.3.html">memset</a> 进行填充。</p>
+<p><code>bitmap_fill</code> 函数的实现和 <code>biramp_zero</code> 函数很相似，除了我们需要在给定的位数组中填写 <code>0xff</code> 或 <code>0b11111111</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="k">static</span><span class="w"> </span><span class="n">inline</span><span class="w"> </span><span class="nb nb-Type">void</span><span class="w"> </span><span class="n">bitmap_fill</span><span class="p">(</span><span class="n">unsigned</span><span class="w"> </span><span class="n">long</span><span class="w"> </span><span class="o">*</span><span class="n">dst</span><span class="p">,</span><span class="w"> </span><span class="n">unsigned</span><span class="w"> </span><span class="nb nb-Type">int</span><span class="w"> </span><span class="n">nbits</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="n">unsigned</span><span class="w"> </span><span class="nb nb-Type">int</span><span class="w"> </span><span class="n">nlongs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BITS_TO_LONGS</span><span class="p">(</span><span class="n">nbits</span><span class="p">);</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">small_const_nbits</span><span class="p">(</span><span class="n">nbits</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">unsigned</span><span class="w"> </span><span class="nb nb-Type">int</span><span class="w"> </span><span class="n">len</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">nlongs</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">sizeof</span><span class="p">(</span><span class="n">unsigned</span><span class="w"> </span><span class="n">long</span><span class="p">);</span>
+<span class="w">        </span><span class="n">memset</span><span class="p">(</span><span class="n">dst</span><span class="p">,</span><span class="w"> </span><span class="mh">0xff</span><span class="p">,</span><span class="w">  </span><span class="n">len</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="n">dst</span><span class="p">[</span><span class="n">nlongs</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BITMAP_LAST_WORD_MASK</span><span class="p">(</span><span class="n">nbits</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>除了 <code>bitmap_fill</code> 和 <code>bitmap_zero</code>，<a href="https://github.com/torvalds/linux/blob/master/include/linux/bitmap.h">include/linux/bitmap.h</a> 头文件也提供了和 <code>bitmap_zero</code> 很相似的 <code>bitmap_copy</code>，只是仅仅使用 <a href="http://man7.org/linux/man-pages/man3/memcpy.3.html">memcpy</a> 而不是 <a href="http://man7.org/linux/man-pages/man3/memset.3.html">memset</a> 这点差异而已。它也提供了位数组的按位操作，像 <code>bitmap_and</code>, <code>bitmap_or</code>, <code>bitamp_xor</code>等等。我们不会探讨这些函数的实现了，因为如果你理解了本部分的所有内容，这些函数的实现是很容易理解的。无论如何，如果你对这些函数是如何实现的感兴趣，你可以打开并研究 <a href="https://github.com/torvalds/linux/blob/master/include/linux/bitmap.h">include/linux/bitmap.h</a> 头文件。</p>
+<p>本部分到此为止。</p>
+<h3>链接</h3>
+<ul>
+<li><a href="https://en.wikipedia.org/wiki/Bit_array">bitmap</a></li>
+<li><a href="https://en.wikipedia.org/wiki/Linked_data_structure">linked data structures</a></li>
+<li><a href="https://en.wikipedia.org/wiki/Tree_%28data_structure%29">tree data structures</a></li>
+<li><a href="https://www.kernel.org/doc/Documentation/cpu-hotplug.txt">hot-plug</a></li>
+<li><a href="https://0xax.gitbooks.io/linux-insides/content/Concepts/cpumask.html">cpumasks</a></li>
+<li><a href="https://en.wikipedia.org/wiki/Interrupt_request_%28PC_architecture%29">IRQs</a></li>
+<li><a href="https://en.wikipedia.org/wiki/Application_programming_interface">API</a></li>
+<li><a href="https://en.wikipedia.org/wiki/Linearizability">atomic operations</a></li>
+<li><a href="http://x86.renejeschke.de/html/file_module_x86_id_328.html">xchg instruction</a></li>
+<li><a href="http://x86.renejeschke.de/html/file_module_x86_id_41.html">cmpxchg instruction</a></li>
+<li><a href="http://x86.renejeschke.de/html/file_module_x86_id_159.html">lock instruction</a></li>
+<li><a href="http://x86.renejeschke.de/html/file_module_x86_id_25.html">bts instruction</a></li>
+<li><a href="http://x86.renejeschke.de/html/file_module_x86_id_24.html">btr instruction</a></li>
+<li><a href="http://x86.renejeschke.de/html/file_module_x86_id_22.html">bt instruction</a></li>
+<li><a href="http://x86.renejeschke.de/html/file_module_x86_id_286.html">sbb instruction</a></li>
+<li><a href="http://x86.renejeschke.de/html/file_module_x86_id_23.html">btc instruction</a></li>
+<li><a href="http://man7.org/linux/man-pages/man3/memcpy.3.html">man memcpy</a></li>
+<li><a href="http://man7.org/linux/man-pages/man3/memset.3.html">man memset</a></li>
+<li><a href="https://en.wikipedia.org/wiki/FLAGS_register">CF</a></li>
+<li><a href="https://en.wikipedia.org/wiki/Inline_assembler">inline assembler</a></li>
+<li><a href="https://en.wikipedia.org/wiki/GNU_Compiler_Collection">gcc</a></li>
+</ul>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>用 C 语言对 Gtk+ 应用进行功能测试</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Joël Krähemann 这个简单教程教你如何测试你应用的功能。 自动化测试用来保证你程序的质量以及让它以预想的运行。单元测试 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/10/yong-c-yu-yan-dui-gtk-ying-yong-jin-xing-gong-neng-ce-shi.html" rel="bookmark"
+           title="Permalink to 用 C 语言对 Gtk+ 应用进行功能测试">用 C 语言对 Gtk+ 应用进行功能测试</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-10-12T13:25:38+02:00">
+                Published: Thu 12 October 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Joël Krähemann</p>
+<blockquote>
+<p>这个简单教程教你如何测试你应用的功能。</p>
+</blockquote>
+<p><img alt="Functional testing Gtk+ applications in C" src="/data/attachment/album/201710/12/132540ni4mi77xmr2m27x2.png" title="Functional testing Gtk+ applications in C"></p>
+<p>自动化测试用来保证你程序的质量以及让它以预想的运行。单元测试只是检测你算法的某一部分，而并不注重各组件间的适应性。这就是为什么会有功能测试，它有时也称为集成测试。</p>
+<p>功能测试简单地与你的用户界面进行交互，无论它是网站还是桌面应用。为了展示功能测试如何工作，我们以测试一个 Gtk+ 应用为例。为了简单起见，这个教程里，我们使用 Gtk+ 2.0 教程的示例。</p>
+<h3>基础设置</h3>
+<p>对于每一个功能测试，你通常需要定义一些全局变量，比如 “用户交互时延” 或者 “失败的超时时间”（也就是说，如果在指定的时间内一个事件没有发生，程序就要中断）。</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="nx">define</span><span class="w"> </span><span class="nx">TTT_FUNCTIONAL_TEST_UTIL_IDLE_CONDITION</span><span class="p">(</span><span class="nx">f</span><span class="p">)</span><span class="w"> </span><span class="p">((</span><span class="nx">TttFunctionalTestUtilIdleCondition</span><span class="p">)(</span><span class="nx">f</span><span class="p">))</span>
+<span class="err">#</span><span class="nx">define</span><span class="w"> </span><span class="nx">TTT_FUNCTIONAL_TEST_UTIL_REACTION_TIME</span><span class="w"> </span><span class="p">(</span><span class="mi">125000</span><span class="p">)</span>
+<span class="err">#</span><span class="nx">define</span><span class="w"> </span><span class="nx">TTT_FUNCTIONAL_TEST_UTIL_REACTION_TIME_LONG</span><span class="w"> </span><span class="p">(</span><span class="mi">500000</span><span class="p">)</span>
+<span class="nx">typedef</span><span class="w"> </span><span class="nx">gboolean</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="nx">TttFunctionalTestUtilIdleCondition</span><span class="p">)(</span><span class="nx">gpointer</span><span class="w"> </span><span class="nx">data</span><span class="p">);</span>
+<span class="nx">struct</span><span class="w"> </span><span class="nx">timespec</span><span class="w"> </span><span class="nx">ttt_functional_test_util_default_timeout</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="mi">20</span><span class="p">,</span>
+<span class="w">  </span><span class="mi">0</span><span class="p">,</span>
+<span class="p">};</span>
+</code></pre></div>
+
+<p>现在我们可以实现我们自己的超时函数。这里，为了能够得到期望的延迟，我们采用 <code>usleep</code> 函数。</p>
+<div class="highlight"><pre><span></span><code>void
+ttt_functional_test_util_reaction_time()
+{
+  usleep(TTT_FUNCTIONAL_TEST_UTIL_REACTION_TIME);
+}
+
+void
+ttt_functional_test_util_reaction_time_long()
+{
+  usleep(TTT_FUNCTIONAL_TEST_UTIL_REACTION_TIME_LONG);
+}
+</code></pre></div>
+
+<p>直到获得控制状态，超时函数才会推迟执行。这对于一个异步执行的动作很有帮助，这也是为什么采用这么长的时延。</p>
+<div class="highlight"><pre><span></span><code>void
+ttt_functional_test_util_idle_condition_and_timeout(
+     TttFunctionalTestUtilIdleCondition idle_condition,
+     struct timespec *timeout,
+     pointer data)
+{
+  struct timespec start_time, current_time;
+
+  clock_gettime(CLOCK_MONOTONIC,
+                &amp;start_time);
+
+  while(TTT_FUNCTIONAL_TEST_UTIL_IDLE_CONDITION(idle_condition)(data)){
+    ttt_functional_test_util_reaction_time();
+
+    clock_gettime(CLOCK_MONOTONIC,
+                  &amp;current_time);
+
+    if(start_time.tv_sec + timeout-&gt;tv_sec &lt; current_time.tv_sec){
+      break;
+    }
+  }
+
+  ttt_functional_test_util_reaction_time();
+}
+</code></pre></div>
+
+<h3>与图形化用户界面交互</h3>
+<p>为了模拟用户交互的操作， <a href="https://developer.gnome.org/gdk3/stable/">Gdk 库</a> 为我们提供了一些需要的函数。要完成我们的工作，我们只需要如下 3 个函数：</p>
+<ul>
+<li><code>gdk_display_warp_pointer()</code></li>
+<li><code>gdk_test_simulate_button()</code></li>
+<li><code>gdk_test_simulate_key()</code></li>
+</ul>
+<p>举个例子，为了测试按钮点击，我们可以这么做：</p>
+<div class="highlight"><pre><span></span><code>gboolean
+ttt_functional_test_util_button_click(GtkButton *button)
+{
+  GtkWidget *widget;
+
+  GdkWindow <span class="gs">*window;</span>
+
+<span class="gs">  gint x, y;</span>
+<span class="gs">  gint origin_x, origin_y;</span>
+
+<span class="gs">  if(button == NULL ||</span>
+<span class="gs">     !GTK_IS_BUTTON(button)){</span>
+<span class="gs">    return(FALSE);</span>
+<span class="gs">  }</span>
+
+<span class="gs">  widget = button;</span>
+
+<span class="gs">  if(!GTK_WIDGET_REALIZED(widget)){</span>
+<span class="gs">    ttt_functional_test_util_reaction_time_long();</span>
+<span class="gs">  }</span>
+
+<span class="gs">  /*</span> retrieve window and pointer position <span class="gs">*/</span>
+<span class="gs">  gdk_threads_enter();</span>
+
+<span class="gs">  window = gtk_widget_get_window(widget);</span>
+
+<span class="gs">  x = widget-&gt;allocation.x + widget-&gt;allocation.width / 2.0;</span>
+<span class="gs">  y = widget-&gt;allocation.y + widget-&gt;allocation.height / 2.0;</span>
+
+<span class="gs">  gdk_window_get_origin(window, &amp;origin_x, &amp;origin_y);</span>
+
+<span class="gs">  gdk_display_warp_pointer(gtk_widget_get_display(widget),</span>
+<span class="gs">                           gtk_widget_get_screen(widget),</span>
+<span class="gs">                           origin_x + x, origin_y + y);</span>
+
+<span class="gs">  gdk_threads_leave();</span>
+
+<span class="gs">  /*</span> click the button */
+  ttt_functional_test_util_reaction_time();
+
+  gdk_test_simulate_button(window,
+                           x,
+                           y,
+                           1,
+                           GDK_BUTTON1_MASK,
+                           GDK_BUTTON_PRESS);
+
+  ttt_functional_test_util_reaction_time();
+
+  gdk_test_simulate_button(window,
+                           x,
+                           y,
+                           1,
+                           GDK_BUTTON1_MASK,
+                           GDK_BUTTON_RELEASE);
+
+  ttt_functional_test_util_reaction_time();
+
+  ttt_functional_test_util_reaction_time_long();
+
+  return(TRUE);
+}
+</code></pre></div>
+
+<p>我们想要保证按钮处于激活状态，因此我们提供一个空闲条件函数：</p>
+<div class="highlight"><pre><span></span><code>gboolean
+ttt_functional_test_util_idle_test_toggle_active(
+     GtkToggleButton **toggle_button)
+{
+  gboolean do_idle;
+
+  do_idle = TRUE;
+
+  gdk_threads_enter();
+
+  if(*toggle_button != NULL &amp;&amp;
+     GTK_IS_TOGGLE_BUTTON(*toggle_button) &amp;&amp;
+     gtk_toggle_button_get_active(*toggle_button)){
+    do_idle = FALSE;
+  }
+
+  gdk_threads_leave();
+
+  return(do_idle);
+}
+</code></pre></div>
+
+<h3>测试场景</h3>
+<p>因为这个 Tictactoe 程序非常简单，我们只需要确保点击了一个 <a href="https://developer.gnome.org/gtk3/stable/GtkToggleButton.html"><strong>GtkToggleButton</strong></a> 按钮即可。一旦该按钮肯定进入了激活状态，功能测试就可以执行。为了点击按钮，我们使用上面提到的很方便的 <code>util</code> 函数。</p>
+<p>如图所示，我们假设，填满第一行，玩家 A 就赢，因为玩家 B 没有注意，只填充了第二行。</p>
+<div class="highlight"><pre><span></span><code><span class="n">GtkWindow</span><span class="w"> </span><span class="o">*</span><span class="k">window</span><span class="p">;</span>
+<span class="n">Tictactoe</span><span class="w"> </span><span class="o">*</span><span class="n">ttt</span><span class="p">;</span>
+
+<span class="n">void</span><span class="o">*</span>
+<span class="n">ttt_functional_test_gtk_main</span><span class="p">(</span><span class="n">void</span><span class="w"> </span><span class="o">*</span><span class="p">)</span>
+<span class="err">{</span>
+<span class="w">  </span><span class="n">gtk_main</span><span class="p">();</span>
+
+<span class="w">  </span><span class="n">pthread_exit</span><span class="p">(</span><span class="k">NULL</span><span class="p">);</span>
+<span class="err">}</span>
+
+<span class="n">void</span>
+<span class="n">ttt_functional_test_dumb_player_b</span><span class="p">()</span>
+<span class="err">{</span>
+<span class="w">  </span><span class="n">GtkButton</span><span class="w"> </span><span class="o">*</span><span class="n">buttons</span><span class="o">[</span><span class="n">3</span><span class="o">][</span><span class="n">3</span><span class="o">]</span><span class="p">;</span>
+
+<span class="w">  </span><span class="n">guint</span><span class="w"> </span><span class="n">i</span><span class="p">;</span>
+
+<span class="w">  </span><span class="cm">/* to avoid race-conditions copy the buttons */</span>
+<span class="w">  </span><span class="n">gdk_threads_enter</span><span class="p">();</span>
+
+<span class="w">  </span><span class="n">memcpy</span><span class="p">(</span><span class="n">buttons</span><span class="p">,</span><span class="w"> </span><span class="n">ttt</span><span class="o">-&gt;</span><span class="n">buttons</span><span class="p">,</span><span class="w"> </span><span class="mi">9</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">sizeof</span><span class="p">(</span><span class="n">GtkButton</span><span class="w"> </span><span class="o">*</span><span class="p">));</span>
+
+<span class="w">  </span><span class="n">gdk_threads_leave</span><span class="p">();</span>
+
+<span class="w">  </span><span class="cm">/* TEST 1 - the dumb player B */</span>
+<span class="w">  </span><span class="k">for</span><span class="p">(</span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">3</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="err">{</span>
+<span class="w">    </span><span class="cm">/* assert player A clicks the button successfully */</span>
+<span class="w">    </span><span class="k">if</span><span class="p">(</span><span class="err">!</span><span class="n">ttt_functional_test_util_button_click</span><span class="p">(</span><span class="n">buttons</span><span class="o">[</span><span class="n">0</span><span class="o">][</span><span class="n">i</span><span class="o">]</span><span class="p">))</span><span class="err">{</span>
+<span class="w">      </span><span class="k">exit</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">);</span>
+<span class="w">    </span><span class="err">}</span>
+
+<span class="w">    </span><span class="n">functional_test_util_idle_condition_and_timeout</span><span class="p">(</span>
+<span class="w">         </span><span class="n">ttt_functional_test_util_idle_test_toggle_active</span><span class="p">,</span>
+<span class="w">         </span><span class="n">ttt_functional_test_util_default_timeout</span><span class="p">,</span>
+<span class="w">         </span><span class="o">&amp;</span><span class="n">buttons</span><span class="o">[</span><span class="n">0</span><span class="o">][</span><span class="n">i</span><span class="o">]</span><span class="p">);</span>
+
+<span class="w">    </span><span class="cm">/* assert player B clicks the button successfully */</span>
+<span class="w">    </span><span class="k">if</span><span class="p">(</span><span class="err">!</span><span class="n">ttt_functional_test_util_button_click</span><span class="p">(</span><span class="n">buttons</span><span class="o">[</span><span class="n">1</span><span class="o">][</span><span class="n">i</span><span class="o">]</span><span class="p">))</span><span class="err">{</span>
+<span class="w">      </span><span class="k">exit</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">);</span>
+<span class="w">    </span><span class="err">}</span>
+
+<span class="w">    </span><span class="n">functional_test_util_idle_condition_and_timeout</span><span class="p">(</span>
+<span class="w">         </span><span class="n">ttt_functional_test_util_idle_test_toggle_active</span><span class="p">,</span>
+<span class="w">         </span><span class="n">ttt_functional_test_util_default_timeout</span><span class="p">,</span>
+<span class="w">         </span><span class="o">&amp;</span><span class="n">buttons</span><span class="o">[</span><span class="n">1</span><span class="o">][</span><span class="n">i</span><span class="o">]</span><span class="p">);</span>
+<span class="w">  </span><span class="err">}</span>
+<span class="err">}</span>
+
+<span class="nc">int</span>
+<span class="n">main</span><span class="p">(</span><span class="nc">int</span><span class="w"> </span><span class="n">argc</span><span class="p">,</span><span class="w"> </span><span class="nc">char</span><span class="w"> </span><span class="o">**</span><span class="n">argv</span><span class="p">)</span>
+<span class="err">{</span>
+<span class="w">  </span><span class="n">pthread_t</span><span class="w"> </span><span class="n">thread</span><span class="p">;</span>
+
+<span class="w">  </span><span class="n">gtk_init</span><span class="p">(</span><span class="o">&amp;</span><span class="n">argc</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">argv</span><span class="p">);</span>
+
+<span class="w">  </span><span class="cm">/* start the tictactoe application */</span>
+<span class="w">  </span><span class="k">window</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">gtk_window_new</span><span class="p">(</span><span class="n">GTK_WINDOW_TOPLEVEL</span><span class="p">);</span>
+
+<span class="w">  </span><span class="n">ttt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tictactoe_new</span><span class="p">();</span>
+<span class="w">  </span><span class="n">gtk_container_add</span><span class="p">(</span><span class="k">window</span><span class="p">,</span><span class="w"> </span><span class="n">ttt</span><span class="p">);</span>
+
+<span class="w">  </span><span class="n">gtk_widget_show_all</span><span class="p">(</span><span class="k">window</span><span class="p">);</span>
+
+<span class="w">  </span><span class="cm">/* start the Gtk+ dispatcher */</span>
+<span class="w">  </span><span class="n">pthread_create</span><span class="p">(</span><span class="o">&amp;</span><span class="n">thread</span><span class="p">,</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">                 </span><span class="n">ttt_functional_test_gtk_main</span><span class="p">,</span><span class="w"> </span><span class="k">NULL</span><span class="p">);</span>
+
+<span class="w">  </span><span class="cm">/* launch test routines */</span>
+<span class="w">  </span><span class="n">ttt_functional_test_dumb_player_b</span><span class="p">();</span>
+
+<span class="w">  </span><span class="cm">/* terminate the application */</span>
+<span class="w">  </span><span class="n">gdk_threads_enter</span><span class="p">();</span>
+
+<span class="w">  </span><span class="n">gtk_main_quit</span><span class="p">();</span>
+
+<span class="w">  </span><span class="n">gdk_threads_leave</span><span class="p">();</span>
+
+<span class="w">  </span><span class="k">return</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<p>（题图：opensource.com）</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

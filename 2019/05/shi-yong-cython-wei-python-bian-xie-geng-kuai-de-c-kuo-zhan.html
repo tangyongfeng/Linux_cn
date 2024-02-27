@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 Cython 为 Python 编写更快的 C 扩展</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Moshe Zadka 在我们这个包含了 7 个 PyPI 库的系列文章中学习解决常见的 Python 问题的方法。 Python 是当今使用最多的流行编程语言之 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/05/shi-yong-cython-wei-python-bian-xie-geng-kuai-de-c-kuo-zhan.html" rel="bookmark"
+           title="Permalink to 使用 Cython 为 Python 编写更快的 C 扩展">使用 Cython 为 Python 编写更快的 C 扩展</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-05-15T22:55:00+02:00">
+                Published: Wed 15 May 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Moshe Zadka</p>
+<blockquote>
+<p>在我们这个包含了 7 个 PyPI 库的系列文章中学习解决常见的 Python 问题的方法。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/201905/15/225506fnn2mz6l3u122n70.jpg"></p>
+<p>Python 是当今使用最多的<a href="https://opensource.com/article/18/5/numbers-python-community-trends">流行编程语言</a>之一，因为：它是开源的，它有广泛的用途（例如 Web 编程、业务应用、游戏、科学编程等等），它有一个充满活力和专注的社区支持它。这个社区可以让我们在 <a href="https://pypi.org/">Python Package Index</a>（PyPI）中有如此庞大、多样化的软件包，用以扩展和改进 Python 并解决不可避免的问题。</p>
+<p>在本系列中，我们将介绍七个可以帮助你解决常见 Python 问题的 PyPI 库。首先是 <a href="https://pypi.org/project/Cython/">Cython</a>，一个简化 Python 编写 C 扩展的语言。</p>
+<h3>Cython</h3>
+<p>使用 Python 很有趣，但有时，用它编写的程序可能很慢。所有的运行时动态调度会带来很大的代价：有时它比用 C 或 Rust 等系统语言编写的等效代码慢 10 倍。</p>
+<p>将代码迁移到一种全新的语言可能会在成本和可靠性方面付出巨大代价：所有的手工重写工作都将不可避免地引入错误。我们可以两者兼得么？</p>
+<p>为了练习一下优化，我们需要一些慢代码。有什么比斐波那契数列的意外指数实现更慢？</p>
+<div class="highlight"><pre><span></span><code><span class="nv">def</span><span class="w"> </span><span class="nv">fib</span><span class="ss">(</span><span class="nv">n</span><span class="ss">)</span>:
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="nv">n</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">2</span>:
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">1</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nv">fib</span><span class="ss">(</span><span class="nv">n</span><span class="o">-</span><span class="mi">1</span><span class="ss">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nv">fib</span><span class="ss">(</span><span class="nv">n</span><span class="o">-</span><span class="mi">2</span><span class="ss">)</span>
+</code></pre></div>
+
+<p>由于对 <code>fib</code> 的调用会导致两次再次调用，因此这种效率极低的算法需要很长时间才能执行。例如，在我的新笔记本电脑上，<code>fib(36)</code> 需要大约 4.5 秒。这个 4.5 秒会成为我们探索 Python 的 Cython 扩展能提供的帮助的基准。</p>
+<p>使用 Cython 的正确方法是将其集成到 <code>setup.py</code> 中。然而，使用 <code>pyximport</code> 可以快速地进行尝试。让我们将 <code>fib</code> 代码放在 <code>fib.pyx</code> 中并使用 Cython 运行它。</p>
+<div class="highlight"><pre><span></span><code><span class="o">&gt;&gt;&gt;</span> <span class="kn">import</span> <span class="nn">pyximport</span><span class="p">;</span> <span class="n">pyximport</span><span class="o">.</span><span class="n">install</span><span class="p">()</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="kn">import</span> <span class="nn">fib</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">fib</span><span class="o">.</span><span class="n">fib</span><span class="p">(</span><span class="mi">36</span><span class="p">)</span>
+</code></pre></div>
+
+<p>只使用 Cython 而不<em>修改</em>代码，这个算法在我笔记本上花费的时间减少到大约 2.5 秒。几乎无需任何努力，这几乎减少了 50％ 的运行时间。当然，得到了一个不错的成果。</p>
+<p>加把劲，我们可以让它变得更快。</p>
+<div class="highlight"><pre><span></span><code><span class="nv">cpdef</span><span class="w"> </span><span class="nv">int</span><span class="w"> </span><span class="nv">fib</span><span class="ss">(</span><span class="nv">int</span><span class="w"> </span><span class="nv">n</span><span class="ss">)</span>:
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="nv">n</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">2</span>:
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">1</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nv">fib</span><span class="ss">(</span><span class="nv">n</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="ss">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nv">fib</span><span class="ss">(</span><span class="nv">n</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">2</span><span class="ss">)</span>
+</code></pre></div>
+
+<p>我们将 <code>fib</code> 中的代码变成用 <code>cpdef</code> 定义的函数，并添加了两个类型注释：它接受一个整数并返回一个整数。</p>
+<p>这个变得快<em>多</em>了，大约只用了 0.05 秒。它是如此之快，以至于我可能开始怀疑我的测量方法包含噪声：之前，这种噪声在信号中丢失了。</p>
+<p>当下次你的 Python 代码花费太多 CPU 时间时，也许会导致风扇狂转，为何不看看 Cython 是否可以解决问题呢？</p>
+<p>在本系列的下一篇文章中，我们将看一下 Black，一个自动纠正代码格式错误的项目。</p>
+<p>（题图：<a href="https://dribbble.com">Subgrafik San</a>）</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

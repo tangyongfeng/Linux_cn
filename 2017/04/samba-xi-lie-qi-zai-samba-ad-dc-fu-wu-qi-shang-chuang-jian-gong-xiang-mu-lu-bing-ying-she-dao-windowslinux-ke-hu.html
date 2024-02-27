@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Samba 系列（七）：在 Samba AD DC 服务器上创建共享目录并映射到 Windows/Linux 客户</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Matei Cezar 这篇文章将指导你如何在 Samba AD DC 服务器上创建共享目录，然后通过 GPO 把共享目录挂载到域中的其它 Windows 成员机，并 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/04/samba-xi-lie-qi-zai-samba-ad-dc-fu-wu-qi-shang-chuang-jian-gong-xiang-mu-lu-bing-ying-she-dao-windowslinux-ke-hu.html" rel="bookmark"
+           title="Permalink to Samba 系列（七）：在 Samba AD DC 服务器上创建共享目录并映射到 Windows/Linux 客户">Samba 系列（七）：在 Samba AD DC 服务器上创建共享目录并映射到 Windows/Linux 客户</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-04-16T10:22:00+02:00">
+                Published: Sun 16 April 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Matei Cezar</p>
+<p>这篇文章将指导你如何在 Samba AD DC 服务器上创建共享目录，然后通过 GPO 把共享目录挂载到域中的其它 Windows 成员机，并且从 Windows 域控的角度来管理共享权限。</p>
+<p>这篇文章也包括在加入域的 Linux 机器上如何使用 Samba4 域帐号来访问及挂载共享文件。</p>
+<p><img alt="" src="/data/attachment/album/201704/16/102242qyzib8sf080foeez.jpg"></p>
+<h3>需求：</h3>
+<p>1、<a href="/article-8065-1.html">在 Ubuntu 系统上使用 Samba4 来创建活动目录架构</a></p>
+<p>2、<a href="/article-8070-1.html">在 Linux 命令行下管理 Samba4 AD 架构</a></p>
+<p>3、<a href="/article-8097-1.html">使用 Windows 10 的 RSAT 工具来管理 Samba4 活动目录架构</a></p>
+<p>4、<a href="/article-8258-1.html">在 Windows 下管理 Samba4 AD 域管制器 DNS 和组策略</a></p>
+<p>5、<a href="/article-8358-1.html">将另一台 Ubuntu DC 服务器加入到 Samba4 AD DC 实现双域控主机模式</a></p>
+<p>6、<a href="/article-8384-1.html">使用 Rsync 命令同步两个 Samba4 AD DC 之间的 SysVol 目录</a></p>
+<h3>第一步：创建 Samba 文件共享</h3>
+<p>1、在 Samba AD DC 服务器上创建共享非常简单。首先创建一个你想通过 SMB 协议来分享文件的目录，然后添加下面的文件系统权限，这是为了让 Windows AD DC 管理员给 Windows 客户端分配相应的共享权限。</p>
+<p>假设在 AD DC 服务器上有一个新的共享目录 '/nas' ，执行下面的命令来授予必要的权限。</p>
+<div class="highlight"><pre><span></span><code># mkdir /nas
+# chmod -R 775 /nas
+# chown -R root:&quot;domain users&quot; /nas
+# ls -alh | grep nas
+</code></pre></div>
+
+<p><img alt="Create Samba Shared Directory" src="/data/attachment/album/201704/16/102256rn8nagrln8m5485z.png"></p>
+<p><em>创建 Samba 共享目录</em></p>
+<p>2、当你在 Samba4 AD DC 服务器上创建完成共享目录之后，你还得修改 samba 配置文件，添加下面的参数以允许通过 SMB 协议来共享文件。</p>
+<div class="highlight"><pre><span></span><code># nano /etc/samba/smb.conf
+</code></pre></div>
+
+<p>在配置文件末尾添加以下内容：</p>
+<div class="highlight"><pre><span></span><code><span class="k">[nas]</span>
+<span class="na">path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">/nas</span>
+<span class="na">read only</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">no</span>
+</code></pre></div>
+
+<p><img alt="Configure Samba Shared Directory" src="/data/attachment/album/201704/16/102257jkzdsxmxrazsdkms.png"></p>
+<p><em>配置 Samba 共享目录</em></p>
+<p>3、最后，你需要通过下面的命令重启 Samba AD DC 服务，以让修改的配置生效：</p>
+<div class="highlight"><pre><span></span><code># systemctl restart samba-ad-dc.service
+</code></pre></div>
+
+<h3>第二步：管理 Samba 共享权限</h3>
+<p>4、我们准备使用在 Samba AD DC 服务器上创建的域帐号（包括用户和组）来访问这个共享目录（禁止 Linux 系统用户访问共享目录）。</p>
+<p>可以直接通过 Windows 资源管理器来完成 Samba 共享权限的管理，就跟你在 Windows 资源管理器中设置其它文件夹权限的方法一样。</p>
+<p>首先，使用具有管理员权限的 Samba4 AD 域帐号登录到 Windows 机器。然而在 Windows 机器上的资源管理器中输入双斜杠和 Samba AD DC 服务器的 IP 地址或主机名或者是 FQDN 来访问共享文件和设置权限。</p>
+<div class="highlight"><pre><span></span><code>\\adc1
+或
+\\192.168.1.254
+或
+\\adc1.tecmint.lan
+</code></pre></div>
+
+<p><img alt="Access Samba Share Directory from Windows" src="/data/attachment/album/201704/16/102257s010egej07z1y0lo.png"></p>
+<p><em>从 Windows 机器访问 Samba 共享目录</em></p>
+<p>5、右键单击共享文件，选择属性来设置权限。打开安全选项卡，依次修改域账号和组权限。使用高级选项来调整权限。</p>
+<p><img alt="Configure Samba Share Directory Permissions" src="/data/attachment/album/201704/16/102258rg0aakfh30k001hp.png"></p>
+<p><em>配置 Samba 共享目录权限</em></p>
+<p>可参考下面的截图来为指定 Samba AD DC 认证用户设置权限。</p>
+<p><img alt="Manage Samba Share Directory User Permissions" src="/data/attachment/album/201704/16/102258v78wk5ouqzeq63qi.png"></p>
+<p><em>设置 Samba 共享目录用户权限</em></p>
+<p>6、你也可以使用其它方法来设置共享权限，打开计算机管理--&gt;连接到另外一台计算机。</p>
+<p>找到共享目录，右键单击你想修改权限的目录，选择属性，打开安全选项卡。你可以在这里修改任何权限，就跟上图的修改共享文件夹权限的方法一样。</p>
+<p><img alt="Connect to Samba Share Directory Machine" src="/data/attachment/album/201704/16/102258qtewjbyehuvcmw7m.png"></p>
+<p><em>连接到 Samba 共享目录服务器</em></p>
+<p><img alt="Manage Samba Share Directory Properties" src="/data/attachment/album/201704/16/102259vjblo5o8mixxlzwl.png"></p>
+<p><em>管理 Samba 共享目录属性</em></p>
+<p><img alt="Assign Samba Share Directory Permissions to Users" src="/data/attachment/album/201704/16/102259pr98vwhjt6spuw51.png"></p>
+<p><em>为域用户授予共享目录权限</em></p>
+<h3>第三步：通过 GPO 来映射 Samba 文件共享</h3>
+<p>7、要想通过域组策略来挂载 Samba 共享的目录，你得先到一台<a href="/article-8097-1.html">已安装了 RSAT 工具</a> 的服务器上，打开 AD DC 工具，右键单击域名，选择新建--&gt;共享文件夹。</p>
+<p><img alt="Map Samba Share Folder" src="/data/attachment/album/201704/16/102300cnyep2y2ynrqx3zy.png"></p>
+<p><em>映射 Samba 共享文件夹</em></p>
+<p>8、为共享文件夹添加一个名字，然后输入共享文件夹的网络路径，如下图所示。完成后单击 OK 按钮，你就可以在右侧看到文件夹了。</p>
+<p><img alt="Set Samba Shared Folder Name Location" src="/data/attachment/album/201704/16/102300l7ssc4tz6jz30icc.png"></p>
+<p><em>设置 Samba 共享文件夹名称及路径</em></p>
+<p>9、下一步，打开组策略管理控制台，找到当前域的默认域策略脚本，然后打开并编辑该文件。</p>
+<p>在 GPM 编辑器界面，打开 GPM 编辑器，找到用户配置 --&gt; 首选项 --&gt; Windows 设置，然而右键单击驱动器映射，选择新建 --&gt; 映射驱动。</p>
+<p><img alt="Map Samba Share Folder in Windows" src="/data/attachment/album/201704/16/102300iwp0wereefero2ws.png"></p>
+<p><em>在 Windows 机器上映射 Samba 共享文件夹</em></p>
+<p>10、通过单击右边的三个小点，在新窗口中查询并添加共享目录的网络位置，勾选重新连接复选框，为该目录添加一个标签，选择驱动盘符，然后单击 OK 按钮来保存和应用配置。</p>
+<p><img alt="Configure Network Location for Samba Share Directory" src="/data/attachment/album/201704/16/102301l8fyrf291fwy6yz9.png"></p>
+<p><em>配置 Samba 共享目录的网络位置</em></p>
+<p>11、最后，为了在本地机器上强制应用 GPO 更改而不重启系统，打开命令行提示符，然而执行下面的命令。</p>
+<div class="highlight"><pre><span></span><code>gpupdate /force
+</code></pre></div>
+
+<p><img alt="Apply GPO Changes" src="/data/attachment/album/201704/16/102301ebefbzrcymhy899b.png"></p>
+<p><em>应用 GPO 更改</em></p>
+<p>12、当你在本地机器上成功应用策略后，打开 Windows 资源管理器，你就可以看到并访问共享的网络文件夹了，能否正常访问共享目录取决于你在前一步的授权操作。</p>
+<p>如果没有在命令行下强制应用组策略，你网络中的其它客户机需要重启或重新登录系统才可以看到共享目录。</p>
+<p><img alt="Samba Shared Network Volume on Windows" src="/data/attachment/album/201704/16/102302nuvkzk1rvjyvt8c1.png"></p>
+<p><em>Windows 机器上挂载的 Samba 网络磁盘</em></p>
+<h3>第四步：从 Linux 客户端访问 Samba 共享目录</h3>
+<p>13、已加入 Samba AD DC 中的 Linux 成员机上的系统用户也可以可以使用 Samba 帐号访问或在本地挂载共享目录。</p>
+<p>首先，你得通过下面的命令来确保 Samba 客户端和工具已经安装完成。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>smbclient<span class="w"> </span>cifs-utils
+</code></pre></div>
+
+<p>14、为了列出域环境中的共享目录，你可以通过下面的命令加入指定的域控服务器主机名来查询：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>smbclient<span class="w"> </span>–L<span class="w"> </span>your_domain_controller<span class="w"> </span>–U%
+或
+$<span class="w"> </span>smbclient<span class="w"> </span>–L<span class="w"> </span><span class="se">\\</span>adc1<span class="w"> </span>–U%
+</code></pre></div>
+
+<p><img alt="List Samba Share Directory in Linux" src="/data/attachment/album/201704/16/102302uu0e26guggu4guz6.png"></p>
+<p><em>在 Linux 机器上列出 Samba 共享目录</em></p>
+<p>15、在命令行下使用域帐号以交互试方式连接到 Samba 共享目录：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>smbclient<span class="w"> </span>//adc/share_name<span class="w"> </span>-U<span class="w"> </span>domain_user
+</code></pre></div>
+
+<p>在命令行下，你可以列出共享目录内容，下载或上传文件到共享目录，或者执行其它操作。使用 <code>?</code> 来查询所有可用的 smbclient 命令。</p>
+<p><img alt="Connect Samba Share Directory in Linux" src="/data/attachment/album/201704/16/102303ktedd80y4xinatnp.png"></p>
+<p><em>在 Linux 机器上连接 Samba 共享目录</em></p>
+<p>16、在 Linux 机器上使用下面的命令来挂载 samba 共享目录。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>mount<span class="w"> </span>//adc/share_name<span class="w"> </span>/mnt<span class="w"> </span>-o<span class="w"> </span><span class="nv">username</span><span class="o">=</span>domain_user
+</code></pre></div>
+
+<p><img alt="Mount Samba Share Directory in Linux" src="/data/attachment/album/201704/16/102303t19i1e5yeeywsbjg.png"></p>
+<p><em>在 Linux 机器上挂载 samba 共享目录</em></p>
+<p>根据实际情况，依次替换主机名、共享目录名、挂载点和域帐号。使用 <code>mount</code> 命令加上管道符和 <code>grep</code> 命令来过滤出 cifs 类型的文件系统。</p>
+<p>通过上面的测试，我们可以看出，在 Samba4 AD DC 服务器上配置共享目录仅使用 Windows 访问控制列表（ ACL ），而不是 POSIX ACL 。</p>
+<p>通过文件共享把 Samba 配置为域成员以使用其它网络共享功能。同时，在另一个域控制器上<a href="/article-8070-1.html">配置 Windbindd 服务</a> ——在你开始发起网络共享文件之前。</p>
+<p>via: <a href="http://www.tecmint.com/create-shared-directory-on-samba-ad-dc-and-map-to-windows-linux/">http://www.tecmint.com/create-shared-directory-on-samba-ad-dc-and-map-to-windows-linux/</a></p>
+<p>作者：<a href="http://www.tecmint.com/author/cezarmatei/">Matei Cezar</a> 译者：<a href="https://github.com/rusking">rusking</a> 校对：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创编译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

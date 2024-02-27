@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在Debian 7/Ubuntu 13.10 上使用隧道封装SSH连接</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: '' 隧道 被设计用于远端客户端和本地(可通过inetd启动)或远端服务器间的SSL加密封装。它可以用于为inetd进程增加SSL功能，像POP2（译注：厄，POP2这个服务还有人用么？），POP3和IMAP服务而不必改变程序代码。隧道使用OpenSSL库用于加密，因此 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2014/01/zai-debian-7ubuntu-1310-shang-shi-yong-sui-dao-feng-zhuang-sshlian-jie.html" rel="bookmark"
+           title="Permalink to 在Debian 7/Ubuntu 13.10 上使用隧道封装SSH连接">在Debian 7/Ubuntu 13.10 上使用隧道封装SSH连接</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2014-01-19T12:13:00+01:00">
+                Published: Sun 19 January 2014
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: ''</p>
+<p><strong>隧道</strong> 被设计用于远端客户端和本地(可通过inetd启动)或远端服务器间的SSL加密封装。它可以用于为inetd进程增加SSL功能，像POP2（译注：厄，POP2这个服务还有人用么？），POP3和IMAP服务而不必改变程序代码。隧道使用OpenSSL库用于加密，因此它支持任何被编译进库的加密算法。简而言之，隧道可以使任何一个不安全的端口变得安全加密。</p>
+<p><img alt="" src="/data/attachment/album/201401/19/1207130008ai00v0q8m0z0.png"></p>
+<p>在本篇中，我会描述如何通过SSL水稻封装SSH。这个步骤非常简单。你需要在你的客户端PC和远程PC都已经安装运行了sshd。</p>
+<p>我正在使用下面提到的两个系统。</p>
+<p>远程系统:</p>
+<div class="highlight"><pre><span></span><code><span class="err">操作系统</span><span class="o">:</span><span class="w"> </span><span class="n">Debian</span><span class="w"> </span><span class="mi">7</span>
+<span class="n">IP</span><span class="w"> </span><span class="err">地址</span><span class="o">:</span><span class="w"> </span><span class="mf">192.168</span><span class="o">.</span><span class="mf">1.200</span><span class="o">/</span><span class="mi">24</span>
+</code></pre></div>
+
+<p>客户端(本地) 系统:</p>
+<div class="highlight"><pre><span></span><code><span class="err">操作系统</span><span class="o">:</span><span class="w"> </span><span class="n">Ubuntu</span><span class="w"> </span><span class="mf">13.04</span><span class="w"> </span><span class="n">desktop</span>
+<span class="n">IP</span><span class="w"> </span><span class="err">地址</span><span class="o">:</span><span class="w"> </span><span class="mf">192.168</span><span class="o">.</span><span class="mf">1.100</span><span class="o">/</span><span class="mi">24</span>
+</code></pre></div>
+
+<h4>配置远程系统</h4>
+<p>让我们在远程Debian 7服务器上安装stunnel包。</p>
+<div class="highlight"><pre><span></span><code># apt-get install stunnel4
+</code></pre></div>
+
+<p>现在让我们像下面那样创建一个SSL证书。</p>
+<div class="highlight"><pre><span></span><code># openssl genrsa 1024 &gt; stunnel.key
+</code></pre></div>
+
+<p>示例输出:</p>
+<div class="highlight"><pre><span></span><code>Generating RSA private key, 1024 bit long modulus
+............................................++++++
+...................++++++
+e is 65537 (0x10001)
+
+# openssl req -new -key stunnel.key -x509 -days 1000 -out stunnel.crt
+</code></pre></div>
+
+<p>你会被询问若干个问题如国家、州、公司细节等。</p>
+<div class="highlight"><pre><span></span><code><span class="n">You</span><span class="w"> </span><span class="k">are</span><span class="w"> </span><span class="n">about</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">asked</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">enter</span><span class="w"> </span><span class="n">information</span><span class="w"> </span><span class="n">that</span><span class="w"> </span><span class="n">will</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">incorporated</span>
+<span class="k">into</span><span class="w"> </span><span class="n">your</span><span class="w"> </span><span class="n">certificate</span><span class="w"> </span><span class="n">request</span><span class="p">.</span>
+<span class="n">What</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="k">are</span><span class="w"> </span><span class="n">about</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">enter</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">what</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="k">called</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">Distinguished</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">DN</span><span class="p">.</span>
+<span class="n">There</span><span class="w"> </span><span class="k">are</span><span class="w"> </span><span class="n">quite</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">few</span><span class="w"> </span><span class="n">fields</span><span class="w"> </span><span class="n">but</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="n">can</span><span class="w"> </span><span class="n">leave</span><span class="w"> </span><span class="ow">some</span><span class="w"> </span><span class="n">blank</span>
+<span class="k">For</span><span class="w"> </span><span class="ow">some</span><span class="w"> </span><span class="n">fields</span><span class="w"> </span><span class="n">there</span><span class="w"> </span><span class="n">will</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="k">default</span><span class="w"> </span><span class="k">value</span><span class="p">,</span>
+<span class="k">If</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="n">enter</span><span class="w"> </span><span class="s1">&#39;.&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">field</span><span class="w"> </span><span class="n">will</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="nf">left</span><span class="w"> </span><span class="n">blank</span><span class="p">.</span>
+<span class="o">-----</span>
+<span class="n">Country</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="mi">2</span><span class="w"> </span><span class="n">letter</span><span class="w"> </span><span class="n">code</span><span class="p">)</span><span class="w"> </span><span class="o">[</span><span class="n">AU</span><span class="o">]</span><span class="err">:</span><span class="ow">IN</span>
+<span class="k">State</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="n">Province</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="k">full</span><span class="w"> </span><span class="n">name</span><span class="p">)</span><span class="w"> </span><span class="o">[</span><span class="n">Some-State</span><span class="o">]</span><span class="err">:</span><span class="n">Tamilnadu</span>
+<span class="n">Locality</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="n">eg</span><span class="p">,</span><span class="w"> </span><span class="n">city</span><span class="p">)</span><span class="w"> </span><span class="err">[]:</span><span class="n">Erode</span>
+<span class="n">Organization</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="n">eg</span><span class="p">,</span><span class="w"> </span><span class="n">company</span><span class="p">)</span><span class="w"> </span><span class="o">[</span><span class="n">Internet Widgits Pty Ltd</span><span class="o">]</span><span class="err">:</span><span class="n">unixmen</span>
+<span class="n">Organizational</span><span class="w"> </span><span class="n">Unit</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="n">eg</span><span class="p">,</span><span class="w"> </span><span class="k">section</span><span class="p">)</span><span class="w"> </span><span class="err">[]:</span><span class="n">Technical</span>
+<span class="n">Common</span><span class="w"> </span><span class="n">Name</span><span class="w"> </span><span class="p">(</span><span class="n">e</span><span class="p">.</span><span class="n">g</span><span class="p">.</span><span class="w"> </span><span class="n">server</span><span class="w"> </span><span class="n">FQDN</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="n">YOUR</span><span class="w"> </span><span class="n">name</span><span class="p">)</span><span class="w"> </span><span class="err">[]:</span><span class="n">server</span><span class="p">.</span><span class="n">unixmen</span><span class="p">.</span><span class="n">com</span>
+<span class="n">Email</span><span class="w"> </span><span class="n">Address</span><span class="w"> </span><span class="err">[]:</span><span class="n">sk</span><span class="nv">@unixmen</span><span class="p">.</span><span class="n">com</span>
+
+<span class="err">#</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="n">stunnel</span><span class="p">.</span><span class="n">crt</span><span class="w"> </span><span class="n">stunnel</span><span class="p">.</span><span class="k">key</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">stunnel</span><span class="p">.</span><span class="n">pem</span>
+<span class="err">#</span><span class="w"> </span><span class="n">mv</span><span class="w"> </span><span class="n">stunnel</span><span class="p">.</span><span class="n">pem</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">stunnel</span><span class="o">/</span>
+</code></pre></div>
+
+<p>现在我们需要配置stunnel来将 <strong>443(https)</strong>隧道到<strong>22(ssh)</strong>。这可以通过在<strong>/etc/stunnel/</strong>目录下创建<strong>stunnel.conf</strong>文件来实现：</p>
+<div class="highlight"><pre><span></span><code> # vi /etc/stunnel/stunnel.conf
+</code></pre></div>
+
+<p>并加入下面的行:</p>
+<div class="highlight"><pre><span></span><code><span class="n">pid</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">/</span><span class="nf">var</span><span class="o">/</span><span class="n">run</span><span class="o">/</span><span class="n">stunnel</span><span class="p">.</span><span class="n">pid</span>
+<span class="n">cert</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">stunnel</span><span class="o">/</span><span class="n">stunnel</span><span class="p">.</span><span class="n">pem</span>
+<span class="o">[</span><span class="n">ssh</span><span class="o">]</span>
+<span class="n">accept</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">192.168.1.200</span><span class="err">:</span><span class="mi">443</span>
+<span class="k">connect</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">127.0.0.1</span><span class="err">:</span><span class="mi">22</span>
+</code></pre></div>
+
+<p>上面的几行说明了stunnel在哪里寻找证书文件和哪里接收和转发ssh链接。在本例中，stunnel会接收来自443端口的流量并会转发给22端口。</p>
+<p>保存并关闭文件。</p>
+<p>现在让我们启用stunnel服务。要这么做，编辑文件 <strong>/etc/default/stunnel4</strong>:</p>
+<div class="highlight"><pre><span></span><code># vi /etc/default/stunnel4
+</code></pre></div>
+
+<p>改变行从 <strong>ENABLED = 0</strong> 到 <strong>1</strong>。</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="k">default</span><span class="o">/</span><span class="n">stunnel</span>
+<span class="err">#</span><span class="w"> </span><span class="n">Julien</span><span class="w"> </span><span class="n">LEMOINE</span><span class="w"> </span><span class="o">&lt;</span><span class="n">speedblue</span><span class="nv">@debian</span><span class="p">.</span><span class="n">org</span><span class="o">&gt;</span>
+<span class="err">#</span><span class="w"> </span><span class="n">September</span><span class="w"> </span><span class="mi">2003</span>
+
+<span class="err">#</span><span class="w"> </span><span class="n">Change</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">one</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">enable</span><span class="w"> </span><span class="n">stunnel</span><span class="w"> </span><span class="n">automatic</span><span class="w"> </span><span class="n">startup</span>
+<span class="n">ENABLED</span><span class="o">=</span><span class="mi">1</span>
+<span class="n">FILES</span><span class="o">=</span><span class="ss">&quot;/etc/stunnel/*.conf&quot;</span>
+<span class="n">OPTIONS</span><span class="o">=</span><span class="ss">&quot;&quot;</span>
+
+<span class="err">#</span><span class="w"> </span><span class="n">Change</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">one</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">enable</span><span class="w"> </span><span class="n">ppp</span><span class="w"> </span><span class="n">restart</span><span class="w"> </span><span class="n">scripts</span>
+<span class="n">PPP_RESTART</span><span class="o">=</span><span class="mi">0</span>
+</code></pre></div>
+
+<p>接着使用命令启用stunnel服务:</p>
+<div class="highlight"><pre><span></span><code># service stunnel4 start
+</code></pre></div>
+
+<h4>配置本地系统</h4>
+<p>用这个命令安装stunnel:</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>stunnel4
+</code></pre></div>
+
+<p>我们需要远程系统上相同的证书文件(stunnel.pem)。复制远程系统上的 <strong>stunnel.pem</strong>文件到我们本地系统中并在相同的位置保存(也就是 /etc/stunnel)。</p>
+<p>在 <strong>/etc/stunnel/</strong>目录下创建新的文件<strong>stunnel.conf</strong>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>vi<span class="w"> </span>/etc/stunnel/stunnel.conf
+</code></pre></div>
+
+<p>加入下面的行:</p>
+<div class="highlight"><pre><span></span><code><span class="n">pid</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">/</span><span class="nf">var</span><span class="o">/</span><span class="n">run</span><span class="o">/</span><span class="n">stunnel</span><span class="p">.</span><span class="n">pid</span>
+<span class="n">cert</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">stunnel</span><span class="o">/</span><span class="n">stunnel</span><span class="p">.</span><span class="n">pem</span>
+<span class="n">client</span><span class="o">=</span><span class="n">yes</span>
+<span class="o">[</span><span class="n">ssh</span><span class="o">]</span>
+<span class="n">accept</span><span class="o">=</span><span class="mi">443</span>
+<span class="k">connect</span><span class="o">=</span><span class="mf">192.168.1.200</span><span class="err">:</span><span class="mi">443</span>
+</code></pre></div>
+
+<p>保存并关闭文件。这里的192.168.1.200是我们的远程系统IP。</p>
+<p>现在让我们启用stunnel服务。要这么做，编辑文件<strong>/etc/default/stunnel4</strong>:</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>vi<span class="w"> </span>/etc/default/stunnel4
+</code></pre></div>
+
+<p>改变行从 <strong>ENABLED = 0</strong> 到 <strong>1</strong>.</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="k">default</span><span class="o">/</span><span class="n">stunnel</span>
+<span class="err">#</span><span class="w"> </span><span class="n">Julien</span><span class="w"> </span><span class="n">LEMOINE</span><span class="w"> </span><span class="o">&lt;</span><span class="n">speedblue</span><span class="nv">@debian</span><span class="p">.</span><span class="n">org</span><span class="o">&gt;</span>
+<span class="err">#</span><span class="w"> </span><span class="n">September</span><span class="w"> </span><span class="mi">2003</span>
+
+<span class="err">#</span><span class="w"> </span><span class="n">Change</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">one</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">enable</span><span class="w"> </span><span class="n">stunnel</span><span class="w"> </span><span class="n">automatic</span><span class="w"> </span><span class="n">startup</span>
+<span class="n">ENABLED</span><span class="o">=</span><span class="mi">1</span>
+<span class="n">FILES</span><span class="o">=</span><span class="ss">&quot;/etc/stunnel/*.conf&quot;</span>
+<span class="n">OPTIONS</span><span class="o">=</span><span class="ss">&quot;&quot;</span>
+
+<span class="err">#</span><span class="w"> </span><span class="n">Change</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">one</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">enable</span><span class="w"> </span><span class="n">ppp</span><span class="w"> </span><span class="n">restart</span><span class="w"> </span><span class="n">scripts</span>
+<span class="n">PPP_RESTART</span><span class="o">=</span><span class="mi">0</span>
+</code></pre></div>
+
+<p>接着使用命令启用stunnel服务:</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>service<span class="w"> </span>stunnel4<span class="w"> </span>start
+</code></pre></div>
+
+<h4>测试SSH连接</h4>
+<p>现在这样已经很好了，你可以使用命令连接到你的远程机器上了：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ssh<span class="w"> </span>sk@localhost<span class="w"> </span>-v<span class="w"> </span>-p<span class="w"> </span><span class="m">443</span>
+</code></pre></div>
+
+<p>示例输出:</p>
+<div class="highlight"><pre><span></span><code><span class="n">OpenSSH_6</span><span class="mf">.1</span><span class="n">p1</span><span class="w"> </span><span class="n">Debian</span><span class="o">-</span><span class="mi">4</span><span class="p">,</span><span class="w"> </span><span class="n">OpenSSL</span><span class="w"> </span><span class="mf">1.0.1</span><span class="n">c</span><span class="w"> </span><span class="mi">10</span><span class="w"> </span><span class="n">May</span><span class="w"> </span><span class="mi">2012</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">Reading</span><span class="w"> </span><span class="n">configuration</span><span class="w"> </span><span class="k">data</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">ssh</span><span class="o">/</span><span class="n">ssh_config</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">ssh</span><span class="o">/</span><span class="n">ssh_config</span><span class="w"> </span><span class="n">line</span><span class="w"> </span><span class="mi">19</span><span class="err">:</span><span class="w"> </span><span class="n">Applying</span><span class="w"> </span><span class="n">options</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="o">*</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">Connecting</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">localhost</span><span class="w"> </span><span class="o">[</span><span class="n">127.0.0.1</span><span class="o">]</span><span class="w"> </span><span class="n">port</span><span class="w"> </span><span class="mf">443.</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="k">Connection</span><span class="w"> </span><span class="n">established</span><span class="p">.</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="k">identity</span><span class="w"> </span><span class="k">file</span><span class="w"> </span><span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">sk</span><span class="o">/</span><span class="p">.</span><span class="n">ssh</span><span class="o">/</span><span class="n">id_rsa</span><span class="w"> </span><span class="n">type</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="k">identity</span><span class="w"> </span><span class="k">file</span><span class="w"> </span><span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">sk</span><span class="o">/</span><span class="p">.</span><span class="n">ssh</span><span class="o">/</span><span class="n">id_rsa</span><span class="o">-</span><span class="n">cert</span><span class="w"> </span><span class="n">type</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="k">identity</span><span class="w"> </span><span class="k">file</span><span class="w"> </span><span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">sk</span><span class="o">/</span><span class="p">.</span><span class="n">ssh</span><span class="o">/</span><span class="n">id_dsa</span><span class="w"> </span><span class="n">type</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="k">identity</span><span class="w"> </span><span class="k">file</span><span class="w"> </span><span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">sk</span><span class="o">/</span><span class="p">.</span><span class="n">ssh</span><span class="o">/</span><span class="n">id_dsa</span><span class="o">-</span><span class="n">cert</span><span class="w"> </span><span class="n">type</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="k">identity</span><span class="w"> </span><span class="k">file</span><span class="w"> </span><span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">sk</span><span class="o">/</span><span class="p">.</span><span class="n">ssh</span><span class="o">/</span><span class="n">id_ecdsa</span><span class="w"> </span><span class="n">type</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="k">identity</span><span class="w"> </span><span class="k">file</span><span class="w"> </span><span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">sk</span><span class="o">/</span><span class="p">.</span><span class="n">ssh</span><span class="o">/</span><span class="n">id_ecdsa</span><span class="o">-</span><span class="n">cert</span><span class="w"> </span><span class="n">type</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">Remote</span><span class="w"> </span><span class="n">protocol</span><span class="w"> </span><span class="n">version</span><span class="w"> </span><span class="mf">2.0</span><span class="p">,</span><span class="w"> </span><span class="n">remote</span><span class="w"> </span><span class="n">software</span><span class="w"> </span><span class="n">version</span><span class="w"> </span><span class="n">OpenSSH_6</span><span class="mf">.0</span><span class="n">p1</span><span class="w"> </span><span class="n">Debian</span><span class="o">-</span><span class="mi">4</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="k">match</span><span class="err">:</span><span class="w"> </span><span class="n">OpenSSH_6</span><span class="mf">.0</span><span class="n">p1</span><span class="w"> </span><span class="n">Debian</span><span class="o">-</span><span class="mi">4</span><span class="w"> </span><span class="n">pat</span><span class="w"> </span><span class="n">OpenSSH</span><span class="o">*</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">Enabling</span><span class="w"> </span><span class="n">compatibility</span><span class="w"> </span><span class="n">mode</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">protocol</span><span class="w"> </span><span class="mf">2.0</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="k">Local</span><span class="w"> </span><span class="n">version</span><span class="w"> </span><span class="n">string</span><span class="w"> </span><span class="n">SSH</span><span class="o">-</span><span class="mf">2.0</span><span class="o">-</span><span class="n">OpenSSH_6</span><span class="mf">.1</span><span class="n">p1</span><span class="w"> </span><span class="n">Debian</span><span class="o">-</span><span class="mi">4</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">SSH2_MSG_KEXINIT</span><span class="w"> </span><span class="n">sent</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">SSH2_MSG_KEXINIT</span><span class="w"> </span><span class="n">received</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="nl">kex</span><span class="p">:</span><span class="w"> </span><span class="n">server</span><span class="o">-&gt;</span><span class="n">client</span><span class="w"> </span><span class="n">aes128</span><span class="o">-</span><span class="n">ctr</span><span class="w"> </span><span class="n">hmac</span><span class="o">-</span><span class="n">md5</span><span class="w"> </span><span class="k">none</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="nl">kex</span><span class="p">:</span><span class="w"> </span><span class="n">client</span><span class="o">-&gt;</span><span class="n">server</span><span class="w"> </span><span class="n">aes128</span><span class="o">-</span><span class="n">ctr</span><span class="w"> </span><span class="n">hmac</span><span class="o">-</span><span class="n">md5</span><span class="w"> </span><span class="k">none</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">sending</span><span class="w"> </span><span class="n">SSH2_MSG_KEX_ECDH_INIT</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">expecting</span><span class="w"> </span><span class="n">SSH2_MSG_KEX_ECDH_REPLY</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">Server</span><span class="w"> </span><span class="k">host</span><span class="w"> </span><span class="k">key</span><span class="err">:</span><span class="w"> </span><span class="n">ECDSA</span><span class="w"> </span><span class="mi">78</span><span class="err">:</span><span class="mi">05</span><span class="err">:</span><span class="nl">ba</span><span class="p">:</span><span class="mi">1</span><span class="nl">b</span><span class="p">:</span><span class="mi">73</span><span class="err">:</span><span class="mi">02</span><span class="err">:</span><span class="mi">75</span><span class="err">:</span><span class="mi">86</span><span class="err">:</span><span class="mi">10</span><span class="err">:</span><span class="mi">33</span><span class="err">:</span><span class="mi">8</span><span class="nl">c</span><span class="p">:</span><span class="mi">0</span><span class="nl">f</span><span class="p">:</span><span class="mi">21</span><span class="err">:</span><span class="mi">61</span><span class="err">:</span><span class="nl">d4</span><span class="p">:</span><span class="n">de</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="k">Host</span><span class="w"> </span><span class="s1">&#39;[localhost]:443&#39;</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">known</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">matches</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">ECDSA</span><span class="w"> </span><span class="k">host</span><span class="w"> </span><span class="k">key</span><span class="p">.</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="k">Found</span><span class="w"> </span><span class="k">key</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">sk</span><span class="o">/</span><span class="p">.</span><span class="n">ssh</span><span class="o">/</span><span class="nl">known_hosts</span><span class="p">:</span><span class="mi">12</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="nl">ssh_ecdsa_verify</span><span class="p">:</span><span class="w"> </span><span class="n">signature</span><span class="w"> </span><span class="n">correct</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">SSH2_MSG_NEWKEYS</span><span class="w"> </span><span class="n">sent</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">expecting</span><span class="w"> </span><span class="n">SSH2_MSG_NEWKEYS</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">SSH2_MSG_NEWKEYS</span><span class="w"> </span><span class="n">received</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">Roaming</span><span class="w"> </span><span class="ow">not</span><span class="w"> </span><span class="n">allowed</span><span class="w"> </span><span class="k">by</span><span class="w"> </span><span class="n">server</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">SSH2_MSG_SERVICE_REQUEST</span><span class="w"> </span><span class="n">sent</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">SSH2_MSG_SERVICE_ACCEPT</span><span class="w"> </span><span class="n">received</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">Authentications</span><span class="w"> </span><span class="n">that</span><span class="w"> </span><span class="n">can</span><span class="w"> </span><span class="k">continue</span><span class="err">:</span><span class="w"> </span><span class="n">publickey</span><span class="p">,</span><span class="n">password</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="k">Next</span><span class="w"> </span><span class="n">authentication</span><span class="w"> </span><span class="k">method</span><span class="err">:</span><span class="w"> </span><span class="n">publickey</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">Trying</span><span class="w"> </span><span class="n">private</span><span class="w"> </span><span class="k">key</span><span class="err">:</span><span class="w"> </span><span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">sk</span><span class="o">/</span><span class="p">.</span><span class="n">ssh</span><span class="o">/</span><span class="n">id_rsa</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">Trying</span><span class="w"> </span><span class="n">private</span><span class="w"> </span><span class="k">key</span><span class="err">:</span><span class="w"> </span><span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">sk</span><span class="o">/</span><span class="p">.</span><span class="n">ssh</span><span class="o">/</span><span class="n">id_dsa</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">Trying</span><span class="w"> </span><span class="n">private</span><span class="w"> </span><span class="k">key</span><span class="err">:</span><span class="w"> </span><span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">sk</span><span class="o">/</span><span class="p">.</span><span class="n">ssh</span><span class="o">/</span><span class="n">id_ecdsa</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="k">Next</span><span class="w"> </span><span class="n">authentication</span><span class="w"> </span><span class="k">method</span><span class="err">:</span><span class="w"> </span><span class="n">password</span>
+<span class="n">sk</span><span class="nv">@localhost</span><span class="err">&#39;</span><span class="n">s</span><span class="w"> </span><span class="nl">password</span><span class="p">:</span><span class="w"> </span><span class="err">#</span><span class="w">   </span><span class="err">##</span><span class="w"> </span><span class="n">Enter</span><span class="w"> </span><span class="n">your</span><span class="w"> </span><span class="n">remote</span><span class="w"> </span><span class="k">system</span><span class="w"> </span><span class="k">user</span><span class="w"> </span><span class="n">password</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">Authentication</span><span class="w"> </span><span class="n">succeeded</span><span class="w"> </span><span class="p">(</span><span class="n">password</span><span class="p">).</span>
+<span class="n">Authenticated</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">localhost</span><span class="w"> </span><span class="p">(</span><span class="o">[</span><span class="n">127.0.0.1</span><span class="o">]</span><span class="err">:</span><span class="mi">443</span><span class="p">).</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">channel</span><span class="w"> </span><span class="mi">0</span><span class="err">:</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="o">[</span><span class="n">client-session</span><span class="o">]</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">Requesting</span><span class="w"> </span><span class="k">no</span><span class="o">-</span><span class="n">more</span><span class="o">-</span><span class="n">sessions</span><span class="nv">@openssh</span><span class="p">.</span><span class="n">com</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">Entering</span><span class="w"> </span><span class="n">interactive</span><span class="w"> </span><span class="k">session</span><span class="p">.</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">Sending</span><span class="w"> </span><span class="n">environment</span><span class="p">.</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">Sending</span><span class="w"> </span><span class="n">env</span><span class="w"> </span><span class="n">LC_PAPER</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">en_IN</span><span class="p">.</span><span class="n">UTF</span><span class="o">-</span><span class="mi">8</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">Sending</span><span class="w"> </span><span class="n">env</span><span class="w"> </span><span class="n">LC_ADDRESS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">en_IN</span><span class="p">.</span><span class="n">UTF</span><span class="o">-</span><span class="mi">8</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">Sending</span><span class="w"> </span><span class="n">env</span><span class="w"> </span><span class="n">LC_MONETARY</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">en_IN</span><span class="p">.</span><span class="n">UTF</span><span class="o">-</span><span class="mi">8</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">Sending</span><span class="w"> </span><span class="n">env</span><span class="w"> </span><span class="n">LC_NUMERIC</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">en_IN</span><span class="p">.</span><span class="n">UTF</span><span class="o">-</span><span class="mi">8</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">Sending</span><span class="w"> </span><span class="n">env</span><span class="w"> </span><span class="n">LC_TELEPHONE</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">en_IN</span><span class="p">.</span><span class="n">UTF</span><span class="o">-</span><span class="mi">8</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">Sending</span><span class="w"> </span><span class="n">env</span><span class="w"> </span><span class="n">LC_IDENTIFICATION</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">en_IN</span><span class="p">.</span><span class="n">UTF</span><span class="o">-</span><span class="mi">8</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">Sending</span><span class="w"> </span><span class="n">env</span><span class="w"> </span><span class="n">LANG</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">en_US</span><span class="p">.</span><span class="n">UTF</span><span class="o">-</span><span class="mi">8</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">Sending</span><span class="w"> </span><span class="n">env</span><span class="w"> </span><span class="n">LC_MEASUREMENT</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">en_IN</span><span class="p">.</span><span class="n">UTF</span><span class="o">-</span><span class="mi">8</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">Sending</span><span class="w"> </span><span class="n">env</span><span class="w"> </span><span class="n">LC_TIME</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">en_IN</span><span class="p">.</span><span class="n">UTF</span><span class="o">-</span><span class="mi">8</span>
+<span class="nl">debug1</span><span class="p">:</span><span class="w"> </span><span class="n">Sending</span><span class="w"> </span><span class="n">env</span><span class="w"> </span><span class="n">LC_NAME</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">en_IN</span><span class="p">.</span><span class="n">UTF</span><span class="o">-</span><span class="mi">8</span>
+<span class="n">Linux</span><span class="w"> </span><span class="n">server</span><span class="w"> </span><span class="mf">3.2.0</span><span class="o">-</span><span class="mi">4</span><span class="o">-</span><span class="mi">486</span><span class="w"> </span><span class="n">#1</span><span class="w"> </span><span class="n">Debian</span><span class="w"> </span><span class="mf">3.2.51</span><span class="o">-</span><span class="mi">1</span><span class="w"> </span><span class="n">i686</span>
+
+<span class="n">The</span><span class="w"> </span><span class="n">programs</span><span class="w"> </span><span class="n">included</span><span class="w"> </span><span class="k">with</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">Debian</span><span class="w"> </span><span class="n">GNU</span><span class="o">/</span><span class="n">Linux</span><span class="w"> </span><span class="k">system</span><span class="w"> </span><span class="k">are</span><span class="w"> </span><span class="k">free</span><span class="w"> </span><span class="n">software</span><span class="p">;</span>
+<span class="n">the</span><span class="w"> </span><span class="n">exact</span><span class="w"> </span><span class="n">distribution</span><span class="w"> </span><span class="n">terms</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="k">each</span><span class="w"> </span><span class="n">program</span><span class="w"> </span><span class="k">are</span><span class="w"> </span><span class="n">described</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">the</span>
+<span class="n">individual</span><span class="w"> </span><span class="n">files</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">share</span><span class="o">/</span><span class="n">doc</span><span class="cm">/*/copyright.</span>
+
+<span class="cm">Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent</span>
+<span class="cm">permitted by applicable law.</span>
+<span class="cm">You have new mail.</span>
+<span class="cm">Last login: Mon Dec 30 15:12:22 2013 from localhost</span>
+<span class="cm">sk@server:~$</span>
+</code></pre></div>
+
+<p>或者你可以简单地使用下面的命令:</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ssh<span class="w"> </span>-p<span class="w"> </span><span class="m">443</span><span class="w"> </span>sk@localhost
+</code></pre></div>
+
+<p>示例输出:</p>
+<div class="highlight"><pre><span></span><code><span class="n">sk</span><span class="nv">@localhost</span><span class="err">&#39;</span><span class="n">s</span><span class="w"> </span><span class="nl">password</span><span class="p">:</span><span class="w"> </span>
+<span class="n">Linux</span><span class="w"> </span><span class="n">server</span><span class="w"> </span><span class="mf">3.2.0</span><span class="o">-</span><span class="mi">4</span><span class="o">-</span><span class="mi">486</span><span class="w"> </span><span class="n">#1</span><span class="w"> </span><span class="n">Debian</span><span class="w"> </span><span class="mf">3.2.51</span><span class="o">-</span><span class="mi">1</span><span class="w"> </span><span class="n">i686</span>
+
+<span class="n">The</span><span class="w"> </span><span class="n">programs</span><span class="w"> </span><span class="n">included</span><span class="w"> </span><span class="k">with</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">Debian</span><span class="w"> </span><span class="n">GNU</span><span class="o">/</span><span class="n">Linux</span><span class="w"> </span><span class="k">system</span><span class="w"> </span><span class="k">are</span><span class="w"> </span><span class="k">free</span><span class="w"> </span><span class="n">software</span><span class="p">;</span>
+<span class="n">the</span><span class="w"> </span><span class="n">exact</span><span class="w"> </span><span class="n">distribution</span><span class="w"> </span><span class="n">terms</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="k">each</span><span class="w"> </span><span class="n">program</span><span class="w"> </span><span class="k">are</span><span class="w"> </span><span class="n">described</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">the</span>
+<span class="n">individual</span><span class="w"> </span><span class="n">files</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">share</span><span class="o">/</span><span class="n">doc</span><span class="cm">/*/copyright.</span>
+
+<span class="cm">Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent</span>
+<span class="cm">permitted by applicable law.</span>
+<span class="cm">You have new mail.</span>
+<span class="cm">Last login: Mon Dec 30 15:22:08 2013 from localhost</span>
+<span class="cm">sk@server:~$</span>
+</code></pre></div>
+
+<p>现在你可以用ssh连接到你的远程机器上了，但是所有的流量通过SSL隧道。</p>
+<p>你已经完成了！即使ssh的默认端口被防火墙阻止了，你仍然可以使用SSH到你的远程系统。</p>
+<p>参考链接:</p>
+<ul>
+<li><strong><a href="https://www.stunnel.org/index.html">stunnel 主页</a></strong></li>
+</ul>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

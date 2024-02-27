@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>构建一个即时消息应用（二）：OAuth</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Nicolás Parada 上一篇：模式。 在这篇帖子中，我们将会通过为应用添加社交登录功能进入后端开发。 社交登录的工作方式十分简单 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/10/gou-jian-yi-ge-ji-shi-xiao-xi-ying-yong-er-oauth.html" rel="bookmark"
+           title="Permalink to 构建一个即时消息应用（二）：OAuth">构建一个即时消息应用（二）：OAuth</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-10-28T07:03:29+01:00">
+                Published: Mon 28 October 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Nicolás Parada</p>
+<p><img alt="" src="/data/attachment/album/201910/28/070221l7wmy37l9llsl23z.jpg"></p>
+<p><a href="/article-11396-1.html">上一篇：模式</a>。</p>
+<p>在这篇帖子中，我们将会通过为应用添加社交登录功能进入后端开发。</p>
+<p>社交登录的工作方式十分简单：用户点击链接，然后重定向到 GitHub 授权页面。当用户授予我们对他的个人信息的访问权限之后，就会重定向回登录页面。下一次尝试登录时，系统将不会再次请求授权，也就是说，我们的应用已经记住了这个用户。这使得整个登录流程看起来就和你用鼠标单击一样快。</p>
+<p>如果进一步考虑其内部实现的话，过程就会变得复杂起来。首先，我们需要注册一个新的 <a href="https://github.com/settings/applications/new">GitHub OAuth 应用</a>。</p>
+<p>这一步中，比较重要的是回调 URL。我们将它设置为 <code>http://localhost:3000/api/oauth/github/callback</code>。这是因为，在开发过程中，我们总是在本地主机上工作。一旦你要将应用交付生产，请使用正确的回调 URL 注册一个新的应用。</p>
+<p>注册以后，你将会收到“客户端 id”和“安全密钥”。安全起见，请不要与任何人分享他们 ?</p>
+<p>顺便让我们开始写一些代码吧。现在，创建一个 <code>main.go</code> 文件：</p>
+<div class="highlight"><pre><span></span><code><span class="n">package</span> <span class="n">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s2">&quot;database/sql&quot;</span>
+    <span class="s2">&quot;fmt&quot;</span>
+    <span class="s2">&quot;log&quot;</span>
+    <span class="s2">&quot;net/http&quot;</span>
+    <span class="s2">&quot;net/url&quot;</span>
+    <span class="s2">&quot;os&quot;</span>
+    <span class="s2">&quot;strconv&quot;</span>
+
+    <span class="s2">&quot;github.com/gorilla/securecookie&quot;</span>
+    <span class="s2">&quot;github.com/joho/godotenv&quot;</span>
+    <span class="s2">&quot;github.com/knq/jwt&quot;</span>
+    <span class="n">_</span> <span class="s2">&quot;github.com/lib/pq&quot;</span>
+    <span class="s2">&quot;github.com/matryer/way&quot;</span>
+    <span class="s2">&quot;golang.org/x/oauth2&quot;</span>
+    <span class="s2">&quot;golang.org/x/oauth2/github&quot;</span>
+<span class="p">)</span>
+
+<span class="n">var</span> <span class="n">origin</span> <span class="o">*</span><span class="n">url</span><span class="o">.</span><span class="n">URL</span>
+<span class="n">var</span> <span class="n">db</span> <span class="o">*</span><span class="n">sql</span><span class="o">.</span><span class="n">DB</span>
+<span class="n">var</span> <span class="n">githubOAuthConfig</span> <span class="o">*</span><span class="n">oauth2</span><span class="o">.</span><span class="n">Config</span>
+<span class="n">var</span> <span class="n">cookieSigner</span> <span class="o">*</span><span class="n">securecookie</span><span class="o">.</span><span class="n">SecureCookie</span>
+<span class="n">var</span> <span class="n">jwtSigner</span> <span class="n">jwt</span><span class="o">.</span><span class="n">Signer</span>
+
+<span class="n">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">godotenv</span><span class="o">.</span><span class="n">Load</span><span class="p">()</span>
+
+    <span class="n">port</span> <span class="o">:=</span> <span class="n">intEnv</span><span class="p">(</span><span class="s2">&quot;PORT&quot;</span><span class="p">,</span> <span class="mi">3000</span><span class="p">)</span>
+    <span class="n">originString</span> <span class="o">:=</span> <span class="n">env</span><span class="p">(</span><span class="s2">&quot;ORIGIN&quot;</span><span class="p">,</span> <span class="n">fmt</span><span class="o">.</span><span class="n">Sprintf</span><span class="p">(</span><span class="s2">&quot;http://localhost:</span><span class="si">%d</span><span class="s2">/&quot;</span><span class="p">,</span> <span class="n">port</span><span class="p">))</span>
+    <span class="n">databaseURL</span> <span class="o">:=</span> <span class="n">env</span><span class="p">(</span><span class="s2">&quot;DATABASE_URL&quot;</span><span class="p">,</span> <span class="s2">&quot;postgresql://root@127.0.0.1:26257/messenger?sslmode=disable&quot;</span><span class="p">)</span>
+    <span class="n">githubClientID</span> <span class="o">:=</span> <span class="n">os</span><span class="o">.</span><span class="n">Getenv</span><span class="p">(</span><span class="s2">&quot;GITHUB_CLIENT_ID&quot;</span><span class="p">)</span>
+    <span class="n">githubClientSecret</span> <span class="o">:=</span> <span class="n">os</span><span class="o">.</span><span class="n">Getenv</span><span class="p">(</span><span class="s2">&quot;GITHUB_CLIENT_SECRET&quot;</span><span class="p">)</span>
+    <span class="n">hashKey</span> <span class="o">:=</span> <span class="n">env</span><span class="p">(</span><span class="s2">&quot;HASH_KEY&quot;</span><span class="p">,</span> <span class="s2">&quot;secret&quot;</span><span class="p">)</span>
+    <span class="n">jwtKey</span> <span class="o">:=</span> <span class="n">env</span><span class="p">(</span><span class="s2">&quot;JWT_KEY&quot;</span><span class="p">,</span> <span class="s2">&quot;secret&quot;</span><span class="p">)</span>
+
+    <span class="n">var</span> <span class="n">err</span> <span class="n">error</span>
+    <span class="k">if</span> <span class="n">origin</span><span class="p">,</span> <span class="n">err</span> <span class="o">=</span> <span class="n">url</span><span class="o">.</span><span class="n">Parse</span><span class="p">(</span><span class="n">originString</span><span class="p">);</span> <span class="n">err</span> <span class="o">!=</span> <span class="n">nil</span> <span class="o">||</span> <span class="err">!</span><span class="n">origin</span><span class="o">.</span><span class="n">IsAbs</span><span class="p">()</span> <span class="p">{</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">Fatal</span><span class="p">(</span><span class="s2">&quot;invalid origin&quot;</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="k">if</span> <span class="n">i</span><span class="p">,</span> <span class="n">err</span> <span class="o">:=</span> <span class="n">strconv</span><span class="o">.</span><span class="n">Atoi</span><span class="p">(</span><span class="n">origin</span><span class="o">.</span><span class="n">Port</span><span class="p">());</span> <span class="n">err</span> <span class="o">==</span> <span class="n">nil</span> <span class="p">{</span>
+        <span class="n">port</span> <span class="o">=</span> <span class="n">i</span>
+    <span class="p">}</span>
+
+    <span class="k">if</span> <span class="n">githubClientID</span> <span class="o">==</span> <span class="s2">&quot;&quot;</span> <span class="o">||</span> <span class="n">githubClientSecret</span> <span class="o">==</span> <span class="s2">&quot;&quot;</span> <span class="p">{</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">Fatalf</span><span class="p">(</span><span class="s2">&quot;remember to set both $GITHUB_CLIENT_ID and $GITHUB_CLIENT_SECRET&quot;</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="k">if</span> <span class="n">db</span><span class="p">,</span> <span class="n">err</span> <span class="o">=</span> <span class="n">sql</span><span class="o">.</span><span class="n">Open</span><span class="p">(</span><span class="s2">&quot;postgres&quot;</span><span class="p">,</span> <span class="n">databaseURL</span><span class="p">);</span> <span class="n">err</span> <span class="o">!=</span> <span class="n">nil</span> <span class="p">{</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">Fatalf</span><span class="p">(</span><span class="s2">&quot;could not open database connection: %v</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+    <span class="n">defer</span> <span class="n">db</span><span class="o">.</span><span class="n">Close</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">err</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">Ping</span><span class="p">();</span> <span class="n">err</span> <span class="o">!=</span> <span class="n">nil</span> <span class="p">{</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">Fatalf</span><span class="p">(</span><span class="s2">&quot;could not ping to db: %v</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="n">githubRedirectURL</span> <span class="o">:=</span> <span class="o">*</span><span class="n">origin</span>
+    <span class="n">githubRedirectURL</span><span class="o">.</span><span class="n">Path</span> <span class="o">=</span> <span class="s2">&quot;/api/oauth/github/callback&quot;</span>
+    <span class="n">githubOAuthConfig</span> <span class="o">=</span> <span class="o">&amp;</span><span class="n">oauth2</span><span class="o">.</span><span class="n">Config</span><span class="p">{</span>
+        <span class="n">ClientID</span><span class="p">:</span>     <span class="n">githubClientID</span><span class="p">,</span>
+        <span class="n">ClientSecret</span><span class="p">:</span> <span class="n">githubClientSecret</span><span class="p">,</span>
+        <span class="n">Endpoint</span><span class="p">:</span>     <span class="n">github</span><span class="o">.</span><span class="n">Endpoint</span><span class="p">,</span>
+        <span class="n">RedirectURL</span><span class="p">:</span>  <span class="n">githubRedirectURL</span><span class="o">.</span><span class="n">String</span><span class="p">(),</span>
+        <span class="n">Scopes</span><span class="p">:</span>       <span class="p">[]</span><span class="n">string</span><span class="p">{</span><span class="s2">&quot;read:user&quot;</span><span class="p">},</span>
+    <span class="p">}</span>
+
+    <span class="n">cookieSigner</span> <span class="o">=</span> <span class="n">securecookie</span><span class="o">.</span><span class="n">New</span><span class="p">([]</span><span class="n">byte</span><span class="p">(</span><span class="n">hashKey</span><span class="p">),</span> <span class="n">nil</span><span class="p">)</span><span class="o">.</span><span class="n">MaxAge</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+    <span class="n">jwtSigner</span><span class="p">,</span> <span class="n">err</span> <span class="o">=</span> <span class="n">jwt</span><span class="o">.</span><span class="n">HS256</span><span class="o">.</span><span class="n">New</span><span class="p">([]</span><span class="n">byte</span><span class="p">(</span><span class="n">jwtKey</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">err</span> <span class="o">!=</span> <span class="n">nil</span> <span class="p">{</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">Fatalf</span><span class="p">(</span><span class="s2">&quot;could not create JWT signer: %v</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="n">router</span> <span class="o">:=</span> <span class="n">way</span><span class="o">.</span><span class="n">NewRouter</span><span class="p">()</span>
+    <span class="n">router</span><span class="o">.</span><span class="n">HandleFunc</span><span class="p">(</span><span class="s2">&quot;GET&quot;</span><span class="p">,</span> <span class="s2">&quot;/api/oauth/github&quot;</span><span class="p">,</span> <span class="n">githubOAuthStart</span><span class="p">)</span>
+    <span class="n">router</span><span class="o">.</span><span class="n">HandleFunc</span><span class="p">(</span><span class="s2">&quot;GET&quot;</span><span class="p">,</span> <span class="s2">&quot;/api/oauth/github/callback&quot;</span><span class="p">,</span> <span class="n">githubOAuthCallback</span><span class="p">)</span>
+    <span class="n">router</span><span class="o">.</span><span class="n">HandleFunc</span><span class="p">(</span><span class="s2">&quot;GET&quot;</span><span class="p">,</span> <span class="s2">&quot;/api/auth_user&quot;</span><span class="p">,</span> <span class="n">guard</span><span class="p">(</span><span class="n">getAuthUser</span><span class="p">))</span>
+
+    <span class="n">log</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s2">&quot;accepting connections on port </span><span class="si">%d</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">port</span><span class="p">)</span>
+    <span class="n">log</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s2">&quot;starting server at </span><span class="si">%s</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">origin</span><span class="o">.</span><span class="n">String</span><span class="p">())</span>
+    <span class="n">addr</span> <span class="o">:=</span> <span class="n">fmt</span><span class="o">.</span><span class="n">Sprintf</span><span class="p">(</span><span class="s2">&quot;:</span><span class="si">%d</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">port</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">err</span> <span class="o">=</span> <span class="n">http</span><span class="o">.</span><span class="n">ListenAndServe</span><span class="p">(</span><span class="n">addr</span><span class="p">,</span> <span class="n">router</span><span class="p">);</span> <span class="n">err</span> <span class="o">!=</span> <span class="n">nil</span> <span class="p">{</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">Fatalf</span><span class="p">(</span><span class="s2">&quot;could not start server: %v</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">err</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="n">func</span> <span class="n">env</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">fallbackValue</span> <span class="n">string</span><span class="p">)</span> <span class="n">string</span> <span class="p">{</span>
+    <span class="n">v</span><span class="p">,</span> <span class="n">ok</span> <span class="o">:=</span> <span class="n">os</span><span class="o">.</span><span class="n">LookupEnv</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+    <span class="k">if</span> <span class="err">!</span><span class="n">ok</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="n">fallbackValue</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="n">v</span>
+<span class="p">}</span>
+
+<span class="n">func</span> <span class="n">intEnv</span><span class="p">(</span><span class="n">key</span> <span class="n">string</span><span class="p">,</span> <span class="n">fallbackValue</span> <span class="nb">int</span><span class="p">)</span> <span class="nb">int</span> <span class="p">{</span>
+    <span class="n">v</span><span class="p">,</span> <span class="n">ok</span> <span class="o">:=</span> <span class="n">os</span><span class="o">.</span><span class="n">LookupEnv</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+    <span class="k">if</span> <span class="err">!</span><span class="n">ok</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="n">fallbackValue</span>
+    <span class="p">}</span>
+    <span class="n">i</span><span class="p">,</span> <span class="n">err</span> <span class="o">:=</span> <span class="n">strconv</span><span class="o">.</span><span class="n">Atoi</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">err</span> <span class="o">!=</span> <span class="n">nil</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="n">fallbackValue</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="n">i</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>安装依赖项：</p>
+<div class="highlight"><pre><span></span><code><span class="k">go</span><span class="w"> </span><span class="k">get</span><span class="w"> </span><span class="o">-</span><span class="n">u</span><span class="w"> </span><span class="n">github</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">gorilla</span><span class="o">/</span><span class="n">securecookie</span>
+<span class="k">go</span><span class="w"> </span><span class="k">get</span><span class="w"> </span><span class="o">-</span><span class="n">u</span><span class="w"> </span><span class="n">github</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">joho</span><span class="o">/</span><span class="n">godotenv</span>
+<span class="k">go</span><span class="w"> </span><span class="k">get</span><span class="w"> </span><span class="o">-</span><span class="n">u</span><span class="w"> </span><span class="n">github</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">knq</span><span class="o">/</span><span class="n">jwt</span>
+<span class="k">go</span><span class="w"> </span><span class="k">get</span><span class="w"> </span><span class="o">-</span><span class="n">u</span><span class="w"> </span><span class="n">github</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">pq</span>
+<span class="n">ge</span><span class="w"> </span><span class="k">get</span><span class="w"> </span><span class="o">-</span><span class="n">u</span><span class="w"> </span><span class="n">github</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">matoous</span><span class="o">/</span><span class="k">go</span><span class="o">-</span><span class="n">nanoid</span>
+<span class="k">go</span><span class="w"> </span><span class="k">get</span><span class="w"> </span><span class="o">-</span><span class="n">u</span><span class="w"> </span><span class="n">github</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">matryer</span><span class="o">/</span><span class="n">way</span>
+<span class="k">go</span><span class="w"> </span><span class="k">get</span><span class="w"> </span><span class="o">-</span><span class="n">u</span><span class="w"> </span><span class="n">golang</span><span class="p">.</span><span class="n">org</span><span class="o">/</span><span class="n">x</span><span class="o">/</span><span class="n">oauth2</span>
+</code></pre></div>
+
+<p>我们将会使用 <code>.env</code> 文件来保存密钥和其他配置。请创建这个文件，并保证里面至少包含以下内容：</p>
+<div class="highlight"><pre><span></span><code>GITHUB_CLIENT_ID=your_github_client_id
+GITHUB_CLIENT_SECRET=your_github_client_secret
+</code></pre></div>
+
+<p>我们还要用到的其他环境变量有：</p>
+<ul>
+<li><code>PORT</code>：服务器运行的端口，默认值是 <code>3000</code>。</li>
+<li><code>ORIGIN</code>：你的域名，默认值是 <code>http://localhost:3000/</code>。我们也可以在这里指定端口。</li>
+<li><code>DATABASE_URL</code>：Cockroach 数据库的地址。默认值是 <code>postgresql://root@127.0.0.1:26257/messenger?sslmode=disable</code>。</li>
+<li><code>HASH_KEY</code>：用于为 cookie 签名的密钥。没错，我们会使用已签名的 cookie 来确保安全。</li>
+<li><code>JWT_KEY</code>：用于签署 JSON <ruby> 网络令牌 <rt>  Web Token </rt></ruby>的密钥。</li>
+</ul>
+<p>因为代码中已经设定了默认值，所以你也不用把它们写到 <code>.env</code> 文件中。</p>
+<p>在读取配置并连接到数据库之后，我们会创建一个 OAuth 配置。我们会使用 <code>ORIGIN</code> 信息来构建回调 URL（就和我们在 GitHub 页面上注册的一样）。我们的数据范围设置为 “read:user”。这会允许我们读取公开的用户信息，这里我们只需要他的用户名和头像就够了。然后我们会初始化 cookie 和 JWT 签名器。定义一些端点并启动服务器。</p>
+<p>在实现 HTTP 处理程序之前，让我们编写一些函数来发送 HTTP 响应。</p>
+<div class="highlight"><pre><span></span><code><span class="k">func</span><span class="w"> </span><span class="n">respond</span><span class="p">(</span><span class="n">w</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">ResponseWriter</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="n">interface</span><span class="p">{},</span><span class="w"> </span><span class="n">statusCode</span><span class="w"> </span><span class="nb nb-Type">int</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">b</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">json</span><span class="o">.</span><span class="n">Marshal</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">respondError</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">fmt</span><span class="o">.</span><span class="n">Errorf</span><span class="p">(</span><span class="s2">&quot;could not marshal response: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="n">w</span><span class="o">.</span><span class="n">Header</span><span class="p">()</span><span class="o">.</span><span class="n">Set</span><span class="p">(</span><span class="s2">&quot;Content-Type&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;application/json; charset=utf-8&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">w</span><span class="o">.</span><span class="n">WriteHeader</span><span class="p">(</span><span class="n">statusCode</span><span class="p">)</span>
+<span class="w">    </span><span class="n">w</span><span class="o">.</span><span class="n">Write</span><span class="p">(</span><span class="n">b</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="k">func</span><span class="w"> </span><span class="n">respondError</span><span class="p">(</span><span class="n">w</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">ResponseWriter</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="n">error</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nb">log</span><span class="o">.</span><span class="n">Println</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+<span class="w">    </span><span class="n">http</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusText</span><span class="p">(</span><span class="n">http</span><span class="o">.</span><span class="n">StatusInternalServerError</span><span class="p">),</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusInternalServerError</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>第一个函数用来发送 JSON，而第二个将错误记录到控制台并返回一个 <code>500 Internal Server Error</code> 错误信息。</p>
+<h3>OAuth 开始</h3>
+<p>所以，用户点击写着 “Access with GitHub” 的链接。该链接指向 <code>/api/oauth/github</code>，这将会把用户重定向到 github。</p>
+<div class="highlight"><pre><span></span><code><span class="k">func</span><span class="w"> </span><span class="n">githubOAuthStart</span><span class="p">(</span><span class="n">w</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">ResponseWriter</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="o">*</span><span class="n">http</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">state</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">gonanoid</span><span class="o">.</span><span class="n">Nanoid</span><span class="p">()</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">respondError</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">fmt</span><span class="o">.</span><span class="n">Errorf</span><span class="p">(</span><span class="s2">&quot;could not generte state: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="n">stateCookieValue</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">cookieSigner</span><span class="o">.</span><span class="n">Encode</span><span class="p">(</span><span class="s2">&quot;state&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">state</span><span class="p">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">respondError</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">fmt</span><span class="o">.</span><span class="n">Errorf</span><span class="p">(</span><span class="s2">&quot;could not encode state cookie: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="n">http</span><span class="o">.</span><span class="n">SetCookie</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">http</span><span class="o">.</span><span class="n">Cookie</span><span class="p">{</span>
+<span class="w">        </span><span class="n">Name</span><span class="p">:</span><span class="w">     </span><span class="s2">&quot;state&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="n">Value</span><span class="p">:</span><span class="w">    </span><span class="n">stateCookieValue</span><span class="p">,</span>
+<span class="w">        </span><span class="n">Path</span><span class="p">:</span><span class="w">     </span><span class="s2">&quot;/api/oauth/github&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="n">HttpOnly</span><span class="p">:</span><span class="w"> </span><span class="bp">true</span><span class="p">,</span>
+<span class="w">    </span><span class="p">})</span>
+<span class="w">    </span><span class="n">http</span><span class="o">.</span><span class="n">Redirect</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="p">,</span><span class="w"> </span><span class="n">githubOAuthConfig</span><span class="o">.</span><span class="n">AuthCodeURL</span><span class="p">(</span><span class="n">state</span><span class="p">),</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusTemporaryRedirect</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>OAuth2 使用一种机制来防止 CSRF 攻击，因此它需要一个“状态”（<code>state</code>）。我们使用 <code>Nanoid()</code> 来创建一个随机字符串，并用这个字符串作为状态。我们也把它保存为一个 cookie。</p>
+<h3>OAuth 回调</h3>
+<p>一旦用户授权我们访问他的个人信息，他将会被重定向到这个端点。这个 URL 的查询字符串上将会包含状态（<code>state</code>）和授权码（<code>code</code>）： <code>/api/oauth/github/callback?state=&amp;code=</code>。</p>
+<div class="highlight"><pre><span></span><code><span class="k">const</span><span class="w"> </span><span class="n">jwtLifetime</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">time</span><span class="o">.</span><span class="n">Hour</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">24</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">14</span>
+
+<span class="n">type</span><span class="w"> </span><span class="n">GithubUser</span><span class="w"> </span><span class="n">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">ID</span><span class="w">        </span><span class="nb nb-Type">int</span><span class="w">     </span><span class="err">`</span><span class="n">json</span><span class="p">:</span><span class="s2">&quot;id&quot;</span><span class="err">`</span>
+<span class="w">    </span><span class="n">Login</span><span class="w">     </span><span class="n">string</span><span class="w">  </span><span class="err">`</span><span class="n">json</span><span class="p">:</span><span class="s2">&quot;login&quot;</span><span class="err">`</span>
+<span class="w">    </span><span class="n">AvatarURL</span><span class="w"> </span><span class="o">*</span><span class="n">string</span><span class="w"> </span><span class="err">`</span><span class="n">json</span><span class="p">:</span><span class="s2">&quot;avatar_url,omitempty&quot;</span><span class="err">`</span>
+<span class="p">}</span>
+
+<span class="n">type</span><span class="w"> </span><span class="n">User</span><span class="w"> </span><span class="n">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">ID</span><span class="w">        </span><span class="n">string</span><span class="w">  </span><span class="err">`</span><span class="n">json</span><span class="p">:</span><span class="s2">&quot;id&quot;</span><span class="err">`</span>
+<span class="w">    </span><span class="n">Username</span><span class="w">  </span><span class="n">string</span><span class="w">  </span><span class="err">`</span><span class="n">json</span><span class="p">:</span><span class="s2">&quot;username&quot;</span><span class="err">`</span>
+<span class="w">    </span><span class="n">AvatarURL</span><span class="w"> </span><span class="o">*</span><span class="n">string</span><span class="w"> </span><span class="err">`</span><span class="n">json</span><span class="p">:</span><span class="s2">&quot;avatarUrl&quot;</span><span class="err">`</span>
+<span class="p">}</span>
+
+<span class="k">func</span><span class="w"> </span><span class="n">githubOAuthCallback</span><span class="p">(</span><span class="n">w</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">ResponseWriter</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="o">*</span><span class="n">http</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">stateCookie</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">r</span><span class="o">.</span><span class="n">Cookie</span><span class="p">(</span><span class="s2">&quot;state&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">http</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusText</span><span class="p">(</span><span class="n">http</span><span class="o">.</span><span class="n">StatusTeapot</span><span class="p">),</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusTeapot</span><span class="p">)</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="n">http</span><span class="o">.</span><span class="n">SetCookie</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">http</span><span class="o">.</span><span class="n">Cookie</span><span class="p">{</span>
+<span class="w">        </span><span class="n">Name</span><span class="p">:</span><span class="w">     </span><span class="s2">&quot;state&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="n">Value</span><span class="p">:</span><span class="w">    </span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="n">MaxAge</span><span class="p">:</span><span class="w">   </span><span class="o">-</span><span class="mi">1</span><span class="p">,</span>
+<span class="w">        </span><span class="n">HttpOnly</span><span class="p">:</span><span class="w"> </span><span class="bp">true</span><span class="p">,</span>
+<span class="w">    </span><span class="p">})</span>
+
+<span class="w">    </span><span class="k">var</span><span class="w"> </span><span class="n">state</span><span class="w"> </span><span class="n">string</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cookieSigner</span><span class="o">.</span><span class="n">Decode</span><span class="p">(</span><span class="s2">&quot;state&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">stateCookie</span><span class="o">.</span><span class="n">Value</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">state</span><span class="p">);</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">http</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusText</span><span class="p">(</span><span class="n">http</span><span class="o">.</span><span class="n">StatusTeapot</span><span class="p">),</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusTeapot</span><span class="p">)</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="n">q</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">r</span><span class="o">.</span><span class="n">URL</span><span class="o">.</span><span class="n">Query</span><span class="p">()</span>
+
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">state</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">q</span><span class="o">.</span><span class="n">Get</span><span class="p">(</span><span class="s2">&quot;state&quot;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">http</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusText</span><span class="p">(</span><span class="n">http</span><span class="o">.</span><span class="n">StatusTeapot</span><span class="p">),</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusTeapot</span><span class="p">)</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="n">ctx</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">r</span><span class="o">.</span><span class="n">Context</span><span class="p">()</span>
+
+<span class="w">    </span><span class="n">t</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">githubOAuthConfig</span><span class="o">.</span><span class="n">Exchange</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="n">q</span><span class="o">.</span><span class="n">Get</span><span class="p">(</span><span class="s2">&quot;code&quot;</span><span class="p">))</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">respondError</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">fmt</span><span class="o">.</span><span class="n">Errorf</span><span class="p">(</span><span class="s2">&quot;could not fetch github token: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="n">client</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">githubOAuthConfig</span><span class="o">.</span><span class="n">Client</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="n">t</span><span class="p">)</span>
+<span class="w">    </span><span class="n">resp</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">client</span><span class="o">.</span><span class="n">Get</span><span class="p">(</span><span class="s2">&quot;https://api.github.com/user&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">respondError</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">fmt</span><span class="o">.</span><span class="n">Errorf</span><span class="p">(</span><span class="s2">&quot;could not fetch github user: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">var</span><span class="w"> </span><span class="n">githubUser</span><span class="w"> </span><span class="n">GithubUser</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">json</span><span class="o">.</span><span class="n">NewDecoder</span><span class="p">(</span><span class="n">resp</span><span class="o">.</span><span class="n">Body</span><span class="p">)</span><span class="o">.</span><span class="n">Decode</span><span class="p">(</span><span class="o">&amp;</span><span class="n">githubUser</span><span class="p">);</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">respondError</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">fmt</span><span class="o">.</span><span class="n">Errorf</span><span class="p">(</span><span class="s2">&quot;could not decode github user: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="n">defer</span><span class="w"> </span><span class="n">resp</span><span class="o">.</span><span class="n">Body</span><span class="o">.</span><span class="n">Close</span><span class="p">()</span>
+
+<span class="w">    </span><span class="n">tx</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">db</span><span class="o">.</span><span class="n">BeginTx</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="n">nil</span><span class="p">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">respondError</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">fmt</span><span class="o">.</span><span class="n">Errorf</span><span class="p">(</span><span class="s2">&quot;could not begin tx: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">var</span><span class="w"> </span><span class="n">user</span><span class="w"> </span><span class="n">User</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tx</span><span class="o">.</span><span class="n">QueryRowContext</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="err">`</span>
+<span class="w">        </span><span class="n">SELECT</span><span class="w"> </span><span class="n">id</span><span class="p">,</span><span class="w"> </span><span class="n">username</span><span class="p">,</span><span class="w"> </span><span class="n">avatar_url</span><span class="w"> </span><span class="n">FROM</span><span class="w"> </span><span class="n">users</span><span class="w"> </span><span class="n">WHERE</span><span class="w"> </span><span class="n">github_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="mi">1</span>
+<span class="w">    </span><span class="err">`</span><span class="p">,</span><span class="w"> </span><span class="n">githubUser</span><span class="o">.</span><span class="n">ID</span><span class="p">)</span><span class="o">.</span><span class="n">Scan</span><span class="p">(</span><span class="o">&amp;</span><span class="n">user</span><span class="o">.</span><span class="n">ID</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">user</span><span class="o">.</span><span class="n">Username</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">user</span><span class="o">.</span><span class="n">AvatarURL</span><span class="p">);</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">sql</span><span class="o">.</span><span class="n">ErrNoRows</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tx</span><span class="o">.</span><span class="n">QueryRowContext</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="err">`</span>
+<span class="w">            </span><span class="n">INSERT</span><span class="w"> </span><span class="n">INTO</span><span class="w"> </span><span class="n">users</span><span class="w"> </span><span class="p">(</span><span class="n">username</span><span class="p">,</span><span class="w"> </span><span class="n">avatar_url</span><span class="p">,</span><span class="w"> </span><span class="n">github_id</span><span class="p">)</span><span class="w"> </span><span class="n">VALUES</span><span class="w"> </span><span class="p">(</span><span class="o">$</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">$</span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="o">$</span><span class="mi">3</span><span class="p">)</span>
+<span class="w">            </span><span class="n">RETURNING</span><span class="w"> </span><span class="n">id</span>
+<span class="w">        </span><span class="err">`</span><span class="p">,</span><span class="w"> </span><span class="n">githubUser</span><span class="o">.</span><span class="n">Login</span><span class="p">,</span><span class="w"> </span><span class="n">githubUser</span><span class="o">.</span><span class="n">AvatarURL</span><span class="p">,</span><span class="w"> </span><span class="n">githubUser</span><span class="o">.</span><span class="n">ID</span><span class="p">)</span><span class="o">.</span><span class="n">Scan</span><span class="p">(</span><span class="o">&amp;</span><span class="n">user</span><span class="o">.</span><span class="n">ID</span><span class="p">);</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">respondError</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">fmt</span><span class="o">.</span><span class="n">Errorf</span><span class="p">(</span><span class="s2">&quot;could not insert user: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">            </span><span class="k">return</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="n">user</span><span class="o">.</span><span class="n">Username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">githubUser</span><span class="o">.</span><span class="n">Login</span>
+<span class="w">        </span><span class="n">user</span><span class="o">.</span><span class="n">AvatarURL</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">githubUser</span><span class="o">.</span><span class="n">AvatarURL</span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">respondError</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">fmt</span><span class="o">.</span><span class="n">Errorf</span><span class="p">(</span><span class="s2">&quot;could not query user by github ID: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tx</span><span class="o">.</span><span class="n">Commit</span><span class="p">();</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">respondError</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">fmt</span><span class="o">.</span><span class="n">Errorf</span><span class="p">(</span><span class="s2">&quot;could not commit to finish github oauth: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="nb">exp</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">time</span><span class="o">.</span><span class="n">Now</span><span class="p">()</span><span class="o">.</span><span class="n">Add</span><span class="p">(</span><span class="n">jwtLifetime</span><span class="p">)</span>
+<span class="w">    </span><span class="n">token</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">jwtSigner</span><span class="o">.</span><span class="n">Encode</span><span class="p">(</span><span class="n">jwt</span><span class="o">.</span><span class="n">Claims</span><span class="p">{</span>
+<span class="w">        </span><span class="n">Subject</span><span class="p">:</span><span class="w">    </span><span class="n">user</span><span class="o">.</span><span class="n">ID</span><span class="p">,</span>
+<span class="w">        </span><span class="n">Expiration</span><span class="p">:</span><span class="w"> </span><span class="n">json</span><span class="o">.</span><span class="n">Number</span><span class="p">(</span><span class="n">strconv</span><span class="o">.</span><span class="n">FormatInt</span><span class="p">(</span><span class="nb">exp</span><span class="o">.</span><span class="n">Unix</span><span class="p">(),</span><span class="w"> </span><span class="mi">10</span><span class="p">)),</span>
+<span class="w">    </span><span class="p">})</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">respondError</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">fmt</span><span class="o">.</span><span class="n">Errorf</span><span class="p">(</span><span class="s2">&quot;could not create token: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="n">expiresAt</span><span class="p">,</span><span class="w"> </span><span class="n">_</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="nb">exp</span><span class="o">.</span><span class="n">MarshalText</span><span class="p">()</span>
+
+<span class="w">    </span><span class="n">data</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">make</span><span class="p">(</span><span class="n">url</span><span class="o">.</span><span class="n">Values</span><span class="p">)</span>
+<span class="w">    </span><span class="n">data</span><span class="o">.</span><span class="n">Set</span><span class="p">(</span><span class="s2">&quot;token&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">string</span><span class="p">(</span><span class="n">token</span><span class="p">))</span>
+<span class="w">    </span><span class="n">data</span><span class="o">.</span><span class="n">Set</span><span class="p">(</span><span class="s2">&quot;expires_at&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">string</span><span class="p">(</span><span class="n">expiresAt</span><span class="p">))</span>
+
+<span class="w">    </span><span class="n">http</span><span class="o">.</span><span class="n">Redirect</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;/callback?&quot;</span><span class="o">+</span><span class="n">data</span><span class="o">.</span><span class="n">Encode</span><span class="p">(),</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusTemporaryRedirect</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>首先，我们会尝试使用之前保存的状态对 cookie 进行解码。并将其与查询字符串中的状态进行比较。如果它们不匹配，我们会返回一个 <code>418 I'm teapot</code>（未知来源）错误。</p>
+<p>接着，我们使用授权码生成一个令牌。这个令牌被用于创建 HTTP 客户端来向 GitHub API 发出请求。所以最终我们会向 <code>https://api.github.com/user</code> 发送一个 GET 请求。这个端点将会以 JSON 格式向我们提供当前经过身份验证的用户信息。我们将会解码这些内容，一并获取用户的 ID、登录名（用户名）和头像 URL。</p>
+<p>然后我们将会尝试在数据库上找到具有该 GitHub ID 的用户。如果没有找到，就使用该数据创建一个新的。</p>
+<p>之后，对于新创建的用户，我们会发出一个将用户 ID 作为主题（<code>Subject</code>）的 JSON 网络令牌，并使用该令牌重定向到前端，查询字符串中一并包含该令牌的到期日（<code>Expiration</code>）。</p>
+<p>这一 Web 应用也会被用在其他帖子，但是重定向的链接会是 <code>/callback?token=&amp;expires_at=</code>。在那里，我们将会利用 JavaScript 从 URL 中获取令牌和到期日，并通过 <code>Authorization</code> 标头中的令牌以 <code>Bearer token_here</code> 的形式对 <code>/api/auth_user</code> 进行 GET 请求，来获取已认证的身份用户并将其保存到 localStorage。</p>
+<h3>Guard 中间件</h3>
+<p>为了获取当前已经过身份验证的用户，我们设计了 Guard 中间件。这是因为在接下来的文章中，我们会有很多需要进行身份认证的端点，而中间件将会允许我们共享这一功能。</p>
+<div class="highlight"><pre><span></span><code><span class="n">type</span><span class="w"> </span><span class="n">ContextKey</span><span class="w"> </span><span class="n">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">Name</span><span class="w"> </span><span class="n">string</span>
+<span class="p">}</span>
+
+<span class="k">var</span><span class="w"> </span><span class="n">keyAuthUserID</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ContextKey</span><span class="p">{</span><span class="s2">&quot;auth_user_id&quot;</span><span class="p">}</span>
+
+<span class="k">func</span><span class="w"> </span><span class="n">guard</span><span class="p">(</span><span class="n">handler</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">HandlerFunc</span><span class="p">)</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">HandlerFunc</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="k">func</span><span class="p">(</span><span class="n">w</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">ResponseWriter</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="o">*</span><span class="n">http</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">var</span><span class="w"> </span><span class="n">token</span><span class="w"> </span><span class="n">string</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">r</span><span class="o">.</span><span class="n">Header</span><span class="o">.</span><span class="n">Get</span><span class="p">(</span><span class="s2">&quot;Authorization&quot;</span><span class="p">);</span><span class="w"> </span><span class="n">strings</span><span class="o">.</span><span class="n">HasPrefix</span><span class="p">(</span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;Bearer &quot;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">token</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">a</span><span class="p">[</span><span class="mi">7</span><span class="p">:]</span>
+<span class="w">        </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">t</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">r</span><span class="o">.</span><span class="n">URL</span><span class="o">.</span><span class="n">Query</span><span class="p">()</span><span class="o">.</span><span class="n">Get</span><span class="p">(</span><span class="s2">&quot;token&quot;</span><span class="p">);</span><span class="w"> </span><span class="n">t</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">token</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">t</span>
+<span class="w">        </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">http</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusText</span><span class="p">(</span><span class="n">http</span><span class="o">.</span><span class="n">StatusUnauthorized</span><span class="p">),</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusUnauthorized</span><span class="p">)</span>
+<span class="w">            </span><span class="k">return</span>
+<span class="w">        </span><span class="p">}</span>
+
+<span class="w">        </span><span class="k">var</span><span class="w"> </span><span class="n">claims</span><span class="w"> </span><span class="n">jwt</span><span class="o">.</span><span class="n">Claims</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">jwtSigner</span><span class="o">.</span><span class="n">Decode</span><span class="p">([]</span><span class="n">byte</span><span class="p">(</span><span class="n">token</span><span class="p">),</span><span class="w"> </span><span class="o">&amp;</span><span class="n">claims</span><span class="p">);</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">http</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusText</span><span class="p">(</span><span class="n">http</span><span class="o">.</span><span class="n">StatusUnauthorized</span><span class="p">),</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusUnauthorized</span><span class="p">)</span>
+<span class="w">            </span><span class="k">return</span>
+<span class="w">        </span><span class="p">}</span>
+
+<span class="w">        </span><span class="n">ctx</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">r</span><span class="o">.</span><span class="n">Context</span><span class="p">()</span>
+<span class="w">        </span><span class="n">ctx</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">context</span><span class="o">.</span><span class="n">WithValue</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="n">keyAuthUserID</span><span class="p">,</span><span class="w"> </span><span class="n">claims</span><span class="o">.</span><span class="n">Subject</span><span class="p">)</span>
+
+<span class="w">        </span><span class="n">handler</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="o">.</span><span class="n">WithContext</span><span class="p">(</span><span class="n">ctx</span><span class="p">))</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>首先，我们尝试从 <code>Authorization</code> 标头或者是 URL 查询字符串中的 <code>token</code> 字段中读取令牌。如果没有找到，我们需要返回 <code>401 Unauthorized</code>（未授权）错误。然后我们将会对令牌中的申明进行解码，并使用该主题作为当前已经过身份验证的用户 ID。</p>
+<p>现在，我们可以用这一中间件来封装任何需要授权的 <code>http.handlerFunc</code>，并且在处理函数的上下文中保有已经过身份验证的用户 ID。</p>
+<div class="highlight"><pre><span></span><code><span class="k">var</span><span class="w"> </span><span class="n">guarded</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">guard</span><span class="p">(</span><span class="k">func</span><span class="p">(</span><span class="n">w</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">ResponseWriter</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="o">*</span><span class="n">http</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">authUserID</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">r</span><span class="o">.</span><span class="n">Context</span><span class="p">()</span><span class="o">.</span><span class="n">Value</span><span class="p">(</span><span class="n">keyAuthUserID</span><span class="p">)</span><span class="o">.</span><span class="p">(</span><span class="n">string</span><span class="p">)</span>
+<span class="p">})</span>
+</code></pre></div>
+
+<h3>获取认证用户</h3>
+<div class="highlight"><pre><span></span><code><span class="k">func</span><span class="w"> </span><span class="n">getAuthUser</span><span class="p">(</span><span class="n">w</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">ResponseWriter</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="o">*</span><span class="n">http</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">ctx</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">r</span><span class="o">.</span><span class="n">Context</span><span class="p">()</span>
+<span class="w">    </span><span class="n">authUserID</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="o">.</span><span class="n">Value</span><span class="p">(</span><span class="n">keyAuthUserID</span><span class="p">)</span><span class="o">.</span><span class="p">(</span><span class="n">string</span><span class="p">)</span>
+
+<span class="w">    </span><span class="k">var</span><span class="w"> </span><span class="n">user</span><span class="w"> </span><span class="n">User</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">db</span><span class="o">.</span><span class="n">QueryRowContext</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="err">`</span>
+<span class="w">        </span><span class="n">SELECT</span><span class="w"> </span><span class="n">username</span><span class="p">,</span><span class="w"> </span><span class="n">avatar_url</span><span class="w"> </span><span class="n">FROM</span><span class="w"> </span><span class="n">users</span><span class="w"> </span><span class="n">WHERE</span><span class="w"> </span><span class="n">id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="mi">1</span>
+<span class="w">    </span><span class="err">`</span><span class="p">,</span><span class="w"> </span><span class="n">authUserID</span><span class="p">)</span><span class="o">.</span><span class="n">Scan</span><span class="p">(</span><span class="o">&amp;</span><span class="n">user</span><span class="o">.</span><span class="n">Username</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">user</span><span class="o">.</span><span class="n">AvatarURL</span><span class="p">);</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">sql</span><span class="o">.</span><span class="n">ErrNoRows</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">http</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusText</span><span class="p">(</span><span class="n">http</span><span class="o">.</span><span class="n">StatusTeapot</span><span class="p">),</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusTeapot</span><span class="p">)</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">respondError</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">fmt</span><span class="o">.</span><span class="n">Errorf</span><span class="p">(</span><span class="s2">&quot;could not query auth user: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="n">user</span><span class="o">.</span><span class="n">ID</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">authUserID</span>
+
+<span class="w">    </span><span class="n">respond</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">user</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusOK</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>我们使用 Guard 中间件来获取当前经过身份认证的用户 ID 并查询数据库。</p>
+<p>这一部分涵盖了后端的 OAuth 流程。在下一篇帖子中，我们将会看到如何开始与其他用户的对话。</p>
+<ul>
+<li><a href="https://github.com/nicolasparada/go-messenger-demo">源代码</a></li>
+</ul>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

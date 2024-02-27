@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>RHEL/CentOS 7中安装并配置 PowerDNS 和 PowerAdmin</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Marin Todorov PowerDNS是一个运行在许多Linux/Unix衍生版上的DNS服务器，它可以使用不同的后端进行配置，包括BIND类型的区域文件、关系型数据库，或者负载均衡/失效转移算法。它也可以被配置成一台 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/06/rhelcentos-7zhong-an-zhuang-bing-pei-zhi-powerdns-he-poweradmin.html" rel="bookmark"
+           title="Permalink to RHEL/CentOS 7中安装并配置 PowerDNS 和 PowerAdmin">RHEL/CentOS 7中安装并配置 PowerDNS 和 PowerAdmin</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-06-14T09:28:00+02:00">
+                Published: Sun 14 June 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Marin Todorov</p>
+<p>PowerDNS是一个运行在许多Linux/Unix衍生版上的DNS服务器，它可以使用不同的后端进行配置，包括BIND类型的区域文件、关系型数据库，或者负载均衡/失效转移算法。它也可以被配置成一台DNS递归器，作为服务器上的一个独立进程运行。</p>
+<p>PowerDNS授权服务器的最新版本是3.4.4，但是当前EPEL仓库中可以获得的版本是3.4.3。我推荐安装EPEL仓库中提供的那一个，因为该版本已经在CentOS和Fedora中测试过。那样，你也可以在今后很容易地更新PowerDNS。</p>
+<p>本文用于向你演示如何安装并配置以MariaDB作为后端的PowerDNS，以及它的界面友好的 Web 管理工具 PowerAdmin。</p>
+<p><img alt="" src="/data/attachment/album/201506/13/233536yuijovqx3qqj90gg.png"></p>
+<p>出于本文的写作目的，我将使用以下服务器：</p>
+<div class="highlight"><pre><span></span><code>主机名： centos7.localhost 
+IP地址： 192.168.0.102
+</code></pre></div>
+
+<h3>第一部分： 安装带有MariaDB后端的PowerDNS</h3>
+<p>1、 首先，你需要为你的系统启用EPEL仓库，只需使用：</p>
+<div class="highlight"><pre><span></span><code># yum install epel-release.noarch 
+</code></pre></div>
+
+<p><img alt="Enable Epel Repository" src="/data/attachment/album/201506/13/233541u0ci4c6es3y33sds.png"></p>
+<p><em>启用Epel仓库</em></p>
+<p>2、 下一步是安装MariaDB服务器。运行以下命令即可达成：</p>
+<div class="highlight"><pre><span></span><code># yum -y install mariadb-server mariadb
+</code></pre></div>
+
+<p><img alt="Install MariaDB Server" src="/data/attachment/album/201506/13/233542p3buljaupeu10551.png"></p>
+<p><em>安装MariaDB服务器</em></p>
+<p>3、 接下来，我们将配置并启用MariaDB，并设置开机启动：</p>
+<div class="highlight"><pre><span></span><code># systemctl enable mariadb.service
+# systemctl start mariadb.service
+</code></pre></div>
+
+<p><img alt="Enable Start MariaDB System Boot" src="/data/attachment/album/201506/13/233542wxkttidlkkdxdidk.png"></p>
+<p><em>启用MariaDB开机启动</em></p>
+<p>4、 现在MariaDB服务运行起来了，我们将为MariaDB设置密码进行安全加固，运行以下命令：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> mysql_secure_installation
+</code></pre></div>
+
+<p><strong>按照指示做</strong></p>
+<div class="highlight"><pre><span></span><code><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">mysql_secure_installation</span><span class="p">:</span><span class="w"> </span><span class="n">line</span><span class="w"> </span><span class="mi">379</span><span class="p">:</span><span class="w"> </span><span class="n">find_mysql_client</span><span class="p">:</span><span class="w"> </span><span class="n">command</span><span class="w"> </span><span class="ow">not</span><span class="w"> </span><span class="n">found</span>
+
+<span class="n">NOTE</span><span class="p">:</span><span class="w"> </span><span class="n">RUNNING</span><span class="w"> </span><span class="n">ALL</span><span class="w"> </span><span class="n">PARTS</span><span class="w"> </span><span class="n">OF</span><span class="w"> </span><span class="n">THIS</span><span class="w"> </span><span class="n">SCRIPT</span><span class="w"> </span><span class="n">IS</span><span class="w"> </span><span class="n">RECOMMENDED</span><span class="w"> </span><span class="n">FOR</span><span class="w"> </span><span class="n">ALL</span><span class="w"> </span><span class="n">MariaDB</span>
+<span class="w">      </span><span class="n">SERVERS</span><span class="w"> </span><span class="n">IN</span><span class="w"> </span><span class="n">PRODUCTION</span><span class="w"> </span><span class="n">USE</span><span class="o">!</span><span class="w">  </span><span class="n">PLEASE</span><span class="w"> </span><span class="n">READ</span><span class="w"> </span><span class="n">EACH</span><span class="w"> </span><span class="n">STEP</span><span class="w"> </span><span class="n">CAREFULLY</span><span class="o">!</span>
+
+<span class="n">In</span><span class="w"> </span><span class="n">order</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="nb">log</span><span class="w"> </span><span class="n">into</span><span class="w"> </span><span class="n">MariaDB</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">secure</span><span class="w"> </span><span class="n">it</span><span class="p">,</span><span class="w"> </span><span class="n">we</span><span class="s1">&#39;ll need the current</span>
+<span class="n">password</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">user</span><span class="o">.</span><span class="w">  </span><span class="n">If</span><span class="w"> </span><span class="n">you</span><span class="s1">&#39;ve just installed MariaDB, and</span>
+<span class="n">you</span><span class="w"> </span><span class="n">haven</span><span class="s1">&#39;t set the root password yet, the password will be blank,</span>
+<span class="n">so</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="n">should</span><span class="w"> </span><span class="n">just</span><span class="w"> </span><span class="n">press</span><span class="w"> </span><span class="n">enter</span><span class="w"> </span><span class="n">here</span><span class="o">.</span>
+
+<span class="n">Enter</span><span class="w"> </span><span class="n">current</span><span class="w"> </span><span class="n">password</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="p">(</span><span class="n">enter</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">none</span><span class="p">):</span><span class="w">  </span><span class="n">Press</span><span class="w"> </span><span class="n">ENTER</span>
+<span class="n">OK</span><span class="p">,</span><span class="w"> </span><span class="n">successfully</span><span class="w"> </span><span class="n">used</span><span class="w"> </span><span class="n">password</span><span class="p">,</span><span class="w"> </span><span class="n">moving</span><span class="w"> </span><span class="n">on</span><span class="o">...</span>
+
+<span class="n">Setting</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">password</span><span class="w"> </span><span class="n">ensures</span><span class="w"> </span><span class="n">that</span><span class="w"> </span><span class="n">nobody</span><span class="w"> </span><span class="n">can</span><span class="w"> </span><span class="nb">log</span><span class="w"> </span><span class="n">into</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">MariaDB</span>
+<span class="n">root</span><span class="w"> </span><span class="n">user</span><span class="w"> </span><span class="n">without</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">proper</span><span class="w"> </span><span class="n">authorisation</span><span class="o">.</span>
+
+<span class="n">Set</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">password</span><span class="err">?</span><span class="w"> </span><span class="p">[</span><span class="n">Y</span><span class="o">/</span><span class="n">n</span><span class="p">]</span><span class="w"> </span><span class="n">y</span><span class="w">     </span>
+<span class="n">New</span><span class="w"> </span><span class="n">password</span><span class="p">:</span><span class="w">  </span><span class="err">←</span><span class="w"> </span><span class="n">Set</span><span class="w"> </span><span class="n">New</span><span class="w"> </span><span class="n">Password</span>
+<span class="n">Re</span><span class="o">-</span><span class="n">enter</span><span class="w"> </span><span class="n">new</span><span class="w"> </span><span class="n">password</span><span class="p">:</span><span class="w">  </span><span class="err">←</span><span class="w"> </span><span class="n">Repeat</span><span class="w"> </span><span class="n">Above</span><span class="w"> </span><span class="n">Password</span>
+<span class="n">Password</span><span class="w"> </span><span class="n">updated</span><span class="w"> </span><span class="n">successfully</span><span class="o">!</span>
+<span class="n">Reloading</span><span class="w"> </span><span class="n">privilege</span><span class="w"> </span><span class="n">tables</span><span class="o">..</span>
+<span class="w"> </span><span class="o">...</span><span class="w"> </span><span class="n">Success</span><span class="o">!</span>
+
+
+<span class="n">By</span><span class="w"> </span><span class="n">default</span><span class="p">,</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">MariaDB</span><span class="w"> </span><span class="n">installation</span><span class="w"> </span><span class="n">has</span><span class="w"> </span><span class="n">an</span><span class="w"> </span><span class="n">anonymous</span><span class="w"> </span><span class="n">user</span><span class="p">,</span><span class="w"> </span><span class="n">allowing</span><span class="w"> </span><span class="n">anyone</span>
+<span class="n">to</span><span class="w"> </span><span class="nb">log</span><span class="w"> </span><span class="n">into</span><span class="w"> </span><span class="n">MariaDB</span><span class="w"> </span><span class="n">without</span><span class="w"> </span><span class="n">having</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">have</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">user</span><span class="w"> </span><span class="n">account</span><span class="w"> </span><span class="n">created</span><span class="w"> </span><span class="k">for</span>
+<span class="n">them</span><span class="o">.</span><span class="w">  </span><span class="n">This</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">intended</span><span class="w"> </span><span class="n">only</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">testing</span><span class="p">,</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">make</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">installation</span>
+<span class="n">go</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">bit</span><span class="w"> </span><span class="n">smoother</span><span class="o">.</span><span class="w">  </span><span class="n">You</span><span class="w"> </span><span class="n">should</span><span class="w"> </span><span class="n">remove</span><span class="w"> </span><span class="n">them</span><span class="w"> </span><span class="n">before</span><span class="w"> </span><span class="n">moving</span><span class="w"> </span><span class="n">into</span><span class="w"> </span><span class="n">a</span>
+<span class="n">production</span><span class="w"> </span><span class="n">environment</span><span class="o">.</span>
+
+<span class="n">Remove</span><span class="w"> </span><span class="n">anonymous</span><span class="w"> </span><span class="n">users</span><span class="err">?</span><span class="w"> </span><span class="p">[</span><span class="n">Y</span><span class="o">/</span><span class="n">n</span><span class="p">]</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="err">←</span><span class="w"> </span><span class="n">Choose</span><span class="w"> </span><span class="err">“</span><span class="n">y</span><span class="err">”</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">disable</span><span class="w"> </span><span class="n">that</span><span class="w"> </span><span class="n">user</span>
+<span class="w"> </span><span class="o">...</span><span class="w"> </span><span class="n">Success</span><span class="o">!</span>
+
+<span class="n">Normally</span><span class="p">,</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">should</span><span class="w"> </span><span class="n">only</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">allowed</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">connect</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="s1">&#39;localhost&#39;</span><span class="o">.</span><span class="w">  </span><span class="n">This</span>
+<span class="n">ensures</span><span class="w"> </span><span class="n">that</span><span class="w"> </span><span class="n">someone</span><span class="w"> </span><span class="n">cannot</span><span class="w"> </span><span class="n">guess</span><span class="w"> </span><span class="n">at</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">password</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">network</span><span class="o">.</span>
+
+<span class="n">Disallow</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">login</span><span class="w"> </span><span class="n">remotely</span><span class="err">?</span><span class="w"> </span><span class="p">[</span><span class="n">Y</span><span class="o">/</span><span class="n">n</span><span class="p">]</span><span class="w"> </span><span class="n">n</span><span class="w"> </span><span class="err">←</span><span class="w"> </span><span class="n">Choose</span><span class="w"> </span><span class="err">“</span><span class="n">n</span><span class="err">”</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">no</span>
+<span class="w"> </span><span class="o">...</span><span class="w"> </span><span class="n">skipping</span><span class="o">.</span>
+
+<span class="n">By</span><span class="w"> </span><span class="n">default</span><span class="p">,</span><span class="w"> </span><span class="n">MariaDB</span><span class="w"> </span><span class="n">comes</span><span class="w"> </span><span class="n">with</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">database</span><span class="w"> </span><span class="n">named</span><span class="w"> </span><span class="s1">&#39;test&#39;</span><span class="w"> </span><span class="n">that</span><span class="w"> </span><span class="n">anyone</span><span class="w"> </span><span class="n">can</span>
+<span class="n">access</span><span class="o">.</span><span class="w">  </span><span class="n">This</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">also</span><span class="w"> </span><span class="n">intended</span><span class="w"> </span><span class="n">only</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">testing</span><span class="p">,</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">should</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">removed</span>
+<span class="n">before</span><span class="w"> </span><span class="n">moving</span><span class="w"> </span><span class="n">into</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">production</span><span class="w"> </span><span class="n">environment</span><span class="o">.</span>
+
+<span class="n">Remove</span><span class="w"> </span><span class="n">test</span><span class="w"> </span><span class="n">database</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">access</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">it</span><span class="err">?</span><span class="w"> </span><span class="p">[</span><span class="n">Y</span><span class="o">/</span><span class="n">n</span><span class="p">]</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="err">←</span><span class="w"> </span><span class="n">Choose</span><span class="w"> </span><span class="err">“</span><span class="n">y</span><span class="err">”</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">yes</span>
+<span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">Dropping</span><span class="w"> </span><span class="n">test</span><span class="w"> </span><span class="n">database</span><span class="o">...</span>
+<span class="w"> </span><span class="o">...</span><span class="w"> </span><span class="n">Success</span><span class="o">!</span>
+<span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">Removing</span><span class="w"> </span><span class="n">privileges</span><span class="w"> </span><span class="n">on</span><span class="w"> </span><span class="n">test</span><span class="w"> </span><span class="n">database</span><span class="o">...</span>
+<span class="w"> </span><span class="o">...</span><span class="w"> </span><span class="n">Success</span><span class="o">!</span>
+
+<span class="n">Reloading</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">privilege</span><span class="w"> </span><span class="n">tables</span><span class="w"> </span><span class="n">will</span><span class="w"> </span><span class="n">ensure</span><span class="w"> </span><span class="n">that</span><span class="w"> </span><span class="n">all</span><span class="w"> </span><span class="n">changes</span><span class="w"> </span><span class="n">made</span><span class="w"> </span><span class="n">so</span><span class="w"> </span><span class="n">far</span>
+<span class="n">will</span><span class="w"> </span><span class="n">take</span><span class="w"> </span><span class="n">effect</span><span class="w"> </span><span class="n">immediately</span><span class="o">.</span>
+
+<span class="n">Reload</span><span class="w"> </span><span class="n">privilege</span><span class="w"> </span><span class="n">tables</span><span class="w"> </span><span class="n">now</span><span class="err">?</span><span class="w"> </span><span class="p">[</span><span class="n">Y</span><span class="o">/</span><span class="n">n</span><span class="p">]</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="err">←</span><span class="w"> </span><span class="n">Choose</span><span class="w"> </span><span class="err">“</span><span class="n">y</span><span class="err">”</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">yes</span>
+<span class="w"> </span><span class="o">...</span><span class="w"> </span><span class="n">Success</span><span class="o">!</span>
+
+<span class="n">Cleaning</span><span class="w"> </span><span class="n">up</span><span class="o">...</span>
+
+<span class="n">All</span><span class="w"> </span><span class="n">done</span><span class="o">!</span><span class="w">  </span><span class="n">If</span><span class="w"> </span><span class="n">you</span><span class="s1">&#39;ve completed all of the above steps, your MariaDB</span>
+<span class="n">installation</span><span class="w"> </span><span class="n">should</span><span class="w"> </span><span class="n">now</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">secure</span><span class="o">.</span>
+
+<span class="n">Thanks</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">using</span><span class="w"> </span><span class="n">MariaDB</span><span class="o">!</span>
+</code></pre></div>
+
+<p>5、 MariaDB配置成功后，我们可以继续去安装PowerDNS。运行以下命令即可轻易完成：</p>
+<div class="highlight"><pre><span></span><code># yum -y install pdns pdns-backend-mysql
+</code></pre></div>
+
+<p><img alt="Install PowerDNS with MariaDB Backend" src="/data/attachment/album/201506/13/233543bx67fuezxehluyuk.png"></p>
+<p><em>安装带有MariaDB后端的PowerDNS</em></p>
+<p>6、 PowerDNS的配置文件位于<code>/etc/pdns/pdns</code>，在编辑之前，我们将为PowerDNS服务配置一个MariaDB数据库。首先，我们将连接到MariaDB服务器并创建一个名为powerdns的数据库：</p>
+<div class="highlight"><pre><span></span><code># mysql -u root -p
+MariaDB [(none)]&gt; CREATE DATABASE powerdns;
+</code></pre></div>
+
+<p><img alt="Create PowerDNS Database" src="/data/attachment/album/201506/13/233543bsobejd8gt8t8kzr.png"></p>
+<p><em>创建PowerDNS数据库</em></p>
+<p>7、 接下来，我们将创建一个名为powerdns的数据库用户：</p>
+<div class="highlight"><pre><span></span><code>MariaDB [(none)]&gt; GRANT ALL ON powerdns.* TO &#39;powerdns&#39;@&#39;localhost&#39; IDENTIFIED BY ‘tecmint123’;
+MariaDB [(none)]&gt; GRANT ALL ON powerdns.* TO &#39;powerdns&#39;@&#39;centos7.localdomain&#39; IDENTIFIED BY &#39;tecmint123&#39;;
+MariaDB [(none)]&gt; FLUSH PRIVILEGES;
+</code></pre></div>
+
+<p><img alt="Create PowerDNS User" src="/data/attachment/album/201506/13/233543tpwpgqrgsl24g2cy.png"></p>
+<p><em>创建PowerDNS用户</em></p>
+<p><strong>注意</strong>： 请将“tecmint123”替换为你想要设置的实际密码。</p>
+<p>8、 我们继续创建PowerDNS要使用的数据库表。像堆积木一样执行以下这些：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">MariaDB</span><span class="w"> </span><span class="p">[(</span><span class="nx">none</span><span class="p">)]&gt;</span><span class="w"> </span><span class="nx">USE</span><span class="w"> </span><span class="nx">powerdns</span><span class="p">;</span>
+<span class="nx">MariaDB</span><span class="w"> </span><span class="p">[(</span><span class="nx">none</span><span class="p">)]&gt;</span><span class="w"> </span><span class="nx">CREATE</span><span class="w"> </span><span class="nx">TABLE</span><span class="w"> </span><span class="nx">domains</span><span class="w"> </span><span class="p">(</span>
+<span class="nx">id</span><span class="w"> </span><span class="nx">INT</span><span class="w"> </span><span class="nx">auto_increment</span><span class="p">,</span>
+<span class="nx">name</span><span class="w"> </span><span class="nx">VARCHAR</span><span class="p">(</span><span class="mi">255</span><span class="p">)</span><span class="w"> </span><span class="nx">NOT</span><span class="w"> </span><span class="nx">NULL</span><span class="p">,</span>
+<span class="nx">master</span><span class="w"> </span><span class="nx">VARCHAR</span><span class="p">(</span><span class="mi">128</span><span class="p">)</span><span class="w"> </span><span class="nx">DEFAULT</span><span class="w"> </span><span class="nx">NULL</span><span class="p">,</span>
+<span class="nx">last_check</span><span class="w"> </span><span class="nx">INT</span><span class="w"> </span><span class="nx">DEFAULT</span><span class="w"> </span><span class="nx">NULL</span><span class="p">,</span>
+<span class="k">type</span><span class="w"> </span><span class="nx">VARCHAR</span><span class="p">(</span><span class="mi">6</span><span class="p">)</span><span class="w"> </span><span class="nx">NOT</span><span class="w"> </span><span class="nx">NULL</span><span class="p">,</span>
+<span class="nx">notified_serial</span><span class="w"> </span><span class="nx">INT</span><span class="w"> </span><span class="nx">DEFAULT</span><span class="w"> </span><span class="nx">NULL</span><span class="p">,</span>
+<span class="nx">account</span><span class="w"> </span><span class="nx">VARCHAR</span><span class="p">(</span><span class="mi">40</span><span class="p">)</span><span class="w"> </span><span class="nx">DEFAULT</span><span class="w"> </span><span class="nx">NULL</span><span class="p">,</span>
+<span class="nx">primary</span><span class="w"> </span><span class="nx">key</span><span class="w"> </span><span class="p">(</span><span class="nx">id</span><span class="p">)</span>
+<span class="p">);</span>
+</code></pre></div>
+
+<p><img alt="Create Table Domains for PowerDNS" src="/data/attachment/album/201506/13/233546ce20hll0oio6a00k.png"></p>
+<p><em>创建用于PowerDNS的表domains</em></p>
+<div class="highlight"><pre><span></span><code><span class="nx">MariaDB</span><span class="w"> </span><span class="p">[(</span><span class="nx">none</span><span class="p">)]&gt;</span><span class="w"> </span><span class="nx">CREATE</span><span class="w"> </span><span class="nx">UNIQUE</span><span class="w"> </span><span class="nx">INDEX</span><span class="w"> </span><span class="nx">name_index</span><span class="w"> </span><span class="nx">ON</span><span class="w"> </span><span class="nx">domains</span><span class="p">(</span><span class="nx">name</span><span class="p">);</span>
+<span class="nx">MariaDB</span><span class="w"> </span><span class="p">[(</span><span class="nx">none</span><span class="p">)]&gt;</span><span class="w"> </span><span class="nx">CREATE</span><span class="w"> </span><span class="nx">TABLE</span><span class="w"> </span><span class="nx">records</span><span class="w"> </span><span class="p">(</span>
+<span class="nx">id</span><span class="w"> </span><span class="nx">INT</span><span class="w"> </span><span class="nx">auto_increment</span><span class="p">,</span>
+<span class="nx">domain_id</span><span class="w"> </span><span class="nx">INT</span><span class="w"> </span><span class="nx">DEFAULT</span><span class="w"> </span><span class="nx">NULL</span><span class="p">,</span>
+<span class="nx">name</span><span class="w"> </span><span class="nx">VARCHAR</span><span class="p">(</span><span class="mi">255</span><span class="p">)</span><span class="w"> </span><span class="nx">DEFAULT</span><span class="w"> </span><span class="nx">NULL</span><span class="p">,</span>
+<span class="k">type</span><span class="w"> </span><span class="nx">VARCHAR</span><span class="p">(</span><span class="mi">6</span><span class="p">)</span><span class="w"> </span><span class="nx">DEFAULT</span><span class="w"> </span><span class="nx">NULL</span><span class="p">,</span>
+<span class="nx">content</span><span class="w"> </span><span class="nx">VARCHAR</span><span class="p">(</span><span class="mi">255</span><span class="p">)</span><span class="w"> </span><span class="nx">DEFAULT</span><span class="w"> </span><span class="nx">NULL</span><span class="p">,</span>
+<span class="nx">ttl</span><span class="w"> </span><span class="nx">INT</span><span class="w"> </span><span class="nx">DEFAULT</span><span class="w"> </span><span class="nx">NULL</span><span class="p">,</span>
+<span class="nx">prio</span><span class="w"> </span><span class="nx">INT</span><span class="w"> </span><span class="nx">DEFAULT</span><span class="w"> </span><span class="nx">NULL</span><span class="p">,</span>
+<span class="nx">change_date</span><span class="w"> </span><span class="nx">INT</span><span class="w"> </span><span class="nx">DEFAULT</span><span class="w"> </span><span class="nx">NULL</span><span class="p">,</span>
+<span class="nx">primary</span><span class="w"> </span><span class="nx">key</span><span class="p">(</span><span class="nx">id</span><span class="p">)</span>
+<span class="p">);</span>
+</code></pre></div>
+
+<p><img alt="Create Table Records for PowerDNS" src="/data/attachment/album/201506/13/233548qyhfbfv36vwhof5f.png"></p>
+<p><em>创建用于PowerDNS的表 records</em></p>
+<div class="highlight"><pre><span></span><code><span class="nx">MariaDB</span><span class="w"> </span><span class="p">[(</span><span class="nx">none</span><span class="p">)]&gt;</span><span class="w"> </span><span class="nx">CREATE</span><span class="w"> </span><span class="nx">INDEX</span><span class="w"> </span><span class="nx">rec_name_index</span><span class="w"> </span><span class="nx">ON</span><span class="w"> </span><span class="nx">records</span><span class="p">(</span><span class="nx">name</span><span class="p">);</span>
+<span class="nx">MariaDB</span><span class="w"> </span><span class="p">[(</span><span class="nx">none</span><span class="p">)]&gt;</span><span class="w"> </span><span class="nx">CREATE</span><span class="w"> </span><span class="nx">INDEX</span><span class="w"> </span><span class="nx">nametype_index</span><span class="w"> </span><span class="nx">ON</span><span class="w"> </span><span class="nx">records</span><span class="p">(</span><span class="nx">name</span><span class="p">,</span><span class="k">type</span><span class="p">);</span>
+<span class="nx">MariaDB</span><span class="w"> </span><span class="p">[(</span><span class="nx">none</span><span class="p">)]&gt;</span><span class="w"> </span><span class="nx">CREATE</span><span class="w"> </span><span class="nx">INDEX</span><span class="w"> </span><span class="nx">domain_id</span><span class="w"> </span><span class="nx">ON</span><span class="w"> </span><span class="nx">records</span><span class="p">(</span><span class="nx">domain_id</span><span class="p">);</span>
+</code></pre></div>
+
+<p><img alt="Create Index of Table" src="/data/attachment/album/201506/13/233549zfed8fdznsdhhljs.png"></p>
+<p><em>创建表索引</em></p>
+<div class="highlight"><pre><span></span><code>MariaDB [(none)]&gt; CREATE TABLE supermasters (
+ip VARCHAR(25) NOT NULL,
+nameserver VARCHAR(255) NOT NULL,
+account VARCHAR(40) DEFAULT NULL
+);
+</code></pre></div>
+
+<p><img alt="Create Table Supermaster" src="/data/attachment/album/201506/13/233552ink0onndo0006o1e.png"></p>
+<p><em>创建表supermasters</em></p>
+<p>你现在可以输入以下命令退出MariaDB控制台：</p>
+<div class="highlight"><pre><span></span><code>MariaDB [(none)]&gt; quit;
+</code></pre></div>
+
+<p>9、 最后，我们可以继续配置PowerDNS了，以MariaDB作为后台。请打开PowerDNS的配置文件：</p>
+<div class="highlight"><pre><span></span><code># vim /etc/pdns/pdns.conf 
+</code></pre></div>
+
+<p>在该文件中查找像下面这样的行：</p>
+<div class="highlight"><pre><span></span><code>#################################
+# launch        Which backends to launch and order to query them in
+#
+# launch=
+</code></pre></div>
+
+<p>在这后面放置以下代码：</p>
+<div class="highlight"><pre><span></span><code>launch=gmysql
+gmysql-host=localhost
+gmysql-user=powerdns
+gmysql-password=user-pass
+gmysql-dbname=powerdns
+</code></pre></div>
+
+<p>修改“user-pass”为你先前设置的实际密码，配置如下：</p>
+<p><img alt="Configure PowerDNS" src="/data/attachment/album/201506/13/233552wpbqquq33mqazqq4.png"></p>
+<p><em>配置PowerDNS</em></p>
+<p>保存修改并退出。</p>
+<p>10、 现在，我们将启动并添加PowerDNS到系统开机启动列表：</p>
+<div class="highlight"><pre><span></span><code># systemctl enable pdns.service 
+# systemctl start pdns.service 
+</code></pre></div>
+
+<p><img alt="Enable and Start PowerDNS" src="/data/attachment/album/201506/13/233553tae7ukbckt17bkz9.png"></p>
+<p><em>启用并启动PowerDNS</em></p>
+<p>到这一步，你的PowerDNS服务器已经起来并运行了。要获取更多关于PowerDNS的信息，你可以参考手册<a href="http://downloads.powerdns.com/documentation/html/index.html">http://downloads.powerdns.com/documentation/html/index.html</a>。</p>
+<h3>第二部分： 安装PowerAdmin来管理PowerDNS</h3>
+<p>11、 现在，我们将安装PowerAdmin——一个界面友好的PowerDNS服务器的 Web 管理器。由于它是用PHP写的，我们将需要安装PHP和一台网络服务器（Apache）：</p>
+<div class="highlight"><pre><span></span><code># yum install httpd php php-devel php-gd php-imap php-ldap php-mysql php-odbc php-pear php-xml php-xmlrpc php-mbstring php-mcrypt php-mhash gettext
+</code></pre></div>
+
+<p><img alt="Install Apache PHP" src="/data/attachment/album/201506/13/233556jrsrazjzcr1sesdc.jpg"></p>
+<p><em>安装Apache 和 PHP</em></p>
+<p>PowerAdmin也需要两个PEAR包：</p>
+<div class="highlight"><pre><span></span><code># yum -y install php-pear-DB php-pear-MDB2-Driver-mysql 
+</code></pre></div>
+
+<p><img alt="Install Pear" src="/data/attachment/album/201506/13/233558qqe6lq6x24xvl2gl.jpg"></p>
+<p><em>安装Pear</em></p>
+<p>你也可以参考一下文章了解CentOS 7中安装LAMP堆栈的完整指南：</p>
+<ul>
+<li><a href="http://www.tecmint.com/install-lamp-in-centos-7/">CentOS 7中安装LAMP</a></li>
+</ul>
+<p>安装完成后，我们将需要启动并设置Apache开机启动：</p>
+<div class="highlight"><pre><span></span><code># systemctl enable httpd.service
+# systemctl start httpd.service
+</code></pre></div>
+
+<p><img alt="Enable Start Apache System Boot" src="/data/attachment/album/201506/13/233559r0fddga5xe0ff00f.png"></p>
+<p><em>启用Apache开机启动</em></p>
+<p>12、 由于已经满足PowerAdmin的所有系统要求，我们可以继续下载软件包。因为Apache默认的网页目录位于/var/www/html/，我们将下载软件包到这里。</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># cd /var/www/html/</span>
+<span class="c1"># wget http://downloads.sourceforge.net/project/poweradmin/poweradmin-2.1.7.tgz </span>
+<span class="c1"># tar xfv poweradmin-2.1.7.tgz</span>
+</code></pre></div>
+
+<p><img alt="Download PowerAdmin" src="/data/attachment/album/201506/13/233602kg0bn2pdjwov0gbo.jpg"></p>
+<p><em>下载PowerAdmin</em></p>
+<p>13、 现在，我们可以启动PowerAdmin的网页安装器了，只需打开：</p>
+<div class="highlight"><pre><span></span><code>http://192.168.0.102/poweradmin-2.1.7/install/
+</code></pre></div>
+
+<p>这会进入安装过程的第一步：</p>
+<p><img alt="Select Installation Language" src="/data/attachment/album/201506/13/233603jgknnznjf0vnlncp.png"></p>
+<p><em>选择安装语言</em></p>
+<p>上面的页面会要求你为PowerAdmin选择语言，请选择你想要使用的那一个，然后点击“进入步骤 2”按钮。</p>
+<p>14、 安装器需要PowerDNS数据库：</p>
+<p><img alt="PowerDNS Database" src="/data/attachment/album/201506/13/233604lxne1e5w5rsew8q6.png"></p>
+<p><em>PowerDNS数据库</em></p>
+<p>15、 因为我们已经创建了一个数据库，所以我们可以继续进入下一步。你会被要求提供先前配置的数据库详情，你也需要为Poweradmin设置管理员密码：</p>
+<p><img alt="Enter PowerDNS Database Settings" src="/data/attachment/album/201506/13/233605l5355hlqeqpqc4lo.png"></p>
+<p><em>输入PowerDNS数据库配置</em></p>
+<p>16、 输入这些信息后，进入步骤 4。你将创建为Poweradmin创建一个受限用户。这里你需要输入的字段是：</p>
+<ul>
+<li>用户名（Username） - PowerAdmin用户名。</li>
+<li>密码（Password） – 上述用户的密码。</li>
+<li>主机管理员（Hostmaster） - 当创建SOA记录而你没有指定主机管理员时，该值会被用作默认值。</li>
+<li>主域名服务器 - 该值在创建新的DNS区域时会被用于作为主域名服务器。</li>
+<li>辅域名服务器 – 该值在创建新的DNS区域时会被用于作为辅域名服务器。</li>
+</ul>
+<p><img alt="PowerDNS Configuration Settings" src="/data/attachment/album/201506/13/233607zo11vci47ntodvv9.png"></p>
+<p><em>PowerDNS配置设置</em></p>
+<p>17、 在下一步中，Poweradmin会要求你在数据库表中创建一个新的受限数据库用户，它会提供你需要在MariaDB控制台输入的代码：</p>
+<p><img alt="Create New Database User" src="/data/attachment/album/201506/13/233608u9acfinnnxiz1j9j.png"></p>
+<p><em>创建新的数据库用户</em></p>
+<p>18、 现在打开终端并运行：</p>
+<div class="highlight"><pre><span></span><code># mysql -u root -p
+</code></pre></div>
+
+<p>提供你的密码并执行由PowerAdmin提供的代码：</p>
+<div class="highlight"><pre><span></span><code>MariaDB [(none)]&gt; GRANT SELECT, INSERT, UPDATE, DELETE
+ON powerdns.*
+TO &#39;powermarin&#39;@&#39;localhost&#39;
+IDENTIFIED BY &#39;123qweasd&#39;;
+</code></pre></div>
+
+<p><img alt="Grant Mysql Permissions to User" src="/data/attachment/album/201506/13/233610bexxni8rndge9dsh.png"></p>
+<p><em>为用户授予Mysql权限</em></p>
+<p>19、 现在，回到浏览器中并继续下一步。安装器将尝试创建配置文件到/var/www/html/poweradmin-2.1.7/inc。</p>
+<p>文件名是config.inc.php。为防止该脚本没有写权限，你可以手动复制这些内容到上述文件中：</p>
+<p><img alt="Configuration Settings of PowerDNS" src="/data/attachment/album/201506/13/233611qczd6p33n4ljvrv9.png"></p>
+<p><em>配置PowerDNS设置</em></p>
+<p>20、 现在，进入最后页面，该页面会告知你安装已经完成以及如何访问安装好的PowerAdmin：</p>
+<p><img alt="PowerDNS Installation Completed" src="/data/attachment/album/201506/13/233613taxng16l2d2zs2rr.png"></p>
+<p><em>PowerDNS安装完成</em></p>
+<p>你可以通过运行以下命令来启用用于其他动态DNS提供商的URL：</p>
+<div class="highlight"><pre><span></span><code># cp install/htaccess.dist .htaccess 
+</code></pre></div>
+
+<p>出于该目的，你将需要在Apache的配置中启用mod_rewrite。</p>
+<p>21、 现在，需要移除从PowerAdmin的根目录中移除“install”文件夹，这一点很重要。使用以下命令：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># rm -fr /var/www/html/poweradmin/install/</span>
+</code></pre></div>
+
+<p>在此之后，你可以通过以下方式访问PowerAdmin：</p>
+<div class="highlight"><pre><span></span><code>http://192.168.0.102/poweradmin-2.1.7/
+</code></pre></div>
+
+<p><img alt="PowerDNS Login" src="/data/attachment/album/201506/13/233614zj37eo6wiii347ox.png"></p>
+<p><em>PowerDNS登录</em></p>
+<p>在登录后，你应该会看到PowerAdmin的主页：</p>
+<p><img alt="PowerDNS Dashboard" src="/data/attachment/album/201506/13/233615dscgjgpzdha6zdjl.png"></p>
+<p><em>PowerDNS仪表盘</em></p>
+<p>到这里，安装已经完成了，你也可以开始管理你的DNS区域了。</p>
+<h3>第三部分： PowerDNS中添加、编辑和删除DNS区域</h3>
+<p>22、 要添加新的主区域，只需点击“添加主区域”：</p>
+<p><img alt="Add Master Zone" src="/data/attachment/album/201506/13/233617wt49kztfghgjy5y5.png"></p>
+<p><em>添加主区域</em></p>
+<p>在下一页中，你需要填写一些东西：</p>
+<ul>
+<li>域（Domain） – 你要添加区域的域。</li>
+<li>所有者（Owner） – 设置DNS区域的所有者。</li>
+<li>模板（Template）– DNS模板 – 留空。</li>
+<li>DNSSEC – 域名系统安全扩展（可选——看看你是否需要）。</li>
+</ul>
+<p>点击“添加区域”按钮来添加DNS区域。</p>
+<p><img alt="Master DNS Zone" src="/data/attachment/album/201506/13/233618awkozrtununwpwjz.png"></p>
+<p><em>主DNS区域</em></p>
+<p>现在，你可以点击“首页”链接回到PowerAdmin的首页。要查看所有现存的DNS区域，只需转到“列出区域（List Zones）”：</p>
+<p><img alt="Check List of Zones" src="/data/attachment/album/201506/13/233619aru45mvrmwdu2r2d.png"></p>
+<p><em>查看区域列表</em></p>
+<p>你现在应该看到一个可用DNS区域列表：</p>
+<p><img alt="Check List of DNS Zones" src="/data/attachment/album/201506/13/233621cnj90p2nqqn1x0hn.png"></p>
+<p><em>检查DNS区域列表</em></p>
+<p>23、 要编辑现存DNS区域或者添加新的记录，点击编辑图标：</p>
+<p><img alt="Edit DNS Zone" src="/data/attachment/album/201506/13/233622fajzl7wfffddaw0a.png"></p>
+<p><em>编辑DNS区域</em></p>
+<p>在接下来的页面，你会看到你选择的DNS区域的条目：</p>
+<p><img alt="Domain DNS Zone Entries" src="/data/attachment/album/201506/13/233624c794kyll330dmq44.png"></p>
+<p><em>域名的DNS区域条目</em></p>
+<p>24、 在此处添加新的DNS条目，你需要设置以下信息：</p>
+<ul>
+<li>名称（Name） – 条目名称。只需添加域/子域的第一部分，PowerAdmin会添加剩下的。</li>
+<li>类型（Type） – 选择记录类型。</li>
+<li>优先级（Priority） – 记录优先级。</li>
+<li>TTL – 存活时间，以秒计算。</li>
+</ul>
+<p>出于本文目的，我将为子域new.example.com添加一个A记录用于解析IP地址192.168.0.102，设置存活时间为14400秒：</p>
+<p><img alt="Add New DNS Record" src="/data/attachment/album/201506/13/233624nmx4vlmmlauf2l5a.png"></p>
+<p><em>添加新DNS记录</em></p>
+<p>最后，点击“添加记录”按钮。</p>
+<p>25、 如果你想要删除DNS区域，你可以回到“列出区域”页面，然后点击你想要删除的DNS区域旁边“垃圾桶”图标：</p>
+<p><img alt="Delete DNS Zone" src="/data/attachment/album/201506/13/233625wlw2ij8ojfhhphr1.png"></p>
+<p><em>删除DNS区域</em></p>
+<p>Poweradmin将问你是否确定想要删除DNS区域。只需点击“是”来完成删除。</p>
+<p>如要获取更多关于怎样创建、编辑和删除区域的说明，你可以参与Poweradmin的文档：<a href="https://github.com/poweradmin/poweradmin/wiki/Documentation">https://github.com/poweradmin/poweradmin/wiki/Documentation</a></p>
+<p>我希望你已经发现本文很有趣，也很有用。一如既往，如果你有问题或要发表评论，请别犹豫，在下面评论区提交你的评论吧。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

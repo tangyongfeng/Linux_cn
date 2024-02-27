@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>开发一个 Linux 调试器（五）：源码和信号</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Simon Brand 在上一部分我们学习了关于 DWARF 的信息，以及它如何被用于读取变量和将被执行的机器码与我们的高级语言的源 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/08/kai-fa-yi-ge-linux-diao-shi-qi-wu-yuan-ma-he-xin-hao.html" rel="bookmark"
+           title="Permalink to 开发一个 Linux 调试器（五）：源码和信号">开发一个 Linux 调试器（五）：源码和信号</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-08-26T17:55:00+02:00">
+                Published: Sat 26 August 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Simon Brand</p>
+<p><img alt="" src="/data/attachment/album/201708/26/175338u3rarihzal14s8sg.jpg"></p>
+<p>在上一部分我们学习了关于 DWARF 的信息，以及它如何被用于读取变量和将被执行的机器码与我们的高级语言的源码联系起来。在这一部分，我们将进入实践，实现一些我们调试器后面会使用的 DWARF 原语。我们也会利用这个机会，使我们的调试器可以在命中一个断点时打印出当前的源码上下文。</p>
+<h3>系列文章索引</h3>
+<p>随着后面文章的发布，这些链接会逐渐生效。</p>
+<ol>
+<li><a href="/article-8626-1.html">准备环境</a></li>
+<li><a href="/article-8645-1.html">断点</a></li>
+<li><a href="/article-8663-1.html">寄存器和内存</a></li>
+<li><a href="/article-8719-1.html">Elves 和 dwarves</a></li>
+<li><a href="https://blog.tartanllama.xyz/c++/2017/04/24/writing-a-linux-debugger-source-signal/">源码和信号</a></li>
+<li><a href="https://blog.tartanllama.xyz/c++/2017/05/06/writing-a-linux-debugger-dwarf-step/">源码级逐步执行</a></li>
+<li>源码级断点</li>
+<li>调用栈展开</li>
+<li>读取变量</li>
+<li>下一步</li>
+</ol>
+<h3>设置我们的 DWARF 解析器</h3>
+<p>正如我在这系列文章开始时备注的，我们会使用 <a href="https://github.com/TartanLlama/libelfin/tree/fbreg">libelfin</a> 来处理我们的 DWARF 信息。希望你已经在<a href="/article-8626-1.html">第一部分</a>设置好了这些，如果没有的话，现在做吧，确保你使用我仓库的 <code>fbreg</code> 分支。</p>
+<p>一旦你构建好了 <code>libelfin</code>，就可以把它添加到我们的调试器。第一步是解析我们的 ELF 可执行程序并从中提取 DWARF 信息。使用 <code>libelfin</code> 可以轻易实现，只需要对<code>调试器</code>作以下更改：</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="n">debugger</span><span class="w"> </span><span class="p">{</span>
+<span class="n">public</span><span class="p">:</span>
+<span class="w">    </span><span class="n">debugger</span><span class="w"> </span><span class="p">(</span><span class="n">std</span><span class="p">::</span><span class="n">string</span><span class="w"> </span><span class="n">prog_name</span><span class="p">,</span><span class="w"> </span><span class="n">pid_t</span><span class="w"> </span><span class="n">pid</span><span class="p">)</span>
+<span class="w">         </span><span class="p">:</span><span class="w"> </span><span class="n">m_prog_name</span><span class="p">{</span><span class="n">std</span><span class="p">::</span><span class="n">move</span><span class="p">(</span><span class="n">prog_name</span><span class="p">)},</span><span class="w"> </span><span class="n">m_pid</span><span class="p">{</span><span class="n">pid</span><span class="p">}</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">auto</span><span class="w"> </span><span class="n">fd</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">open</span><span class="p">(</span><span class="n">m_prog_name</span><span class="o">.</span><span class="n">c_str</span><span class="p">(),</span><span class="w"> </span><span class="n">O_RDONLY</span><span class="p">);</span>
+
+<span class="w">        </span><span class="n">m_elf</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">elf</span><span class="p">::</span><span class="n">elf</span><span class="p">{</span><span class="n">elf</span><span class="p">::</span><span class="n">create_mmap_loader</span><span class="p">(</span><span class="n">fd</span><span class="p">)};</span>
+<span class="w">        </span><span class="n">m_dwarf</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dwarf</span><span class="p">::</span><span class="n">dwarf</span><span class="p">{</span><span class="n">dwarf</span><span class="p">::</span><span class="n">elf</span><span class="p">::</span><span class="n">create_loader</span><span class="p">(</span><span class="n">m_elf</span><span class="p">)};</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="o">//...</span>
+
+<span class="n">private</span><span class="p">:</span>
+<span class="w">    </span><span class="o">//...</span>
+<span class="w">    </span><span class="n">dwarf</span><span class="p">::</span><span class="n">dwarf</span><span class="w"> </span><span class="n">m_dwarf</span><span class="p">;</span>
+<span class="w">    </span><span class="n">elf</span><span class="p">::</span><span class="n">elf</span><span class="w"> </span><span class="n">m_elf</span><span class="p">;</span>
+<span class="p">};</span>
+</code></pre></div>
+
+<p>我们使用了 <code>open</code> 而不是 <code>std::ifstream</code>，因为 elf 加载器需要传递一个 UNIX 文件描述符给 <code>mmap</code>，从而可以将文件映射到内存而不是每次读取一部分。</p>
+<h3>调试信息原语</h3>
+<p>下一步我们可以实现从程序计数器的值中提取行条目（line entry）以及函数 DWARF 信息条目（function DIE）的函数。我们从 <code>get_function_from_pc</code> 开始：</p>
+<div class="highlight"><pre><span></span><code><span class="n">dwarf</span><span class="p">::</span><span class="n">die</span><span class="w"> </span><span class="n">debugger</span><span class="p">::</span><span class="n">get_function_from_pc</span><span class="p">(</span><span class="n">uint64_t</span><span class="w"> </span><span class="n">pc</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">auto</span><span class="w"> </span><span class="o">&amp;</span><span class="n">cu</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">m_dwarf</span><span class="o">.</span><span class="n">compilation_units</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">die_pc_range</span><span class="p">(</span><span class="n">cu</span><span class="o">.</span><span class="n">root</span><span class="p">())</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">pc</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">die</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">cu</span><span class="o">.</span><span class="n">root</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">die</span><span class="o">.</span><span class="n">tag</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">dwarf</span><span class="p">::</span><span class="n">DW_TAG</span><span class="p">::</span><span class="n">subprogram</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">die_pc_range</span><span class="p">(</span><span class="n">die</span><span class="p">)</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">pc</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                        </span><span class="k">return</span><span class="w"> </span><span class="n">die</span><span class="p">;</span>
+<span class="w">                    </span><span class="p">}</span>
+<span class="w">                </span><span class="p">}</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="n">throw</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">out_of_range</span><span class="p">{</span><span class="s2">&quot;Cannot find function&quot;</span><span class="p">};</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这里我采用了朴素的方法，迭代遍历编译单元直到找到一个包含程序计数器的，然后迭代遍历它的子节点直到我们找到相关函数（<code>DW_TAG_subprogram</code>）。正如我在上一篇中提到的，如果你想要的话你可以处理类似的成员函数或者内联等情况。</p>
+<p>接下来是 <code>get_line_entry_from_pc</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">dwarf</span><span class="o">::</span><span class="nx">line_table</span><span class="o">::</span><span class="nx">iterator</span><span class="w"> </span><span class="nx">debugger</span><span class="o">::</span><span class="nx">get_line_entry_from_pc</span><span class="p">(</span><span class="nx">uint64_t</span><span class="w"> </span><span class="nx">pc</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">auto</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">cu</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="nx">m_dwarf</span><span class="p">.</span><span class="nx">compilation_units</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">die_pc_range</span><span class="p">(</span><span class="nx">cu</span><span class="p">.</span><span class="nx">root</span><span class="p">()).</span><span class="nx">contains</span><span class="p">(</span><span class="nx">pc</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="kt">auto</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">lt</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">cu</span><span class="p">.</span><span class="nx">get_line_table</span><span class="p">();</span>
+<span class="w">            </span><span class="kt">auto</span><span class="w"> </span><span class="nx">it</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">lt</span><span class="p">.</span><span class="nx">find_address</span><span class="p">(</span><span class="nx">pc</span><span class="p">);</span>
+<span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">it</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nx">lt</span><span class="p">.</span><span class="nx">end</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="nx">throw</span><span class="w"> </span><span class="nx">std</span><span class="o">::</span><span class="nx">out_of_range</span><span class="p">{</span><span class="s">&quot;Cannot find line entry&quot;</span><span class="p">};</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">            </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="k">return</span><span class="w"> </span><span class="nx">it</span><span class="p">;</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="nx">throw</span><span class="w"> </span><span class="nx">std</span><span class="o">::</span><span class="nx">out_of_range</span><span class="p">{</span><span class="s">&quot;Cannot find line entry&quot;</span><span class="p">};</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>同样，我们可以简单地找到正确的编译单元，然后查询行表获取相关的条目。</p>
+<h3>打印源码</h3>
+<p>当我们命中一个断点或者逐步执行我们的代码时，我们会想知道处于源码中的什么位置。</p>
+<div class="highlight"><pre><span></span><code><span class="nb nb-Type">void</span><span class="w"> </span><span class="n">debugger</span><span class="p">::</span><span class="n">print_source</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">string</span><span class="o">&amp;</span><span class="w"> </span><span class="n">file_name</span><span class="p">,</span><span class="w"> </span><span class="n">unsigned</span><span class="w"> </span><span class="n">line</span><span class="p">,</span><span class="w"> </span><span class="n">unsigned</span><span class="w"> </span><span class="n">n_lines_context</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">std</span><span class="p">::</span><span class="n">ifstream</span><span class="w"> </span><span class="n">file</span><span class="w"> </span><span class="p">{</span><span class="n">file_name</span><span class="p">};</span>
+
+<span class="w">    </span><span class="o">//</span><span class="err">获得一个所需行附近的窗口</span>
+<span class="w">    </span><span class="n">auto</span><span class="w"> </span><span class="n">start_line</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">line</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="n">n_lines_context</span><span class="w"> </span><span class="err">?</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">line</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">n_lines_context</span><span class="p">;</span>
+<span class="w">    </span><span class="n">auto</span><span class="w"> </span><span class="n">end_line</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">line</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">n_lines_context</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="n">line</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">n_lines_context</span><span class="w"> </span><span class="err">?</span><span class="w"> </span><span class="n">n_lines_context</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">line</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+
+<span class="w">    </span><span class="nb">char</span><span class="w"> </span><span class="n">c</span><span class="p">{};</span>
+<span class="w">    </span><span class="n">auto</span><span class="w"> </span><span class="n">current_line</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="n">u</span><span class="p">;</span>
+<span class="w">    </span><span class="o">//</span><span class="err">跳过</span><span class="w"> </span><span class="n">start_line</span><span class="w"> </span><span class="err">之前的行</span>
+<span class="w">    </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="n">current_line</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">start_line</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">file</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">c</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">c</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="o">++</span><span class="n">current_line</span><span class="p">;</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="o">//</span><span class="err">如果我们在当前行则输出光标</span>
+<span class="w">    </span><span class="n">std</span><span class="p">::</span><span class="n">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="p">(</span><span class="n">current_line</span><span class="o">==</span><span class="n">line</span><span class="w"> </span><span class="err">?</span><span class="w"> </span><span class="s2">&quot;&gt; &quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;  &quot;</span><span class="p">);</span>
+
+<span class="w">    </span><span class="o">//</span><span class="err">输出行直到</span><span class="w"> </span><span class="n">end_line</span>
+<span class="w">    </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="n">current_line</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="n">end_line</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">file</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">c</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">std</span><span class="p">::</span><span class="n">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">c</span><span class="p">;</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">c</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="o">++</span><span class="n">current_line</span><span class="p">;</span>
+<span class="w">            </span><span class="o">//</span><span class="err">如果我们在当前行则输出光标</span>
+<span class="w">            </span><span class="n">std</span><span class="p">::</span><span class="n">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="p">(</span><span class="n">current_line</span><span class="o">==</span><span class="n">line</span><span class="w"> </span><span class="err">?</span><span class="w"> </span><span class="s2">&quot;&gt; &quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;  &quot;</span><span class="p">);</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="o">//</span><span class="err">输出换行确保恰当地清空了流</span>
+<span class="w">    </span><span class="n">std</span><span class="p">::</span><span class="n">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">endl</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>现在我们可以打印出源码了，我们需要将这些通过钩子添加到我们的调试器。实现这个的一个好地方是当调试器从一个断点或者（最终）逐步执行得到一个信号时。到了这里，我们可能想要给我们的调试器添加一些更好的信号处理。</p>
+<h3>更好的信号处理</h3>
+<p>我们希望能够得知什么信号被发送给了进程，同样我们也想知道它是如何产生的。例如，我们希望能够得知是否由于命中了一个断点从而获得一个 <code>SIGTRAP</code>，还是由于逐步执行完成、或者是产生了一个新线程等等导致的。幸运的是，我们可以再一次使用 <code>ptrace</code>。可以给 <code>ptrace</code> 的一个命令是 <code>PTRACE_GETSIGINFO</code>，它会给你被发送给进程的最后一个信号的信息。我们类似这样使用它：</p>
+<div class="highlight"><pre><span></span><code><span class="n">siginfo_t</span><span class="w"> </span><span class="n">debugger</span><span class="p">::</span><span class="n">get_signal_info</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">siginfo_t</span><span class="w"> </span><span class="n">info</span><span class="p">;</span>
+<span class="w">    </span><span class="n">ptrace</span><span class="p">(</span><span class="n">PTRACE_GETSIGINFO</span><span class="p">,</span><span class="w"> </span><span class="n">m_pid</span><span class="p">,</span><span class="w"> </span><span class="n">nullptr</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">info</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">info</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这会给我们一个 <code>siginfo_t</code> 对象，它能提供以下信息：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">siginfo_t</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">int</span><span class="w">      </span><span class="nx">si_signo</span><span class="p">;</span><span class="w">     </span><span class="cm">/* 信号编号 */</span>
+<span class="w">    </span><span class="nx">int</span><span class="w">      </span><span class="nx">si_errno</span><span class="p">;</span><span class="w">     </span><span class="cm">/* errno 值 */</span>
+<span class="w">    </span><span class="nx">int</span><span class="w">      </span><span class="nx">si_code</span><span class="p">;</span><span class="w">      </span><span class="cm">/* 信号代码 */</span>
+<span class="w">    </span><span class="nx">int</span><span class="w">      </span><span class="nx">si_trapno</span><span class="p">;</span><span class="w">    </span><span class="cm">/* 导致生成硬件信号的陷阱编号</span>
+<span class="cm">                              （大部分架构中都没有使用） */</span>
+<span class="w">    </span><span class="nx">pid_t</span><span class="w">    </span><span class="nx">si_pid</span><span class="p">;</span><span class="w">       </span><span class="cm">/* 发送信号的进程 ID */</span>
+<span class="w">    </span><span class="nx">uid_t</span><span class="w">    </span><span class="nx">si_uid</span><span class="p">;</span><span class="w">       </span><span class="cm">/* 发送信号进程的用户 ID */</span>
+<span class="w">    </span><span class="nx">int</span><span class="w">      </span><span class="nx">si_status</span><span class="p">;</span><span class="w">    </span><span class="cm">/* 退出值或信号 */</span>
+<span class="w">    </span><span class="nx">clock_t</span><span class="w">  </span><span class="nx">si_utime</span><span class="p">;</span><span class="w">     </span><span class="cm">/* 消耗的用户时间 */</span>
+<span class="w">    </span><span class="nx">clock_t</span><span class="w">  </span><span class="nx">si_stime</span><span class="p">;</span><span class="w">     </span><span class="cm">/* 消耗的系统时间 */</span>
+<span class="w">    </span><span class="nx">sigval_t</span><span class="w"> </span><span class="nx">si_value</span><span class="p">;</span><span class="w">     </span><span class="cm">/* 信号值 */</span>
+<span class="w">    </span><span class="nx">int</span><span class="w">      </span><span class="nx">si_int</span><span class="p">;</span><span class="w">       </span><span class="cm">/* POSIX.1b 信号 */</span>
+<span class="w">    </span><span class="nx">void</span><span class="w">    </span><span class="o">*</span><span class="nx">si_ptr</span><span class="p">;</span><span class="w">       </span><span class="cm">/* POSIX.1b 信号 */</span>
+<span class="w">    </span><span class="nx">int</span><span class="w">      </span><span class="nx">si_overrun</span><span class="p">;</span><span class="w">   </span><span class="cm">/* 计时器 overrun 计数;</span>
+<span class="cm">                              POSIX.1b 计时器 */</span>
+<span class="w">    </span><span class="nx">int</span><span class="w">      </span><span class="nx">si_timerid</span><span class="p">;</span><span class="w">   </span><span class="cm">/* 计时器 ID; POSIX.1b 计时器 */</span>
+<span class="w">    </span><span class="nx">void</span><span class="w">    </span><span class="o">*</span><span class="nx">si_addr</span><span class="p">;</span><span class="w">      </span><span class="cm">/* 导致错误的内存地址 */</span>
+<span class="w">    </span><span class="nx">long</span><span class="w">     </span><span class="nx">si_band</span><span class="p">;</span><span class="w">      </span><span class="cm">/* Band event (在 glibc 2.3.2 和之前版本中是 int 类型) */</span>
+<span class="w">    </span><span class="nx">int</span><span class="w">      </span><span class="nx">si_fd</span><span class="p">;</span><span class="w">        </span><span class="cm">/* 文件描述符 */</span>
+<span class="w">    </span><span class="nx">short</span><span class="w">    </span><span class="nx">si_addr_lsb</span><span class="p">;</span><span class="w">  </span><span class="cm">/* 地址的最不重要位</span>
+<span class="cm">                              (自 Linux 2.6.32) */</span>
+<span class="w">    </span><span class="nx">void</span><span class="w">    </span><span class="o">*</span><span class="nx">si_lower</span><span class="p">;</span><span class="w">     </span><span class="cm">/* 出现地址违规的下限 (自 Linux 3.19) */</span>
+<span class="w">    </span><span class="nx">void</span><span class="w">    </span><span class="o">*</span><span class="nx">si_upper</span><span class="p">;</span><span class="w">     </span><span class="cm">/* 出现地址违规的上限 (自 Linux 3.19) */</span>
+<span class="w">    </span><span class="nx">int</span><span class="w">      </span><span class="nx">si_pkey</span><span class="p">;</span><span class="w">      </span><span class="cm">/* PTE 上导致错误的保护键 (自 Linux 4.6) */</span>
+<span class="w">    </span><span class="nx">void</span><span class="w">    </span><span class="o">*</span><span class="nx">si_call_addr</span><span class="p">;</span><span class="w"> </span><span class="cm">/* 系统调用指令的地址</span>
+<span class="cm">                              (自 Linux 3.5) */</span>
+<span class="w">    </span><span class="nx">int</span><span class="w">      </span><span class="nx">si_syscall</span><span class="p">;</span><span class="w">   </span><span class="cm">/* 系统调用尝试次数</span>
+<span class="cm">                              (自 Linux 3.5) */</span>
+<span class="w">    </span><span class="nx">unsigned</span><span class="w"> </span><span class="nx">int</span><span class="w"> </span><span class="nx">si_arch</span><span class="p">;</span><span class="w">  </span><span class="cm">/* 尝试系统调用的架构</span>
+<span class="cm">                              (自 Linux 3.5) */</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>我只需要使用 <code>si_signo</code> 就可以找到被发送的信号，使用 <code>si_code</code> 来获取更多关于信号的信息。放置这些代码的最好位置是我们的 <code>wait_for_signal</code> 函数：</p>
+<div class="highlight"><pre><span></span><code><span class="nb nb-Type">void</span><span class="w"> </span><span class="n">debugger</span><span class="p">::</span><span class="n">wait_for_signal</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nb nb-Type">int</span><span class="w"> </span><span class="n">wait_status</span><span class="p">;</span>
+<span class="w">    </span><span class="n">auto</span><span class="w"> </span><span class="n">options</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">    </span><span class="n">waitpid</span><span class="p">(</span><span class="n">m_pid</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">wait_status</span><span class="p">,</span><span class="w"> </span><span class="n">options</span><span class="p">);</span>
+
+<span class="w">    </span><span class="n">auto</span><span class="w"> </span><span class="n">siginfo</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">get_signal_info</span><span class="p">();</span>
+
+<span class="w">    </span><span class="n">switch</span><span class="w"> </span><span class="p">(</span><span class="n">siginfo</span><span class="o">.</span><span class="n">si_signo</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">case</span><span class="w"> </span><span class="n">SIGTRAP</span><span class="p">:</span>
+<span class="w">        </span><span class="n">handle_sigtrap</span><span class="p">(</span><span class="n">siginfo</span><span class="p">);</span>
+<span class="w">        </span><span class="k">break</span><span class="p">;</span>
+<span class="w">    </span><span class="n">case</span><span class="w"> </span><span class="n">SIGSEGV</span><span class="p">:</span>
+<span class="w">        </span><span class="n">std</span><span class="p">::</span><span class="n">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s2">&quot;Yay, segfault. Reason: &quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">siginfo</span><span class="o">.</span><span class="n">si_code</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">endl</span><span class="p">;</span>
+<span class="w">        </span><span class="k">break</span><span class="p">;</span>
+<span class="w">    </span><span class="n">default</span><span class="p">:</span>
+<span class="w">        </span><span class="n">std</span><span class="p">::</span><span class="n">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s2">&quot;Got signal &quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">strsignal</span><span class="p">(</span><span class="n">siginfo</span><span class="o">.</span><span class="n">si_signo</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">endl</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>现在再来处理 <code>SIGTRAP</code>。知道当命中一个断点时会发送 <code>SI_KERNEL</code> 或 <code>TRAP_BRKPT</code>，而逐步执行结束时会发送 <code>TRAP_TRACE</code> 就足够了：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">void</span><span class="w"> </span><span class="nx">debugger</span><span class="o">::</span><span class="nx">handle_sigtrap</span><span class="p">(</span><span class="nx">siginfo_t</span><span class="w"> </span><span class="nx">info</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">switch</span><span class="w"> </span><span class="p">(</span><span class="nx">info</span><span class="p">.</span><span class="nx">si_code</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="c1">//如果命中了一个断点其中的一个会被设置</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="nx">SI_KERNEL</span><span class="p">:</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="nx">TRAP_BRKPT</span><span class="p">:</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">set_pc</span><span class="p">(</span><span class="nx">get_pc</span><span class="p">()</span><span class="o">-</span><span class="mi">1</span><span class="p">);</span><span class="w"> </span><span class="c1">//将程序计数器的值设置为它应该指向的地方</span>
+<span class="w">        </span><span class="nx">std</span><span class="o">::</span><span class="nx">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;Hit breakpoint at address 0x&quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="nx">std</span><span class="o">::</span><span class="nx">hex</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="nx">get_pc</span><span class="p">()</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="nx">std</span><span class="o">::</span><span class="nx">endl</span><span class="p">;</span>
+<span class="w">        </span><span class="kt">auto</span><span class="w"> </span><span class="nx">line_entry</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">get_line_entry_from_pc</span><span class="p">(</span><span class="nx">get_pc</span><span class="p">());</span>
+<span class="w">        </span><span class="nx">print_source</span><span class="p">(</span><span class="nx">line_entry</span><span class="o">-&gt;</span><span class="nx">file</span><span class="o">-&gt;</span><span class="nx">path</span><span class="p">,</span><span class="w"> </span><span class="nx">line_entry</span><span class="o">-&gt;</span><span class="nx">line</span><span class="p">);</span>
+<span class="w">        </span><span class="k">return</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="c1">//如果信号是由逐步执行发送的，这会被设置</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="nx">TRAP_TRACE</span><span class="p">:</span>
+<span class="w">        </span><span class="k">return</span><span class="p">;</span>
+<span class="w">    </span><span class="k">default</span><span class="p">:</span>
+<span class="w">        </span><span class="nx">std</span><span class="o">::</span><span class="nx">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">&quot;Unknown SIGTRAP code &quot;</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="nx">info</span><span class="p">.</span><span class="nx">si_code</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="nx">std</span><span class="o">::</span><span class="nx">endl</span><span class="p">;</span>
+<span class="w">        </span><span class="k">return</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这里有一大堆不同风格的信号你可以处理。查看 <code>man sigaction</code> 获取更多信息。</p>
+<p>由于当我们收到 <code>SIGTRAP</code> 信号时我们已经修正了程序计数器的值，我们可以从 <code>step_over_breakpoint</code> 中移除这些代码，现在它看起来类似：</p>
+<div class="highlight"><pre><span></span><code><span class="nb nb-Type">void</span><span class="w"> </span><span class="n">debugger</span><span class="p">::</span><span class="n">step_over_breakpoint</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">m_breakpoints</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="n">get_pc</span><span class="p">()))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">bp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m_breakpoints</span><span class="p">[</span><span class="n">get_pc</span><span class="p">()];</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">bp</span><span class="o">.</span><span class="n">is_enabled</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">bp</span><span class="o">.</span><span class="n">disable</span><span class="p">();</span>
+<span class="w">            </span><span class="n">ptrace</span><span class="p">(</span><span class="n">PTRACE_SINGLESTEP</span><span class="p">,</span><span class="w"> </span><span class="n">m_pid</span><span class="p">,</span><span class="w"> </span><span class="n">nullptr</span><span class="p">,</span><span class="w"> </span><span class="n">nullptr</span><span class="p">);</span>
+<span class="w">            </span><span class="n">wait_for_signal</span><span class="p">();</span>
+<span class="w">            </span><span class="n">bp</span><span class="o">.</span><span class="n">enable</span><span class="p">();</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3>测试</h3>
+<p>现在你应该可以在某个地址设置断点，运行程序然后看到打印出了源码，而且正在被执行的行被光标标记了出来。</p>
+<p>后面我们会添加设置源码级别断点的功能。同时，你可以从<a href="https://github.com/TartanLlama/minidbg/tree/tut_source">这里</a>获取该博文的代码。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

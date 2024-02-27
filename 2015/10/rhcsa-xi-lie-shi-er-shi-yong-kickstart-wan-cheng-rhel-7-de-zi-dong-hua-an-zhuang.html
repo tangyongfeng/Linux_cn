@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>'RHCSA 系列（十二）: 使用 Kickstart 完成 RHEL 7 的自动化安装'</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Gabriel Cánepa 无论是在数据中心还是实验室环境，Linux 服务器很少是独立的机器，很可能有时你需要安装多个以某种方式相互联 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/10/rhcsa-xi-lie-shi-er-shi-yong-kickstart-wan-cheng-rhel-7-de-zi-dong-hua-an-zhuang.html" rel="bookmark"
+           title="Permalink to 'RHCSA 系列（十二）: 使用 Kickstart 完成 RHEL 7 的自动化安装'">'RHCSA 系列（十二）: 使用 Kickstart 完成 RHEL 7 的自动化安装'</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-10-02T10:11:00+02:00">
+                Published: Fri 02 October 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Gabriel Cánepa</p>
+<p>无论是在数据中心还是实验室环境，Linux 服务器很少是独立的机器，很可能有时你需要安装多个以某种方式相互联系的机器。假如你将在单个服务器上手动安装 RHEL 7 所花的时间乘以你需要配置的机器数量，这将导致你必须做出一场相当长的努力，而通过使用被称为 kicksta 的无人值守安装工具则可以避免这样的麻烦。</p>
+<p>在这篇文章中，我们将向你展示使用 kickstart 工具时所需的一切，以便在安装过程中，不用你时不时地照看“处在襁褓中”的服务器。</p>
+<p><img alt="RHEL 7 的自动化 Kickstart 安装" src="/data/attachment/album/201510/02/001327fm47537gc375f47z.jpg"></p>
+<p><em>RHCSA： RHEL 7 的自动化 Kickstart 安装</em></p>
+<h4>Kickstart 和自动化安装简介</h4>
+<p>Kickstart 是一种被用来执行无人值守操作系统安装和配置的自动化安装方法，主要被 RHEL（以及其他 Fedora 的副产品，如 CentOS，Oracle Linux 等）所使用。因此，kickstart 安装方法可使得系统管理员只需考虑需要安装的软件包组和系统的配置，便可以得到相同的系统，从而省去必须手动安装这些软件包的麻烦。</p>
+<h3>准备 Kickstart 安装</h3>
+<p>要执行 kickstart 安装，我们需要遵循下面的这些步骤：</p>
+<ol>
+<li>创建一个 Kickstart 文件，它是一个带有多个预定义配置选项的纯文本文件。</li>
+<li>将 Kickstart 文件保存在可移动介质上，如一个硬盘或一个网络位置。kickstart 客户端需要使用 <code>rhel-server-7.0-x86_64-boot.iso</code> 镜像文件，而你还需要可从一个网络资源上获取得到完整的 ISO 镜像 <code>rhel-server-7.0-x86_64-dvd.iso</code> ，例如通过一个 FTP 服务器的 HTTP 服务形式（在我们当前的例子中，我们将使用另一个 IP 地址为 192.168.0.18 的 RHEL 7 机器）。</li>
+<li>开始 Kickstart 安装。</li>
+</ol>
+<p>要创建一个 kickstart 文件，请登录你的红帽客户门户网站（Red Hat Customer Portal）帐户，并使用 <a href="https://access.redhat.com/labs/kickstartconfig/">Kickstart 配置工具</a> 来选择所需的安装选项。在向下滑动之前请仔细阅读每个选项，然后选择最适合你需求的选项：</p>
+<p><img alt="Kickstart 配置工具" src="/data/attachment/album/201510/02/001329qrjfjrrbe6kbysyh.png"></p>
+<p><em>Kickstart 配置工具</em></p>
+<p>假如你指定安装将通过 HTTP，FTP，NFS 来执行，请确保服务器上的防火墙允许这些服务通过。</p>
+<p>尽管你可以使用红帽的在线工具来创建一个 kickstart 文件，但你还可以使用下面的代码来作为参考手动地创建它。例如，你可以注意到，下面的代码指定了安装过程将使用英语环境，使用拉丁美洲键盘布局，并设定时区为 America/Argentina/San_Luis 时区：</p>
+<div class="highlight"><pre><span></span><code><span class="n">lang</span><span class="w"> </span><span class="n">en_US</span>
+<span class="n">keyboard</span><span class="w"> </span><span class="n">la</span><span class="o">-</span><span class="n">latin1</span>
+<span class="n">timezone</span><span class="w"> </span><span class="n">America</span><span class="o">/</span><span class="n">Argentina</span><span class="o">/</span><span class="n">San_Luis</span><span class="w"> </span><span class="o">--</span><span class="n">isUtc</span>
+<span class="n">rootpw</span><span class="w"> </span><span class="n">$1$5sOtDvRo$In4KTmX7OmcOW9HUvWtfn0</span><span class="w"> </span><span class="o">--</span><span class="n">iscrypted</span>
+<span class="cp">#platform x86, AMD64, or Intel EM64T</span>
+<span class="n">text</span>
+<span class="n">url</span><span class="w"> </span><span class="o">--</span><span class="n">url</span><span class="o">=</span><span class="n">http</span><span class="o">:</span><span class="c1">//192.168.0.18//kickstart/media</span>
+<span class="n">bootloader</span><span class="w"> </span><span class="o">--</span><span class="n">location</span><span class="o">=</span><span class="n">mbr</span><span class="w"> </span><span class="o">--</span><span class="n">append</span><span class="o">=</span><span class="s">&quot;rhgb quiet crashkernel=auto&quot;</span>
+<span class="n">zerombr</span>
+<span class="n">clearpart</span><span class="w"> </span><span class="o">--</span><span class="n">all</span><span class="w"> </span><span class="o">--</span><span class="n">initlabel</span>
+<span class="n">autopart</span>
+<span class="n">auth</span><span class="w"> </span><span class="o">--</span><span class="n">passalgo</span><span class="o">=</span><span class="n">sha512</span><span class="w"> </span><span class="o">--</span><span class="n">useshadow</span>
+<span class="n">selinux</span><span class="w"> </span><span class="o">--</span><span class="n">enforcing</span>
+<span class="n">firewall</span><span class="w"> </span><span class="o">--</span><span class="n">enabled</span>
+<span class="n">firstboot</span><span class="w"> </span><span class="o">--</span><span class="n">disable</span>
+<span class="nf">%packages</span>
+<span class="err">@</span><span class="n">base</span>
+<span class="err">@</span><span class="n">backup</span><span class="o">-</span><span class="n">server</span>
+<span class="err">@</span><span class="n">print</span><span class="o">-</span><span class="n">server</span>
+<span class="nf">%end</span>
+</code></pre></div>
+
+<p>在上面的在线配置工具中，在选择以 HTTP 来作为安装源后，设置好在安装过程中使用 192.168.0.18 来作为 HTTP 服务器的地址，<code>/kickstart/tecmint.bin</code> 作为 HTTP 目录。</p>
+<p>在上面的 kickstart 示例文件中，你需要特别注意</p>
+<div class="highlight"><pre><span></span><code>url --url=http://192.168.0.18//kickstart/media
+</code></pre></div>
+
+<p>这个目录是你展开 DVD 或 ISO 安装介质内容的地方。在执行解压之前，我们将把 ISO 安装文件作为一个回环设备挂载到 /media/rhel 目录下：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># mount -o loop /var/www/html/kickstart/rhel-server-7.0-x86_64-dvd.iso /media/rhel</span>
+</code></pre></div>
+
+<p><img alt="挂载 RHEL ISO 镜像" src="/data/attachment/album/201510/02/001331ammm433omze73met.png"></p>
+<p><em>挂载 RHEL ISO 镜像</em></p>
+<p>接下来，复制 /media/rhel 中的全部文件到 /var/www/html/kickstart/media 目录：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># cp -R /media/rhel /var/www/html/kickstart/media</span>
+</code></pre></div>
+
+<p>这一步做完后，/var/www/html/kickstart/media 目录中的文件列表和磁盘使用情况将如下所示：</p>
+<p><img alt="Kickstart 媒体文件" src="/data/attachment/album/201510/02/001332r9m1m39svs423181.png"></p>
+<p><em>Kickstart 媒体文件</em></p>
+<p>现在，我们已经准备好开始 kickstart 安装了。</p>
+<p>不管你如何选择创建 kickstart 文件的方式，在执行安装之前检查下这个文件的语法是否有误总是一个不错的主意。为此，我们需要安装 pykickstart 软件包。</p>
+<div class="highlight"><pre><span></span><code># yum update &amp;&amp; yum install pykickstart
+</code></pre></div>
+
+<p>然后使用 ksvalidator 工具来检查这个文件：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># ksvalidator /var/www/html/kickstart/tecmint.bin</span>
+</code></pre></div>
+
+<p>假如文件中的语法正确，你将不会得到任何输出，反之，假如文件中存在错误，你得到警告，向你提示在某一行中语法不正确或出错原因未知。</p>
+<h3>执行 Kickstart 安装</h3>
+<p>首先，使用 rhel-server-7.0-x86_64-boot.iso 来启动你的客户端。当初始屏幕出现时，选择安装 RHEL 7.0 ，然后按 Tab 键来追加下面这一句，接着按 Enter 键：</p>
+<div class="highlight"><pre><span></span><code># inst.ks=http://192.168.0.18/kickstart/tecmint.bin
+</code></pre></div>
+
+<p><img alt="RHEL Kickstart 安装" src="/data/attachment/album/201510/02/001333auy0duuou44udy88.png"></p>
+<p><em>RHEL Kickstart 安装</em></p>
+<p>其中 tecmint.bin 是先前创建的 kickstart 文件。</p>
+<p>当你按了 Enter 键后，自动安装就开始了，且你将看到一个列有正在被安装的软件的列表（软件包的数目和名称根据你所选择的程序和软件包组而有所不同）：</p>
+<p><img alt="RHEL 7 的自动化 Kickstart 安装" src="/data/attachment/album/201510/02/001334mfj9fxmoqoog7ooq.png"></p>
+<p><em>RHEL 7 的自动化 Kickstart 安装</em></p>
+<p>当自动化过程结束后，将提示你移除安装介质，接着你就可以启动到你新安装的系统中了：</p>
+<p><img alt="RHEL 7 启动屏幕" src="/data/attachment/album/201510/02/001334ogdvxon8vm7s7hss.png"></p>
+<p><em>RHEL 7 启动屏幕</em></p>
+<p>尽管你可以像我们前面提到的那样，手动地创建你的 kickstart 文件，但你应该尽可能地考虑使用受推荐的方式：你可以使用在线配置工具，或者使用在安装过程中创建的位于 root 家目录下的 anaconda-ks.cfg 文件。</p>
+<p>这个文件实际上就是一个 kickstart 文件，你或许想在选择好所有所需的选项（可能需要更改逻辑卷布局或机器上所用的文件系统）后手动地安装第一个机器，接着使用产生的 anaconda-ks.cfg 文件来自动完成其余机器的安装过程。</p>
+<p>另外，使用在线配置工具或 anaconda-ks.cfg 文件来引导将来的安装将允许你在系统安装时以加密的形式设置 root 密码。</p>
+<h3>总结</h3>
+<p>既然你知道了如何创建 kickstart 文件并如何使用它们来自动完成 RHEL 7 服务器的安装，你就可以不用时时照看安装进度的过程了。这将给你时间来做其他的事情，或者若你足够幸运，你还可以用来休闲一番。</p>
+<p>无论以何种方式，请使用下面的评论栏来让我们知晓你对这篇文章的看法。提问也同样欢迎！</p>
+<p>另外，请阅读：<a href="http://www.tecmint.com/multiple-centos-installations-using-kickstart/">使用 PXE 和 kickstart 来自动化安装多个 RHEL/CentOS 7 发行版本</a></p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

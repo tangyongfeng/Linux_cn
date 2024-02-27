@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何在 Fedora 22 上面配置 Apache 的 Docker 容器</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Carlos Alberto 在这篇文章中，我们将会学习关于Docker的一些知识，如何使用Docker部署Apache httpd服务，并且共享到Docker Hub上面去。首先，我们学习怎样拉取和使用Docker Hub里面的镜像，然后在一 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/07/ru-he-zai-fedora-22-shang-mian-pei-zhi-apache-de-docker-rong-qi.html" rel="bookmark"
+           title="Permalink to 如何在 Fedora 22 上面配置 Apache 的 Docker 容器">如何在 Fedora 22 上面配置 Apache 的 Docker 容器</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-07-19T10:13:00+02:00">
+                Published: Sun 19 July 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Carlos Alberto</p>
+<p>在这篇文章中，我们将会学习关于Docker的一些知识，如何使用Docker部署Apache httpd服务，并且共享到Docker Hub上面去。首先，我们学习怎样拉取和使用Docker Hub里面的镜像，然后在一个Fedora 22的镜像上交互式地安装Apache，之后我们将会学习如何用一个Dockerfile文件来以一种更快，更优雅的方式制作一个镜像。最后，我们将我们创建的镜像发布到Docker Hub上，这样以后任何人都可以下载并使用它。</p>
+<p><img alt="" src="/data/attachment/album/201507/18/222135wkezye1y1o5zhhia.jpg"></p>
+<h3>安装并初体验Docker</h3>
+<p><strong>要求</strong></p>
+<p>运行Docker，你至少需要满足这些：</p>
+<ul>
+<li>你需要一个64位的内核，版本3.10或者更高</li>
+<li>Iptables 1.4 - Docker会用它来做网络配置，如网络地址转换（NAT）</li>
+<li>Git 1.7 - Docker会使用Git来与仓库交流，如Docker Hub</li>
+<li>ps - 在大多数环境中这个工具都存在，在procps包里有提供</li>
+<li>root - 尽管一般用户可以通过TCP或者其他方式来运行Docker，但是为了简化，我们会假定你就是root</li>
+</ul>
+<h4>使用dnf安装docker</h4>
+<p>以下的命令会安装Docker</p>
+<div class="highlight"><pre><span></span><code>dnf update &amp;&amp; dnf install docker
+</code></pre></div>
+
+<p><strong>注意</strong>：在Fedora 22里，你仍然可以使用Yum命令，但是它被DNF取代了，而且在纯净安装时不可用了。</p>
+<h4>检查安装</h4>
+<p>我们将要使用的第一个命令是docker info，这会输出很多信息给你：</p>
+<div class="highlight"><pre><span></span><code>docker info
+</code></pre></div>
+
+<p>也可以试着用<strong>docker version</strong>：</p>
+<div class="highlight"><pre><span></span><code>docker version
+</code></pre></div>
+
+<h4>以守护进程方式启动Dcoker</h4>
+<p>你应该启动一个docker实例，然后她会处理我们的请求。</p>
+<div class="highlight"><pre><span></span><code>docker -d
+</code></pre></div>
+
+<p>现在我们设置 docker 随系统启动，以便我们不需要每次重启都需要运行上述命令。</p>
+<div class="highlight"><pre><span></span><code>chkconfig docker on
+</code></pre></div>
+
+<p>让我们用Busybox来打印hello world：</p>
+<div class="highlight"><pre><span></span><code>dockr run -t busybox /bin/echo &quot;hello world&quot;
+</code></pre></div>
+
+<p>这个命令里，我们告诉Docker在Busybox镜像的一个实例/容器里执行 /bin/echo "hello world"。Busybox是一个小型的POSIX环境，将许多小工具都结合到了一个单独的可执行程序里。</p>
+<p>如果Docker不能在你的系统里找到本地的Busybox镜像，她就会自动从Docker Hub里拉取镜像，正如你可以看下如下的快照：</p>
+<p><img alt="Hello world with Busybox" src="/data/attachment/album/201507/18/222140i55kyke5p9ph5pk2.png"></p>
+<p><em>Hello world with Busybox</em></p>
+<p>再次尝试相同的命令，这次由于Docker已经有了本地的Busybox镜像，你将会看到的全部就是echo的输出：</p>
+<div class="highlight"><pre><span></span><code>docker run -t busybox /bin/echo &quot;hello world&quot;
+</code></pre></div>
+
+<p>也可以尝试以下的命令进入到容器环境里去：</p>
+<div class="highlight"><pre><span></span><code>docker run -it busybox /bin/sh
+</code></pre></div>
+
+<p>使用<strong>exit</strong>命令可以离开容器并停止它</p>
+<h3>交互式地Docker化Apache</h3>
+<p>拉取/下载 Fedora 镜像：</p>
+<div class="highlight"><pre><span></span><code>docker pull fedora:22
+</code></pre></div>
+
+<p>启动一个容器在后台运行：</p>
+<div class="highlight"><pre><span></span><code>docker run -d -t fedora:22 /bin/bash
+</code></pre></div>
+
+<p>列出正在运行地容器及其名字标识，如下</p>
+<div class="highlight"><pre><span></span><code>docker ps
+</code></pre></div>
+
+<p><img alt="listing with docker ps and attaching with docker attach" src="/data/attachment/album/201507/18/222141ym3qoi88ib0qlk6x.png"></p>
+<p><em>使用docker ps列出，并使用docker attach进入一个容器里</em></p>
+<p>angry_noble是docker分配给我们容器的名字，所以我们来连接上去：</p>
+<div class="highlight"><pre><span></span><code>docker attach angry_noble
+</code></pre></div>
+
+<p>注意：每次你启动一个容器，就会被给与一个新的名字，如果你的容器需要一个固定的名字，你应该在 docker run 命令里使用 -name 参数。</p>
+<h4>安装Apache</h4>
+<p>下面的命令会更新DNF的数据库，下载安装Apache（httpd包）并清理dnf缓存使镜像尽量小</p>
+<div class="highlight"><pre><span></span><code>dnf -y update &amp;&amp; dnf -y install httpd &amp;&amp; dnf -y clean all
+</code></pre></div>
+
+<p><strong>配置Apache</strong></p>
+<p>我们需要修改httpd.conf的唯一地方就是ServerName，这会使Apache停止抱怨</p>
+<div class="highlight"><pre><span></span><code>sed -i.orig &#39;s/#ServerName/ServerName/&#39; /etc/httpd/conf/httpd.conf
+</code></pre></div>
+
+<p><strong>设定环境</strong></p>
+<p>为了使Apache运行为独立模式，你必须以环境变量的格式提供一些信息，并且你也需要创建这些变量里的目录，所以我们将会用一个小的shell脚本干这个工作，当然也会启动Apache</p>
+<div class="highlight"><pre><span></span><code><span class="n">vi</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">httpd</span><span class="o">/</span><span class="n">run_apache_foreground</span>
+</code></pre></div>
+
+<p>via: <a href="http://linoxide.com/linux-how-to/configure-apache-containers-docker-fedora-22/">http://linoxide.com/linux-how-to/configure-apache-containers-docker-fedora-22/</a></p>
+<p>作者：<a href="http://linoxide.com/author/carlosal/">Carlos Alberto</a> 译者：<a href="https://github.com/wi-cuckoo">wi-cuckoo</a> 校对：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创翻译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

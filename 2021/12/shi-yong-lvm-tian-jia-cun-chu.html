@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 LVM 添加存储</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Ayush Sharma LVM 为你配置存储的方式提供了极大的灵活性。 逻辑卷管理器 Logical Volume Manager （LVM）允许在操作系统和硬件之间建立一个抽象 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2021/12/shi-yong-lvm-tian-jia-cun-chu.html" rel="bookmark"
+           title="Permalink to 使用 LVM 添加存储">使用 LVM 添加存储</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2021-12-13T23:51:31+01:00">
+                Published: Mon 13 December 2021
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Ayush Sharma</p>
+<blockquote>
+<p>LVM 为你配置存储的方式提供了极大的灵活性。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/202112/13/235125wn99nloup38jnkoo.jpg" title="Storage units side by side"></p>
+<p><ruby> 逻辑卷管理器 <rt>  Logical Volume Manager </rt></ruby>（LVM）允许在操作系统和硬件之间建立一个抽象层。通常，你的操作系统会查找磁盘（<code>/dev/sda</code>、<code>/dev/sdb</code> 等）和这些磁盘中的分区（<code>/dev/sda1</code>、<code>/dev/sdb1</code> 等）。</p>
+<p>LVM 在操作系统和磁盘之间创建了一个虚拟层。LVM 不是一个驱动器持有一定数量的分区，而是创建一个统一的存储池（称为<ruby> 卷组 <rt>  Volume Group </rt></ruby>），跨越任意数量的物理驱动器（称为<ruby> 物理卷 <rt>  Physical Volume </rt></ruby>）。使用卷组中可用的存储，LVM 可以为你的操作系统提供类似磁盘和分区的功能。</p>
+<p>操作系统完全没有意识到它被“欺骗”了。</p>
+<p><img alt="Drive space" src="/data/attachment/album/202112/13/235133iemicuc3i2i4wwci.png" title="Drive space"></p>
+<p>由于 LVM 虚拟地创建卷组和逻辑卷，因此即使在系统运行时，也可以轻松调整它们的大小或移动它们，或者创建新卷。此外，LVM 提供了其它情况下不存在的特性，比如创建逻辑卷的活动快照时无需首先卸载磁盘。</p>
+<p>LVM 中的卷组是一个命名的虚拟容器，将底层物理磁盘组合在一起。它充当一个池，可以从中创建不同大小的<ruby> 逻辑卷 <rt>  Logical Volume </rt></ruby>。逻辑卷包含实际的文件系统并且可以跨越多个磁盘，并且不需要物理上连续。</p>
+<h3>特性</h3>
+<ul>
+<li>分区名称通常具有系统名称，例如 <code>/dev/sda1</code>。LVM 具有便于人们理解的名称，例如 <code>home</code> 或者 <code>media</code>。</li>
+<li>分区的总大小受底层物理磁盘大小的限制。在 LVM 中，卷可以跨越多个磁盘，并且仅受 LVM 中所有物理磁盘总大小的限制。</li>
+<li>分区通常只有在磁盘未使用且已卸载时才能调整大小、移动或删除。LVM 卷可以在系统运行时进行操作。</li>
+<li>只能通过分配与分区相邻的可用空间来扩展分区。LVM 卷可以从任何地方占用可用空间。</li>
+<li>扩展分区涉及移动数据以腾出可用空间，这非常耗时，并且可能会在断电期间导致数据丢失。LVM 卷可以从卷组中的任何地方占用可用空间，甚至可以在另一块磁盘上。</li>
+<li>因为在 LVM 中创建卷非常容易，所以它鼓励创建不同的卷，例如创建单独的卷来测试功能或尝试不同的操作系统。对于分区，此过程将非常耗时并且容易出错。</li>
+<li>快照只能在 LVM 中创建。它允许你创建当前逻辑卷的时间点镜像，即使在系统运行时也可以。这非常适合备份。</li>
+</ul>
+<h3>测试设置</h3>
+<p>作为演示，假设你的系统具有以下驱动器配置：</p>
+<div class="highlight"><pre><span></span><code>NAME    MAJ:MIN RM SIZE RO TYPE MOUNTPOINT
+xvda    202:0    0   8G  0 disk
+`-xvda1 202:1    0   8G  0 part /
+xvdb    202:16   0   1G  0 disk
+xvdc    202:32   0   1G  0 disk
+xvdd    202:48   0   2G  0 disk
+xvde    202:64   0   5G  0 disk
+xvdf    202:80   0   8G  0 disk
+</code></pre></div>
+
+<h4>步骤 1. 初始化磁盘以用于 LVM</h4>
+<p>运行 <code>pvcreate /dev/xvdb /dev/xvdc /dev/xvdd /dev/xvde /dev/xvdf</code>。输出应如下：</p>
+<div class="highlight"><pre><span></span><code>Physical volume &quot;/dev/xvdb&quot; successfully created
+Physical volume &quot;/dev/xvdc&quot; successfully created
+Physical volume &quot;/dev/xvdd&quot; successfully created
+Physical volume &quot;/dev/xvde&quot; successfully created
+Physical volume &quot;/dev/xvdf&quot; successfully created
+</code></pre></div>
+
+<p>使用 <code>pvs</code> 或者 <code>pvdisplay</code> 查看结果：</p>
+<div class="highlight"><pre><span></span><code>&quot;/dev/xvde&quot; is a new physical volume of &quot;5.00 GiB&quot;
+--- NEW Physical volume ---
+PV Name               /dev/xvde
+VG Name
+PV Size               5.00 GiB
+Allocatable           NO
+PE Size               0
+Total PE              0
+Free PE               0
+Allocated PE          0
+PV UUID               728JtI-ffZD-h2dZ-JKnV-8IOf-YKdS-8srJtn
+
+&quot;/dev/xvdb&quot; is a new physical volume of &quot;1.00 GiB&quot;
+--- NEW Physical volume ---
+PV Name               /dev/xvdb
+VG Name
+PV Size               1.00 GiB
+Allocatable           NO
+PE Size               0
+Total PE              0
+Free PE               0
+Allocated PE          0
+PV UUID               zk1phS-7uXc-PjBP-5Pv9-dtAV-zKe6-8OCRkZ
+
+&quot;/dev/xvdd&quot; is a new physical volume of &quot;2.00 GiB&quot;
+--- NEW Physical volume ---
+PV Name               /dev/xvdd
+VG Name
+PV Size               2.00 GiB
+Allocatable           NO
+PE Size               0
+Total PE              0
+Free PE               0
+Allocated PE          0
+PV UUID               R0I139-Ipca-KFra-2IZX-o9xJ-IW49-T22fPc
+
+&quot;/dev/xvdc&quot; is a new physical volume of &quot;1.00 GiB&quot;
+--- NEW Physical volume ---
+PV Name               /dev/xvdc
+VG Name
+PV Size               1.00 GiB
+Allocatable           NO
+PE Size               0
+Total PE              0
+Free PE               0
+Allocated PE          0
+PV UUID               FDzcVS-sq22-2b13-cYRj-dXHf-QLjS-22Meae
+
+&quot;/dev/xvdf&quot; is a new physical volume of &quot;8.00 GiB&quot;
+--- NEW Physical volume ---
+PV Name               /dev/xvdf
+VG Name
+PV Size               8.00 GiB
+Allocatable           NO
+PE Size               0
+Total PE              0
+Free PE               0
+Allocated PE          0
+PV UUID               TRVSH9-Bo5D-JHHb-g0NX-8IoS-GG6T-YV4d0p
+</code></pre></div>
+
+<h4>步骤 2. 创建卷组</h4>
+<p>运行 <code>vgcreate myvg /dev/xvdb /dev/xvdc /dev/xvdd /dev/xvde /dev/xvdf</code>。通过 <code>vgs</code> 或者 <code>vgdisplay</code> 查看结果：</p>
+<div class="highlight"><pre><span></span><code><span class="gd">--- Volume group ---</span>
+VG Name               myvg
+System ID
+Format                lvm2
+Metadata Areas        5
+Metadata Sequence No  1
+VG Access             read/write
+VG Status             resizable
+MAX LV                0
+Cur LV                0
+Open LV               0
+Max PV                0
+Cur PV                5
+Act PV                5
+VG Size               16.98 GiB
+PE Size               4.00 MiB
+Total PE              4347
+Alloc PE / Size       0 / 0
+Free  PE / Size       4347 / 16.98 GiB
+VG UUID               ewrrWp-Tonj-LeFa-4Ogi-BIJJ-vztN-yrepkh
+</code></pre></div>
+
+<h4>步骤 3: 创建逻辑卷</h4>
+<p>运行以下命令：</p>
+<div class="highlight"><pre><span></span><code>lvcreate myvg --name media --size 4G
+lvcreate myvg --name home --size 4G
+</code></pre></div>
+
+<p>使用 <code>lvs</code> 或者 <code>lvdisplay</code> 验证结果：</p>
+<div class="highlight"><pre><span></span><code><span class="gd">--- Logical volume ---</span>
+LV Path                /dev/myvg/media
+LV Name                media
+VG Name                myvg
+LV UUID                LOBga3-pUNX-ZnxM-GliZ-mABH-xsdF-3VBXFT
+LV Write Access        read/write
+LV Creation host, time ip-10-0-5-236, 2017-02-03 05:29:15 +0000
+LV Status              available
+# open                 0
+LV Size                4.00 GiB
+Current LE             1024
+Segments               1
+Allocation             inherit
+Read ahead sectors     auto
+<span class="gd">- currently set to     256</span>
+Block device           252:0
+
+<span class="gd">--- Logical volume ---</span>
+LV Path                /dev/myvg/home
+LV Name                home
+VG Name                myvg
+LV UUID                Hc06sl-vtss-DuS0-jfqj-oNce-qKf6-e5qHhK
+LV Write Access        read/write
+LV Creation host, time ip-10-0-5-236, 2017-02-03 05:29:40 +0000
+LV Status              available
+# open                 0
+LV Size                4.00 GiB
+Current LE             1024
+Segments               1
+Allocation             inherit
+Read ahead sectors     auto
+<span class="gd">- currently set to     256</span>
+Block device           252:1
+</code></pre></div>
+
+<h4>步骤 4: 创建文件系统</h4>
+<p>使用以下命令创建文件系统：</p>
+<div class="highlight"><pre><span></span><code>vgcreate myvg /dev/xvdb /dev/xvdc /dev/xvdd /dev/xvde /dev/xvdf
+mkfs.ext3 /dev/myvg/media
+mkfs.ext3 /dev/myvg/home
+</code></pre></div>
+
+<p>挂载它：</p>
+<div class="highlight"><pre><span></span><code>mount /dev/myvg/media /media
+mount /dev/myvg/home /home
+</code></pre></div>
+
+<p>使用 <code>lsblk</code> 命令查看完整配置：</p>
+<div class="highlight"><pre><span></span><code>NAME         MAJ:MIN RM SIZE RO TYPE MOUNTPOINT
+xvda         202:0    0   8G  0 disk
+`-xvda1      202:1    0   8G  0 part /
+xvdb         202:16   0   1G  0 disk
+xvdc         202:32   0   1G  0 disk
+xvdd         202:48   0   2G  0 disk
+xvde         202:64   0   5G  0 disk
+`-myvg-media 252:0    0   4G  0 lvm  /media
+xvdf         202:80   0   8G  0 disk
+`-myvg-home  252:1    0   4G  0 lvm  /home
+</code></pre></div>
+
+<h4>步骤 5: 扩展 LVM</h4>
+<p>添加一块新的 <code>/dev/xvdg</code> 磁盘。要扩展 <code>home</code> 卷，运行以下命令：</p>
+<div class="highlight"><pre><span></span><code>pvcreate /dev/xvdg
+vgextend myvg /dev/xvdg
+lvextend -l 100%FREE /dev/myvg/home
+resize2fs /dev/myvg/home
+</code></pre></div>
+
+<p>运行 <code>df -h</code>，你应该可以看到新的磁盘大小。</p>
+<p>就是这样！</p>
+<p>LVM 为你配置存储的方式提供了极大的灵活性。尝试一下，并享受 LVM 的乐趣！</p>
+<p>本文首发于 <a href="https://notes.ayushsharma.in/2017/02/working-with-logical-volume-manager-lvm">作者个人博客</a>，经授权改编。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

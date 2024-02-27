@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何在 Linux 中映射 LUN、磁盘、LVM 和文件系统</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Rasool Cool 在某些情况下，你需要映射存储 LUN（逻辑单元号）、块设备、LVM（LV 和 VG 名称）和文件系统（FS）信息以进行文件系统扩展或灾 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2023/09/ru-he-zai-linux-zhong-ying-she-lun-ci-pan-lvm-he-wen-jian-xi-tong.html" rel="bookmark"
+           title="Permalink to 如何在 Linux 中映射 LUN、磁盘、LVM 和文件系统">如何在 Linux 中映射 LUN、磁盘、LVM 和文件系统</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2023-09-05T15:07:08+02:00">
+                Published: Tue 05 September 2023
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Rasool Cool</p>
+<p><img alt="" src="/data/attachment/album/202309/05/150634a78yslwka2lilnvr.jpg"></p>
+<p>在某些情况下，你需要映射存储 LUN（逻辑单元号）、块设备、LVM（LV 和 VG 名称）和文件系统（FS）信息以进行文件系统扩展或灾难恢复（DR）操作。</p>
+<p>这是大多数 Linux 管理员的例行活动，我们通常使用一些脚本来显示针对 SAN LUN 的块设备映射，然后我们将手动添加 LVM 和文件系统信息来完成操作。</p>
+<p>今后，你无需手动干预此活动，因为这些信息可以通过 Shell 脚本进行映射，如下所示。</p>
+<p>参考以下类似文章：</p>
+<ul>
+<li><a href="https://www.2daygeek.com/find-san-disk-lun-id-linux/">如何在 Linux 中查找 SAN 磁盘 LUN id</a></li>
+<li><a href="https://www.2daygeek.com/shell-script-map-oracle-asm-disks-physical-disk-lun-in-linux/">如何在 Linux 中将 ASM 磁盘映射到物理磁盘</a></li>
+<li><a href="https://www.2daygeek.com/map-san-lun-physical-disk-filesystem-linux/">如何在 Linux 中映射 SAN LUN、磁盘和文件系统</a></li>
+</ul>
+<h3>在 Linux 中映射 LUN、磁盘、LVM 和文件系统的 Shell 脚本</h3>
+<p>这个 Shell 脚本可帮助你识别哪些 SAN 磁盘映射到 Linux 上的哪些块设备、LV、VG 和文件系统。</p>
+<p><strong>请注意：</strong> 我们排除了 <code>sda</code> 磁盘，因为这是操作系统（OS）盘，它有多个分区。</p>
+<div class="highlight"><pre><span></span><code>vi block_device_mapping_with_LUN_FS_LVM.sh
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="ch">#!/bin/bash</span>
+<span class="k">for</span><span class="w"> </span>bdevice<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="sb">`</span>lsblk<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>disk<span class="w"> </span><span class="p">|</span><span class="w"> </span>awk<span class="w"> </span><span class="s1">&#39;{print $1}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-v<span class="w"> </span><span class="s1">&#39;sda&#39;</span><span class="sb">`</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span>mpoint<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="sb">`</span>lsblk<span class="w"> </span>/dev/<span class="nv">$bdevice</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>lvm<span class="w"> </span><span class="p">|</span><span class="w"> </span>awk<span class="w"> </span><span class="s1">&#39;{print $NF}&#39;</span><span class="sb">`</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">        </span><span class="nv">LVM_INFO</span><span class="o">=</span><span class="sb">`</span>lvs<span class="w"> </span>-o<span class="w"> </span>+devices<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-i<span class="w"> </span><span class="nv">$bdevice</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>awk<span class="w"> </span><span class="s1">&#39;{print $1,$2}&#39;</span><span class="sb">`</span>
+<span class="w">        </span><span class="nv">LUN_ID</span><span class="o">=</span><span class="sb">`</span>lsscsi<span class="w"> </span>--scsi<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="nv">$bdevice</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>awk<span class="w"> </span><span class="s1">&#39;{print $NF}&#39;</span><span class="sb">`</span>
+<span class="w">        </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$bdevice</span><span class="s2"> --&gt; </span><span class="nv">$mpoint</span><span class="s2"> --&gt; </span><span class="nv">$LVM_INFO</span><span class="s2"> --&gt; </span><span class="nv">$LUN_ID</span><span class="s2">&quot;</span>
+<span class="w">    </span><span class="k">done</span>
+<span class="k">done</span>
+</code></pre></div>
+
+<p>设置 <code>block_device_mapping_with_LUN_FS_LVM.sh</code> 文件的可执行权限。</p>
+<div class="highlight"><pre><span></span><code>chmod +x block_device_mapping_with_LUN_FS_LVM.sh
+</code></pre></div>
+
+<p>最后运行脚本查看结果。</p>
+<div class="highlight"><pre><span></span><code>sh block_device_mapping_with_LUN_FS_LVM.sh
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/202309/05/150709qi0b02554v50p34k.jpg"></p>
+<p><strong>注意：</strong> 在上面的输出中，设备 <code>sdb</code> 不会显示任何 LUN 信息，因为它是从 VMWare 端添加的虚拟磁盘，没有任何 LUN。其他 3 块磁盘是从存储映射的，这就是为什么可以看到 LUN 信息。</p>
+<p>如果你想即时运行上述脚本，请使用下面的一行脚本。</p>
+<div class="highlight"><pre><span></span><code><span class="n">for</span><span class="w"> </span><span class="n">bdevice</span><span class="w"> </span><span class="kr">in</span><span class="w"> </span><span class="err">`</span><span class="n">lsblk</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="n">disk</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">awk</span><span class="w"> </span><span class="s">&#39;{print $1}&#39;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="o">-</span><span class="n">v</span><span class="w"> </span><span class="s">&#39;sda&#39;</span><span class="err">`</span><span class="p">;</span><span class="w"> </span><span class="n">do</span><span class="w"> </span><span class="n">for</span><span class="w"> </span><span class="n">mpoint</span><span class="w"> </span><span class="kr">in</span><span class="w"> </span><span class="err">`</span><span class="n">lsblk</span><span class="w"> </span><span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="err">$</span><span class="n">bdevice</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="n">lvm</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">awk</span><span class="w"> </span><span class="s">&#39;{print $NF}&#39;</span><span class="err">`</span><span class="p">;</span><span class="w"> </span><span class="n">do</span><span class="w"> </span><span class="n">LVM_INFO</span><span class="o">=</span><span class="err">`</span><span class="n">lvs</span><span class="w"> </span><span class="o">-</span><span class="n">o</span><span class="w"> </span><span class="o">+</span><span class="n">devices</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="o">-</span><span class="n">i</span><span class="w"> </span><span class="err">$</span><span class="n">bdevice</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">awk</span><span class="w"> </span><span class="s">&#39;{print $1,$2}&#39;</span><span class="err">`</span><span class="p">;</span><span class="w"> </span><span class="n">LUN_ID</span><span class="o">=</span><span class="err">`</span><span class="n">lsscsi</span><span class="w"> </span><span class="o">--</span><span class="n">scsi</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="err">$</span><span class="n">bdevice</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">awk</span><span class="w"> </span><span class="s">&#39;{print $NF}&#39;</span><span class="err">`</span><span class="p">;</span><span class="w"> </span><span class="n">echo</span><span class="w"> </span><span class="s">&quot;$bdevice --&gt; $mpoint --&gt; $LVM_INFO --&gt; $LUN_ID&quot;</span><span class="p">;</span><span class="w"> </span><span class="n">done</span><span class="p">;</span><span class="w"> </span><span class="n">done</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="n">sdb</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="o">[</span><span class="n">SWAP</span><span class="o">]</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">swap2lv</span><span class="w"> </span><span class="n">swapvg</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="o">-</span>
+<span class="n">sdc</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="o">/</span><span class="n">appserver</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">appserver_lv</span><span class="w"> </span><span class="n">appserver_vg</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="mi">360000670000415600477312020662021</span>
+<span class="n">sdd</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="o">/</span><span class="k">data</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">data_lv</span><span class="w"> </span><span class="n">data_vg</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="mi">360000670000415600477312020662022</span>
+<span class="n">sde</span><span class="w"> </span><span class="c1">--&gt; /backup --&gt; backup_lv backup_vg --&gt; 360000670000415600477312020662023</span>
+</code></pre></div>
+
+<h3>总结</h3>
+<p>在本教程中，我们向你展示了如何在 Linux 上检查 SAN 提供的 LUN 以及底层操作系统磁盘、LV 名称、VG 名称和关联的文件系统。</p>
+<p>如果你有任何问题或反馈，请随时在下面发表评论。</p>
+<p><em>（题图：MJ/f5da2270-4e5a-4b2c-8998-fae974214384）</em></p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

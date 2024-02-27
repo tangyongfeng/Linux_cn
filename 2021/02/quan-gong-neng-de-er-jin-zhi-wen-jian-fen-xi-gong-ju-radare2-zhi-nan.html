@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>全功能的二进制文件分析工具 Radare2 指南</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Gaurav Kamathe Radare2 是一个为二进制分析定制的开源工具。 在《Linux 上分析二进制文件的 10 种方法》中，我解释了如何使用 Linux 上丰富的原 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2021/02/quan-gong-neng-de-er-jin-zhi-wen-jian-fen-xi-gong-ju-radare2-zhi-nan.html" rel="bookmark"
+           title="Permalink to 全功能的二进制文件分析工具 Radare2 指南">全功能的二进制文件分析工具 Radare2 指南</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2021-02-01T11:26:33+01:00">
+                Published: Mon 01 February 2021
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Gaurav Kamathe</p>
+<blockquote>
+<p>Radare2 是一个为二进制分析定制的开源工具。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/202102/01/112611baw4gpqlch10ps1c.jpg" title="Binary code on a computer screen"></p>
+<p>在《<a href="/article-12187-1.html">Linux 上分析二进制文件的 10 种方法</a>》中，我解释了如何使用 Linux 上丰富的原生工具集来分析二进制文件。但如果你想进一步探索你的二进制文件，你需要一个为二进制分析定制的工具。如果你是二进制分析的新手，并且大多使用的是脚本语言，这篇文章《<a href="/article-11441-1.html">GNU binutils 里的九种武器</a>》可以帮助你开始学习编译过程和什么是二进制。</p>
+<h3>为什么我需要另一个工具？</h3>
+<p>如果现有的 Linux 原生工具也能做类似的事情，你自然会问为什么需要另一个工具。嗯，这和你用手机做闹钟、做笔记、做相机、听音乐、上网、偶尔打电话和接电话的原因是一样的。以前，使用单独的设备和工具处理这些功能 —— 比如拍照的实体相机，记笔记的小记事本，起床的床头闹钟等等。对用户来说，有一个设备来做多件（但相关的）事情是<em>方便的</em>。另外，杀手锏就是独立功能之间的<em>互操作性</em>。</p>
+<p>同样，即使许多 Linux 工具都有特定的用途，但在一个工具中捆绑类似（和更好）的功能是非常有用的。这就是为什么我认为 <a href="https://rada.re/n/">Radare2</a> 应该是你需要处理二进制文件时的首选工具。</p>
+<p>根据其 <a href="https://github.com/radareorg/radare2">GitHub 简介</a>，Radare2（也称为 r2）是一个“类 Unix 系统上的逆向工程框架和命令行工具集”。它名字中的 “2” 是因为这个版本从头开始重写的，使其更加模块化。</p>
+<h3>为什么选择 Radare2？</h3>
+<p>有大量（非原生的）Linux 工具可用于二进制分析，为什么要选择 Radare2 呢？我的理由很简单。</p>
+<p>首先，它是一个开源项目，有一个活跃而健康的社区。如果你正在寻找新颖的功能或提供着 bug 修复的工具，这很重要。</p>
+<p>其次，Radare2 可以在命令行上使用，而且它有一个功能丰富的图形用户界面（GUI）环境，叫做 Cutter，适合那些对 GUI 比较熟悉的人。作为一个长期使用 Linux 的用户，我对习惯于在 shell 上输入。虽然熟悉 Radare2 的命令稍微有一点学习曲线，但我会把它比作 <a href="https://opensource.com/article/19/3/getting-started-vim">学习 Vim</a>。你可以先学习基本的东西，一旦你掌握了它们，你就可以继续学习更高级的东西。很快，它就变成了肌肉记忆。</p>
+<p>第三，Radare2 通过插件可以很好的支持外部工具。例如，最近开源的 <a href="https://ghidra-sre.org/">Ghidra</a> 二进制分析和<ruby> 逆向工具 <rt>  reversing tool </rt></ruby>很受欢迎，因为它的反编译器功能是逆向软件的关键要素。你可以直接从 Radare2 控制台安装 Ghidra 反编译器并使用，这很神奇，让你两全其美。</p>
+<h3>开始使用 Radare2</h3>
+<p>要安装 Radare2，只需克隆其存储库并运行 <code>user.sh</code> 脚本。如果你的系统上还没有一些预备软件包，你可能需要安装它们。一旦安装完成，运行 <code>r2 -v</code> 命令来查看 Radare2 是否被正确安装：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/radareorg/radare2.git
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>radare2
+$<span class="w"> </span>./sys/user.sh
+
+<span class="c1"># version</span>
+
+$<span class="w"> </span>r2<span class="w"> </span>-v
+radare2<span class="w"> </span><span class="m">4</span>.6.0-git<span class="w"> </span><span class="m">25266</span><span class="w"> </span>@<span class="w"> </span>linux-x86-64<span class="w"> </span>git.4.4.0-930-g48047b317
+commit:<span class="w"> </span>48047b3171e6ed0480a71a04c3693a0650d03543<span class="w"> </span>build:<span class="w"> </span><span class="m">2020</span>-11-17__09:31:03
+$
+</code></pre></div>
+
+<h4>获取二进制测试样本</h4>
+<p>现在 <code>r2</code> 已经安装好了，你需要一个样本二进制程序来试用它。你可以使用任何系统二进制文件（<code>ls</code>、<code>bash</code> 等），但为了使本教程的内容简单，请编译以下 C 程序：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cat<span class="w"> </span>adder.c
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;stdio.h&gt;</span>
+
+<span class="kt">int</span><span class="w"> </span><span class="nf">adder</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">num</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">num</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">int</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="kt">int</span><span class="w"> </span><span class="n">res</span><span class="p">,</span><span class="w"> </span><span class="n">num1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">100</span><span class="p">;</span>
+<span class="w">        </span><span class="n">res</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">adder</span><span class="p">(</span><span class="n">num1</span><span class="p">);</span>
+<span class="w">        </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;Number now is  : %d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">res</span><span class="p">);</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">gcc</span><span class="w"> </span><span class="n">adder</span><span class="p">.</span><span class="n">c</span><span class="w"> </span><span class="o">-</span><span class="n">o</span><span class="w"> </span><span class="n">adder</span>
+<span class="err">$</span><span class="w"> </span><span class="k">file</span><span class="w"> </span><span class="n">adder</span>
+<span class="nl">adder</span><span class="p">:</span><span class="w"> </span><span class="n">ELF</span><span class="w"> </span><span class="mi">64</span><span class="o">-</span><span class="nc">bit</span><span class="w"> </span><span class="n">LSB</span><span class="w"> </span><span class="n">executable</span><span class="p">,</span><span class="w"> </span><span class="n">x86</span><span class="o">-</span><span class="mi">64</span><span class="p">,</span><span class="w"> </span><span class="n">version</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">(</span><span class="n">SYSV</span><span class="p">),</span><span class="w"> </span><span class="n">dynamically</span><span class="w"> </span><span class="n">linked</span><span class="p">,</span><span class="w"> </span><span class="n">interpreter</span><span class="w"> </span><span class="o">/</span><span class="n">lib64</span><span class="o">/</span><span class="n">ld</span><span class="o">-</span><span class="n">linux</span><span class="o">-</span><span class="n">x86</span><span class="o">-</span><span class="mf">64.</span><span class="n">so</span><span class="mf">.2</span><span class="p">,</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">GNU</span><span class="o">/</span><span class="n">Linux</span><span class="w"> </span><span class="mf">3.2.0</span><span class="p">,</span><span class="w"> </span><span class="n">BuildID</span><span class="o">[</span><span class="n">sha1</span><span class="o">]=</span><span class="mi">9</span><span class="n">d4366f7160e1ffb46b14466e8e0d70f10de2240</span><span class="p">,</span><span class="w"> </span><span class="ow">not</span><span class="w"> </span><span class="n">stripped</span>
+<span class="err">$</span><span class="w"> </span><span class="p">.</span><span class="o">/</span><span class="n">adder</span>
+<span class="n">Number</span><span class="w"> </span><span class="n">now</span><span class="w"> </span><span class="k">is</span><span class="w">  </span><span class="err">:</span><span class="w"> </span><span class="mi">101</span>
+</code></pre></div>
+
+<h4>加载二进制文件</h4>
+<p>要分析二进制文件，你必须在 Radare2 中加载它。通过提供文件名作为 <code>r2</code> 命令的一个命令行参数来加载它。你会进入一个独立的 Radare2 控制台，这与你的 shell 不同。要退出控制台，你可以输入 <code>Quit</code> 或 <code>Exit</code> 或按 <code>Ctrl+D</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>r2<span class="w"> </span>./adder
+<span class="w"> </span>--<span class="w"> </span>Learn<span class="w"> </span>pancake<span class="w"> </span>as<span class="w"> </span><span class="k">if</span><span class="w"> </span>you<span class="w"> </span>were<span class="w"> </span>radare!
+<span class="o">[</span>0x004004b0<span class="o">]</span>&gt;<span class="w"> </span>quit
+$
+</code></pre></div>
+
+<h4>分析二进制</h4>
+<p>在你探索二进制之前，你必须让 <code>r2</code> 为你分析它。你可以通过在 <code>r2</code> 控制台中运行 <code>aaa</code> 命令来实现：</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">r2</span><span class="w"> </span><span class="p">.</span><span class="o">/</span><span class="n">adder</span>
+<span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="n">Sorry</span><span class="p">,</span><span class="w"> </span><span class="n">radare2</span><span class="w"> </span><span class="n">has</span><span class="w"> </span><span class="n">experienced</span><span class="w"> </span><span class="n">an</span><span class="w"> </span><span class="n">internal</span><span class="w"> </span><span class="n">error</span><span class="p">.</span>
+<span class="o">[</span><span class="n">0x004004b0</span><span class="o">]&gt;</span>
+<span class="o">[</span><span class="n">0x004004b0</span><span class="o">]&gt;</span>
+<span class="o">[</span><span class="n">0x004004b0</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">aaa</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="n">Analyze</span><span class="w"> </span><span class="ow">all</span><span class="w"> </span><span class="n">flags</span><span class="w"> </span><span class="n">starting</span><span class="w"> </span><span class="k">with</span><span class="w"> </span><span class="n">sym</span><span class="p">.</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">entry0</span><span class="w"> </span><span class="p">(</span><span class="n">aa</span><span class="p">)</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="n">Analyze</span><span class="w"> </span><span class="k">function</span><span class="w"> </span><span class="n">calls</span><span class="w"> </span><span class="p">(</span><span class="n">aac</span><span class="p">)</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="n">Analyze</span><span class="w"> </span><span class="nf">len</span><span class="w"> </span><span class="n">bytes</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="n">instructions</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="k">references</span><span class="w"> </span><span class="p">(</span><span class="n">aar</span><span class="p">)</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="k">Check</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">vtables</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="n">Type</span><span class="w"> </span><span class="n">matching</span><span class="w"> </span><span class="n">analysis</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="ow">all</span><span class="w"> </span><span class="n">functions</span><span class="w"> </span><span class="p">(</span><span class="n">aaft</span><span class="p">)</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="n">Propagate</span><span class="w"> </span><span class="n">noreturn</span><span class="w"> </span><span class="n">information</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="k">Use</span><span class="w"> </span><span class="o">-</span><span class="n">AA</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="n">aaaa</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">perform</span><span class="w"> </span><span class="n">additional</span><span class="w"> </span><span class="n">experimental</span><span class="w"> </span><span class="n">analysis</span><span class="p">.</span>
+<span class="o">[</span><span class="n">0x004004b0</span><span class="o">]&gt;</span>
+</code></pre></div>
+
+<p>这意味着每次你选择一个二进制文件进行分析时，你必须在加载二进制文件后输入一个额外的命令 <code>aaa</code>。你可以绕过这一点，在命令后面跟上 <code>-A</code> 来调用 <code>r2</code>；这将告诉 <code>r2</code> 为你自动分析二进制：</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">r2</span><span class="w"> </span><span class="o">-</span><span class="n">A</span><span class="w"> </span><span class="p">.</span><span class="o">/</span><span class="n">adder</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="n">Analyze</span><span class="w"> </span><span class="ow">all</span><span class="w"> </span><span class="n">flags</span><span class="w"> </span><span class="n">starting</span><span class="w"> </span><span class="k">with</span><span class="w"> </span><span class="n">sym</span><span class="p">.</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">entry0</span><span class="w"> </span><span class="p">(</span><span class="n">aa</span><span class="p">)</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="n">Analyze</span><span class="w"> </span><span class="k">function</span><span class="w"> </span><span class="n">calls</span><span class="w"> </span><span class="p">(</span><span class="n">aac</span><span class="p">)</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="n">Analyze</span><span class="w"> </span><span class="nf">len</span><span class="w"> </span><span class="n">bytes</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="n">instructions</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="k">references</span><span class="w"> </span><span class="p">(</span><span class="n">aar</span><span class="p">)</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="k">Check</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">vtables</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="n">Type</span><span class="w"> </span><span class="n">matching</span><span class="w"> </span><span class="n">analysis</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="ow">all</span><span class="w"> </span><span class="n">functions</span><span class="w"> </span><span class="p">(</span><span class="n">aaft</span><span class="p">)</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="n">Propagate</span><span class="w"> </span><span class="n">noreturn</span><span class="w"> </span><span class="n">information</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="k">Use</span><span class="w"> </span><span class="o">-</span><span class="n">AA</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="n">aaaa</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">perform</span><span class="w"> </span><span class="n">additional</span><span class="w"> </span><span class="n">experimental</span><span class="w"> </span><span class="n">analysis</span><span class="p">.</span>
+<span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="n">Already</span><span class="w"> </span><span class="n">up</span><span class="o">-</span><span class="k">to</span><span class="o">-</span><span class="nc">date</span><span class="p">.</span>
+<span class="o">[</span><span class="n">0x004004b0</span><span class="o">]&gt;</span>
+</code></pre></div>
+
+<h4>获取一些关于二进制的基本信息</h4>
+<p>在开始分析一个二进制文件之前，你需要一些背景信息。在许多情况下，这可以是二进制文件的格式（ELF、PE 等）、二进制的架构（x86、AMD、ARM 等），以及二进制是 32 位还是 64 位。方便的 <code>r2</code> 的 <code>iI</code> 命令可以提供所需的信息：</p>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="mh">0x004004b0</span><span class="p">]&gt;</span><span class="w"> </span><span class="nx">iI</span>
+<span class="nx">arch</span><span class="w">     </span><span class="nx">x86</span>
+<span class="nx">baddr</span><span class="w">    </span><span class="mh">0x400000</span>
+<span class="nx">binsz</span><span class="w">    </span><span class="mi">14724</span>
+<span class="nx">bintype</span><span class="w">  </span><span class="nx">elf</span>
+<span class="nx">bits</span><span class="w">     </span><span class="mi">64</span>
+<span class="nx">canary</span><span class="w">   </span><span class="kc">false</span>
+<span class="kd">class</span><span class="w">    </span><span class="nx">ELF64</span>
+<span class="nx">compiler</span><span class="w"> </span><span class="nx">GCC</span><span class="p">:</span><span class="w"> </span><span class="p">(</span><span class="nx">GNU</span><span class="p">)</span><span class="w"> </span><span class="m m-Double">8.3.1</span><span class="w"> </span><span class="mi">20190507</span><span class="w"> </span><span class="p">(</span><span class="nx">Red</span><span class="w"> </span><span class="nx">Hat</span><span class="w"> </span><span class="m m-Double">8.3.1</span><span class="o">-</span><span class="mi">4</span><span class="p">)</span>
+<span class="nx">crypto</span><span class="w">   </span><span class="kc">false</span>
+<span class="nx">endian</span><span class="w">   </span><span class="nx">little</span>
+<span class="nx">havecode</span><span class="w"> </span><span class="kc">true</span>
+<span class="nx">intrp</span><span class="w">    </span><span class="o">/</span><span class="nx">lib64</span><span class="o">/</span><span class="nx">ld</span><span class="o">-</span><span class="nx">linux</span><span class="o">-</span><span class="nx">x86</span><span class="o">-</span><span class="mi">64</span><span class="p">.</span><span class="nx">so</span><span class="m m-Double">.2</span>
+<span class="nx">laddr</span><span class="w">    </span><span class="mh">0x0</span>
+<span class="nx">lang</span><span class="w">     </span><span class="nx">c</span>
+<span class="nx">linenum</span><span class="w">  </span><span class="kc">true</span>
+<span class="nx">lsyms</span><span class="w">    </span><span class="kc">true</span>
+<span class="nx">machine</span><span class="w">  </span><span class="nx">AMD</span><span class="w"> </span><span class="nx">x86</span><span class="o">-</span><span class="mi">64</span><span class="w"> </span><span class="nx">architecture</span>
+<span class="nx">maxopsz</span><span class="w">  </span><span class="mi">16</span>
+<span class="nx">minopsz</span><span class="w">  </span><span class="mi">1</span>
+<span class="nx">nx</span><span class="w">       </span><span class="kc">true</span>
+<span class="nx">os</span><span class="w">       </span><span class="nx">linux</span>
+<span class="nx">pcalign</span><span class="w">  </span><span class="mi">0</span>
+<span class="nx">pic</span><span class="w">      </span><span class="kc">false</span>
+<span class="nx">relocs</span><span class="w">   </span><span class="kc">true</span>
+<span class="nx">relro</span><span class="w">    </span><span class="k">partial</span>
+<span class="nx">rpath</span><span class="w">    </span><span class="nx">NONE</span>
+<span class="nx">sanitiz</span><span class="w">  </span><span class="kc">false</span>
+<span class="nx">static</span><span class="w">   </span><span class="kc">false</span>
+<span class="nx">stripped</span><span class="w"> </span><span class="kc">false</span>
+<span class="nx">subsys</span><span class="w">   </span><span class="nx">linux</span>
+<span class="nx">va</span><span class="w">       </span><span class="kc">true</span>
+
+<span class="p">[</span><span class="mh">0x004004b0</span><span class="p">]&gt;</span>
+<span class="p">[</span><span class="mh">0x004004b0</span><span class="p">]&gt;</span>
+</code></pre></div>
+
+<h3>导入和导出</h3>
+<p>通常情况下，当你知道你要处理的是什么样的文件后，你就想知道二进制程序使用了什么样的标准库函数，或者了解程序的潜在功能。在本教程中的示例 C 程序中，唯一的库函数是 <code>printf</code>，用来打印信息。你可以通过运行 <code>ii</code> 命令看到这一点，它显示了该二进制所有导入的库：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">0x004004b0</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">ii</span>
+<span class="o">[</span><span class="n">Imports</span><span class="o">]</span>
+<span class="n">nth</span><span class="w"> </span><span class="n">vaddr</span><span class="w">      </span><span class="n">bind</span><span class="w">   </span><span class="n">type</span><span class="w">   </span><span class="n">lib</span><span class="w"> </span><span class="n">name</span>
+<span class="err">―――――――――――――――――――――――――――――――――――――</span>
+<span class="mi">1</span><span class="w">   </span><span class="mh">0x00000000</span><span class="w"> </span><span class="n">WEAK</span><span class="w">   </span><span class="n">NOTYPE</span><span class="w">     </span><span class="n">_ITM_deregisterTMCloneTable</span>
+<span class="mi">2</span><span class="w">   </span><span class="mh">0x004004a0</span><span class="w"> </span><span class="k">GLOBAL</span><span class="w"> </span><span class="n">FUNC</span><span class="w">       </span><span class="n">printf</span>
+<span class="mi">3</span><span class="w">   </span><span class="mh">0x00000000</span><span class="w"> </span><span class="k">GLOBAL</span><span class="w"> </span><span class="n">FUNC</span><span class="w">       </span><span class="n">__libc_start_main</span>
+<span class="mi">4</span><span class="w">   </span><span class="mh">0x00000000</span><span class="w"> </span><span class="n">WEAK</span><span class="w">   </span><span class="n">NOTYPE</span><span class="w">     </span><span class="n">__gmon_start__</span>
+<span class="mi">5</span><span class="w">   </span><span class="mh">0x00000000</span><span class="w"> </span><span class="n">WEAK</span><span class="w">   </span><span class="n">NOTYPE</span><span class="w">     </span><span class="n">_ITM_registerTMCloneTable</span>
+</code></pre></div>
+
+<p>该二进制也可以有自己的符号、函数或数据。这些函数通常显示在 <code>Exports</code> 下。这个测试的二进制导出了两个函数：<code>main</code> 和 <code>adder</code>。其余的函数是在编译阶段，当二进制文件被构建时添加的。加载器需要这些函数来加载二进制文件（现在不用太关心它们）：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">0x004004b0</span><span class="o">]&gt;</span>
+<span class="o">[</span><span class="n">0x004004b0</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">iE</span>
+<span class="o">[</span><span class="n">Exports</span><span class="o">]</span>
+
+<span class="n">nth</span><span class="w"> </span><span class="n">paddr</span><span class="w">       </span><span class="n">vaddr</span><span class="w">      </span><span class="n">bind</span><span class="w">   </span><span class="n">type</span><span class="w">   </span><span class="k">size</span><span class="w"> </span><span class="n">lib</span><span class="w"> </span><span class="n">name</span>
+<span class="err">――――――――――――――――――――――――――――――――――――――――――――――――――――――</span>
+<span class="mi">82</span><span class="w">   </span><span class="mh">0x00000650</span><span class="w"> </span><span class="mh">0x00400650</span><span class="w"> </span><span class="k">GLOBAL</span><span class="w"> </span><span class="n">FUNC</span><span class="w">   </span><span class="mi">5</span><span class="w">        </span><span class="n">__libc_csu_fini</span>
+<span class="mi">85</span><span class="w">   </span><span class="o">----------</span><span class="w"> </span><span class="mh">0x00601024</span><span class="w"> </span><span class="k">GLOBAL</span><span class="w"> </span><span class="n">NOTYPE</span><span class="w"> </span><span class="mi">0</span><span class="w">        </span><span class="n">_edata</span>
+<span class="mi">86</span><span class="w">   </span><span class="mh">0x00000658</span><span class="w"> </span><span class="mh">0x00400658</span><span class="w"> </span><span class="k">GLOBAL</span><span class="w"> </span><span class="n">FUNC</span><span class="w">   </span><span class="mi">0</span><span class="w">        </span><span class="n">_fini</span>
+<span class="mi">89</span><span class="w">   </span><span class="mh">0x00001020</span><span class="w"> </span><span class="mh">0x00601020</span><span class="w"> </span><span class="k">GLOBAL</span><span class="w"> </span><span class="n">NOTYPE</span><span class="w"> </span><span class="mi">0</span><span class="w">        </span><span class="n">__data_start</span>
+<span class="mi">90</span><span class="w">   </span><span class="mh">0x00000596</span><span class="w"> </span><span class="mh">0x00400596</span><span class="w"> </span><span class="k">GLOBAL</span><span class="w"> </span><span class="n">FUNC</span><span class="w">   </span><span class="mi">15</span><span class="w">       </span><span class="n">adder</span>
+<span class="mi">92</span><span class="w">   </span><span class="mh">0x00000670</span><span class="w"> </span><span class="mh">0x00400670</span><span class="w"> </span><span class="k">GLOBAL</span><span class="w"> </span><span class="n">OBJ</span><span class="w">    </span><span class="mi">0</span><span class="w">        </span><span class="n">__dso_handle</span>
+<span class="mi">93</span><span class="w">   </span><span class="mh">0x00000668</span><span class="w"> </span><span class="mh">0x00400668</span><span class="w"> </span><span class="k">GLOBAL</span><span class="w"> </span><span class="n">OBJ</span><span class="w">    </span><span class="mi">4</span><span class="w">        </span><span class="n">_IO_stdin_used</span>
+<span class="mi">94</span><span class="w">   </span><span class="mh">0x000005e0</span><span class="w"> </span><span class="mh">0x004005e0</span><span class="w"> </span><span class="k">GLOBAL</span><span class="w"> </span><span class="n">FUNC</span><span class="w">   </span><span class="mi">101</span><span class="w">      </span><span class="n">__libc_csu_init</span>
+<span class="mi">95</span><span class="w">   </span><span class="o">----------</span><span class="w"> </span><span class="mh">0x00601028</span><span class="w"> </span><span class="k">GLOBAL</span><span class="w"> </span><span class="n">NOTYPE</span><span class="w"> </span><span class="mi">0</span><span class="w">        </span><span class="n">_end</span>
+<span class="mi">96</span><span class="w">   </span><span class="mh">0x000004e0</span><span class="w"> </span><span class="mh">0x004004e0</span><span class="w"> </span><span class="k">GLOBAL</span><span class="w"> </span><span class="n">FUNC</span><span class="w">   </span><span class="mi">5</span><span class="w">        </span><span class="n">_dl_relocate_static_pie</span>
+<span class="mi">97</span><span class="w">   </span><span class="mh">0x000004b0</span><span class="w"> </span><span class="mh">0x004004b0</span><span class="w"> </span><span class="k">GLOBAL</span><span class="w"> </span><span class="n">FUNC</span><span class="w">   </span><span class="mi">47</span><span class="w">       </span><span class="n">_start</span>
+<span class="mi">98</span><span class="w">   </span><span class="o">----------</span><span class="w"> </span><span class="mh">0x00601024</span><span class="w"> </span><span class="k">GLOBAL</span><span class="w"> </span><span class="n">NOTYPE</span><span class="w"> </span><span class="mi">0</span><span class="w">        </span><span class="n">__bss_start</span>
+<span class="mi">99</span><span class="w">   </span><span class="mh">0x000005a5</span><span class="w"> </span><span class="mh">0x004005a5</span><span class="w"> </span><span class="k">GLOBAL</span><span class="w"> </span><span class="n">FUNC</span><span class="w">   </span><span class="mi">55</span><span class="w">       </span><span class="n">main</span>
+<span class="mi">100</span><span class="w">  </span><span class="o">----------</span><span class="w"> </span><span class="mh">0x00601028</span><span class="w"> </span><span class="k">GLOBAL</span><span class="w"> </span><span class="n">OBJ</span><span class="w">    </span><span class="mi">0</span><span class="w">        </span><span class="n">__TMC_END__</span>
+<span class="mi">102</span><span class="w">  </span><span class="mh">0x00000468</span><span class="w"> </span><span class="mh">0x00400468</span><span class="w"> </span><span class="k">GLOBAL</span><span class="w"> </span><span class="n">FUNC</span><span class="w">   </span><span class="mi">0</span><span class="w">        </span><span class="n">_init</span>
+
+<span class="o">[</span><span class="n">0x004004b0</span><span class="o">]&gt;</span>
+</code></pre></div>
+
+<h3>哈希信息</h3>
+<p>如何知道两个二进制文件是否相似？你不能只是打开一个二进制文件并查看里面的源代码。在大多数情况下，二进制文件的哈希值（md5sum、sha1、sha256）是用来唯一识别它的。你可以使用 <code>it</code> 命令找到二进制的哈希值：</p>
+<div class="highlight"><pre><span></span><code>[0x004004b0]&gt; it
+md5 7e6732f2b11dec4a0c7612852cede670
+sha1 d5fa848c4b53021f6570dd9b18d115595a2290ae
+sha256 13dd5a492219dac1443a816ef5f91db8d149e8edbf26f24539c220861769e1c2
+[0x004004b0]&gt;
+</code></pre></div>
+
+<h3>函数</h3>
+<p>代码按函数分组；要列出二进制中存在的函数，请运行 <code>afl</code> 命令。下面的列表显示了 <code>main</code> 函数和 <code>adder</code> 函数。通常，以 <code>sym.imp</code> 开头的函数是从标准库（这里是 glibc）中导入的：</p>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="mh">0</span><span class="n">x004004b0</span><span class="p">]</span><span class="o">&gt;</span><span class="w"> </span><span class="n">afl</span>
+<span class="mh">0</span><span class="n">x004004b0</span><span class="w">    </span><span class="mh">1</span><span class="w"> </span><span class="mh">46</span><span class="w">           </span><span class="n">entry0</span>
+<span class="mh">0</span><span class="n">x004004f0</span><span class="w">    </span><span class="mh">4</span><span class="w"> </span><span class="mh">41</span><span class="w">   </span><span class="o">-&gt;</span><span class="w"> </span><span class="mh">34</span><span class="w">   </span><span class="n">sym</span><span class="p">.</span><span class="n">deregister_tm_clones</span>
+<span class="mh">0</span><span class="n">x00400520</span><span class="w">    </span><span class="mh">4</span><span class="w"> </span><span class="mh">57</span><span class="w">   </span><span class="o">-&gt;</span><span class="w"> </span><span class="mh">51</span><span class="w">   </span><span class="n">sym</span><span class="p">.</span><span class="n">register_tm_clones</span>
+<span class="mh">0</span><span class="n">x00400560</span><span class="w">    </span><span class="mh">3</span><span class="w"> </span><span class="mh">33</span><span class="w">   </span><span class="o">-&gt;</span><span class="w"> </span><span class="mh">32</span><span class="w">   </span><span class="n">sym</span><span class="p">.</span><span class="n">__do_global_dtors_aux</span>
+<span class="mh">0</span><span class="n">x00400590</span><span class="w">    </span><span class="mh">1</span><span class="w"> </span><span class="mh">6</span><span class="w">            </span><span class="n">entry</span><span class="p">.</span><span class="n">init0</span>
+<span class="mh">0</span><span class="n">x00400650</span><span class="w">    </span><span class="mh">1</span><span class="w"> </span><span class="mh">5</span><span class="w">            </span><span class="n">sym</span><span class="p">.</span><span class="n">__libc_csu_fini</span>
+<span class="mh">0</span><span class="n">x00400658</span><span class="w">    </span><span class="mh">1</span><span class="w"> </span><span class="mh">13</span><span class="w">           </span><span class="n">sym</span><span class="p">.</span><span class="n">_fini</span>
+<span class="mh">0</span><span class="n">x00400596</span><span class="w">    </span><span class="mh">1</span><span class="w"> </span><span class="mh">15</span><span class="w">           </span><span class="n">sym</span><span class="p">.</span><span class="n">adder</span>
+<span class="mh">0</span><span class="n">x004005e0</span><span class="w">    </span><span class="mh">4</span><span class="w"> </span><span class="mh">101</span><span class="w">          </span><span class="n">loc</span><span class="p">..</span><span class="n">annobin_elf_init</span><span class="p">.</span><span class="n">c</span>
+<span class="mh">0</span><span class="n">x004004e0</span><span class="w">    </span><span class="mh">1</span><span class="w"> </span><span class="mh">5</span><span class="w">            </span><span class="n">loc</span><span class="p">..</span><span class="n">annobin_static_reloc</span><span class="p">.</span><span class="n">c</span>
+<span class="mh">0</span><span class="n">x004005a5</span><span class="w">    </span><span class="mh">1</span><span class="w"> </span><span class="mh">55</span><span class="w">           </span><span class="n">main</span>
+<span class="mh">0</span><span class="n">x004004a0</span><span class="w">    </span><span class="mh">1</span><span class="w"> </span><span class="mh">6</span><span class="w">            </span><span class="n">sym</span><span class="p">.</span><span class="n">imp</span><span class="p">.</span><span class="n">printf</span>
+<span class="mh">0</span><span class="n">x00400468</span><span class="w">    </span><span class="mh">3</span><span class="w"> </span><span class="mh">27</span><span class="w">           </span><span class="n">sym</span><span class="p">.</span><span class="n">_init</span>
+<span class="p">[</span><span class="mh">0</span><span class="n">x004004b0</span><span class="p">]</span><span class="o">&gt;</span>
+</code></pre></div>
+
+<h3>交叉引用</h3>
+<p>在 C 语言中，<code>main</code> 函数是一个程序开始执行的地方。理想情况下，其他函数都是从 <code>main</code> 函数调用的，在退出程序时，<code>main</code> 函数会向操作系统返回一个退出状态。这在源代码中是很明显的，然而，二进制程序呢？如何判断 <code>adder</code> 函数的调用位置呢？</p>
+<p>你可以使用 <code>axt</code> 命令，后面加上函数名，看看 <code>adder</code> 函数是在哪里调用的；如下图所示，它是从 <code>main</code> 函数中调用的。这就是所谓的<ruby> 交叉引用 <rt>  cross-referencing </rt></ruby>。但什么调用 <code>main</code> 函数本身呢？从下面的 <code>axt main</code> 可以看出，它是由 <code>entry0</code> 调用的（关于 <code>entry0</code> 的学习我就不说了，留待读者练习）。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">0x004004b0</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">axt</span><span class="w"> </span><span class="n">sym</span><span class="p">.</span><span class="n">adder</span>
+<span class="n">main</span><span class="w"> </span><span class="mh">0x4005b9</span><span class="w"> </span><span class="o">[</span><span class="n">CALL</span><span class="o">]</span><span class="w"> </span><span class="k">call</span><span class="w"> </span><span class="n">sym</span><span class="p">.</span><span class="n">adder</span>
+<span class="o">[</span><span class="n">0x004004b0</span><span class="o">]&gt;</span>
+<span class="o">[</span><span class="n">0x004004b0</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">axt</span><span class="w"> </span><span class="n">main</span>
+<span class="n">entry0</span><span class="w"> </span><span class="mh">0x4004d1</span><span class="w"> </span><span class="o">[</span><span class="n">DATA</span><span class="o">]</span><span class="w"> </span><span class="n">mov</span><span class="w"> </span><span class="n">rdi</span><span class="p">,</span><span class="w"> </span><span class="n">main</span>
+<span class="o">[</span><span class="n">0x004004b0</span><span class="o">]&gt;</span>
+</code></pre></div>
+
+<h3>寻找定位</h3>
+<p>在处理文本文件时，你经常通过引用行号和行或列号在文件内移动；在二进制文件中，你需要使用地址。这些是以 <code>0x</code> 开头的十六进制数字，后面跟着一个地址。要找到你在二进制中的位置，运行 <code>s</code> 命令。要移动到不同的位置，使用 <code>s</code> 命令，后面跟上地址。</p>
+<p>函数名就像标签一样，内部用地址表示。如果函数名在二进制中（未剥离的），可以使用函数名后面的 <code>s</code> 命令跳转到一个特定的函数地址。同样，如果你想跳转到二进制的开始，输入 <code>s 0</code>：</p>
+<div class="highlight"><pre><span></span><code>[0x004004b0]&gt; s
+0x4004b0
+[0x004004b0]&gt;
+[0x004004b0]&gt; s main
+[0x004005a5]&gt;
+[0x004005a5]&gt; s
+0x4005a5
+[0x004005a5]&gt;
+[0x004005a5]&gt; s sym.adder
+[0x00400596]&gt;
+[0x00400596]&gt; s
+0x400596
+[0x00400596]&gt;
+[0x00400596]&gt; s 0
+[0x00000000]&gt;
+[0x00000000]&gt; s
+0x0
+[0x00000000]&gt;
+</code></pre></div>
+
+<h3>十六进制视图</h3>
+<p>通常情况下，原始二进制没有意义。在十六进制模式下查看二进制及其等效的 ASCII 表示法会有帮助：</p>
+<div class="highlight"><pre><span></span><code>[0x004004b0]&gt; s main
+[0x004005a5]&gt;
+[0x004005a5]&gt; px
+<span class="k">-</span> offset -   0 1  2 3  4 5  6 7  8 9  A B  C D  E F  0123456789ABCDEF
+0x004005a5  5548 89e5 4883 ec10 c745 fc64 0000 008b  UH..H....E.d....
+0x004005b5  45fc 89c7 e8d8 ffff ff89 45f8 8b45 f889  E.........E..E..
+0x004005c5  c6bf 7806 4000 b800 0000 00e8 cbfe ffff  ..x.@...........
+0x004005d5  b800 0000 00c9 c30f 1f40 00f3 0f1e fa41  .........@.....A
+0x004005e5  5749 89d7 4156 4989 f641 5541 89fd 4154  WI..AVI..AUA..AT
+0x004005f5  4c8d 2504 0820 0055 488d 2d04 0820 0053  L.%.. .UH.-.. .S
+0x00400605  4c29 e548 83ec 08e8 57fe ffff 48c1 fd03  L).H....W...H...
+0x00400615  741f 31db 0f1f 8000 0000 004c 89fa 4c89  t.1........L..L.
+0x00400625  f644 89ef 41ff 14dc 4883 c301 4839 dd75  .D..A...H...H9.u
+0x00400635  ea48 83c4 085b 5d41 5c41 5d41 5e41 5fc3  .H...[]A\A]A^A_.
+0x00400645  9066 2e0f 1f84 0000 0000 00f3 0f1e fac3  .f..............
+0x00400655  0000 00f3 0f1e fa48 83ec 0848 83c4 08c3  .......H...H....
+0x00400665  0000 0001 0002 0000 0000 0000 0000 0000  ................
+0x00400675  0000 004e 756d 6265 7220 6e6f 7720 6973  ...Number now is
+0x00400685  2020 3a20 2564 0a00 0000 0001 1b03 3b44    : %d........;D
+0x00400695  0000 0007 0000 0000 feff ff88 0000 0020  ...............
+[0x004005a5]&gt;
+</code></pre></div>
+
+<h3>反汇编</h3>
+<p>如果你使用的是编译后的二进制文件，则无法查看源代码。编译器将源代码转译成 CPU 可以理解和执行的机器语言指令；其结果就是二进制或可执行文件。然而，你可以查看汇编指令（的助记词）来理解程序正在做什么。例如，如果你想查看 <code>main</code> 函数在做什么，你可以使用 <code>s main</code> 寻找 <code>main</code> 函数的地址，然后运行 <code>pdf</code> 命令来查看反汇编的指令。</p>
+<p>要理解汇编指令，你需要参考体系结构手册（这里是 x86），它的应用二进制接口（ABI，或调用惯例），并对堆栈的工作原理有基本的了解：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">0x004004b0</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="n">main</span>
+<span class="o">[</span><span class="n">0x004005a5</span><span class="o">]&gt;</span>
+<span class="o">[</span><span class="n">0x004005a5</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">s</span>
+<span class="mh">0x4005a5</span>
+<span class="o">[</span><span class="n">0x004005a5</span><span class="o">]&gt;</span>
+<span class="o">[</span><span class="n">0x004005a5</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">pdf</span>
+<span class="w">            </span><span class="p">;</span><span class="w"> </span><span class="k">DATA</span><span class="w"> </span><span class="n">XREF</span><span class="w"> </span><span class="k">from</span><span class="w"> </span><span class="n">entry0</span><span class="w"> </span><span class="err">@</span><span class="w"> </span><span class="mh">0x4004d1</span>
+<span class="err">┌</span><span class="w"> </span><span class="mi">55</span><span class="err">:</span><span class="w"> </span><span class="nc">int</span><span class="w"> </span><span class="n">main</span><span class="w"> </span><span class="p">(</span><span class="nc">int</span><span class="w"> </span><span class="n">argc</span><span class="p">,</span><span class="w"> </span><span class="nc">char</span><span class="w"> </span><span class="o">**</span><span class="n">argv</span><span class="p">,</span><span class="w"> </span><span class="nc">char</span><span class="w"> </span><span class="o">**</span><span class="n">envp</span><span class="p">);</span>
+<span class="err">│</span><span class="w">           </span><span class="p">;</span><span class="w"> </span><span class="nf">var</span><span class="w"> </span><span class="n">int64_t</span><span class="w"> </span><span class="n">var_8h</span><span class="w"> </span><span class="err">@</span><span class="w"> </span><span class="n">rbp</span><span class="o">-</span><span class="mh">0x8</span>
+<span class="err">│</span><span class="w">           </span><span class="p">;</span><span class="w"> </span><span class="nf">var</span><span class="w"> </span><span class="n">int64_t</span><span class="w"> </span><span class="n">var_4h</span><span class="w"> </span><span class="err">@</span><span class="w"> </span><span class="n">rbp</span><span class="o">-</span><span class="mh">0x4</span>
+<span class="err">│</span><span class="w">           </span><span class="mh">0x004005a5</span><span class="w">      </span><span class="mi">55</span><span class="w">             </span><span class="n">push</span><span class="w"> </span><span class="n">rbp</span>
+<span class="err">│</span><span class="w">           </span><span class="mh">0x004005a6</span><span class="w">      </span><span class="mf">4889e5</span><span class="w">         </span><span class="n">mov</span><span class="w"> </span><span class="n">rbp</span><span class="p">,</span><span class="w"> </span><span class="n">rsp</span>
+<span class="err">│</span><span class="w">           </span><span class="mh">0x004005a9</span><span class="w">      </span><span class="mi">4883</span><span class="n">ec10</span><span class="w">       </span><span class="n">sub</span><span class="w"> </span><span class="n">rsp</span><span class="p">,</span><span class="w"> </span><span class="mh">0x10</span>
+<span class="err">│</span><span class="w">           </span><span class="mh">0x004005ad</span><span class="w">      </span><span class="n">c745fc640000</span><span class="p">.</span><span class="w">  </span><span class="n">mov</span><span class="w"> </span><span class="n">dword</span><span class="w"> </span><span class="o">[</span><span class="n">var_4h</span><span class="o">]</span><span class="p">,</span><span class="w"> </span><span class="mh">0x64</span><span class="w">    </span><span class="p">;</span><span class="w"> </span><span class="s1">&#39;d&#39;</span><span class="w"> </span><span class="p">;</span><span class="w"> </span><span class="mi">100</span>
+<span class="err">│</span><span class="w">           </span><span class="mh">0x004005b4</span><span class="w">      </span><span class="mi">8</span><span class="n">b45fc</span><span class="w">         </span><span class="n">mov</span><span class="w"> </span><span class="n">eax</span><span class="p">,</span><span class="w"> </span><span class="n">dword</span><span class="w"> </span><span class="o">[</span><span class="n">var_4h</span><span class="o">]</span>
+<span class="err">│</span><span class="w">           </span><span class="mh">0x004005b7</span><span class="w">      </span><span class="mi">89</span><span class="n">c7</span><span class="w">           </span><span class="n">mov</span><span class="w"> </span><span class="n">edi</span><span class="p">,</span><span class="w"> </span><span class="n">eax</span>
+<span class="err">│</span><span class="w">           </span><span class="mh">0x004005b9</span><span class="w">      </span><span class="n">e8d8ffffff</span><span class="w">     </span><span class="k">call</span><span class="w"> </span><span class="n">sym</span><span class="p">.</span><span class="n">adder</span>
+<span class="err">│</span><span class="w">           </span><span class="mh">0x004005be</span><span class="w">      </span><span class="mi">8945</span><span class="n">f8</span><span class="w">         </span><span class="n">mov</span><span class="w"> </span><span class="n">dword</span><span class="w"> </span><span class="o">[</span><span class="n">var_8h</span><span class="o">]</span><span class="p">,</span><span class="w"> </span><span class="n">eax</span>
+<span class="err">│</span><span class="w">           </span><span class="mh">0x004005c1</span><span class="w">      </span><span class="mi">8</span><span class="n">b45f8</span><span class="w">         </span><span class="n">mov</span><span class="w"> </span><span class="n">eax</span><span class="p">,</span><span class="w"> </span><span class="n">dword</span><span class="w"> </span><span class="o">[</span><span class="n">var_8h</span><span class="o">]</span>
+<span class="err">│</span><span class="w">           </span><span class="mh">0x004005c4</span><span class="w">      </span><span class="mi">89</span><span class="n">c6</span><span class="w">           </span><span class="n">mov</span><span class="w"> </span><span class="n">esi</span><span class="p">,</span><span class="w"> </span><span class="n">eax</span>
+<span class="err">│</span><span class="w">           </span><span class="mh">0x004005c6</span><span class="w">      </span><span class="n">bf78064000</span><span class="w">     </span><span class="n">mov</span><span class="w"> </span><span class="n">edi</span><span class="p">,</span><span class="w"> </span><span class="nf">str</span><span class="p">.</span><span class="nl">Number_now_is__</span><span class="p">:</span><span class="n">__d</span><span class="w"> </span><span class="p">;</span><span class="w"> </span><span class="mh">0x400678</span><span class="w"> </span><span class="p">;</span><span class="w"> </span><span class="ss">&quot;Number now is  : %d\n&quot;</span><span class="w"> </span><span class="p">;</span><span class="w"> </span><span class="n">const</span><span class="w"> </span><span class="nc">char</span><span class="w"> </span><span class="o">*</span><span class="nf">format</span>
+<span class="err">│</span><span class="w">           </span><span class="mh">0x004005cb</span><span class="w">      </span><span class="n">b800000000</span><span class="w">     </span><span class="n">mov</span><span class="w"> </span><span class="n">eax</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span>
+<span class="err">│</span><span class="w">           </span><span class="mh">0x004005d0</span><span class="w">      </span><span class="n">e8cbfeffff</span><span class="w">     </span><span class="k">call</span><span class="w"> </span><span class="n">sym</span><span class="p">.</span><span class="n">imp</span><span class="p">.</span><span class="n">printf</span><span class="w">         </span><span class="p">;</span><span class="w"> </span><span class="nc">int</span><span class="w"> </span><span class="n">printf</span><span class="p">(</span><span class="n">const</span><span class="w"> </span><span class="nc">char</span><span class="w"> </span><span class="o">*</span><span class="nf">format</span><span class="p">)</span>
+<span class="err">│</span><span class="w">           </span><span class="mh">0x004005d5</span><span class="w">      </span><span class="n">b800000000</span><span class="w">     </span><span class="n">mov</span><span class="w"> </span><span class="n">eax</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span>
+<span class="err">│</span><span class="w">           </span><span class="mh">0x004005da</span><span class="w">      </span><span class="n">c9</span><span class="w">             </span><span class="n">leave</span>
+<span class="err">└</span><span class="w">           </span><span class="mh">0x004005db</span><span class="w">      </span><span class="n">c3</span><span class="w">             </span><span class="n">ret</span>
+<span class="o">[</span><span class="n">0x004005a5</span><span class="o">]&gt;</span>
+</code></pre></div>
+
+<p>这是 <code>adder</code> 函数的反汇编结果：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">0x004005a5</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="n">sym</span><span class="p">.</span><span class="n">adder</span>
+<span class="o">[</span><span class="n">0x00400596</span><span class="o">]&gt;</span>
+<span class="o">[</span><span class="n">0x00400596</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">s</span>
+<span class="mh">0x400596</span>
+<span class="o">[</span><span class="n">0x00400596</span><span class="o">]&gt;</span>
+<span class="o">[</span><span class="n">0x00400596</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">pdf</span>
+<span class="w">            </span><span class="p">;</span><span class="w"> </span><span class="k">CALL</span><span class="w"> </span><span class="n">XREF</span><span class="w"> </span><span class="k">from</span><span class="w"> </span><span class="n">main</span><span class="w"> </span><span class="err">@</span><span class="w"> </span><span class="mh">0x4005b9</span>
+<span class="err">┌</span><span class="w"> </span><span class="mi">15</span><span class="err">:</span><span class="w"> </span><span class="n">sym</span><span class="p">.</span><span class="n">adder</span><span class="w"> </span><span class="p">(</span><span class="n">int64_t</span><span class="w"> </span><span class="n">arg1</span><span class="p">);</span>
+<span class="err">│</span><span class="w">           </span><span class="p">;</span><span class="w"> </span><span class="nf">var</span><span class="w"> </span><span class="n">int64_t</span><span class="w"> </span><span class="n">var_4h</span><span class="w"> </span><span class="err">@</span><span class="w"> </span><span class="n">rbp</span><span class="o">-</span><span class="mh">0x4</span>
+<span class="err">│</span><span class="w">           </span><span class="p">;</span><span class="w"> </span><span class="n">arg</span><span class="w"> </span><span class="n">int64_t</span><span class="w"> </span><span class="n">arg1</span><span class="w"> </span><span class="err">@</span><span class="w"> </span><span class="n">rdi</span>
+<span class="err">│</span><span class="w">           </span><span class="mh">0x00400596</span><span class="w">      </span><span class="mi">55</span><span class="w">             </span><span class="n">push</span><span class="w"> </span><span class="n">rbp</span>
+<span class="err">│</span><span class="w">           </span><span class="mh">0x00400597</span><span class="w">      </span><span class="mf">4889e5</span><span class="w">         </span><span class="n">mov</span><span class="w"> </span><span class="n">rbp</span><span class="p">,</span><span class="w"> </span><span class="n">rsp</span>
+<span class="err">│</span><span class="w">           </span><span class="mh">0x0040059a</span><span class="w">      </span><span class="mi">897</span><span class="n">dfc</span><span class="w">         </span><span class="n">mov</span><span class="w"> </span><span class="n">dword</span><span class="w"> </span><span class="o">[</span><span class="n">var_4h</span><span class="o">]</span><span class="p">,</span><span class="w"> </span><span class="n">edi</span><span class="w">     </span><span class="p">;</span><span class="w"> </span><span class="n">arg1</span>
+<span class="err">│</span><span class="w">           </span><span class="mh">0x0040059d</span><span class="w">      </span><span class="mi">8</span><span class="n">b45fc</span><span class="w">         </span><span class="n">mov</span><span class="w"> </span><span class="n">eax</span><span class="p">,</span><span class="w"> </span><span class="n">dword</span><span class="w"> </span><span class="o">[</span><span class="n">var_4h</span><span class="o">]</span>
+<span class="err">│</span><span class="w">           </span><span class="mh">0x004005a0</span><span class="w">      </span><span class="mi">83</span><span class="n">c001</span><span class="w">         </span><span class="k">add</span><span class="w"> </span><span class="n">eax</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span>
+<span class="err">│</span><span class="w">           </span><span class="mh">0x004005a3</span><span class="w">      </span><span class="mi">5</span><span class="n">d</span><span class="w">             </span><span class="n">pop</span><span class="w"> </span><span class="n">rbp</span>
+<span class="err">└</span><span class="w">           </span><span class="mh">0x004005a4</span><span class="w">      </span><span class="n">c3</span><span class="w">             </span><span class="n">ret</span>
+<span class="o">[</span><span class="n">0x00400596</span><span class="o">]&gt;</span>
+</code></pre></div>
+
+<h3>字符串</h3>
+<p>查看二进制中存在哪些字符串可以作为二进制分析的起点。字符串是硬编码到二进制中的，通常会提供重要的提示，可以让你将重点转移到分析某些区域。在二进制中运行 <code>iz</code> 命令来列出所有的字符串。这个测试二进制中只有一个硬编码的字符串：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">0x004004b0</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">iz</span>
+<span class="o">[</span><span class="n">Strings</span><span class="o">]</span>
+<span class="n">nth</span><span class="w"> </span><span class="n">paddr</span><span class="w">      </span><span class="n">vaddr</span><span class="w">      </span><span class="nf">len</span><span class="w"> </span><span class="k">size</span><span class="w"> </span><span class="k">section</span><span class="w"> </span><span class="n">type</span><span class="w">  </span><span class="n">string</span>
+<span class="err">―――――――――――――――――――――――――――――――――――――――――――――――――――――――</span>
+<span class="mi">0</span><span class="w">   </span><span class="mh">0x00000678</span><span class="w"> </span><span class="mh">0x00400678</span><span class="w"> </span><span class="mi">20</span><span class="w">  </span><span class="mi">21</span><span class="w">   </span><span class="p">.</span><span class="n">rodata</span><span class="w"> </span><span class="nf">ascii</span><span class="w"> </span><span class="n">Number</span><span class="w"> </span><span class="n">now</span><span class="w"> </span><span class="k">is</span><span class="w">  </span><span class="err">:</span><span class="w"> </span><span class="o">%</span><span class="n">d</span><span class="err">\</span><span class="n">n</span>
+
+<span class="o">[</span><span class="n">0x004004b0</span><span class="o">]&gt;</span>
+</code></pre></div>
+
+<h3>交叉引用字符串</h3>
+<p>和函数一样，你可以交叉引用字符串，看看它们是从哪里被打印出来的，并理解它们周围的代码：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">0x004004b0</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">ps</span><span class="w"> </span><span class="err">@</span><span class="w"> </span><span class="mh">0x400678</span>
+<span class="n">Number</span><span class="w"> </span><span class="n">now</span><span class="w"> </span><span class="k">is</span><span class="w">  </span><span class="err">:</span><span class="w"> </span><span class="o">%</span><span class="n">d</span>
+
+<span class="o">[</span><span class="n">0x004004b0</span><span class="o">]&gt;</span>
+<span class="o">[</span><span class="n">0x004004b0</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">axt</span><span class="w"> </span><span class="mh">0x400678</span>
+<span class="n">main</span><span class="w"> </span><span class="mh">0x4005c6</span><span class="w"> </span><span class="o">[</span><span class="n">DATA</span><span class="o">]</span><span class="w"> </span><span class="n">mov</span><span class="w"> </span><span class="n">edi</span><span class="p">,</span><span class="w"> </span><span class="nf">str</span><span class="p">.</span><span class="nl">Number_now_is__</span><span class="p">:</span><span class="n">__d</span>
+<span class="o">[</span><span class="n">0x004004b0</span><span class="o">]&gt;</span>
+</code></pre></div>
+
+<h3>可视模式</h3>
+<p>当你的代码很复杂，有多个函数被调用时，很容易迷失方向。如果能以图形或可视化的方式查看哪些函数被调用，根据某些条件采取了哪些路径等，会很有帮助。在移动到感兴趣的函数后，可以通过 <code>VV</code> 命令来探索 <code>r2</code> 的可视化模式。例如，对于 <code>adder</code> 函数：</p>
+<div class="highlight"><pre><span></span><code>[0x004004b0]&gt; s sym.adder
+[0x00400596]&gt;
+[0x00400596]&gt; VV
+</code></pre></div>
+
+<p><img alt="Radare2 Visual mode" src="/data/attachment/album/202102/01/112635hqi5513d1e5bx8d8.png" title="Radare2 Visual mode"></p>
+<p><em>(Gaurav Kamathe, <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>)</em></p>
+<h3>调试器</h3>
+<p>到目前为止，你一直在做的是静态分析 —— 你只是在看二进制文件中的东西，而没有运行它，有时你需要执行二进制文件，并在运行时分析内存中的各种信息。<code>r2</code> 的内部调试器允许你运行二进制文件、设置断点、分析变量的值、或者转储寄存器的内容。</p>
+<p>用 <code>-d</code> 标志启动调试器，并在加载二进制时添加 <code>-A</code> 标志进行分析。你可以通过使用 <code>db &lt;function-name&gt;</code> 命令在不同的地方设置断点，比如函数或内存地址。要查看现有的断点，使用 <code>dbi</code> 命令。一旦你放置了断点，使用 <code>dc</code> 命令开始运行二进制文件。你可以使用 <code>dbt</code> 命令查看堆栈，它可以显示函数调用。最后，你可以使用 <code>drr</code> 命令转储寄存器的内容：</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">r2</span><span class="w"> </span><span class="o">-</span><span class="n">d</span><span class="w"> </span><span class="o">-</span><span class="n">A</span><span class="w"> </span><span class="p">.</span><span class="o">/</span><span class="n">adder</span>
+<span class="n">Process</span><span class="w"> </span><span class="k">with</span><span class="w"> </span><span class="n">PID</span><span class="w"> </span><span class="mi">17453</span><span class="w"> </span><span class="n">started</span><span class="p">...</span>
+<span class="o">=</span><span class="w"> </span><span class="n">attach</span><span class="w"> </span><span class="mi">17453</span><span class="w"> </span><span class="mi">17453</span>
+<span class="n">bin</span><span class="p">.</span><span class="n">baddr</span><span class="w"> </span><span class="mh">0x00400000</span>
+<span class="k">Using</span><span class="w"> </span><span class="mh">0x400000</span>
+<span class="n">asm</span><span class="p">.</span><span class="n">bits</span><span class="w"> </span><span class="mi">64</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="n">Analyze</span><span class="w"> </span><span class="ow">all</span><span class="w"> </span><span class="n">flags</span><span class="w"> </span><span class="n">starting</span><span class="w"> </span><span class="k">with</span><span class="w"> </span><span class="n">sym</span><span class="p">.</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">entry0</span><span class="w"> </span><span class="p">(</span><span class="n">aa</span><span class="p">)</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="n">Analyze</span><span class="w"> </span><span class="k">function</span><span class="w"> </span><span class="n">calls</span><span class="w"> </span><span class="p">(</span><span class="n">aac</span><span class="p">)</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="n">Analyze</span><span class="w"> </span><span class="nf">len</span><span class="w"> </span><span class="n">bytes</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="n">instructions</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="k">references</span><span class="w"> </span><span class="p">(</span><span class="n">aar</span><span class="p">)</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="k">Check</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">vtables</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="n">Type</span><span class="w"> </span><span class="n">matching</span><span class="w"> </span><span class="n">analysis</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="ow">all</span><span class="w"> </span><span class="n">functions</span><span class="w"> </span><span class="p">(</span><span class="n">aaft</span><span class="p">)</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="n">Propagate</span><span class="w"> </span><span class="n">noreturn</span><span class="w"> </span><span class="n">information</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="k">Use</span><span class="w"> </span><span class="o">-</span><span class="n">AA</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="n">aaaa</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">perform</span><span class="w"> </span><span class="n">additional</span><span class="w"> </span><span class="n">experimental</span><span class="w"> </span><span class="n">analysis</span><span class="p">.</span>
+<span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="n">git</span><span class="w"> </span><span class="n">checkout</span><span class="w"> </span><span class="n">hamster</span>
+<span class="o">[</span><span class="n">0x7f77b0a28030</span><span class="o">]&gt;</span>
+<span class="o">[</span><span class="n">0x7f77b0a28030</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="n">main</span>
+<span class="o">[</span><span class="n">0x7f77b0a28030</span><span class="o">]&gt;</span>
+<span class="o">[</span><span class="n">0x7f77b0a28030</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="n">sym</span><span class="p">.</span><span class="n">adder</span>
+<span class="o">[</span><span class="n">0x7f77b0a28030</span><span class="o">]&gt;</span>
+<span class="o">[</span><span class="n">0x7f77b0a28030</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">dbi</span>
+<span class="mi">0</span><span class="w"> </span><span class="mh">0x004005a5</span><span class="w"> </span><span class="nl">E</span><span class="p">:</span><span class="mi">1</span><span class="w"> </span><span class="nl">T</span><span class="p">:</span><span class="mi">0</span>
+<span class="mi">1</span><span class="w"> </span><span class="mh">0x00400596</span><span class="w"> </span><span class="nl">E</span><span class="p">:</span><span class="mi">1</span><span class="w"> </span><span class="nl">T</span><span class="p">:</span><span class="mi">0</span>
+<span class="o">[</span><span class="n">0x7f77b0a28030</span><span class="o">]&gt;</span>
+<span class="o">[</span><span class="n">0x7f77b0a28030</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">afl</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="n">main</span>
+<span class="mh">0x004005a5</span><span class="w">    </span><span class="mi">1</span><span class="w"> </span><span class="mi">55</span><span class="w">           </span><span class="n">main</span>
+<span class="o">[</span><span class="n">0x7f77b0a28030</span><span class="o">]&gt;</span>
+<span class="o">[</span><span class="n">0x7f77b0a28030</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">afl</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="n">sym</span><span class="p">.</span><span class="n">adder</span>
+<span class="mh">0x00400596</span><span class="w">    </span><span class="mi">1</span><span class="w"> </span><span class="mi">15</span><span class="w">           </span><span class="n">sym</span><span class="p">.</span><span class="n">adder</span>
+<span class="o">[</span><span class="n">0x7f77b0a28030</span><span class="o">]&gt;</span>
+<span class="o">[</span><span class="n">0x7f77b0a28030</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">dc</span>
+<span class="n">hit</span><span class="w"> </span><span class="n">breakpoint</span><span class="w"> </span><span class="k">at</span><span class="err">:</span><span class="w"> </span><span class="mh">0x4005a5</span>
+<span class="o">[</span><span class="n">0x004005a5</span><span class="o">]&gt;</span>
+<span class="o">[</span><span class="n">0x004005a5</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">dbt</span>
+<span class="mi">0</span><span class="w">  </span><span class="mh">0x4005a5</span><span class="w">           </span><span class="nl">sp</span><span class="p">:</span><span class="w"> </span><span class="mh">0x0</span><span class="w">                 </span><span class="mi">0</span><span class="w">    </span><span class="o">[</span><span class="n">main</span><span class="o">]</span><span class="w">  </span><span class="n">main</span><span class="w"> </span><span class="n">sym</span><span class="p">.</span><span class="n">adder</span><span class="o">+</span><span class="mi">15</span>
+<span class="mi">1</span><span class="w">  </span><span class="mh">0x7f77b0687873</span><span class="w">     </span><span class="nl">sp</span><span class="p">:</span><span class="w"> </span><span class="mh">0x7ffe35ff6858</span><span class="w">      </span><span class="mi">0</span><span class="w">    </span><span class="o">[</span><span class="n">??</span><span class="o">]</span><span class="w">  </span><span class="k">section</span><span class="p">..</span><span class="n">gnu</span><span class="p">.</span><span class="n">build</span><span class="p">.</span><span class="n">attributes</span><span class="o">-</span><span class="mi">1345820597</span>
+<span class="mi">2</span><span class="w">  </span><span class="mh">0x7f77b0a36e0a</span><span class="w">     </span><span class="nl">sp</span><span class="p">:</span><span class="w"> </span><span class="mh">0x7ffe35ff68e8</span><span class="w">      </span><span class="mi">144</span><span class="w">  </span><span class="o">[</span><span class="n">??</span><span class="o">]</span><span class="w">  </span><span class="k">map</span><span class="p">.</span><span class="n">usr_lib64_ld_2</span><span class="mf">.28</span><span class="p">.</span><span class="n">so</span><span class="p">.</span><span class="n">r_x</span><span class="o">+</span><span class="mi">65034</span>
+<span class="o">[</span><span class="n">0x004005a5</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">dc</span>
+<span class="n">hit</span><span class="w"> </span><span class="n">breakpoint</span><span class="w"> </span><span class="k">at</span><span class="err">:</span><span class="w"> </span><span class="mh">0x400596</span>
+<span class="o">[</span><span class="n">0x00400596</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">dbt</span>
+<span class="mi">0</span><span class="w">  </span><span class="mh">0x400596</span><span class="w">           </span><span class="nl">sp</span><span class="p">:</span><span class="w"> </span><span class="mh">0x0</span><span class="w">                 </span><span class="mi">0</span><span class="w">    </span><span class="o">[</span><span class="n">sym.adder</span><span class="o">]</span><span class="w">  </span><span class="n">rip</span><span class="w"> </span><span class="n">entry</span><span class="p">.</span><span class="n">init0</span><span class="o">+</span><span class="mi">6</span>
+<span class="mi">1</span><span class="w">  </span><span class="mh">0x4005be</span><span class="w">           </span><span class="nl">sp</span><span class="p">:</span><span class="w"> </span><span class="mh">0x7ffe35ff6838</span><span class="w">      </span><span class="mi">0</span><span class="w">    </span><span class="o">[</span><span class="n">main</span><span class="o">]</span><span class="w">  </span><span class="n">main</span><span class="o">+</span><span class="mi">25</span>
+<span class="mi">2</span><span class="w">  </span><span class="mh">0x7f77b0687873</span><span class="w">     </span><span class="nl">sp</span><span class="p">:</span><span class="w"> </span><span class="mh">0x7ffe35ff6858</span><span class="w">      </span><span class="mi">32</span><span class="w">   </span><span class="o">[</span><span class="n">??</span><span class="o">]</span><span class="w">  </span><span class="k">section</span><span class="p">..</span><span class="n">gnu</span><span class="p">.</span><span class="n">build</span><span class="p">.</span><span class="n">attributes</span><span class="o">-</span><span class="mi">1345820597</span>
+<span class="mi">3</span><span class="w">  </span><span class="mh">0x7f77b0a36e0a</span><span class="w">     </span><span class="nl">sp</span><span class="p">:</span><span class="w"> </span><span class="mh">0x7ffe35ff68e8</span><span class="w">      </span><span class="mi">144</span><span class="w">  </span><span class="o">[</span><span class="n">??</span><span class="o">]</span><span class="w">  </span><span class="k">map</span><span class="p">.</span><span class="n">usr_lib64_ld_2</span><span class="mf">.28</span><span class="p">.</span><span class="n">so</span><span class="p">.</span><span class="n">r_x</span><span class="o">+</span><span class="mi">65034</span>
+<span class="o">[</span><span class="n">0x00400596</span><span class="o">]&gt;</span>
+<span class="o">[</span><span class="n">0x00400596</span><span class="o">]&gt;</span>
+<span class="o">[</span><span class="n">0x00400596</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">dr</span>
+<span class="n">rax</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x00000064</span>
+<span class="n">rbx</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x00000000</span>
+<span class="n">rcx</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x7f77b0a21738</span>
+<span class="n">rdx</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x7ffe35ff6948</span>
+<span class="n">r8</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x7f77b0a22da0</span>
+<span class="n">r9</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x7f77b0a22da0</span>
+<span class="n">r10</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x0000000f</span>
+<span class="n">r11</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x00000002</span>
+<span class="n">r12</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x004004b0</span>
+<span class="n">r13</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x7ffe35ff6930</span>
+<span class="n">r14</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x00000000</span>
+<span class="n">r15</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x00000000</span>
+<span class="n">rsi</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x7ffe35ff6938</span>
+<span class="n">rdi</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x00000064</span>
+<span class="n">rsp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x7ffe35ff6838</span>
+<span class="n">rbp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x7ffe35ff6850</span>
+<span class="n">rip</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x00400596</span>
+<span class="n">rflags</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x00000202</span>
+<span class="n">orax</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0xffffffffffffffff</span>
+<span class="o">[</span><span class="n">0x00400596</span><span class="o">]&gt;</span>
+</code></pre></div>
+
+<h3>反编译器</h3>
+<p>能够理解汇编是二进制分析的前提。汇编语言总是与二进制建立和预期运行的架构相关。一行源代码和汇编代码之间从来没有 1:1 的映射。通常，一行 C 源代码会产生多行汇编代码。所以，逐行读取汇编代码并不是最佳的选择。</p>
+<p>这就是反编译器的作用。它们试图根据汇编指令重建可能的源代码。这与用于创建二进制的源代码绝不完全相同，它是基于汇编的源代码的近似表示。另外，要考虑到编译器进行的优化，它会生成不同的汇编代码以加快速度，减小二进制的大小等，会使反编译器的工作更加困难。另外，恶意软件作者经常故意混淆代码，让恶意软件的分析人员望而却步。</p>
+<p>Radare2 通过插件提供反编译器。你可以安装任何 Radare2 支持的反编译器。使用 <code>r2pm -l</code> 命令可以查看当前插件。使用 <code>r2pm install</code> 命令来安装一个示例的反编译器 <code>r2dec</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">r2pm</span><span class="w">  </span><span class="o">-</span><span class="n">l</span>
+<span class="err">$</span>
+<span class="err">$</span><span class="w"> </span><span class="n">r2pm</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="n">r2dec</span>
+<span class="n">Cloning</span><span class="w"> </span><span class="k">into</span><span class="w"> </span><span class="s1">&#39;r2dec&#39;</span><span class="p">...</span>
+<span class="nl">remote</span><span class="p">:</span><span class="w"> </span><span class="n">Enumerating</span><span class="w"> </span><span class="nl">objects</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="p">,</span><span class="w"> </span><span class="n">done</span><span class="p">.</span>
+<span class="nl">remote</span><span class="p">:</span><span class="w"> </span><span class="n">Counting</span><span class="w"> </span><span class="nl">objects</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="o">%</span><span class="w"> </span><span class="p">(</span><span class="mi">100</span><span class="o">/</span><span class="mi">100</span><span class="p">),</span><span class="w"> </span><span class="n">done</span><span class="p">.</span>
+<span class="nl">remote</span><span class="p">:</span><span class="w"> </span><span class="n">Compressing</span><span class="w"> </span><span class="nl">objects</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="o">%</span><span class="w"> </span><span class="p">(</span><span class="mi">97</span><span class="o">/</span><span class="mi">97</span><span class="p">),</span><span class="w"> </span><span class="n">done</span><span class="p">.</span>
+<span class="nl">remote</span><span class="p">:</span><span class="w"> </span><span class="n">Total</span><span class="w"> </span><span class="mi">100</span><span class="w"> </span><span class="p">(</span><span class="n">delta</span><span class="w"> </span><span class="mi">18</span><span class="p">),</span><span class="w"> </span><span class="n">reused</span><span class="w"> </span><span class="mi">27</span><span class="w"> </span><span class="p">(</span><span class="n">delta</span><span class="w"> </span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="n">pack</span><span class="o">-</span><span class="n">reused</span><span class="w"> </span><span class="mi">0</span>
+<span class="n">Receiving</span><span class="w"> </span><span class="nl">objects</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="o">%</span><span class="w"> </span><span class="p">(</span><span class="mi">100</span><span class="o">/</span><span class="mi">100</span><span class="p">),</span><span class="w"> </span><span class="mf">1.01</span><span class="w"> </span><span class="n">MiB</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="mf">1.31</span><span class="w"> </span><span class="n">MiB</span><span class="o">/</span><span class="n">s</span><span class="p">,</span><span class="w"> </span><span class="n">done</span><span class="p">.</span>
+<span class="n">Resolving</span><span class="w"> </span><span class="nl">deltas</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="o">%</span><span class="w"> </span><span class="p">(</span><span class="mi">18</span><span class="o">/</span><span class="mi">18</span><span class="p">),</span><span class="w"> </span><span class="n">done</span><span class="p">.</span>
+<span class="n">Install</span><span class="w"> </span><span class="n">Done</span><span class="w"> </span><span class="k">For</span><span class="w"> </span><span class="n">r2dec</span>
+<span class="nl">gmake</span><span class="p">:</span><span class="w"> </span><span class="n">Entering</span><span class="w"> </span><span class="n">directory</span><span class="w"> </span><span class="s1">&#39;/root/.local/share/radare2/r2pm/git/r2dec/p&#39;</span>
+<span class="o">[</span><span class="n">CC</span><span class="o">]</span><span class="w"> </span><span class="n">duktape</span><span class="o">/</span><span class="n">duktape</span><span class="p">.</span><span class="n">o</span>
+<span class="o">[</span><span class="n">CC</span><span class="o">]</span><span class="w"> </span><span class="n">duktape</span><span class="o">/</span><span class="n">duk_console</span><span class="p">.</span><span class="n">o</span>
+<span class="o">[</span><span class="n">CC</span><span class="o">]</span><span class="w"> </span><span class="n">core_pdd</span><span class="p">.</span><span class="n">o</span>
+<span class="o">[</span><span class="n">CC</span><span class="o">]</span><span class="w"> </span><span class="n">core_pdd</span><span class="p">.</span><span class="n">so</span>
+<span class="nl">gmake</span><span class="p">:</span><span class="w"> </span><span class="n">Leaving</span><span class="w"> </span><span class="n">directory</span><span class="w"> </span><span class="s1">&#39;/root/.local/share/radare2/r2pm/git/r2dec/p&#39;</span>
+<span class="err">$</span>
+<span class="err">$</span><span class="w"> </span><span class="n">r2pm</span><span class="w">  </span><span class="o">-</span><span class="n">l</span>
+<span class="n">r2dec</span>
+<span class="err">$</span>
+</code></pre></div>
+
+<h3>反编译器视图</h3>
+<p>要反编译一个二进制文件，在 <code>r2</code> 中加载二进制文件并自动分析它。在本例中，使用 <code>s sym.adder</code> 命令移动到感兴趣的 <code>adder</code> 函数，然后使用 <code>pdda</code> 命令并排查看汇编和反编译后的源代码。阅读这个反编译后的源代码往往比逐行阅读汇编更容易：</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">r2</span><span class="w"> </span><span class="o">-</span><span class="n">A</span><span class="w"> </span><span class="p">.</span><span class="o">/</span><span class="n">adder</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="n">Analyze</span><span class="w"> </span><span class="ow">all</span><span class="w"> </span><span class="n">flags</span><span class="w"> </span><span class="n">starting</span><span class="w"> </span><span class="k">with</span><span class="w"> </span><span class="n">sym</span><span class="p">.</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">entry0</span><span class="w"> </span><span class="p">(</span><span class="n">aa</span><span class="p">)</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="n">Analyze</span><span class="w"> </span><span class="k">function</span><span class="w"> </span><span class="n">calls</span><span class="w"> </span><span class="p">(</span><span class="n">aac</span><span class="p">)</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="n">Analyze</span><span class="w"> </span><span class="nf">len</span><span class="w"> </span><span class="n">bytes</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="n">instructions</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="k">references</span><span class="w"> </span><span class="p">(</span><span class="n">aar</span><span class="p">)</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="k">Check</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">vtables</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="n">Type</span><span class="w"> </span><span class="n">matching</span><span class="w"> </span><span class="n">analysis</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="ow">all</span><span class="w"> </span><span class="n">functions</span><span class="w"> </span><span class="p">(</span><span class="n">aaft</span><span class="p">)</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="n">Propagate</span><span class="w"> </span><span class="n">noreturn</span><span class="w"> </span><span class="n">information</span>
+<span class="o">[</span><span class="n">x</span><span class="o">]</span><span class="w"> </span><span class="k">Use</span><span class="w"> </span><span class="o">-</span><span class="n">AA</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="n">aaaa</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">perform</span><span class="w"> </span><span class="n">additional</span><span class="w"> </span><span class="n">experimental</span><span class="w"> </span><span class="n">analysis</span><span class="p">.</span>
+<span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="n">What</span><span class="w"> </span><span class="n">do</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="n">want</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">debug</span><span class="w"> </span><span class="n">today</span><span class="vm">?</span>
+<span class="o">[</span><span class="n">0x004004b0</span><span class="o">]&gt;</span>
+<span class="o">[</span><span class="n">0x004004b0</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="n">sym</span><span class="p">.</span><span class="n">adder</span>
+<span class="o">[</span><span class="n">0x00400596</span><span class="o">]&gt;</span>
+<span class="o">[</span><span class="n">0x00400596</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">s</span>
+<span class="mh">0x400596</span>
+<span class="o">[</span><span class="n">0x00400596</span><span class="o">]&gt;</span>
+<span class="o">[</span><span class="n">0x00400596</span><span class="o">]&gt;</span><span class="w"> </span><span class="n">pdda</span>
+<span class="w">    </span><span class="p">;</span><span class="w"> </span><span class="n">assembly</span><span class="w">                               </span><span class="o">|</span><span class="w"> </span><span class="cm">/* r2dec pseudo code output */</span>
+<span class="w">                                             </span><span class="o">|</span><span class="w"> </span><span class="cm">/* ./adder @ 0x400596 */</span>
+<span class="w">                                             </span><span class="o">|</span><span class="w"> </span><span class="n">#include</span><span class="w"> </span><span class="o">&amp;</span><span class="n">lt</span><span class="p">;</span><span class="n">stdint</span><span class="p">.</span><span class="n">h</span><span class="o">&gt;</span>
+<span class="w">                                             </span><span class="o">|</span><span class="w">  </span>
+<span class="w">    </span><span class="p">;</span><span class="w"> </span><span class="p">(</span><span class="n">fcn</span><span class="p">)</span><span class="w"> </span><span class="n">sym</span><span class="p">.</span><span class="n">adder</span><span class="w"> </span><span class="p">()</span><span class="w">                     </span><span class="o">|</span><span class="w"> </span><span class="n">int32_t</span><span class="w"> </span><span class="n">adder</span><span class="w"> </span><span class="p">(</span><span class="n">int64_t</span><span class="w"> </span><span class="n">arg1</span><span class="p">)</span><span class="w"> </span><span class="err">{</span>
+<span class="w">                                             </span><span class="o">|</span><span class="w">     </span><span class="n">int64_t</span><span class="w"> </span><span class="n">var_4h</span><span class="p">;</span>
+<span class="w">                                             </span><span class="o">|</span><span class="w">     </span><span class="n">rdi</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">arg1</span><span class="p">;</span>
+<span class="w">    </span><span class="mh">0x00400596</span><span class="w"> </span><span class="n">push</span><span class="w"> </span><span class="n">rbp</span><span class="w">                      </span><span class="o">|</span><span class="w">    </span>
+<span class="w">    </span><span class="mh">0x00400597</span><span class="w"> </span><span class="n">mov</span><span class="w"> </span><span class="n">rbp</span><span class="p">,</span><span class="w"> </span><span class="n">rsp</span><span class="w">                  </span><span class="o">|</span><span class="w">    </span>
+<span class="w">    </span><span class="mh">0x0040059a</span><span class="w"> </span><span class="n">mov</span><span class="w"> </span><span class="n">dword</span><span class="w"> </span><span class="o">[</span><span class="n">rbp - 4</span><span class="o">]</span><span class="p">,</span><span class="w"> </span><span class="n">edi</span><span class="w">      </span><span class="o">|</span><span class="w">     </span><span class="o">*</span><span class="p">((</span><span class="n">rbp</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">4</span><span class="p">))</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">edi</span><span class="p">;</span>
+<span class="w">    </span><span class="mh">0x0040059d</span><span class="w"> </span><span class="n">mov</span><span class="w"> </span><span class="n">eax</span><span class="p">,</span><span class="w"> </span><span class="n">dword</span><span class="w"> </span><span class="o">[</span><span class="n">rbp - 4</span><span class="o">]</span><span class="w">      </span><span class="o">|</span><span class="w">     </span><span class="n">eax</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">*</span><span class="p">((</span><span class="n">rbp</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">4</span><span class="p">));</span>
+<span class="w">    </span><span class="mh">0x004005a0</span><span class="w"> </span><span class="k">add</span><span class="w"> </span><span class="n">eax</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="w">                    </span><span class="o">|</span><span class="w">     </span><span class="n">eax</span><span class="o">++</span><span class="p">;</span>
+<span class="w">    </span><span class="mh">0x004005a3</span><span class="w"> </span><span class="n">pop</span><span class="w"> </span><span class="n">rbp</span><span class="w">                       </span><span class="o">|</span><span class="w">    </span>
+<span class="w">    </span><span class="mh">0x004005a4</span><span class="w"> </span><span class="n">ret</span><span class="w">                           </span><span class="o">|</span><span class="w">     </span><span class="k">return</span><span class="w"> </span><span class="n">eax</span><span class="p">;</span>
+<span class="w">                                             </span><span class="o">|</span><span class="w"> </span><span class="err">}</span>
+<span class="o">[</span><span class="n">0x00400596</span><span class="o">]&gt;</span>
+</code></pre></div>
+
+<h3>配置设置</h3>
+<p>随着你对 Radare2 的使用越来越熟悉，你会想改变它的配置，以适应你的工作方式。你可以使用 <code>e</code> 命令查看 <code>r2</code> 的默认配置。要设置一个特定的配置，在 <code>e</code> 命令后面添加 <code>config = value</code>：</p>
+<div class="highlight"><pre><span></span><code>[0x004005a5]&gt; e | wc -l
+593
+[0x004005a5]&gt; e | grep syntax
+asm.syntax = intel
+[0x004005a5]&gt;
+[0x004005a5]&gt; e asm.syntax = att
+[0x004005a5]&gt;
+[0x004005a5]&gt; e | grep syntax
+asm.syntax = att
+[0x004005a5]&gt;
+</code></pre></div>
+
+<p>要使配置更改永久化，请将它们放在 <code>r2</code> 启动时读取的名为 <code>.radare2rc</code> 的启动文件中。这个文件通常在你的主目录下，如果没有，你可以创建一个。一些示例配置选项包括：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cat<span class="w"> </span>~/.radare2rc
+e<span class="w"> </span>asm.syntax<span class="w"> </span><span class="o">=</span><span class="w"> </span>att
+e<span class="w"> </span>scr.utf8<span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span>
+eco<span class="w"> </span>solarized
+e<span class="w"> </span>cmd.stack<span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span>
+e<span class="w"> </span>stack.size<span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">256</span>
+$
+</code></pre></div>
+
+<h3>探索更多</h3>
+<p>你已经看到了足够多的 Radare2 功能，对这个工具有了一定的了解。因为 Radare2 遵循 Unix 哲学，即使你可以从它的主控台做各种事情，它也会在下面使用一套独立的二进制来完成它的任务。</p>
+<p>探索下面列出的独立二进制文件，看看它们是如何工作的。例如，用 <code>iI</code> 命令在控制台看到的二进制信息也可以用 <code>rabin2 &lt;binary&gt;</code> 命令找到：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>bin/
+$
+$<span class="w"> </span>ls
+prefix<span class="w">  </span>r2agent<span class="w">    </span>r2pm<span class="w">  </span>rabin2<span class="w">   </span>radiff2<span class="w">  </span>ragg2<span class="w">    </span>rarun2<span class="w">   </span>rasm2
+r2<span class="w">      </span>r2-indent<span class="w">  </span>r2r<span class="w">   </span>radare2<span class="w">  </span>rafind2<span class="w">  </span>rahash2<span class="w">  </span>rasign2<span class="w">  </span>rax2
+$
+</code></pre></div>
+
+<p>你觉得 Radare2 怎么样？请在评论中分享你的反馈。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 restic 和 systemd 自动备份</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Link Dupont 及时备份很重要。即使在 Fedora Magazine 中，备份软件 也是一个常见的讨论话题。本文演示了如何仅使用 systemd 以及 restic 来自动备份 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/05/shi-yong-restic-he-systemd-zi-dong-bei-fen.html" rel="bookmark"
+           title="Permalink to 使用 restic 和 systemd 自动备份">使用 restic 和 systemd 自动备份</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-05-19T23:19:56+02:00">
+                Published: Sun 19 May 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Link Dupont</p>
+<p><img alt="" src="/data/attachment/album/201905/19/232002utzajvftojwlhojv.jpg"></p>
+<p>及时备份很重要。即使在 <a href="https://fedoramagazine.org/?s=backup">Fedora Magazine</a> 中，<a href="https://restic.net/">备份软件</a> 也是一个常见的讨论话题。本文演示了如何仅使用 systemd 以及 <code>restic</code> 来自动备份。</p>
+<p>有关 <code>restic</code> 的介绍，请查看我们的文章<a href="https://fedoramagazine.org/use-restic-encrypted-backups/">在 Fedora 上使用 restic 进行加密备份</a>。然后继续阅读以了解更多详情。</p>
+<p>为了自动创建快照以及清理数据，需要运行两个 systemd 服务。第一个运行<em>备份</em>命令的服务需要以常规频率运行。第二个服务负责数据清理。</p>
+<p>如果你根本不熟悉 systemd，那么这是个很好的学习机会。查看 <a href="https://fedoramagazine.org/series/systemd-series/">Magazine 上关于 systemd 的系列文章</a>，从单元文件的这个入门开始：</p>
+<ul>
+<li><a href="https://fedoramagazine.org/systemd-getting-a-grip-on-units/">systemd 单元文件基础</a></li>
+</ul>
+<p>如果你还没有安装 <code>restic</code>，请注意它在官方的 Fedora 仓库中。要安装它，请<a href="https://fedoramagazine.org/howto-use-sudo/">带上 sudo</a> 运行此命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> </span>restic
+</code></pre></div>
+
+<h3>备份</h3>
+<p>首先，创建 <code>~/.config/systemd/user/restic-backup.service</code>。将下面的文本复制并粘贴到文件中以获得最佳效果。</p>
+<div class="highlight"><pre><span></span><code><span class="k">[Unit]</span>
+<span class="na">Description</span><span class="o">=</span><span class="s">Restic backup service</span>
+<span class="k">[Service]</span>
+<span class="na">Type</span><span class="o">=</span><span class="s">oneshot</span>
+<span class="na">ExecStart</span><span class="o">=</span><span class="s">restic backup --verbose --one-file-system --tag systemd.timer $BACKUP_EXCLUDES $BACKUP_PATHS</span>
+<span class="na">ExecStartPost</span><span class="o">=</span><span class="s">restic forget --verbose --tag systemd.timer --group-by &quot;paths,tags&quot; --keep-daily $RETENTION_DAYS --keep-weekly $RETENTION_WEEKS --keep-monthly $RETENTION_MONTHS --keep-yearly $RETENTION_YEARS</span>
+<span class="na">EnvironmentFile</span><span class="o">=</span><span class="s">%h/.config/restic-backup.conf</span>
+</code></pre></div>
+
+<p>此服务引用环境文件来加载密钥（例如 <code>RESTIC_PASSWORD</code>）。创建 <code>~/.config/restic-backup.conf</code>。复制并粘贴以下内容以获得最佳效果。此示例使用 BackBlaze B2 存储。请相应地调整 ID、密钥、仓库和密码值。</p>
+<div class="highlight"><pre><span></span><code>BACKUP_PATHS=&quot;/home/rupert&quot;
+BACKUP_EXCLUDES=&quot;--exclude-file /home/rupert/.restic_excludes --exclude-if-present .exclude_from_backup&quot;
+RETENTION_DAYS=7
+RETENTION_WEEKS=4
+RETENTION_MONTHS=6
+RETENTION_YEARS=3
+B2_ACCOUNT_ID=XXXXXXXXXXXXXXXXXXXXXXXXX
+B2_ACCOUNT_KEY=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+RESTIC_REPOSITORY=b2:XXXXXXXXXXXXXXXXXX:/
+RESTIC_PASSWORD=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+</code></pre></div>
+
+<p>现在已安装该服务，请重新加载 systemd：<code>systemctl -user daemon-reload</code>。尝试手动运行该服务以创建备份：<code>systemctl -user start restic-backup</code>。</p>
+<p>因为该服务类型是<em>一次性</em>，它将运行一次并退出。验证服务运行并根据需要创建快照后，设置计时器以定期运行此服务。例如，要每天运行 <code>restic-backup.service</code>，请按如下所示创建 <code>~/.config/systemd/user/restic-backup.timer</code>。再次复制并粘贴此文本：</p>
+<div class="highlight"><pre><span></span><code><span class="k">[Unit]</span>
+<span class="na">Description</span><span class="o">=</span><span class="s">Backup with restic daily</span>
+<span class="k">[Timer]</span>
+<span class="na">OnCalendar</span><span class="o">=</span><span class="s">daily</span>
+<span class="na">Persistent</span><span class="o">=</span><span class="s">true</span>
+<span class="k">[Install]</span>
+<span class="na">WantedBy</span><span class="o">=</span><span class="s">timers.target</span>
+</code></pre></div>
+
+<p>运行以下命令启用：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>systemctl<span class="w"> </span>--user<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>--now<span class="w"> </span>restic-backup.timer
+</code></pre></div>
+
+<h3>清理</h3>
+<p>虽然主服务运行 <code>forget</code> 命令仅保留保留策略中的快照，但实际上并未从 <code>restic</code> 仓库中删除数据。 <code>prune</code> 命令检查仓库和当前快照，并删除与快照无关的所有数据。由于 <code>prune</code> 可能是一个耗时的过程，因此无需在每次运行备份时运行。这是第二个服务和计时器的场景。首先，通过复制和粘贴此文本来创建文件 <code>~/.config/systemd/user/restic-prune.service</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="k">[Unit]</span>
+<span class="na">Description</span><span class="o">=</span><span class="s">Restic backup service (data pruning)</span>
+<span class="k">[Service]</span>
+<span class="na">Type</span><span class="o">=</span><span class="s">oneshot</span>
+<span class="na">ExecStart</span><span class="o">=</span><span class="s">restic prune</span>
+<span class="na">EnvironmentFile</span><span class="o">=</span><span class="s">%h/.config/restic-backup.conf</span>
+</code></pre></div>
+
+<p>与主 <code>restic-backup.service</code> 服务类似，<code>restic-prune</code> 也是一次性服务，并且可以手动运行。设置完服务后，创建 <code>~/.config/systemd/user/restic-prune.timer</code> 并启用相应的计时器：</p>
+<div class="highlight"><pre><span></span><code><span class="k">[Unit]</span>
+<span class="na">Description</span><span class="o">=</span><span class="s">Prune data from the restic repository monthly</span>
+<span class="k">[Timer]</span>
+<span class="na">OnCalendar</span><span class="o">=</span><span class="s">monthly</span>
+<span class="na">Persistent</span><span class="o">=</span><span class="s">true</span>
+<span class="k">[Install]</span>
+<span class="na">WantedBy</span><span class="o">=</span><span class="s">timers.target</span>
+</code></pre></div>
+
+<p>就是这些了！<code>restic</code> 将会每日运行并按月清理数据。</p>
+<p>via: <a href="https://fedoramagazine.org/automate-backups-with-restic-and-systemd/">https://fedoramagazine.org/automate-backups-with-restic-and-systemd/</a></p>
+<p>作者：<a href="https://fedoramagazine.org/author/linkdupont/">Link Dupont</a> 选题：<a href="https://github.com/lujun9972">lujun9972</a> 译者：<a href="https://github.com/geekpi">geekpi</a> 校对：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创编译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

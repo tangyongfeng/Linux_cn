@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 Apex 和 Compose MongoDB 开发 serverless</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Hays Hutton Apex 是一个将开发和部署 AWS Lambda 函数的过程打包了的工具。它提供了一个本地命令行工具来创建安全上下文、部署函 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/07/shi-yong-apex-he-compose-mongodb-kai-fa-serverless.html" rel="bookmark"
+           title="Permalink to 使用 Apex 和 Compose MongoDB 开发 serverless">使用 Apex 和 Compose MongoDB 开发 serverless</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-07-18T19:48:08+02:00">
+                Published: Tue 18 July 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Hays Hutton</p>
+<p><img alt="" src="/data/attachment/album/201707/18/194802yb63zpb2s2pa0g3s.jpg"></p>
+<p>Apex 是一个将开发和部署 AWS Lambda 函数的过程打包了的工具。它提供了一个本地命令行工具来创建安全上下文、部署函数，甚至追踪云端日志。由于 AWS Lambda 服务将函数看成独立的单元，Apex 提供了一个框架层将一系列函数作为一个项目。另外，它将服务拓展到不仅仅是 Java，Javascript 和 Ptyhon 语言，甚至包括 Go 语言。</p>
+<p>两年前 Express （基本上是 NodeJS 事实标准上的网络框架层）的作者，<a href="https://medium.com/@tjholowaychuk/farewell-node-js-4ba9e7f3e52b#.dc9vkeybx">离开</a>了 Node 社区，而将其注意力转向 Go （谷歌创造的后端服务语言），以及 Lambda（由 AWS 提供的函数即服务）。尽管一个开发者的行为无法引领一股潮流，但是来看看他正在做的名叫 <a href="http://apex.run/">Apex</a> 项目会很有趣，因为它可能预示着未来很大一部分网络开发的改变。</p>
+<h3>什么是 Lambda?</h3>
+<p>如今，人们如果不能使用自己的硬件，他们会选择付费使用一些云端的虚拟服务器。在云上，他们会部署一个完整的协议栈如 Node、Express，和一个自定义应用。或者如果他们更进一步使用了诸如 Heroku 或者 Bluemix 之类的新玩意，也可能在某些已经预配置好 Node 的容器中仅仅通过部署应用代码来部署他们完整的应用。</p>
+<p>在这个抽象的阶梯上的下一步是单独部署函数到云端而不是一个完整的应用。这些函数之后可以被一大堆外部事件触发。例如，AWS 的 API 网关服务可以将代理 HTTP 请求作为触发函数的事件，而函数即服务（FaaS）的供应方根据要求执行匹配的函数。</p>
+<h3>Apex 起步</h3>
+<p>Apex 是一个将 AWS 命令行接口封装起来的命令行工具。因此，开始使用 Apex 的第一步就是确保你已经安装和配置了从 AWS 获取的命令行工具（详情请查看 <a href="http://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html">AWS CLI Getting Started</a> 或者 <a href="http://apex.run/">Apex documentation</a>）。</p>
+<p>接下来，安装 Apex：</p>
+<div class="highlight"><pre><span></span><code>curl https://raw.githubusercontent.com/apex/apex/master/install.sh | sh
+</code></pre></div>
+
+<p>然后为你的新项目创建一个目录并运行：</p>
+<div class="highlight"><pre><span></span><code>apex init
+</code></pre></div>
+
+<p><img alt="apexInit" src="/data/attachment/album/201707/18/194809kkc66c69c6fo39lc.png"></p>
+<p>这步会配置好一些必须的安全策略，并且将项目名字附在函数名后，因为 Lambda 使用扁平化的命名空间。同时它也会创建一些配置文件和默认的 “Hello World" 风格的 Javascript 函数的 functions 目录。</p>
+<p><img alt="tree" src="/data/attachment/album/201707/18/194810pnuwlpcjq6wp16jl.png"></p>
+<p>Apex/Lambda 一个非常友好的特性是创建函数非常直观。创建一个以你函数名为名的新目录，然后在其中创建项目。如果想要使用 Go 语言，你可以创建一个叫 <code>simpleGo</code> 的目录然后在其中创建一个小型的 <code>main</code> 函数：</p>
+<div class="highlight"><pre><span></span><code><span class="o">//</span>  <span class="n">serverless</span><span class="o">/</span><span class="n">functions</span><span class="o">/</span><span class="n">simpleGo</span><span class="o">/</span><span class="n">main</span><span class="o">.</span><span class="n">go</span>
+<span class="n">package</span> <span class="n">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>  
+    <span class="s2">&quot;encoding/json&quot;</span>
+    <span class="s2">&quot;github.com/apex/go-apex&quot;</span>
+    <span class="s2">&quot;log&quot;</span>
+<span class="p">)</span>
+
+<span class="nb">type</span> <span class="n">helloEvent</span> <span class="n">struct</span> <span class="p">{</span>  
+    <span class="n">Hello</span> <span class="n">string</span> <span class="err">`</span><span class="n">json</span><span class="p">:</span><span class="s2">&quot;hello&quot;</span><span class="err">`</span>
+<span class="p">}</span>
+
+<span class="n">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>  
+    <span class="n">apex</span><span class="o">.</span><span class="n">HandleFunc</span><span class="p">(</span><span class="n">func</span><span class="p">(</span><span class="n">event</span> <span class="n">json</span><span class="o">.</span><span class="n">RawMessage</span><span class="p">,</span> <span class="n">ctx</span> <span class="o">*</span><span class="n">apex</span><span class="o">.</span><span class="n">Context</span><span class="p">)</span> <span class="p">(</span><span class="n">interface</span><span class="p">{},</span> <span class="n">error</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">var</span> <span class="n">h</span> <span class="n">helloEvent</span>
+        <span class="k">if</span> <span class="n">err</span> <span class="o">:=</span> <span class="n">json</span><span class="o">.</span><span class="n">Unmarshal</span><span class="p">(</span><span class="n">event</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">h</span><span class="p">);</span> <span class="n">err</span> <span class="o">!=</span> <span class="n">nil</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="n">nil</span><span class="p">,</span> <span class="n">err</span>
+        <span class="p">}</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">Print</span><span class="p">(</span><span class="s2">&quot;event.hello:&quot;</span><span class="p">,</span> <span class="n">h</span><span class="o">.</span><span class="n">Hello</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">h</span><span class="p">,</span> <span class="n">nil</span>
+    <span class="p">})</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>Node 是 Lambda 所支持的运行环境，Apex 使用 NodeJS shim 来调用由上述程序产生的二进制文件。它将 <code>event</code> 传入二进制文件的 STDIN，将从二进制返回的 STDOUT 作为 <code>value</code>。通过 STDERR 来显示日志。<code>apex.HandleFunc</code> 用来为你管理所有的管道。事实上在 Unix 惯例里这是一个非常简单的解决方案。你甚至可以通过在本地命令行执行 <code>go run main.go</code> 来测试它。</p>
+<p><img alt="goRun" src="/data/attachment/album/201707/18/194811rhtftfac9ae2navh.png"></p>
+<p>通过 Apex 向云端部署稍显琐碎：</p>
+<p><img alt="apexDeploy" src="/data/attachment/album/201707/18/194812ssusx7bwun2lrr5m.png"></p>
+<p>注意，这将会对你的函数指定命名空间，控制版本，甚至为其他多开发环境如 <code>staging</code> 和 <code>production</code>配置<code>env</code>。</p>
+<p>通过 <code>apex invoke</code> 在云端执行也比较琐碎：</p>
+<p><img alt="apexInvoke" src="/data/attachment/album/201707/18/194812vebo8ojm6zz8o82j.png"></p>
+<p>当然我们也可以追踪一些日志：</p>
+<p><img alt="apexLog" src="/data/attachment/album/201707/18/194813vsoyowvhs79i9twf.png"></p>
+<p>这些是从 AWS CloudWatch 返回的结果。它们都在 AWS 的 UI 中可见，但是当在另一个终端参照此结果来署它会更快。</p>
+<h3>窥探内部的秘密</h3>
+<p>来看看它内部到底部署了什么很具有指导性。Apex 将 shim 和所有需要用来运行函数的东西打包起来。另外，它会提前做好配置如入口与安全条例：</p>
+<p><img alt="lambdaConfig" src="/data/attachment/album/201707/18/194814buvuaurrjt676czu.png"></p>
+<p>Lambda 服务实际上接受一个包含所有依赖的 zip 压缩包，它会被部署到服务器来执行指定的函数。我们可以使用 <code>apex build &lt;functionName&gt;</code> 在本地创建一个压缩包用来在以后解压以探索。</p>
+<p><img alt="apexBuild" src="/data/attachment/album/201707/18/194816bxenb7t942lixhww.png"></p>
+<p>这里的 <code>_apex_index.js handle</code> 函数是原始的入口。它会配置好一些环境变量然后进入 <code>index.js</code>。</p>
+<p>而 <code>index.js</code> 孕育一个 <code>main</code> Go 的二进制文件的子进程并且将所有关联联结在一起。</p>
+<h3>使用 <code>mgo</code> 继续深入</h3>
+<p><code>mgo</code> 是 Go 语言的 MongoDB 驱动。使用 Apex 来创建一个函数来连接到 Compose 的 MongoDB 就如同我们已经学习过的 <code>simpleGo</code> 函数一样直观。这里我们会通过增加一个 <code>mgoGo</code> 目录和另一个 <code>main.go</code> 来创建一个新函数。</p>
+<div class="highlight"><pre><span></span><code><span class="o">//</span> <span class="n">serverless</span><span class="o">/</span><span class="n">functions</span><span class="o">/</span><span class="n">mgoGo</span><span class="o">/</span><span class="n">main</span><span class="o">.</span><span class="n">go</span>
+
+<span class="n">package</span> <span class="n">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>  
+    <span class="s2">&quot;crypto/tls&quot;</span>
+    <span class="s2">&quot;encoding/json&quot;</span>
+    <span class="s2">&quot;github.com/apex/go-apex&quot;</span>
+    <span class="s2">&quot;gopkg.in/mgo.v2&quot;</span>
+    <span class="s2">&quot;log&quot;</span>
+    <span class="s2">&quot;net&quot;</span>
+<span class="p">)</span>
+
+<span class="nb">type</span> <span class="n">person</span> <span class="n">struct</span> <span class="p">{</span>  
+  <span class="n">Name</span>  <span class="n">string</span> <span class="err">`</span><span class="n">json</span><span class="p">:</span><span class="s2">&quot;name&quot;</span><span class="err">`</span>
+  <span class="n">Email</span> <span class="n">string</span> <span class="err">`</span><span class="n">json</span><span class="p">:</span><span class="s2">&quot;email&quot;</span><span class="err">`</span>
+<span class="p">}</span>
+
+<span class="n">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>  
+    <span class="n">apex</span><span class="o">.</span><span class="n">HandleFunc</span><span class="p">(</span><span class="n">func</span><span class="p">(</span><span class="n">event</span> <span class="n">json</span><span class="o">.</span><span class="n">RawMessage</span><span class="p">,</span> <span class="n">ctx</span> <span class="o">*</span><span class="n">apex</span><span class="o">.</span><span class="n">Context</span><span class="p">)</span> <span class="p">(</span><span class="n">interface</span><span class="p">{},</span> <span class="n">error</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">tlsConfig</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="n">tls</span><span class="o">.</span><span class="n">Config</span><span class="p">{}</span>
+        <span class="n">tlsConfig</span><span class="o">.</span><span class="n">InsecureSkipVerify</span> <span class="o">=</span> <span class="n">true</span>
+
+        <span class="o">//</span><span class="n">connect</span> <span class="n">URL</span><span class="p">:</span>
+        <span class="o">//</span> <span class="s2">&quot;mongodb://&lt;username&gt;:&lt;password&gt;@&lt;hostname&gt;:&lt;port&gt;,&lt;hostname&gt;:&lt;port&gt;/&lt;db-name&gt;</span>
+        <span class="n">dialInfo</span><span class="p">,</span> <span class="n">err</span> <span class="o">:=</span> <span class="n">mgo</span><span class="o">.</span><span class="n">ParseURL</span><span class="p">(</span><span class="s2">&quot;mongodb://apex:mountain@aws-us-west-2-portal.0.dblayer.com:15188, aws-us-west-2-portal.1.dblayer.com:15188/signups&quot;</span><span class="p">)</span>
+        <span class="n">dialInfo</span><span class="o">.</span><span class="n">DialServer</span> <span class="o">=</span> <span class="n">func</span><span class="p">(</span><span class="n">addr</span> <span class="o">*</span><span class="n">mgo</span><span class="o">.</span><span class="n">ServerAddr</span><span class="p">)</span> <span class="p">(</span><span class="n">net</span><span class="o">.</span><span class="n">Conn</span><span class="p">,</span> <span class="n">error</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">conn</span><span class="p">,</span> <span class="n">err</span> <span class="o">:=</span> <span class="n">tls</span><span class="o">.</span><span class="n">Dial</span><span class="p">(</span><span class="s2">&quot;tcp&quot;</span><span class="p">,</span> <span class="n">addr</span><span class="o">.</span><span class="n">String</span><span class="p">(),</span> <span class="n">tlsConfig</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">conn</span><span class="p">,</span> <span class="n">err</span>
+        <span class="p">}</span>
+        <span class="n">session</span><span class="p">,</span> <span class="n">err</span> <span class="o">:=</span> <span class="n">mgo</span><span class="o">.</span><span class="n">DialWithInfo</span><span class="p">(</span><span class="n">dialInfo</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">err</span> <span class="o">!=</span> <span class="n">nil</span> <span class="p">{</span>
+            <span class="n">log</span><span class="o">.</span><span class="n">Fatal</span><span class="p">(</span><span class="s2">&quot;uh oh. bad Dial.&quot;</span><span class="p">)</span>
+            <span class="n">panic</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+        <span class="p">}</span>
+        <span class="n">defer</span> <span class="n">session</span><span class="o">.</span><span class="n">Close</span><span class="p">()</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">Print</span><span class="p">(</span><span class="s2">&quot;Connected!&quot;</span><span class="p">)</span>
+
+    <span class="n">var</span> <span class="n">p</span> <span class="n">person</span>
+    <span class="k">if</span> <span class="n">err</span> <span class="o">:=</span> <span class="n">json</span><span class="o">.</span><span class="n">Unmarshal</span><span class="p">(</span><span class="n">event</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">p</span><span class="p">);</span> <span class="n">err</span> <span class="o">!=</span> <span class="n">nil</span> <span class="p">{</span>
+            <span class="n">log</span><span class="o">.</span><span class="n">Fatal</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+    <span class="p">}</span>
+
+        <span class="n">c</span> <span class="o">:=</span> <span class="n">session</span><span class="o">.</span><span class="n">DB</span><span class="p">(</span><span class="s2">&quot;signups&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">C</span><span class="p">(</span><span class="s2">&quot;people&quot;</span><span class="p">)</span>
+        <span class="n">err</span> <span class="o">=</span> <span class="n">c</span><span class="o">.</span><span class="n">Insert</span><span class="p">(</span><span class="o">&amp;</span><span class="n">p</span><span class="p">)</span> 
+        <span class="k">if</span> <span class="n">err</span> <span class="o">!=</span> <span class="n">nil</span> <span class="p">{</span>
+            <span class="n">log</span><span class="o">.</span><span class="n">Fatal</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+        <span class="p">}</span>
+
+    <span class="n">log</span><span class="o">.</span><span class="n">Print</span><span class="p">(</span><span class="s2">&quot;Created: &quot;</span><span class="p">,</span> <span class="n">p</span><span class="o">.</span><span class="n">Name</span><span class="p">,</span><span class="s2">&quot; - &quot;</span><span class="p">,</span> <span class="n">p</span><span class="o">.</span><span class="n">Email</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">p</span><span class="p">,</span> <span class="n">nil</span>
+    <span class="p">})</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>发布部署，我们可以通过使用正确类型的事件来模拟调用了一个 API：</p>
+<p><img alt="apexMgo" src="/data/attachment/album/201707/18/194817fbyw9eobu0ergbyr.png"></p>
+<p>最终结果是 <code>insert</code> 到在 <a href="https://www.compose.com/articles/composes-new-primetime-mongodb/">Compose 之上 的 MongoDB</a> 中。</p>
+<p><img alt="composeDeploy" src="/data/attachment/album/201707/18/194818g4o05zuv0zw4hhap.png"></p>
+<h3>还有更多……</h3>
+<p>尽管目前我们已经涉及了 Apex 的方方面面，但是仍然有很多值得我们去探索的东西。它还和 <a href="https://www.terraform.io/">Terraform</a> 进行了整合。如果你真的希望，你可以发布一个多语言项目包括 Javascript、Java、Python 以及 Go。你也可以为开发、演示以及产品环境配置多种环境。你可以调整运行资源如调整存储大小和运行时间来调整成本。而且你可以把函数勾连到 API 网关上来传输一个 HTTP API 或者使用一些类似 SNS (简单通知服务)来为云端的函数创建管道。</p>
+<p>和大多数事物一样，Apex 和 Lambda 并不是在所有场景下都完美。 但是，在你的工具箱中增加一个完全不需要你来管理底层建设的工具完全没有坏处。</p>
+<p>via: <a href="https://www.compose.com/articles/go-serverless-with-apex-and-composes-mongodb/">https://www.compose.com/articles/go-serverless-with-apex-and-composes-mongodb/</a></p>
+<p>作者：<a href="https://www.compose.com/articles/author/hays-hutton/">Hays Hutton</a> 译者：<a href="https://github.com/xiaow6">xiaow6</a> 校对：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创编译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

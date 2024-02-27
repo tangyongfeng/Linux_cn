@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>容器如何工作：OverlayFS</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Julia Evans 今天早上，我为未来潜在容器杂志画了一幅 OverlayFS 的漫画，我对这个主题感到兴奋，想写一篇关于它的博客来提供更多 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/11/rong-qi-ru-he-gong-zuo-overlayfs.html" rel="bookmark"
+           title="Permalink to 容器如何工作：OverlayFS">容器如何工作：OverlayFS</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-11-23T10:25:32+01:00">
+                Published: Sat 23 November 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Julia Evans</p>
+<p>今天早上，我为未来潜在容器<a href="https://wizardzines.com">杂志</a>画了一幅 OverlayFS 的漫画，我对这个主题感到兴奋，想写一篇关于它的博客来提供更多详细信息。</p>
+<p><img alt="" src="/data/attachment/album/201911/23/102537d50a06jizddcc0c8.jpg"></p>
+<h3>容器镜像很大</h3>
+<p>容器镜像可能会很大（尽管有些很小，例如 <a href="https://hub.docker.com/_/alpine?tab=tags">alpine linux 才 2.5MB</a>）。Ubuntu 16.04 约为 27 MB，<a href="https://hub.docker.com/r/continuumio/anaconda3/tags">Anaconda Python 发行版为 800MB 至 1.5GB</a>。</p>
+<p>你以镜像启动的每个容器都是原始空白状态，仿佛它只是为使用容器而复制的一份镜像拷贝一样。但是对于大的容器镜像，像 800MB 的 Anaconda 镜像，复制一份拷贝既浪费磁盘空间也很慢。因此 Docker 不会复制，而是采用<strong>叠加</strong>。</p>
+<h3>叠加如何工作</h3>
+<p>OverlayFS，也被称为 <strong>联合文件系统</strong>或 <strong>联合挂载</strong>，它可让你使用 2 个目录挂载文件系统：“下层”目录和“上层”目录。</p>
+<p>基本上：</p>
+<ul>
+<li>文件系统的<strong>下层</strong>目录是只读的</li>
+<li>文件系统的<strong>上层</strong>目录可以读写</li>
+</ul>
+<p>当进程“读取”文件时，OverlayFS 文件系统驱动将在上层目录中查找并从该目录中读取文件（如果存在）。否则，它将在下层目录中查找。</p>
+<p>当进程“写入”文件时，OverlayFS 会将其写入上层目录。</p>
+<h3>让我们使用 mount 制造一个叠加层！</h3>
+<p>这有点抽象，所以让我们制作一个 OverlayFS 并尝试一下！这将只包含一些文件：我将创建上、下层目录，以及用来挂载合并的文件系统的 <code>merged</code> 目录：</p>
+<div class="highlight"><pre><span></span><code><span class="n">$</span><span class="w"> </span><span class="n">mkdir</span><span class="w"> </span><span class="n">upper</span><span class="w"> </span><span class="n">lower</span><span class="w"> </span><span class="n">merged</span><span class="w"> </span><span class="k">work</span>
+<span class="n">$</span><span class="w"> </span><span class="n">echo</span><span class="w"> </span><span class="s2">&quot;I&#39;m from lower!&quot;</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">lower</span><span class="o">/</span><span class="n">in_lower</span><span class="p">.</span><span class="n">txt</span>
+<span class="n">$</span><span class="w"> </span><span class="n">echo</span><span class="w"> </span><span class="s2">&quot;I&#39;m from upper!&quot;</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">upper</span><span class="o">/</span><span class="n">in_upper</span><span class="p">.</span><span class="n">txt</span>
+<span class="n">$</span><span class="w"> </span><span class="c1"># `in_both` is in both directories</span>
+<span class="n">$</span><span class="w"> </span><span class="n">echo</span><span class="w"> </span><span class="s2">&quot;I&#39;m from lower!&quot;</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">lower</span><span class="o">/</span><span class="n">in_both</span><span class="p">.</span><span class="n">txt</span>
+<span class="n">$</span><span class="w"> </span><span class="n">echo</span><span class="w"> </span><span class="s2">&quot;I&#39;m from upper!&quot;</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">upper</span><span class="o">/</span><span class="n">in_both</span><span class="p">.</span><span class="n">txt</span>
+</code></pre></div>
+
+<p>合并上层目录和下层目录非常容易：我们可以通过 <code>mount</code> 来完成！</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>mount<span class="w"> </span>-t<span class="w"> </span>overlay<span class="w"> </span>overlay
+<span class="w">    </span>-o<span class="w"> </span><span class="nv">lowerdir</span><span class="o">=</span>/home/bork/test/lower,upperdir<span class="o">=</span>/home/bork/test/upper,workdir<span class="o">=</span>/home/bork/test/work
+<span class="w">    </span>/home/bork/test/merged
+</code></pre></div>
+
+<p>在执行此操作时，我不断收到一条非常烦人的错误消息，内容为：<code>mount: /home/bork/test/merged: special device overlay does not exist.</code>。这条消息是错误的，实际上只是意味着我指定的一个目录缺失（我写成了 <code>~/test/merged</code>，但它没有被展开）。</p>
+<p>让我们尝试从 OverlayFS 中读取其中一个文件！文件 <code>in_both.txt</code> 同时存在于 <code>lower/</code> 和 <code>upper/</code> 中，因此应从 <code>upper/</code> 目录中读取该文件。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cat<span class="w"> </span>merged/in_both.txt
+<span class="s2">&quot;I&#39;m from upper!</span>
+</code></pre></div>
+
+<p>可以成功！</p>
+<p>目录的内容就是我们所期望的：</p>
+<div class="highlight"><pre><span></span><code>find lower/ upper/ merged/
+lower/
+lower/in_lower.txt
+lower/in_both.txt
+upper/
+upper/in_upper.txt
+upper/in_both.txt
+merged/
+merged/in_lower.txt
+merged/in_both.txt
+merged/in_upper.txt
+</code></pre></div>
+
+<h3>创建新文件时会发生什么？</h3>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;new file&#39;</span><span class="w"> </span>&gt;<span class="w"> </span>merged/new_file
+$<span class="w"> </span>ls<span class="w"> </span>-l<span class="w"> </span>*/new_file
+-rw-r--r--<span class="w"> </span><span class="m">1</span><span class="w"> </span>bork<span class="w"> </span>bork<span class="w"> </span><span class="m">9</span><span class="w"> </span>Nov<span class="w"> </span><span class="m">18</span><span class="w"> </span><span class="m">14</span>:24<span class="w"> </span>merged/new_file
+-rw-r--r--<span class="w"> </span><span class="m">1</span><span class="w"> </span>bork<span class="w"> </span>bork<span class="w"> </span><span class="m">9</span><span class="w"> </span>Nov<span class="w"> </span><span class="m">18</span><span class="w"> </span><span class="m">14</span>:24<span class="w"> </span>upper/new_file
+</code></pre></div>
+
+<p>这是有作用的，新文件会在 <code>upper</code> 目录创建。</p>
+<h3>删除文件时会发生什么？</h3>
+<p>读写似乎很简单。但是删除会发生什么？开始试试！</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>rm<span class="w"> </span>merged/in_both.txt
+</code></pre></div>
+
+<p>发生了什么？让我们用 <code>ls</code> 看下：</p>
+<div class="highlight"><pre><span></span><code>ls -l upper/in_both.txt  lower/lower1.txt  merged/lower1.txt
+ls: cannot access &#39;merged/in_both.txt&#39;: No such file or directory
+-rw-r--r-- 1 bork bork    6 Nov 18 14:09 lower/in_both.txt
+c--------- 1 root root 0, 0 Nov 18 14:19 upper/in_both.txt
+</code></pre></div>
+
+<p>所以：</p>
+<ul>
+<li><code>in_both.txt</code> 仍在 <code>lower</code> 目录中，并且保持不变</li>
+<li>它不在 <code>merged</code> 目录中。到目前为止，这就是我们所期望的。</li>
+<li>但是在 <code>upper</code> 中发生的事情有点奇怪：有一个名为 <code>upper/in_both.txt</code> 的文件，但是它是字符设备？我想这就是 overlayfs 驱动表示删除的文件的方式。</li>
+</ul>
+<p>如果我们尝试复制这个奇怪的字符设备文件，会发生什么？</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>cp<span class="w"> </span>upper/in_both.txt<span class="w"> </span>upper/in_lower.txt
+cp:<span class="w"> </span>cannot<span class="w"> </span>open<span class="w"> </span><span class="s1">&#39;upper/in_both.txt&#39;</span><span class="w"> </span><span class="k">for</span><span class="w"> </span>reading:<span class="w"> </span>No<span class="w"> </span>such<span class="w"> </span>device<span class="w"> </span>or<span class="w"> </span>address
+</code></pre></div>
+
+<p>好吧，这似乎很合理，复制这个奇怪的删除信号文件并没有任何意义。</p>
+<h3>你可以挂载多个“下层”目录</h3>
+<p>Docker 镜像通常由 25 个“层”组成。OverlayFS 支持具有多个下层目录，因此你可以运行：</p>
+<div class="highlight"><pre><span></span><code>mount -t overlay overlay
+      -o lowerdir:/dir1:/dir2:/dir3:...:/dir25,upperdir=...
+</code></pre></div>
+
+<p>因此，我假设这是有多个 Docker 层的容器的工作方式，它只是将每个层解压缩到一个单独的目录中，然后要求 OverlayFS 将它们全部合并在一起，并使用一个空的上层目录，容器将对其进行更改。</p>
+<h3>Docker 也可以使用 btrfs 快照</h3>
+<p>现在，我使用的是 ext4，而 Docker 使用 OverlayFS 快照来运行容器。但是我曾经用过 btrfs，接着 Docker 将改为使用 btrfs 的写时复制快照。（这是 Docker 何时使用哪种<a href="https://docs.docker.com/storage/storagedriver/select-storage-driver/">存储驱动</a>的列表）</p>
+<p>以这种方式使用 btrfs 快照会产生一些有趣的结果：去年某个时候，我在笔记本上运行了数百个临时的 Docker 容器，这导致我用尽了 btrfs 元数据空间（像<a href="https://www.reddit.com/r/archlinux/comments/5jrmfe/btrfs_metadata_and_docker/">这个人</a>一样）。这真的很令人困惑，因为我以前从未听说过 btrfs 元数据，而且弄清楚如何清理文件系统以便再次运行 Docker 容器非常棘手。（<a href="https://github.com/moby/moby/issues/27653">这个 docker github 上的提案</a>描述了 Docker 和 btrfs 的类似问题）</p>
+<h3>以简单的方式尝试容器功能很有趣！</h3>
+<p>我认为容器通常看起来像是在做“复杂的”事情，我认为将它们分解成这样很有趣。你可以运行一条 <code>mount</code> 咒语，而实际上并没有做任何与容器相关的其他事情，看看叠加层是如何工作的！</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

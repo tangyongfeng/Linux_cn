@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在 RHEL 上配置网络绑定（成组）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Jayabal Thiyagarajan 网络 绑定 Bonding （ 成组 Teaming ） 是 Linux 的一项内核特性，它让我们可以将多个网络接口（例如 ens192、ens224）聚合为一个专有的虚拟网络接 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2023/08/zai-rhel-shang-pei-zhi-wang-luo-bang-ding-cheng-zu.html" rel="bookmark"
+           title="Permalink to 在 RHEL 上配置网络绑定（成组）">在 RHEL 上配置网络绑定（成组）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2023-08-28T12:25:34+02:00">
+                Published: Mon 28 August 2023
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Jayabal Thiyagarajan</p>
+<p><img alt="" src="/data/attachment/album/202308/28/122437eaiz28h2y0a594z9.jpg"></p>
+<p>网络 <ruby> <a href="https://www.kernel.org/doc/Documentation/networking/bonding.txt">  绑定 </a> <rt>  Bonding </rt></ruby>（<ruby> 成组 <rt>  Teaming </rt></ruby>） 是 Linux 的一项内核特性，它让我们可以将多个网络接口（例如 <code>ens192</code>、<code>ens224</code>）聚合为一个专有的虚拟网络接口，被称为通道绑定（<code>bond0</code>）。这样做能够提升吞吐量并增加冗余备份。</p>
+<p>网络绑定一共支持 7 种模式，你可以根据实际需求进行设置。<ruby> 链接聚合控制协议 <rt>  Link Aggregation Control Protocol </rt></ruby>（LACP）， 即模式 4（802.3ad）因其支持链接聚合与冗余而被广泛应用。</p>
+<p>在本篇文章中，我们将引导你学习如何在 RHEL 系统中配置网卡（网络）绑定。</p>
+<h3>LACP 绑定的前置条件</h3>
+<ul>
+<li>网络团队需要在网络交换机的端口上开启 LACP（802.3ad）来实现链接的聚合。</li>
+<li>一个 Linux 系统应该配备至少两个网络接口。</li>
+<li>对于物理服务器，我们推荐在板载接口与 PCI 接口间进行绑定配置，以避免在主机端的网络卡出现单点故障。</li>
+</ul>
+<h3>Bonding 模块</h3>
+<p>你可以使用 <code>lsmod</code> 命令来确认你的 Linux 系统是否已经加载了 <code>bonding</code> 模块。</p>
+<div class="highlight"><pre><span></span><code>lsmod | grep -i bonding
+bonding               12451  0
+</code></pre></div>
+
+<p>系统应该默认已加载。如果未看到，可以运用 <code>modprobe</code> 命令进行加载。</p>
+<div class="highlight"><pre><span></span><code>modprobe bonding
+</code></pre></div>
+
+<h3>创建绑定接口</h3>
+<p>在 <code>/etc/sysconfig/network-scripts/</code> 路径下，创建一个名为 <code>ifcfg-bond0</code> 的绑定接口文件。依据你的网络情况，你可能需要修改诸如 <code>IP</code>、<code>MASK</code> 以及 <code>GATEWAY</code> 等值。</p>
+<div class="highlight"><pre><span></span><code>vi /etc/sysconfig/network-scripts/ifcfg-bond0
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code>TYPE=Bond
+DEVICE=bond0
+NAME=bond0
+BONDING_MASTER=yes
+BOOTPROTO=none
+ONBOOT=yes
+IPADDR=192.168.1.100
+NETMASK=255.255.255.0
+GATEWAY=192.168.1.1
+BONDING_OPTS=&quot;mode=4 miimon=100 lacp_rate=1&quot;
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>描述</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BONDING_MASTER=yes</code></td>
+<td>表示设备是一个绑定主设备。</td>
+</tr>
+<tr>
+<td><code>mode=4</code></td>
+<td>绑定模式是 IEEE 802.3ad 动态链接聚合（LACP）。</td>
+</tr>
+<tr>
+<td><code>miimon=100</code></td>
+<td>定义以毫秒单位的 MII 链路监测频率，这决定了多久检查每个从属链路的状态一次以寻找失败的链路。<code>0</code> 值将禁用 MII 链路监测。<code>100</code> 是个不错的初始值。</td>
+</tr>
+<tr>
+<td><code>lacp_rate=1</code></td>
+<td>一个设置项，规定我们将以何种频率要求我们的链路伙伴每秒钟发送 LACPDU。默认为慢，即 <code>0</code>。</td>
+</tr>
+</tbody>
+</table>
+<h3>配置第一个子接口</h3>
+<p>修改你希望添加到绑定中的第一个子接口。请根据你的实际环境使用合适的接口名。</p>
+<div class="highlight"><pre><span></span><code>vi /etc/sysconfig/network-scripts/ifcfg-ens192
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code>TYPE=Ethernet
+BOOTPROTO=none
+DEVICE=ens192
+ONBOOT=yes
+MASTER=bond0
+SLAVE=yes
+</code></pre></div>
+
+<h3>配置第二个子接口</h3>
+<p>修改你希望添加到绑定中的第二个子接口。请根据你的实际环境使用合适的接口名。</p>
+<div class="highlight"><pre><span></span><code>vi /etc/sysconfig/network-scripts/ifcfg-ens224
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code>TYPE=Ethernet
+BOOTPROTO=none
+DEVICE=ens224
+ONBOOT=yes
+MASTER=bond0
+SLAVE=yes
+</code></pre></div>
+
+<h3>重启网络服务</h3>
+<p>重启网络服务以激活绑定接口。</p>
+<div class="highlight"><pre><span></span><code>systemctl restart network
+</code></pre></div>
+
+<h3>验证绑定配置</h3>
+<p>你可以借助 <a href="https://www.2daygeek.com/linux-ip-command-configure-network-interface/">ip 命令</a> 来查看绑定接口以及其子接口的情况。可以看到，<code>bond0</code> 现在已启动并在运行。</p>
+<p><img alt="" src="/data/attachment/album/202308/28/122534n6x1zuo88zwn69sn.jpg"></p>
+<h3>查阅绑定接口状态</h3>
+<p>检查以下文件，你可以看到绑定接口及其子接口的详细信息。输出结果应该看起来很不错，我们能看到诸如绑定模式，MII 状态，MII 轮询间隔，LACP 速率，端口数量等信息。</p>
+<div class="highlight"><pre><span></span><code>cat /proc/net/bonding/bond0
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="nx">Ethernet</span><span class="w"> </span><span class="nx">Channel</span><span class="w"> </span><span class="nx">Bonding</span><span class="w"> </span><span class="nx">Driver</span><span class="p">:</span><span class="w"> </span><span class="nx">v3</span><span class="m m-Double">.7.1</span><span class="w"> </span><span class="p">(</span><span class="nx">April</span><span class="w"> </span><span class="mi">27</span><span class="p">,</span><span class="w"> </span><span class="mi">2011</span><span class="p">)</span>
+
+<span class="nx">Bonding</span><span class="w"> </span><span class="nx">Mode</span><span class="p">:</span><span class="w"> </span><span class="nx">IEEE</span><span class="w"> </span><span class="m m-Double">802.3</span><span class="nx">ad</span><span class="w"> </span><span class="nx">Dynamic</span><span class="w"> </span><span class="nx">link</span><span class="w"> </span><span class="nx">aggregation</span>
+<span class="nx">Transmit</span><span class="w"> </span><span class="nx">Hash</span><span class="w"> </span><span class="nx">Policy</span><span class="p">:</span><span class="w"> </span><span class="nx">layer</span><span class="w"> </span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="nx">MII</span><span class="w"> </span><span class="nx">Status</span><span class="p">:</span><span class="w"> </span><span class="nx">up</span>
+<span class="nx">MII</span><span class="w"> </span><span class="nx">Polling</span><span class="w"> </span><span class="nx">Interval</span><span class="w"> </span><span class="p">(</span><span class="nx">ms</span><span class="p">):</span><span class="w"> </span><span class="mi">100</span>
+<span class="nx">Up</span><span class="w"> </span><span class="nx">Delay</span><span class="w"> </span><span class="p">(</span><span class="nx">ms</span><span class="p">):</span><span class="w"> </span><span class="mi">0</span>
+<span class="nx">Down</span><span class="w"> </span><span class="nx">Delay</span><span class="w"> </span><span class="p">(</span><span class="nx">ms</span><span class="p">):</span><span class="w"> </span><span class="mi">0</span>
+
+<span class="m m-Double">802.3</span><span class="nx">ad</span><span class="w"> </span><span class="nx">info</span>
+<span class="nx">LACP</span><span class="w"> </span><span class="nx">rate</span><span class="p">:</span><span class="w"> </span><span class="nx">fast</span>
+<span class="nx">Min</span><span class="w"> </span><span class="nx">links</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="nx">Aggregator</span><span class="w"> </span><span class="nx">selection</span><span class="w"> </span><span class="nx">policy</span><span class="w"> </span><span class="p">(</span><span class="nx">ad_select</span><span class="p">):</span><span class="w"> </span><span class="nx">stable</span>
+<span class="nx">System</span><span class="w"> </span><span class="nx">priority</span><span class="p">:</span><span class="w"> </span><span class="mi">65535</span>
+<span class="nx">System</span><span class="w"> </span><span class="nx">MAC</span><span class="w"> </span><span class="nx">address</span><span class="p">:</span><span class="w"> </span><span class="nx">c8</span><span class="p">:</span><span class="mi">5</span><span class="nx">b</span><span class="p">:</span><span class="mi">76</span><span class="p">:</span><span class="mi">4</span><span class="nx">d</span><span class="p">:</span><span class="nx">d4</span><span class="p">:</span><span class="mi">5</span><span class="nx">c</span>
+<span class="nx">Active</span><span class="w"> </span><span class="nx">Aggregator</span><span class="w"> </span><span class="nx">Info</span><span class="p">:</span>
+<span class="w">        </span><span class="nx">Aggregator</span><span class="w"> </span><span class="nx">ID</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span>
+<span class="w">        </span><span class="nx">Number</span><span class="w"> </span><span class="nx">of</span><span class="w"> </span><span class="nx">ports</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span>
+<span class="w">        </span><span class="nx">Actor</span><span class="w"> </span><span class="nx">Key</span><span class="p">:</span><span class="w"> </span><span class="mi">15</span>
+<span class="w">        </span><span class="nx">Partner</span><span class="w"> </span><span class="nx">Key</span><span class="p">:</span><span class="w"> </span><span class="mi">32773</span>
+<span class="w">        </span><span class="nx">Partner</span><span class="w"> </span><span class="nx">Mac</span><span class="w"> </span><span class="nx">Address</span><span class="p">:</span><span class="w"> </span><span class="nx">e4</span><span class="p">:</span><span class="nx">a7</span><span class="p">:</span><span class="nx">a0</span><span class="p">:</span><span class="mi">32</span><span class="p">:</span><span class="nx">fc</span><span class="p">:</span><span class="nx">e9</span>
+
+<span class="nx">Slave</span><span class="w"> </span><span class="nx">Interface</span><span class="p">:</span><span class="w"> </span><span class="nx">ens192</span>
+<span class="nx">MII</span><span class="w"> </span><span class="nx">Status</span><span class="p">:</span><span class="w"> </span><span class="nx">up</span>
+<span class="nx">Speed</span><span class="p">:</span><span class="w"> </span><span class="mi">10000</span><span class="w"> </span><span class="nx">Mbps</span>
+<span class="nx">Duplex</span><span class="p">:</span><span class="w"> </span><span class="nx">full</span>
+<span class="nx">Link</span><span class="w"> </span><span class="nx">Failure</span><span class="w"> </span><span class="nx">Count</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="nx">Permanent</span><span class="w"> </span><span class="nx">HW</span><span class="w"> </span><span class="kd">addr</span><span class="p">:</span><span class="w"> </span><span class="nx">c8</span><span class="p">:</span><span class="mi">5</span><span class="nx">b</span><span class="p">:</span><span class="mi">76</span><span class="p">:</span><span class="mi">4</span><span class="nx">d</span><span class="p">:</span><span class="nx">d4</span><span class="p">:</span><span class="mi">5</span><span class="nx">c</span>
+<span class="nx">Slave</span><span class="w"> </span><span class="nx">queue</span><span class="w"> </span><span class="nx">ID</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="nx">Aggregator</span><span class="w"> </span><span class="nx">ID</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span>
+<span class="nx">Actor</span><span class="w"> </span><span class="nx">Churn</span><span class="w"> </span><span class="nx">State</span><span class="p">:</span><span class="w"> </span><span class="nx">none</span>
+<span class="nx">Partner</span><span class="w"> </span><span class="nx">Churn</span><span class="w"> </span><span class="nx">State</span><span class="p">:</span><span class="w"> </span><span class="nx">none</span>
+<span class="nx">Actor</span><span class="w"> </span><span class="nx">Churned</span><span class="w"> </span><span class="nx">State</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="nx">Partner</span><span class="w"> </span><span class="nx">Churned</span><span class="w"> </span><span class="nx">State</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="nx">details</span><span class="w"> </span><span class="nx">actor</span><span class="w"> </span><span class="nx">lacp</span><span class="w"> </span><span class="nx">pdu</span><span class="p">:</span>
+<span class="w">    </span><span class="nx">system</span><span class="w"> </span><span class="nx">priority</span><span class="p">:</span><span class="w"> </span><span class="mi">65535</span>
+<span class="w">    </span><span class="nx">system</span><span class="w"> </span><span class="nx">mac</span><span class="w"> </span><span class="nx">address</span><span class="p">:</span><span class="w"> </span><span class="nx">c8</span><span class="p">:</span><span class="mi">5</span><span class="nx">b</span><span class="p">:</span><span class="mi">76</span><span class="p">:</span><span class="mi">4</span><span class="nx">d</span><span class="p">:</span><span class="nx">d4</span><span class="p">:</span><span class="mi">5</span><span class="nx">c</span>
+<span class="w">    </span><span class="nx">port</span><span class="w"> </span><span class="nx">key</span><span class="p">:</span><span class="w"> </span><span class="mi">15</span>
+<span class="w">    </span><span class="nx">port</span><span class="w"> </span><span class="nx">priority</span><span class="p">:</span><span class="w"> </span><span class="mi">255</span>
+<span class="w">    </span><span class="nx">port</span><span class="w"> </span><span class="nx">number</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span>
+<span class="w">    </span><span class="nx">port</span><span class="w"> </span><span class="nx">state</span><span class="p">:</span><span class="w"> </span><span class="mi">63</span>
+<span class="nx">details</span><span class="w"> </span><span class="nx">Partner</span><span class="w"> </span><span class="nx">lacp</span><span class="w"> </span><span class="nx">pdu</span><span class="p">:</span>
+<span class="w">    </span><span class="nx">system</span><span class="w"> </span><span class="nx">priority</span><span class="p">:</span><span class="w"> </span><span class="mi">32667</span>
+<span class="w">    </span><span class="nx">system</span><span class="w"> </span><span class="nx">mac</span><span class="w"> </span><span class="nx">address</span><span class="p">:</span><span class="w"> </span><span class="nx">e4</span><span class="p">:</span><span class="nx">a7</span><span class="p">:</span><span class="nx">a0</span><span class="p">:</span><span class="mi">32</span><span class="p">:</span><span class="nx">fc</span><span class="p">:</span><span class="nx">e9</span>
+<span class="w">    </span><span class="nx">oper</span><span class="w"> </span><span class="nx">key</span><span class="p">:</span><span class="w"> </span><span class="mi">32773</span>
+<span class="w">    </span><span class="nx">port</span><span class="w"> </span><span class="nx">priority</span><span class="p">:</span><span class="w"> </span><span class="mi">32768</span>
+<span class="w">    </span><span class="nx">port</span><span class="w"> </span><span class="nx">number</span><span class="p">:</span><span class="w"> </span><span class="mi">290</span>
+<span class="w">    </span><span class="nx">port</span><span class="w"> </span><span class="nx">state</span><span class="p">:</span><span class="w"> </span><span class="mi">61</span>
+
+<span class="nx">Slave</span><span class="w"> </span><span class="nx">Interface</span><span class="p">:</span><span class="w"> </span><span class="nx">ens224</span>
+<span class="nx">MII</span><span class="w"> </span><span class="nx">Status</span><span class="p">:</span><span class="w"> </span><span class="nx">up</span>
+<span class="nx">Speed</span><span class="p">:</span><span class="w"> </span><span class="mi">10000</span><span class="w"> </span><span class="nx">Mbps</span>
+<span class="nx">Duplex</span><span class="p">:</span><span class="w"> </span><span class="nx">full</span>
+<span class="nx">Link</span><span class="w"> </span><span class="nx">Failure</span><span class="w"> </span><span class="nx">Count</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="nx">Permanent</span><span class="w"> </span><span class="nx">HW</span><span class="w"> </span><span class="kd">addr</span><span class="p">:</span><span class="w"> </span><span class="nx">e4</span><span class="p">:</span><span class="nx">a7</span><span class="p">:</span><span class="nx">a0</span><span class="p">:</span><span class="mi">32</span><span class="p">:</span><span class="nx">fc</span><span class="p">:</span><span class="nx">e9</span>
+<span class="nx">Slave</span><span class="w"> </span><span class="nx">queue</span><span class="w"> </span><span class="nx">ID</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="nx">Aggregator</span><span class="w"> </span><span class="nx">ID</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span>
+<span class="nx">Actor</span><span class="w"> </span><span class="nx">Churn</span><span class="w"> </span><span class="nx">State</span><span class="p">:</span><span class="w"> </span><span class="nx">none</span>
+<span class="nx">Partner</span><span class="w"> </span><span class="nx">Churn</span><span class="w"> </span><span class="nx">State</span><span class="p">:</span><span class="w"> </span><span class="nx">none</span>
+<span class="nx">Actor</span><span class="w"> </span><span class="nx">Churned</span><span class="w"> </span><span class="nx">State</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="nx">Partner</span><span class="w"> </span><span class="nx">Churned</span><span class="w"> </span><span class="nx">State</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="nx">details</span><span class="w"> </span><span class="nx">actor</span><span class="w"> </span><span class="nx">lacp</span><span class="w"> </span><span class="nx">pdu</span><span class="p">:</span>
+<span class="w">    </span><span class="nx">system</span><span class="w"> </span><span class="nx">priority</span><span class="p">:</span><span class="w"> </span><span class="mi">65535</span>
+<span class="w">    </span><span class="nx">system</span><span class="w"> </span><span class="nx">mac</span><span class="w"> </span><span class="nx">address</span><span class="p">:</span><span class="w"> </span><span class="nx">e4</span><span class="p">:</span><span class="nx">a7</span><span class="p">:</span><span class="nx">a0</span><span class="p">:</span><span class="mi">32</span><span class="p">:</span><span class="nx">fc</span><span class="p">:</span><span class="nx">e9</span>
+<span class="w">    </span><span class="nx">port</span><span class="w"> </span><span class="nx">key</span><span class="p">:</span><span class="w"> </span><span class="mi">15</span>
+<span class="w">    </span><span class="nx">port</span><span class="w"> </span><span class="nx">priority</span><span class="p">:</span><span class="w"> </span><span class="mi">255</span>
+<span class="w">    </span><span class="nx">port</span><span class="w"> </span><span class="nx">number</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span>
+<span class="w">    </span><span class="nx">port</span><span class="w"> </span><span class="nx">state</span><span class="p">:</span><span class="w"> </span><span class="mi">63</span>
+<span class="nx">details</span><span class="w"> </span><span class="nx">Partner</span><span class="w"> </span><span class="nx">lacp</span><span class="w"> </span><span class="nx">pdu</span><span class="p">:</span>
+<span class="w">    </span><span class="nx">system</span><span class="w"> </span><span class="nx">priority</span><span class="p">:</span><span class="w"> </span><span class="mi">32667</span>
+<span class="w">    </span><span class="nx">system</span><span class="w"> </span><span class="nx">mac</span><span class="w"> </span><span class="nx">address</span><span class="p">:</span><span class="w"> </span><span class="nx">c8</span><span class="p">:</span><span class="mi">5</span><span class="nx">b</span><span class="p">:</span><span class="mi">76</span><span class="p">:</span><span class="mi">4</span><span class="nx">d</span><span class="p">:</span><span class="nx">d4</span><span class="p">:</span><span class="mi">5</span><span class="nx">c</span>
+<span class="w">    </span><span class="nx">oper</span><span class="w"> </span><span class="nx">key</span><span class="p">:</span><span class="w"> </span><span class="mi">32773</span>
+<span class="w">    </span><span class="nx">port</span><span class="w"> </span><span class="nx">priority</span><span class="p">:</span><span class="w"> </span><span class="mi">32768</span>
+<span class="w">    </span><span class="nx">port</span><span class="w"> </span><span class="nx">number</span><span class="p">:</span><span class="w"> </span><span class="mi">16674</span>
+<span class="w">    </span><span class="nx">port</span><span class="w"> </span><span class="nx">state</span><span class="p">:</span><span class="w"> </span><span class="mi">61</span>
+</code></pre></div>
+
+<h3>容错/冗余测试</h3>
+<p>为了验证容错性和连接速度，你可以逐个断开接口，然后检查服务器是否仍旧可达。</p>
+<ul>
+<li>测试用例-1：当两个子接口都启动并运行时，使用 <a href="https://www.2daygeek.com/view-change-ethernet-adapter-settings-nic-card-linux/">ethtool 命令</a> 检查链路速度。</li>
+<li>测试用例-2：断开第一个子接口，然后尝试访问系统。</li>
+<li>测试用例-3：断开第二个子接口，然后尝试访问系统。</li>
+</ul>
+<h4>测试用例-1：</h4>
+<p>如果你想检测下连接速度：没错，我在 <code>bond0</code> 上看到了 <code>20 Gbps</code> 的速度，因为每个子接口支持 10 Gbps。</p>
+<div class="highlight"><pre><span></span><code><span class="n">ethtool</span><span class="w"> </span><span class="n">bond0</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="nv">Settings</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nv">bond0</span>:
+<span class="w">        </span><span class="nv">Supported</span><span class="w"> </span><span class="nv">ports</span>:<span class="w"> </span>[<span class="w"> </span>]
+<span class="w">        </span><span class="nv">Supported</span><span class="w"> </span><span class="nv">link</span><span class="w"> </span><span class="nv">modes</span>:<span class="w">   </span><span class="nv">Not</span><span class="w"> </span><span class="nv">reported</span>
+<span class="w">        </span><span class="nv">Supported</span><span class="w"> </span><span class="k">pause</span><span class="w"> </span><span class="nv">frame</span><span class="w"> </span><span class="nv">use</span>:<span class="w"> </span><span class="nv">No</span>
+<span class="w">        </span><span class="nv">Supports</span><span class="w"> </span><span class="nv">auto</span><span class="o">-</span><span class="nv">negotiation</span>:<span class="w"> </span><span class="nv">No</span>
+<span class="w">        </span><span class="nv">Supported</span><span class="w"> </span><span class="nv">FEC</span><span class="w"> </span><span class="nv">modes</span>:<span class="w"> </span><span class="nv">Not</span><span class="w"> </span><span class="nv">reported</span>
+<span class="w">        </span><span class="nv">Advertised</span><span class="w"> </span><span class="nv">link</span><span class="w"> </span><span class="nv">modes</span>:<span class="w">  </span><span class="nv">Not</span><span class="w"> </span><span class="nv">reported</span>
+<span class="w">        </span><span class="nv">Advertised</span><span class="w"> </span><span class="k">pause</span><span class="w"> </span><span class="nv">frame</span><span class="w"> </span><span class="nv">use</span>:<span class="w"> </span><span class="nv">No</span>
+<span class="w">        </span><span class="nv">Advertised</span><span class="w"> </span><span class="nv">auto</span><span class="o">-</span><span class="nv">negotiation</span>:<span class="w"> </span><span class="nv">No</span>
+<span class="w">        </span><span class="nv">Advertised</span><span class="w"> </span><span class="nv">FEC</span><span class="w"> </span><span class="nv">modes</span>:<span class="w"> </span><span class="nv">Not</span><span class="w"> </span><span class="nv">reported</span>
+<span class="w">        </span><span class="nv">Speed</span>:<span class="w"> </span><span class="mi">20000</span><span class="nv">Mb</span><span class="o">/</span><span class="nv">s</span>
+<span class="w">        </span><span class="nv">Duplex</span>:<span class="w"> </span><span class="nv">Full</span>
+<span class="w">        </span><span class="nv">Port</span>:<span class="w"> </span><span class="nv">Other</span>
+<span class="w">        </span><span class="nv">PHYAD</span>:<span class="w"> </span><span class="mi">0</span>
+<span class="w">        </span><span class="nv">Transceiver</span>:<span class="w"> </span><span class="nv">internal</span>
+<span class="w">        </span><span class="nv">Auto</span><span class="o">-</span><span class="nv">negotiation</span>:<span class="w"> </span><span class="nv">off</span>
+<span class="w">        </span><span class="nv">Link</span><span class="w"> </span><span class="nv">detected</span>:<span class="w"> </span><span class="nv">yes</span>
+</code></pre></div>
+
+<h4>测试用例-2：</h4>
+<p>现在我们将关闭第一个子接口。</p>
+<div class="highlight"><pre><span></span><code>ifdown ens192
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code>Device &#39;ens192&#39; successfully disconnected.
+</code></pre></div>
+
+<p>通过 <code>ssh</code> 尝试访问系统。没问题，系统现在是可以访问的。</p>
+<div class="highlight"><pre><span></span><code><span class="n">ssh</span><span class="w"> </span><span class="p">[</span><span class="n">email</span><span class="w"> </span><span class="n">protected</span><span class="p">]</span>
+</code></pre></div>
+
+<p>由于已经有一个子接口关闭，你现在在 <code>bond0</code> 上只能看到 10 Gbps 的速度。</p>
+<div class="highlight"><pre><span></span><code><span class="n">ethtool</span><span class="w"> </span><span class="n">bond0</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="o">-</span><span class="n">i</span><span class="w"> </span><span class="n">speed</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code>            Speed: 10000Mb/s
+</code></pre></div>
+
+<p>现在，我们再次查看绑定接口的状态。可以看出，只有一个子接口处于活跃状态。</p>
+<div class="highlight"><pre><span></span><code>cat /proc/net/bonding/bond0
+</code></pre></div>
+
+<h4>测试用例-3：</h4>
+<p>我们来关闭第二个子接口，并进行类似测试用例-2 的测试：</p>
+<div class="highlight"><pre><span></span><code>ifdown ens224
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code>Device &#39;ens224&#39; successfully disconnected.
+</code></pre></div>
+
+<h3>结语</h3>
+<p>我希望你已经掌握了在 RHEL 上配置 LACP 绑定的方法。</p>
+<p>在本教程中，我们为你展示了在 RHEL 系统配置网络绑定或网卡聚合的最简单方式。</p>
+<p>如果你有任何疑问或者反馈，欢迎在下面留言。</p>
+<p><em>（题图：MJ/939f6ba6-eb46-480d-8879-3a422c7425d2）</em></p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>调试器工作原理（二）：断点</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Eli Bendersky 这是调试器工作原理系列文章的第二部分，阅读本文前，请确保你已经读过第一部分。 关于本文 我将会演示如何在 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/05/diao-shi-qi-gong-zuo-yuan-li-er-duan-dian.html" rel="bookmark"
+           title="Permalink to 调试器工作原理（二）：断点">调试器工作原理（二）：断点</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-05-29T16:02:00+02:00">
+                Published: Mon 29 May 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Eli Bendersky</p>
+<p><img alt="" src="/data/attachment/album/201705/29/160211nhmvqbbbpyg8x64q.jpg"></p>
+<p>这是调试器工作原理系列文章的第二部分，阅读本文前，请确保你已经读过<a href="/article-8418-1.html">第一部分</a>。</p>
+<h3>关于本文</h3>
+<p>我将会演示如何在调试器中实现断点。断点是调试的两大利器之一，另一个是可以在被调试进程的内存中检查变量值。我们在系列的第一部分已经了解过值检查，但是断点对我们来说依然神秘。不过本文过后，它们就不再如此了。</p>
+<h3>软件中断</h3>
+<p>为了在 x86 架构机器上实现断点，软件中断（也被称作“陷阱”）被会派上用场。在我们深入细节之前，我想先大致解释一下中断和陷阱的概念。</p>
+<p>CPU 有一条单独的执行流，一条指令接一条的执行（在更高的层面看是这样的，但是在底层的细节上来说，现在的许多 CPU 都会并行执行多个指令，这其中的一些指令就不是按照原本的顺序执行的）。为了能够处理异步的事件，如 IO 和 硬件定时器，CPU 使用了中断。硬件中断通常是一个特定的电子信号，并附加了一个特别的”响应电路”。该电路通知中断激活，并让 CPU 停止当前执行，保存状态，然后跳转到一个预定义的地址，也就是中断处理程序的位置。当处理程序完成其工作后，CPU 又从之前停止的地方重新恢复运行。</p>
+<p>软件中断在规则上与硬件相似，但实际操作中有些不同。CPU 支持一些特殊的指令，来允许软件模拟出一个中断。当这样的一个指令被执行时，CPU 像对待一个硬件中断那样 —— 停止正常的执行流，保存状态，然后跳转到一个处理程序。这种“中断”使得许多现代 OS 的惊叹设计得以高效地实现（如任务调度，虚拟内存，内存保护，调试）。</p>
+<p>许多编程错误（如被 0 除）也被 CPU 当做中断对待，常常也叫做“异常”， 这时候硬件和软件中断之间的界限就模糊了，很难说这种异常到底是硬件中断还是软件中断。但我已经偏离今天主题太远了，所以现在让我们回到断点上来。</p>
+<h3>int 3 理论</h3>
+<p>前面说了很多，现在简单来说断点就是一个部署在 CPU 上的特殊中断，叫 <code>int 3</code>。<code>int</code> 是一个 “中断指令”的 x86 术语，该指令是对一个预定义中断处理的调用。x86 支持 8 位的 int 指令操作数，这决定了中断的数量，所以理论上可以支持 256 个中断。前 32 个中断为 CPU 自己保留，而 int 3 就是本文关注的 —— 它被叫做 “调试器专用中断”。</p>
+<p>避免更深的解释，我将引用“圣经”里一段话（这里说的“圣经”，当然指的是英特尔的体系结构软件开发者手册, 卷 2A）。</p>
+<blockquote>
+<p>INT 3 指令生成一个以字节操作码（CC），用于调用该调试异常处理程序。（这个一字节格式是非常有用的，因为它可以用于使用断点来替换任意指令的第一个字节 ，包括哪些一字节指令，而不会覆写其它代码）</p>
+</blockquote>
+<p>上述引用非常重要，但是目前去解释它还是为时过早。本文后面我们会回过头再看。</p>
+<h3>int 3 实践</h3>
+<p>没错，知道事物背后的理论非常不错，不过，这些理论到底意思是啥？我们怎样使用 <code>int 3</code> 部署断点？或者怎么翻译成通用的编程术语 —— <em>请给我看代码！</em></p>
+<p>实际上，实现非常简单。一旦你的程序执行了 <code>int 3</code> 指令， OS 就会停止程序（ OS 是怎么做到像这样停止进程的？ OS 注册其 int 3 的控制程序到 CPU 即可，就这么简单）。在 Linux（这也是本文比较关心的地方） 上， OS 会发送给进程一个信号 —— <code>SIGTRAP</code>。</p>
+<p>就是这样，真的。现在回想一下本系列的第一部分, 追踪进程（调试程序） 会得到其子进程（或它所连接的被调试进程）所得到的所有信号的通知，接下来你就知道了。</p>
+<p>就这样, 没有更多的电脑架构基础术语了。该是例子和代码的时候了。</p>
+<h3>手动设置断点</h3>
+<p>现在我要演示在程序里设置断点的代码。我要使用的程序如下：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">section</span><span class="w">    </span><span class="p">.</span><span class="nc">text</span>
+<span class="w">    </span><span class="o">;</span><span class="w"> </span><span class="nt">The</span><span class="w"> </span><span class="nt">_start</span><span class="w"> </span><span class="nt">symbol</span><span class="w"> </span><span class="nt">must</span><span class="w"> </span><span class="nt">be</span><span class="w"> </span><span class="nt">declared</span><span class="w"> </span><span class="nt">for</span><span class="w"> </span><span class="nt">the</span><span class="w"> </span><span class="nt">linker</span><span class="w"> </span><span class="o">(</span><span class="nt">ld</span><span class="o">)</span>
+<span class="w">    </span><span class="nt">global</span><span class="w"> </span><span class="nt">_start</span>
+
+<span class="nt">_start</span><span class="o">:</span>
+
+<span class="w">    </span><span class="o">;</span><span class="w"> </span><span class="nt">Prepare</span><span class="w"> </span><span class="nt">arguments</span><span class="w"> </span><span class="nt">for</span><span class="w"> </span><span class="nt">the</span><span class="w"> </span><span class="nt">sys_write</span><span class="w"> </span><span class="nt">system</span><span class="w"> </span><span class="nt">call</span><span class="o">:</span>
+<span class="w">    </span><span class="o">;</span><span class="w">   </span><span class="nt">-</span><span class="w"> </span><span class="nt">eax</span><span class="o">:</span><span class="w"> </span><span class="nt">system</span><span class="w"> </span><span class="nt">call</span><span class="w"> </span><span class="nt">number</span><span class="w"> </span><span class="o">(</span><span class="nt">sys_write</span><span class="o">)</span>
+<span class="w">    </span><span class="o">;</span><span class="w">   </span><span class="nt">-</span><span class="w"> </span><span class="nt">ebx</span><span class="o">:</span><span class="w"> </span><span class="nt">file</span><span class="w"> </span><span class="nt">descriptor</span><span class="w"> </span><span class="o">(</span><span class="nt">stdout</span><span class="o">)</span>
+<span class="w">    </span><span class="o">;</span><span class="w">   </span><span class="nt">-</span><span class="w"> </span><span class="nt">ecx</span><span class="o">:</span><span class="w"> </span><span class="nt">pointer</span><span class="w"> </span><span class="nt">to</span><span class="w"> </span><span class="nt">string</span>
+<span class="w">    </span><span class="o">;</span><span class="w">   </span><span class="nt">-</span><span class="w"> </span><span class="nt">edx</span><span class="o">:</span><span class="w"> </span><span class="nt">string</span><span class="w"> </span><span class="nt">length</span>
+<span class="w">    </span><span class="nt">mov</span><span class="w">     </span><span class="nt">edx</span><span class="o">,</span><span class="w"> </span><span class="nt">len1</span>
+<span class="w">    </span><span class="nt">mov</span><span class="w">     </span><span class="nt">ecx</span><span class="o">,</span><span class="w"> </span><span class="nt">msg1</span>
+<span class="w">    </span><span class="nt">mov</span><span class="w">     </span><span class="nt">ebx</span><span class="o">,</span><span class="w"> </span><span class="nt">1</span>
+<span class="w">    </span><span class="nt">mov</span><span class="w">     </span><span class="nt">eax</span><span class="o">,</span><span class="w"> </span><span class="nt">4</span>
+
+<span class="w">    </span><span class="o">;</span><span class="w"> </span><span class="nt">Execute</span><span class="w"> </span><span class="nt">the</span><span class="w"> </span><span class="nt">sys_write</span><span class="w"> </span><span class="nt">system</span><span class="w"> </span><span class="nt">call</span>
+<span class="w">    </span><span class="nt">int</span><span class="w">     </span><span class="nt">0x80</span>
+
+<span class="w">    </span><span class="o">;</span><span class="w"> </span><span class="nt">Now</span><span class="w"> </span><span class="nt">print</span><span class="w"> </span><span class="nt">the</span><span class="w"> </span><span class="nt">other</span><span class="w"> </span><span class="nt">message</span>
+<span class="w">    </span><span class="nt">mov</span><span class="w">     </span><span class="nt">edx</span><span class="o">,</span><span class="w"> </span><span class="nt">len2</span>
+<span class="w">    </span><span class="nt">mov</span><span class="w">     </span><span class="nt">ecx</span><span class="o">,</span><span class="w"> </span><span class="nt">msg2</span>
+<span class="w">    </span><span class="nt">mov</span><span class="w">     </span><span class="nt">ebx</span><span class="o">,</span><span class="w"> </span><span class="nt">1</span>
+<span class="w">    </span><span class="nt">mov</span><span class="w">     </span><span class="nt">eax</span><span class="o">,</span><span class="w"> </span><span class="nt">4</span>
+<span class="w">    </span><span class="nt">int</span><span class="w">     </span><span class="nt">0x80</span>
+
+<span class="w">    </span><span class="o">;</span><span class="w"> </span><span class="nt">Execute</span><span class="w"> </span><span class="nt">sys_exit</span>
+<span class="w">    </span><span class="nt">mov</span><span class="w">     </span><span class="nt">eax</span><span class="o">,</span><span class="w"> </span><span class="nt">1</span>
+<span class="w">    </span><span class="nt">int</span><span class="w">     </span><span class="nt">0x80</span>
+
+<span class="nt">section</span><span class="w">    </span><span class="p">.</span><span class="nc">data</span>
+
+<span class="nt">msg1</span><span class="w">    </span><span class="nt">db</span><span class="w">      </span><span class="s1">&#39;Hello,&#39;</span><span class="o">,</span><span class="w"> </span><span class="nt">0xa</span>
+<span class="nt">len1</span><span class="w">    </span><span class="nt">equ</span><span class="w">     </span><span class="o">$</span><span class="w"> </span><span class="nt">-</span><span class="w"> </span><span class="nt">msg1</span>
+<span class="nt">msg2</span><span class="w">    </span><span class="nt">db</span><span class="w">      </span><span class="s1">&#39;world!&#39;</span><span class="o">,</span><span class="w"> </span><span class="nt">0xa</span>
+<span class="nt">len2</span><span class="w">    </span><span class="nt">equ</span><span class="w">     </span><span class="o">$</span><span class="w"> </span><span class="nt">-</span><span class="w"> </span><span class="nt">msg2</span>
+</code></pre></div>
+
+<p>我现在在使用汇编语言，是为了当我们面对 C 代码的时候，能清楚一些编译细节。上面代码做的事情非常简单，就是在一行打印出 “hello,”，然后在下一行打印出 “world!”。这与之前文章中的程序非常类似。</p>
+<p>现在我想在第一次打印和第二次打印之间设置一个断点。我们看到在第一条 <code>int 0x80</code> ，其后指令是 <code>mov edx, len2</code>。（等等，再次 int？是的，Linux 使用 <code>int 0x80</code> 来实现用户进程到系统内核的系统调用。用户将系统调用的号码及其参数放到寄存器，并执行 <code>int 0x80</code>。然后 CPU 会跳到相应的中断处理程序，其中， OS 注册了一个过程，该过程查看寄存器并决定要执行的系统调用。）首先，我们需要知道该指令所映射的地址。运行 <code>objdump -d</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="n">traced_printer2</span><span class="o">:</span><span class="w">     </span><span class="n">file</span><span class="w"> </span><span class="n">format</span><span class="w"> </span><span class="n">elf32</span><span class="o">-</span><span class="n">i386</span>
+
+<span class="n">Sections</span><span class="o">:</span>
+<span class="n">Idx</span><span class="w"> </span><span class="n">Name</span><span class="w">          </span><span class="n">Size</span><span class="w">      </span><span class="n">VMA</span><span class="w">       </span><span class="n">LMA</span><span class="w">       </span><span class="n">File</span><span class="w"> </span><span class="n">off</span><span class="w">  </span><span class="n">Algn</span>
+<span class="w">  </span><span class="mi">0</span><span class="w"> </span><span class="o">.</span><span class="na">text</span><span class="w">         </span><span class="mi">00000033</span><span class="w">  </span><span class="mi">08048080</span><span class="w">  </span><span class="mi">08048080</span><span class="w">  </span><span class="mi">00000080</span><span class="w">  </span><span class="mi">2</span><span class="o">**</span><span class="mi">4</span>
+<span class="w">                  </span><span class="n">CONTENTS</span><span class="o">,</span><span class="w"> </span><span class="n">ALLOC</span><span class="o">,</span><span class="w"> </span><span class="n">LOAD</span><span class="o">,</span><span class="w"> </span><span class="n">READONLY</span><span class="o">,</span><span class="w"> </span><span class="n">CODE</span>
+<span class="w">  </span><span class="mi">1</span><span class="w"> </span><span class="o">.</span><span class="na">data</span><span class="w">         </span><span class="mi">0000000</span><span class="n">e</span><span class="w">  </span><span class="mi">080490</span><span class="n">b4</span><span class="w">  </span><span class="mi">080490</span><span class="n">b4</span><span class="w">  </span><span class="mi">000000</span><span class="n">b4</span><span class="w">  </span><span class="mi">2</span><span class="o">**</span><span class="mi">2</span>
+<span class="w">                  </span><span class="n">CONTENTS</span><span class="o">,</span><span class="w"> </span><span class="n">ALLOC</span><span class="o">,</span><span class="w"> </span><span class="n">LOAD</span><span class="o">,</span><span class="w"> </span><span class="n">DATA</span>
+
+<span class="n">Disassembly</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="n">section</span><span class="w"> </span><span class="o">.</span><span class="na">text</span><span class="o">:</span>
+
+<span class="mi">08048080</span><span class="w"> </span><span class="o">&lt;.</span><span class="n">text</span><span class="o">&gt;:</span>
+<span class="w"> </span><span class="mi">8048080</span><span class="o">:</span><span class="w">     </span><span class="n">ba</span><span class="w"> </span><span class="mi">07</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w">          </span><span class="n">mov</span><span class="w">    </span><span class="n">$0x7</span><span class="o">,%</span><span class="n">edx</span>
+<span class="w"> </span><span class="mi">8048085</span><span class="o">:</span><span class="w">     </span><span class="n">b9</span><span class="w"> </span><span class="n">b4</span><span class="w"> </span><span class="mi">90</span><span class="w"> </span><span class="mi">04</span><span class="w"> </span><span class="mi">08</span><span class="w">          </span><span class="n">mov</span><span class="w">    </span><span class="n">$0x80490b4</span><span class="o">,%</span><span class="n">ecx</span>
+<span class="w"> </span><span class="mi">804808</span><span class="n">a</span><span class="o">:</span><span class="w">     </span><span class="n">bb</span><span class="w"> </span><span class="mi">01</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w">          </span><span class="n">mov</span><span class="w">    </span><span class="n">$0x1</span><span class="o">,%</span><span class="n">ebx</span>
+<span class="w"> </span><span class="mi">804808</span><span class="n">f</span><span class="o">:</span><span class="w">     </span><span class="n">b8</span><span class="w"> </span><span class="mi">04</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w">          </span><span class="n">mov</span><span class="w">    </span><span class="n">$0x4</span><span class="o">,%</span><span class="n">eax</span>
+<span class="w"> </span><span class="mi">8048094</span><span class="o">:</span><span class="w">     </span><span class="n">cd</span><span class="w"> </span><span class="mi">80</span><span class="w">                   </span><span class="n">int</span><span class="w">    </span><span class="n">$0x80</span>
+<span class="w"> </span><span class="mi">8048096</span><span class="o">:</span><span class="w">     </span><span class="n">ba</span><span class="w"> </span><span class="mi">07</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w">          </span><span class="n">mov</span><span class="w">    </span><span class="n">$0x7</span><span class="o">,%</span><span class="n">edx</span>
+<span class="w"> </span><span class="mi">804809</span><span class="n">b</span><span class="o">:</span><span class="w">     </span><span class="n">b9</span><span class="w"> </span><span class="n">bb</span><span class="w"> </span><span class="mi">90</span><span class="w"> </span><span class="mi">04</span><span class="w"> </span><span class="mi">08</span><span class="w">          </span><span class="n">mov</span><span class="w">    </span><span class="n">$0x80490bb</span><span class="o">,%</span><span class="n">ecx</span>
+<span class="w"> </span><span class="mi">80480</span><span class="n">a0</span><span class="o">:</span><span class="w">     </span><span class="n">bb</span><span class="w"> </span><span class="mi">01</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w">          </span><span class="n">mov</span><span class="w">    </span><span class="n">$0x1</span><span class="o">,%</span><span class="n">ebx</span>
+<span class="w"> </span><span class="mi">80480</span><span class="n">a5</span><span class="o">:</span><span class="w">     </span><span class="n">b8</span><span class="w"> </span><span class="mi">04</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w">          </span><span class="n">mov</span><span class="w">    </span><span class="n">$0x4</span><span class="o">,%</span><span class="n">eax</span>
+<span class="w"> </span><span class="mi">80480</span><span class="n">aa</span><span class="o">:</span><span class="w">     </span><span class="n">cd</span><span class="w"> </span><span class="mi">80</span><span class="w">                   </span><span class="n">int</span><span class="w">    </span><span class="n">$0x80</span>
+<span class="w"> </span><span class="mi">80480</span><span class="n">ac</span><span class="o">:</span><span class="w">     </span><span class="n">b8</span><span class="w"> </span><span class="mi">01</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w"> </span><span class="mi">00</span><span class="w">          </span><span class="n">mov</span><span class="w">    </span><span class="n">$0x1</span><span class="o">,%</span><span class="n">eax</span>
+<span class="w"> </span><span class="mi">80480</span><span class="n">b1</span><span class="o">:</span><span class="w">     </span><span class="n">cd</span><span class="w"> </span><span class="mi">80</span><span class="w">                   </span><span class="n">int</span><span class="w">    </span><span class="n">$0x80</span>
+</code></pre></div>
+
+<p>所以，我们要设置断点的地址是 <code>0x8048096</code>。等等，这不是调试器工作的真实姿势，对吧？真正的调试器是在代码行和函数上设置断点，而不是赤裸裸的内存地址？完全正确，但是目前我们仍然还没到那一步，为了更像<em>真正的</em>调试器一样设置断点，我们仍不得不首先理解一些符号和调试信息。所以现在，我们就得面对内存地址。</p>
+<p>在这点上，我真想又偏离一下主题。所以现在你有两个选择，如果你真的感兴趣想知道<em>为什么</em>那个地址应该是 <code>0x8048096</code>，它代表着什么，那就看下面的部分。否则你只是想了解断点，你可以跳过这部分。</p>
+<h3>题外话 —— 程序地址和入口</h3>
+<p>坦白说，<code>0x8048096</code> 本身没多大意义，仅仅是可执行程序的 text 部分开端偏移的一些字节。如果你看上面导出来的列表，你会看到 text 部分从地址 <code>0x08048080</code> 开始。这告诉 OS 在分配给进程的虚拟地址空间里，将该地址映射到 text 部分开始的地方。在 Linux 上面，这些地址可以是绝对地址（例如，当可执行程序加载到内存中时它不做重定位），因为通过虚拟地址系统，每个进程获得自己的一块内存，并且将整个 32 位地址空间看做自己的（称为 “线性” 地址）。</p>
+<p>如果我们使用 <code>readelf</code> 命令检查 ELF 文件头部（ELF，可执行和可链接格式，是 Linux 上用于对象文件、共享库和可执行程序的文件格式），我们会看到：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>readelf<span class="w"> </span>-h<span class="w"> </span>traced_printer2
+ELF<span class="w"> </span>Header:
+<span class="w">  </span>Magic:<span class="w">   </span>7f<span class="w"> </span><span class="m">45</span><span class="w"> </span>4c<span class="w"> </span><span class="m">46</span><span class="w"> </span><span class="m">01</span><span class="w"> </span><span class="m">01</span><span class="w"> </span><span class="m">01</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span><span class="w"> </span><span class="m">00</span>
+<span class="w">  </span>Class:<span class="w">                             </span>ELF32
+<span class="w">  </span>Data:<span class="w">                              </span><span class="m">2</span><span class="err">&#39;</span>s<span class="w"> </span>complement,<span class="w"> </span>little<span class="w"> </span>endian
+<span class="w">  </span>Version:<span class="w">                           </span><span class="m">1</span><span class="w"> </span><span class="o">(</span>current<span class="o">)</span>
+<span class="w">  </span>OS/ABI:<span class="w">                            </span>UNIX<span class="w"> </span>-<span class="w"> </span>System<span class="w"> </span>V
+<span class="w">  </span>ABI<span class="w"> </span>Version:<span class="w">                       </span><span class="m">0</span>
+<span class="w">  </span>Type:<span class="w">                              </span>EXEC<span class="w"> </span><span class="o">(</span>Executable<span class="w"> </span>file<span class="o">)</span>
+<span class="w">  </span>Machine:<span class="w">                           </span>Intel<span class="w"> </span><span class="m">80386</span>
+<span class="w">  </span>Version:<span class="w">                           </span>0x1
+<span class="w">  </span>Entry<span class="w"> </span>point<span class="w"> </span>address:<span class="w">               </span>0x8048080
+<span class="w">  </span>Start<span class="w"> </span>of<span class="w"> </span>program<span class="w"> </span>headers:<span class="w">          </span><span class="m">52</span><span class="w"> </span><span class="o">(</span>bytes<span class="w"> </span>into<span class="w"> </span>file<span class="o">)</span>
+<span class="w">  </span>Start<span class="w"> </span>of<span class="w"> </span>section<span class="w"> </span>headers:<span class="w">          </span><span class="m">220</span><span class="w"> </span><span class="o">(</span>bytes<span class="w"> </span>into<span class="w"> </span>file<span class="o">)</span>
+<span class="w">  </span>Flags:<span class="w">                             </span>0x0
+<span class="w">  </span>Size<span class="w"> </span>of<span class="w"> </span>this<span class="w"> </span>header:<span class="w">               </span><span class="m">52</span><span class="w"> </span><span class="o">(</span>bytes<span class="o">)</span>
+<span class="w">  </span>Size<span class="w"> </span>of<span class="w"> </span>program<span class="w"> </span>headers:<span class="w">           </span><span class="m">32</span><span class="w"> </span><span class="o">(</span>bytes<span class="o">)</span>
+<span class="w">  </span>Number<span class="w"> </span>of<span class="w"> </span>program<span class="w"> </span>headers:<span class="w">         </span><span class="m">2</span>
+<span class="w">  </span>Size<span class="w"> </span>of<span class="w"> </span>section<span class="w"> </span>headers:<span class="w">           </span><span class="m">40</span><span class="w"> </span><span class="o">(</span>bytes<span class="o">)</span>
+<span class="w">  </span>Number<span class="w"> </span>of<span class="w"> </span>section<span class="w"> </span>headers:<span class="w">         </span><span class="m">4</span>
+<span class="w">  </span>Section<span class="w"> </span>header<span class="w"> </span>string<span class="w"> </span>table<span class="w"> </span>index:<span class="w"> </span><span class="m">3</span>
+</code></pre></div>
+
+<p>注意头部里的 <code>Entry point address</code>，它同样指向 <code>0x8048080</code>。所以我们在系统层面解释该 elf 文件的编码信息，它意思是：</p>
+<ol>
+<li>映射 text 部分（包含所给的内容）到地址 <code>0x8048080</code></li>
+<li>从入口 —— 地址 <code>0x8048080</code> 处开始执行</li>
+</ol>
+<p>但是，为什么是 <code>0x8048080</code> 呢？事实证明是一些历史原因。一些 Google 的结果把我引向源头，宣传每个进程的地址空间的前 128M 是保留在栈里的。128M 对应为 <code>0x8000000</code>，该地址是可执行程序其他部分可以开始的地方。而 <code>0x8048080</code>，比较特别，是 Linux <code>ld</code> 链接器使用的默认入口地址。该入口可以通过给 <code>ld</code> 传递 <code>-Ttext</code> 参数改变。</p>
+<p>总结一下，这地址没啥特别的，我们可以随意修改它。只要 ELF 可执行文件被合理的组织，并且头部里的入口地址与真正的程序代码（text 部分）开始的地址匹配，一切都没问题。</p>
+<h3>用 int 3 在调试器中设置断点</h3>
+<p>为了在被追踪进程的某些目标地址设置一个断点，调试器会做如下工作：</p>
+<ol>
+<li>记住存储在目标地址的数据</li>
+<li>用 int 指令替换掉目标地址的第一个字节</li>
+</ol>
+<p>然后，当调试器要求 OS 运行该进程的时候（通过上一篇文章中提过的 <code>PTRACE_CONT</code>），进程就会运行起来直到遇到 <code>int 3</code>，此处进程会停止运行，并且 OS 会发送一个信号给调试器。调试器会收到一个信号表明其子进程（或者说被追踪进程）停止了。调试器可以做以下工作：</p>
+<ol>
+<li>在目标地址，用原来的正常执行指令替换掉 int 3 指令</li>
+<li>将被追踪进程的指令指针回退一步。这是因为现在指令指针位于刚刚执行过的 int 3 之后。</li>
+<li>允许用户以某些方式与进程交互，因为该进程仍然停止在特定的目标地址。这里你的调试器可以让你取得变量值，调用栈等等。</li>
+<li>当用户想继续运行，调试器会小心地把断点放回目标地址去（因为它在第 1 步时被移走了），除非用户要求取消该断点。</li>
+</ol>
+<p>让我们来看看，这些步骤是如何翻译成具体代码的。我们会用到第一篇里的调试器 “模板”（fork 一个子进程并追踪它）。无论如何，文末会有一个完整样例源代码的链接</p>
+<div class="highlight"><pre><span></span><code><span class="cm">/* Obtain and show child&#39;s instruction pointer */</span>
+<span class="nx">ptrace</span><span class="p">(</span><span class="nx">PTRACE_GETREGS</span><span class="p">,</span><span class="w"> </span><span class="nx">child_pid</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">regs</span><span class="p">);</span>
+<span class="nx">procmsg</span><span class="p">(</span><span class="s">&quot;Child started. EIP = 0x%08x\n&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">regs</span><span class="p">.</span><span class="nx">eip</span><span class="p">);</span>
+
+<span class="cm">/* Look at the word at the address we&#39;re interested in */</span>
+<span class="nx">unsigned</span><span class="w"> </span><span class="kd">addr</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mh">0x8048096</span><span class="p">;</span>
+<span class="nx">unsigned</span><span class="w"> </span><span class="nx">data</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">ptrace</span><span class="p">(</span><span class="nx">PTRACE_PEEKTEXT</span><span class="p">,</span><span class="w"> </span><span class="nx">child_pid</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="nx">void</span><span class="o">*</span><span class="p">)</span><span class="kd">addr</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span>
+<span class="nx">procmsg</span><span class="p">(</span><span class="s">&quot;Original data at 0x%08x: 0x%08x\n&quot;</span><span class="p">,</span><span class="w"> </span><span class="kd">addr</span><span class="p">,</span><span class="w"> </span><span class="nx">data</span><span class="p">);</span>
+</code></pre></div>
+
+<p>这里调试器从被追踪的进程中取回了指令指针，也检查了在 <code>0x8048096</code> 的字。当开始追踪运行文章开头的汇编代码，将会打印出：</p>
+<div class="highlight"><pre><span></span><code>[13028] Child started. EIP = 0x08048080
+[13028] Original data at 0x08048096: 0x000007ba
+</code></pre></div>
+
+<p>目前为止都看起来不错。接下来：</p>
+<div class="highlight"><pre><span></span><code><span class="cm">/* Write the trap instruction &#39;int 3&#39; into the address */</span>
+<span class="nx">unsigned</span><span class="w"> </span><span class="nx">data_with_trap</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="p">(</span><span class="nx">data</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="mh">0xFFFFFF00</span><span class="p">)</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="mh">0xCC</span><span class="p">;</span>
+<span class="nx">ptrace</span><span class="p">(</span><span class="nx">PTRACE_POKETEXT</span><span class="p">,</span><span class="w"> </span><span class="nx">child_pid</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="nx">void</span><span class="o">*</span><span class="p">)</span><span class="kd">addr</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="nx">void</span><span class="o">*</span><span class="p">)</span><span class="nx">data_with_trap</span><span class="p">);</span>
+
+<span class="cm">/* See what&#39;s there again... */</span>
+<span class="nx">unsigned</span><span class="w"> </span><span class="nx">readback_data</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">ptrace</span><span class="p">(</span><span class="nx">PTRACE_PEEKTEXT</span><span class="p">,</span><span class="w"> </span><span class="nx">child_pid</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="nx">void</span><span class="o">*</span><span class="p">)</span><span class="kd">addr</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span>
+<span class="nx">procmsg</span><span class="p">(</span><span class="s">&quot;After trap, data at 0x%08x: 0x%08x\n&quot;</span><span class="p">,</span><span class="w"> </span><span class="kd">addr</span><span class="p">,</span><span class="w"> </span><span class="nx">readback_data</span><span class="p">);</span>
+</code></pre></div>
+
+<p>注意到 <code>int 3</code> 是如何被插入到目标地址的。此处打印：</p>
+<div class="highlight"><pre><span></span><code>[13028] After trap, data at 0x08048096: 0x000007cc
+</code></pre></div>
+
+<p>正如预料的那样 —— <code>0xba</code> 被 <code>0xcc</code> 替换掉了。现在调试器运行子进程并等待它在断点处停止：</p>
+<div class="highlight"><pre><span></span><code><span class="o">/*</span><span class="w"> </span><span class="n">Let</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">child</span><span class="w"> </span><span class="n">run</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="k">breakpoint</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">wait</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">it</span><span class="w"> </span><span class="n">to</span>
+<span class="o">**</span><span class="w"> </span><span class="n">reach</span><span class="w"> </span><span class="n">it</span>
+<span class="o">*/</span>
+<span class="n">ptrace</span><span class="p">(</span><span class="n">PTRACE_CONT</span><span class="p">,</span><span class="w"> </span><span class="n">child_pid</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span>
+
+<span class="n">wait</span><span class="p">(</span><span class="o">&amp;</span><span class="n">wait_status</span><span class="p">);</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">WIFSTOPPED</span><span class="p">(</span><span class="n">wait_status</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">procmsg</span><span class="p">(</span><span class="s2">&quot;Child got a signal: </span><span class="si">%s</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">strsignal</span><span class="p">(</span><span class="n">WSTOPSIG</span><span class="p">(</span><span class="n">wait_status</span><span class="p">)));</span>
+<span class="p">}</span>
+<span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">perror</span><span class="p">(</span><span class="s2">&quot;wait&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="o">/*</span><span class="w"> </span><span class="n">See</span><span class="w"> </span><span class="n">where</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">child</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">now</span><span class="w"> </span><span class="o">*/</span>
+<span class="n">ptrace</span><span class="p">(</span><span class="n">PTRACE_GETREGS</span><span class="p">,</span><span class="w"> </span><span class="n">child_pid</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">regs</span><span class="p">);</span>
+<span class="n">procmsg</span><span class="p">(</span><span class="s2">&quot;Child stopped at EIP = 0x</span><span class="si">%08x</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">regs</span><span class="o">.</span><span class="n">eip</span><span class="p">);</span>
+</code></pre></div>
+
+<p>这里打印出：</p>
+<div class="highlight"><pre><span></span><code><span class="n">Hello</span><span class="p">,</span>
+<span class="p">[</span><span class="mi">13028</span><span class="p">]</span><span class="w"> </span><span class="n">Child</span><span class="w"> </span><span class="n">got</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="k">signal</span><span class="p">:</span><span class="w"> </span><span class="n">Trace</span><span class="o">/</span><span class="k">breakpoint</span><span class="w"> </span><span class="n">trap</span>
+<span class="p">[</span><span class="mi">13028</span><span class="p">]</span><span class="w"> </span><span class="n">Child</span><span class="w"> </span><span class="n">stopped</span><span class="w"> </span><span class="n">at</span><span class="w"> </span><span class="n">EIP</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x08048097</span>
+</code></pre></div>
+
+<p>注意到 “Hello,” 在断点前打印出来了 —— 完全如我们计划的那样。同时注意到子进程停止的地方 —— 刚好就是单字节中断指令后面。</p>
+<p>最后，如早先诠释的那样，为了让子进程继续运行，我们得做一些工作。我们用原来的指令替换掉中断指令，并且让进程从这里继续之前的运行。</p>
+<div class="highlight"><pre><span></span><code><span class="cm">/* Remove the breakpoint by restoring the previous data</span>
+<span class="cm">** at the target address, and unwind the EIP back by 1 to</span>
+<span class="cm">** let the CPU execute the original instruction that was</span>
+<span class="cm">** there.</span>
+<span class="cm">*/</span>
+<span class="nx">ptrace</span><span class="p">(</span><span class="nx">PTRACE_POKETEXT</span><span class="p">,</span><span class="w"> </span><span class="nx">child_pid</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="nx">void</span><span class="o">*</span><span class="p">)</span><span class="kd">addr</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="nx">void</span><span class="o">*</span><span class="p">)</span><span class="nx">data</span><span class="p">);</span>
+<span class="nx">regs</span><span class="p">.</span><span class="nx">eip</span><span class="w"> </span><span class="o">-=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<span class="nx">ptrace</span><span class="p">(</span><span class="nx">PTRACE_SETREGS</span><span class="p">,</span><span class="w"> </span><span class="nx">child_pid</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">regs</span><span class="p">);</span>
+
+<span class="cm">/* The child can continue running now */</span>
+<span class="nx">ptrace</span><span class="p">(</span><span class="nx">PTRACE_CONT</span><span class="p">,</span><span class="w"> </span><span class="nx">child_pid</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span>
+</code></pre></div>
+
+<p>这会使子进程继续打印出 “world！”，然后退出。</p>
+<p>注意，我们在这里没有恢复断点。通过在单步调试模式下，运行原来的指令，然后将中断放回去，并且只在运行 PTRACE_CONT 时做到恢复断点。文章稍后会展示 debuglib 如何做到这点。</p>
+<h3>更多关于 int 3</h3>
+<p>现在可以回过头去看看 <code>int 3</code> 和因特尔手册里那个神秘的说明，原文如下：</p>
+<blockquote>
+<p>这个一字节格式是非常有用的，因为它可以用于使用断点来替换任意指令的第一个字节 ，包括哪些一字节指令，而不会覆写其它代码</p>
+</blockquote>
+<p>int 指令在 x86 机器上占两个字节 —— <code>0xcd</code> 紧跟着中断数（细心的读者可以在上面列出的转储中发现 <code>int 0x80</code> 翻译成了 <code>cd 80</code>）。<code>int 3</code> 被编码为 <code>cd 03</code>，但是为其还保留了一个单字节指令 —— <code>0xcc</code>。</p>
+<p>为什么这样呢？因为这可以允许我们插入一个断点，而不需要重写多余的指令。这非常重要，考虑下面的代码：</p>
+<div class="highlight"><pre><span></span><code>    .. some code ..
+    jz    foo
+    dec   eax
+foo:
+    call  bar
+    .. some code ..
+</code></pre></div>
+
+<p>假设你想在 <code>dec eax</code> 这里放置一个断点。这对应一个单字节指令（操作码为 <code>0x48</code>）。由于替换断点的指令长于一个字节，我们不得不强制覆盖掉下个指令（<code>call</code>）的一部分，这就会篡改 <code>call</code> 指令，并很可能导致一些完全不合理的事情发生。这样一来跳转到 <code>foo</code> 分支的 <code>jz foo</code> 指令会导致什么？就会不在 dec eax 这里停止，CPU 径直去执行后面一些无效的指令了。</p>
+<p>而有了单字节的 <code>int 3</code> 指令，这个问题就解决了。 1 字节是在 x86 上面所能找到的最短指令，这样我们可以保证仅改变我们想中断的指令。</p>
+<h3>封装一些晦涩的细节</h3>
+<p>很多上述章节样例代码的底层细节，都可以很容易封装在方便使用的 API 里。我已经做了很多封装的工作，将它们都放在一个叫做 debuglib 的通用库里 —— 文末可以去下载。这里我仅仅是想展示它的用法示例，但是绕了一圈。下面我们将追踪一个用 C 写的程序。</p>
+<h3>追踪一个 C 程序地址和入口</h3>
+<p>目前为止，为了简单，我把注意力放在了目标汇编代码。现在是时候往上一个层次，去看看我们如何追踪一个 C 程序。</p>
+<p>事实证明并不是非常难 —— 找到放置断点位置有一点难罢了。考虑下面样例程序：</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;stdio.h&gt;</span>
+
+<span class="kt">void</span><span class="w"> </span><span class="nf">do_stuff</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;Hello, &quot;</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="kt">int</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">4</span><span class="p">;</span><span class="w"> </span><span class="o">++</span><span class="n">i</span><span class="p">)</span>
+<span class="w">        </span><span class="n">do_stuff</span><span class="p">();</span>
+<span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;world!</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>假设我想在 <code>do_stuff</code> 入口处放置一个断点。我会先使用 <code>objdump</code> 反汇编一下可执行文件，但是打印出的东西太多。尤其看到很多无用，也不感兴趣的 C 程序运行时的初始化代码。所以我们仅看一下 <code>do_stuff</code> 部分：</p>
+<div class="highlight"><pre><span></span><code><span class="mf">080483</span><span class="n">e4</span><span class="w"> </span><span class="o">&lt;</span><span class="n">do_stuff</span><span class="o">&gt;</span><span class="p">:</span>
+<span class="w"> </span><span class="mf">80483</span><span class="n">e4</span><span class="p">:</span><span class="w">     </span><span class="mf">55</span><span class="w">                      </span><span class="n">push</span><span class="w">   </span><span class="err">%</span><span class="n">ebp</span>
+<span class="w"> </span><span class="mf">80483</span><span class="n">e5</span><span class="p">:</span><span class="w">     </span><span class="mf">89</span><span class="w"> </span><span class="n">e5</span><span class="w">                   </span><span class="n">mov</span><span class="w">    </span><span class="err">%</span><span class="n">esp</span><span class="p">,</span><span class="err">%</span><span class="n">ebp</span>
+<span class="w"> </span><span class="mf">80483</span><span class="n">e7</span><span class="p">:</span><span class="w">     </span><span class="mf">83</span><span class="w"> </span><span class="n">ec</span><span class="w"> </span><span class="mf">18</span><span class="w">                </span><span class="n">sub</span><span class="w">    </span><span class="err">$</span><span class="mf">0</span><span class="n">x18</span><span class="p">,</span><span class="err">%</span><span class="n">esp</span>
+<span class="w"> </span><span class="mf">80483</span><span class="n">ea</span><span class="p">:</span><span class="w">     </span><span class="n">c7</span><span class="w"> </span><span class="mf">04</span><span class="w"> </span><span class="mf">24</span><span class="w"> </span><span class="n">f0</span><span class="w"> </span><span class="mf">84</span><span class="w"> </span><span class="mf">04</span><span class="w"> </span><span class="mf">08</span><span class="w">    </span><span class="n">movl</span><span class="w">   </span><span class="err">$</span><span class="mf">0</span><span class="n">x80484f0</span><span class="p">,(</span><span class="err">%</span><span class="n">esp</span><span class="p">)</span>
+<span class="w"> </span><span class="mf">80483</span><span class="n">f1</span><span class="p">:</span><span class="w">     </span><span class="n">e8</span><span class="w"> </span><span class="mf">22</span><span class="w"> </span><span class="n">ff</span><span class="w"> </span><span class="n">ff</span><span class="w"> </span><span class="n">ff</span><span class="w">          </span><span class="n">call</span><span class="w">   </span><span class="mf">8048318</span><span class="w"> </span><span class="o">&lt;</span><span class="n">puts</span><span class="err">@</span><span class="n">plt</span><span class="o">&gt;</span>
+<span class="w"> </span><span class="mf">80483</span><span class="n">f6</span><span class="p">:</span><span class="w">     </span><span class="n">c9</span><span class="w">                      </span><span class="n">leave</span>
+<span class="w"> </span><span class="mf">80483</span><span class="n">f7</span><span class="p">:</span><span class="w">     </span><span class="n">c3</span><span class="w">                      </span><span class="n">ret</span>
+</code></pre></div>
+
+<p>那么，我们将会把断点放在 <code>0x080483e4</code>，这是 <code>do_stuff</code> 第一条指令执行的地方。而且，该函数是在循环里面调用的，我们想要在断点处一直停止执行直到循环结束。我们将会使用 debuglib 来简化该流程，下面是完整的调试函数：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">void</span><span class="w"> </span><span class="nt">run_debugger</span><span class="o">(</span><span class="nt">pid_t</span><span class="w"> </span><span class="nt">child_pid</span><span class="o">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="err">procmsg(&quot;debugger</span><span class="w"> </span><span class="err">started\n&quot;)</span><span class="p">;</span>
+
+<span class="w">    </span><span class="c">/* Wait for child to stop on its first instruction */</span>
+<span class="w">    </span><span class="err">wait(0)</span><span class="p">;</span>
+<span class="w">    </span><span class="err">procmsg(&quot;child</span><span class="w"> </span><span class="err">now</span><span class="w"> </span><span class="err">at</span><span class="w"> </span><span class="err">EIP</span><span class="w"> </span><span class="err">=</span><span class="w"> </span><span class="err">0x%08x\n&quot;,</span><span class="w"> </span><span class="err">get_child_eip(child_pid))</span><span class="p">;</span>
+
+<span class="w">    </span><span class="c">/* Create breakpoint and run to it*/</span>
+<span class="w">    </span><span class="err">debug_breakpoint*</span><span class="w"> </span><span class="err">bp</span><span class="w"> </span><span class="err">=</span><span class="w"> </span><span class="err">create_breakpoint(child_pid,</span><span class="w"> </span><span class="err">(void*)0x080483e4)</span><span class="p">;</span>
+<span class="w">    </span><span class="err">procmsg(&quot;breakpoint</span><span class="w"> </span><span class="err">created\n&quot;)</span><span class="p">;</span>
+<span class="w">    </span><span class="err">ptrace(PTRACE_CONT,</span><span class="w"> </span><span class="err">child_pid,</span><span class="w"> </span><span class="err">0,</span><span class="w"> </span><span class="err">0)</span><span class="p">;</span>
+<span class="w">    </span><span class="err">wait(0)</span><span class="p">;</span>
+
+<span class="w">    </span><span class="c">/* Loop as long as the child didn&#39;t exit */</span>
+<span class="w">    </span><span class="err">while</span><span class="w"> </span><span class="err">(1)</span><span class="w"> </span><span class="err">{</span>
+<span class="w">        </span><span class="c">/* The child is stopped at a breakpoint here. Resume its</span>
+<span class="c">        ** execution until it either exits or hits the</span>
+<span class="c">        ** breakpoint again.</span>
+<span class="c">        */</span>
+<span class="w">        </span><span class="err">procmsg(&quot;child</span><span class="w"> </span><span class="err">stopped</span><span class="w"> </span><span class="err">at</span><span class="w"> </span><span class="err">breakpoint.</span><span class="w"> </span><span class="err">EIP</span><span class="w"> </span><span class="err">=</span><span class="w"> </span><span class="err">0x%08X\n&quot;,</span><span class="w"> </span><span class="err">get_child_eip(child_pid))</span><span class="p">;</span>
+<span class="w">        </span><span class="err">procmsg(&quot;resuming\n&quot;)</span><span class="p">;</span>
+<span class="w">        </span><span class="err">int</span><span class="w"> </span><span class="err">rc</span><span class="w"> </span><span class="err">=</span><span class="w"> </span><span class="err">resume_from_breakpoint(child_pid,</span><span class="w"> </span><span class="err">bp)</span><span class="p">;</span>
+
+<span class="w">        </span><span class="err">if</span><span class="w"> </span><span class="err">(rc</span><span class="w"> </span><span class="err">==</span><span class="w"> </span><span class="err">0)</span><span class="w"> </span><span class="err">{</span>
+<span class="w">            </span><span class="err">procmsg(&quot;child</span><span class="w"> </span><span class="err">exited\n&quot;)</span><span class="p">;</span>
+<span class="w">            </span><span class="err">break</span><span class="p">;</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="nt">else</span><span class="w"> </span><span class="nt">if</span><span class="w"> </span><span class="o">(</span><span class="nt">rc</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nt">1</span><span class="o">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="err">continue</span><span class="p">;</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="nt">else</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="err">procmsg(&quot;</span><span class="n">unexpected</span><span class="p">:</span><span class="w"> </span><span class="o">%</span><span class="n">d</span><span class="err">\</span><span class="n">n</span><span class="err">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">rc</span><span class="p">);</span>
+<span class="w">            </span><span class="err">break</span><span class="p">;</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="err">}</span>
+
+<span class="w">    </span><span class="nt">cleanup_breakpoint</span><span class="o">(</span><span class="nt">bp</span><span class="o">);</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<p>为了避免修改 EIP 标志位和目的进程的内存空间的麻烦，我们仅需要调用 <code>create_breakpoint</code>，<code>resume_from_breakpoint</code> 和 <code>cleanup_breakpoint</code>。让我们来看看追踪上面的 C 代码样例会输出什么：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>bp_use_lib<span class="w"> </span>traced_c_loop
+<span class="o">[</span><span class="m">13363</span><span class="o">]</span><span class="w"> </span>debugger<span class="w"> </span>started
+<span class="o">[</span><span class="m">13364</span><span class="o">]</span><span class="w"> </span>target<span class="w"> </span>started.<span class="w"> </span>will<span class="w"> </span>run<span class="w"> </span><span class="s1">&#39;traced_c_loop&#39;</span>
+<span class="o">[</span><span class="m">13363</span><span class="o">]</span><span class="w"> </span>child<span class="w"> </span>now<span class="w"> </span>at<span class="w"> </span><span class="nv">EIP</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>0x00a37850
+<span class="o">[</span><span class="m">13363</span><span class="o">]</span><span class="w"> </span>breakpoint<span class="w"> </span>created
+<span class="o">[</span><span class="m">13363</span><span class="o">]</span><span class="w"> </span>child<span class="w"> </span>stopped<span class="w"> </span>at<span class="w"> </span>breakpoint.<span class="w"> </span><span class="nv">EIP</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>0x080483E5
+<span class="o">[</span><span class="m">13363</span><span class="o">]</span><span class="w"> </span>resuming
+Hello,
+<span class="o">[</span><span class="m">13363</span><span class="o">]</span><span class="w"> </span>child<span class="w"> </span>stopped<span class="w"> </span>at<span class="w"> </span>breakpoint.<span class="w"> </span><span class="nv">EIP</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>0x080483E5
+<span class="o">[</span><span class="m">13363</span><span class="o">]</span><span class="w"> </span>resuming
+Hello,
+<span class="o">[</span><span class="m">13363</span><span class="o">]</span><span class="w"> </span>child<span class="w"> </span>stopped<span class="w"> </span>at<span class="w"> </span>breakpoint.<span class="w"> </span><span class="nv">EIP</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>0x080483E5
+<span class="o">[</span><span class="m">13363</span><span class="o">]</span><span class="w"> </span>resuming
+Hello,
+<span class="o">[</span><span class="m">13363</span><span class="o">]</span><span class="w"> </span>child<span class="w"> </span>stopped<span class="w"> </span>at<span class="w"> </span>breakpoint.<span class="w"> </span><span class="nv">EIP</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>0x080483E5
+<span class="o">[</span><span class="m">13363</span><span class="o">]</span><span class="w"> </span>resuming
+Hello,
+world!
+<span class="o">[</span><span class="m">13363</span><span class="o">]</span><span class="w"> </span>child<span class="w"> </span>exited
+</code></pre></div>
+
+<p>如预期一样！</p>
+<h3>样例代码</h3>
+<p><a href="https://github.com/eliben/code-for-blog/tree/master/2011/debuggers_part2_code">这里是</a>本文用到的完整源代码文件。在归档中你可以找到：</p>
+<ul>
+<li>debuglib.h 和 debuglib.c - 封装了调试器的一些内部工作的示例库</li>
+<li>bp_manual.c - 这篇文章开始部分介绍的“手动”设置断点的方法。一些样板代码使用了 debuglib 库。</li>
+<li>bp<em>use</em>lib.c - 大部分代码使用了 debuglib 库，用于在第二个代码范例中演示在 C 程序的循环中追踪。</li>
+</ul>
+<h3>引文</h3>
+<p>在准备本文的时候，我搜集了如下的资源和文章：</p>
+<ul>
+<li><a href="http://www.alexonlinux.com/how-debugger-works">How debugger works</a></li>
+<li><a href="http://www.linuxforums.org/articles/understanding-elf-using-readelf-and-objdump_125.html">Understanding ELF using readelf and objdump</a></li>
+<li><a href="http://mainisusuallyafunction.blogspot.com/2011/01/implementing-breakpoints-on-x86-linux.html">Implementing breakpoints on x86 Linux</a></li>
+<li><a href="http://www.nasm.us/xdoc/2.09.04/html/nasmdoc0.html">NASM manual</a></li>
+<li><a href="http://stackoverflow.com/questions/2187484/elf-binary-entry-point">SO discussion of the ELF entry point</a></li>
+<li><a href="http://news.ycombinator.net/item?id=2131894">This Hacker News discussion</a> of the first part of the series</li>
+<li><a href="http://www.deansys.com/doc/gdbInternals/gdbint_toc.html">GDB Internals</a></li>
+</ul>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

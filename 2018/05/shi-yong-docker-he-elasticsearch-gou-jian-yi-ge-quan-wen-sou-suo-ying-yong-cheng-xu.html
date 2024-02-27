@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 Docker 和 Elasticsearch 构建一个全文搜索应用程序</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Patrick Triest 如何在超过 500 万篇文章的 Wikipedia 上找到与你研究相关的文章？ 如何在超过 20 亿用户的 Facebook 中找到你的朋友（并且还拼错 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/05/shi-yong-docker-he-elasticsearch-gou-jian-yi-ge-quan-wen-sou-suo-ying-yong-cheng-xu.html" rel="bookmark"
+           title="Permalink to 使用 Docker 和 Elasticsearch 构建一个全文搜索应用程序">使用 Docker 和 Elasticsearch 构建一个全文搜索应用程序</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-05-01T09:56:00+02:00">
+                Published: Tue 01 May 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Patrick Triest</p>
+<p><img alt="" src="/data/attachment/album/201804/29/225958mstepxxzs4os5zzs.jpg"></p>
+<p><em>如何在超过 500 万篇文章的 Wikipedia 上找到与你研究相关的文章？</em></p>
+<p><em>如何在超过 20 亿用户的 Facebook 中找到你的朋友（并且还拼错了名字）？</em></p>
+<p><em>谷歌如何在整个因特网上搜索你的模糊的、充满拼写错误的查询？</em></p>
+<p>在本教程中，我们将带你探索如何配置我们自己的全文搜索应用程序（与上述问题中的系统相比，它的复杂度要小很多）。我们的示例应用程序将提供一个 UI 和 API 去从 100 部经典文学（比如，《彼得·潘》 、 《弗兰肯斯坦》 和 《金银岛》）中搜索完整的文本。</p>
+<p>你可以在这里（<a href="https://search.patricktriest.com/">https://search.patricktriest.com</a>）预览该教程应用的完整版本。</p>
+<p><img alt="preview webapp" src="/data/attachment/album/201804/29/230001e19b9192911jljdu.png"></p>
+<p>这个应用程序的源代码是 100% 开源的，可以在 GitHub 仓库上找到它们 —— <a href="https://github.com/triestpa/guttenberg-search">https://github.com/triestpa/guttenberg-search</a> 。</p>
+<p>在应用程序中添加一个快速灵活的全文搜索可能是个挑战。大多数的主流数据库，比如，<a href="https://www.postgresql.org/">PostgreSQL</a> 和 <a href="https://www.mongodb.com/">MongoDB</a>，由于受其查询和索引结构的限制只能提供一个非常基础的文本搜索功能。为实现高质量的全文搜索，通常的最佳选择是单独的数据存储。<a href="https://www.elastic.co/">Elasticsearch</a> 是一个开源数据存储的领导者，它专门为执行灵活而快速的全文搜索进行了优化。</p>
+<p>我们将使用 <a href="https://www.docker.com/">Docker</a> 去配置我们自己的项目环境和依赖。Docker 是一个容器化引擎，它被 <a href="https://www.uber.com/">Uber</a>、<a href="https://www.spotify.com/us/">Spotify</a>、<a href="https://www.adp.com/">ADP</a> 以及 <a href="https://www.paypal.com/us/home">Paypal</a> 使用。构建容器化应用的一个主要优势是，项目的设置在 Windows、macOS、以及 Linux 上都是相同的 —— 这使我写这个教程快速又简单。如果你还没有使用过 Docker，不用担心，我们接下来将经历完整的项目配置。</p>
+<p>我也会使用 <a href="https://nodejs.org/en/">Node.js</a> （使用 <a href="http://koajs.com/">Koa</a> 框架）和 <a href="https://vuejs.org/">Vue.js</a>，用它们分别去构建我们自己的搜索 API 和前端 Web 应用程序。</p>
+<h3>1 - Elasticsearch 是什么？</h3>
+<p>全文搜索在现代应用程序中是一个有大量需求的特性。搜索也可能是最难的一项特性 —— 许多流行的网站的搜索功能都不合格，要么返回结果太慢，要么找不到精确的结果。通常，这种情况是被底层的数据库所局限：大多数标准的关系型数据库局限于基本的 <code>CONTAINS</code> 或 <code>LIKE</code> SQL 查询上，它仅提供最基本的字符串匹配功能。</p>
+<p>我们的搜索应用程序将具备：</p>
+<ol>
+<li><strong>快速</strong> - 搜索结果将快速返回，为用户提供一个良好的体验。</li>
+<li><strong>灵活</strong> - 我们希望能够去修改搜索如何执行的方式，这是为了便于在不同的数据库和用户场景下进行优化。</li>
+<li><strong>容错</strong> - 如果所搜索的内容有拼写错误，我们将仍然会返回相关的结果，而这个结果可能正是用户希望去搜索的结果。</li>
+<li><strong>全文</strong> - 我们不想限制我们的搜索只能与指定的关键字或者标签相匹配 —— 我们希望它可以搜索在我们的数据存储中的任何东西（包括大的文本字段）。</li>
+</ol>
+<p><img alt="Elastic Search Logo" src="/data/attachment/album/201804/29/230004bfdi8y7na7a7rlm5.png"></p>
+<p>为了构建一个功能强大的搜索功能，通常最理想的方法是使用一个为全文搜索任务优化过的数据存储。在这里我们使用 <a href="https://www.elastic.co/">Elasticsearch</a>，Elasticsearch 是一个开源的内存中的数据存储，它是用 Java 写的，最初是在 <a href="https://lucene.apache.org/core/">Apache Lucene</a> 库上构建的。</p>
+<p>这里有一些来自 <a href="https://www.elastic.co/guide/en/elasticsearch/guide/2.x/getting-started.html">Elastic 官方网站</a> 上的 Elasticsearch 真实使用案例。</p>
+<ul>
+<li>Wikipedia 使用 Elasticsearch 去提供带高亮搜索片断的全文搜索功能，并且提供按类型搜索和 “did-you-mean” 建议。</li>
+<li>Guardian 使用 Elasticsearch 把社交网络数据和访客日志相结合，为编辑去提供新文章的公众意见的实时反馈。</li>
+<li>Stack Overflow 将全文搜索和地理查询相结合，并使用 “类似” 的方法去找到相关的查询和回答。</li>
+<li>GitHub 使用 Elasticsearch 对 1300 亿行代码进行查询。</li>
+</ul>
+<h3>与 “普通的” 数据库相比，Elasticsearch 有什么不一样的地方？</h3>
+<p>Elasticsearch 之所以能够提供快速灵活的全文搜索，秘密在于它使用<ruby> 反转索引 <rt>  inverted index </rt></ruby> 。</p>
+<p>“索引” 是数据库中的一种数据结构，它能够以超快的速度进行数据查询和检索操作。数据库通过存储与表中行相关联的字段来生成索引。在一种可搜索的数据结构（一般是 <a href="https://en.wikipedia.org/wiki/B-tree">B 树</a>）中排序索引，在优化过的查询中，数据库能够达到接近线性的时间（比如，“使用 ID=5 查找行”）。</p>
+<p><img alt="Relational Index" src="/data/attachment/album/201804/29/230006f6b77cxhaoxtrw7a.png"></p>
+<p>我们可以将数据库索引想像成一个图书馆中老式的卡片式目录 —— 只要你知道书的作者和书名，它就会告诉你书的准确位置。为加速特定字段上的查询速度，数据库表一般有多个索引（比如，在 <code>name</code> 列上的索引可以加速指定名字的查询）。</p>
+<p>反转索引本质上是不一样的。每行（或文档）的内容是分开的，并且每个独立的条目（在本案例中是单词）反向指向到包含它的任何文档上。</p>
+<p><img alt="Inverted Index" src="/data/attachment/album/201804/29/230007xupyqqttv0mdeem8.jpg"></p>
+<p>这种反转索引数据结构可以使我们非常快地查询到，所有出现 “football” 的文档。通过使用大量优化过的内存中的反转索引，Elasticsearch 可以让我们在存储的数据上，执行一些非常强大的和自定义的全文搜索。</p>
+<h3>2 - 项目设置</h3>
+<h4>2.0 - Docker</h4>
+<p>我们在这个项目上使用 <a href="https://www.docker.com/">Docker</a> 管理环境和依赖。Docker 是个容器引擎，它允许应用程序运行在一个独立的环境中，不会受到来自主机操作系统和本地开发环境的影响。现在，许多公司将它们的大规模 Web 应用程序主要运行在容器架构上。这样将提升灵活性和容器化应用程序组件的可组构性。</p>
+<p><img alt="Docker Logo" src="/data/attachment/album/201804/29/230007zokz6v5kl5xolo1l.png"></p>
+<p>对我来说，使用 Docker 的优势是，它对本教程的作者非常方便，它的本地环境设置量最小，并且跨 Windows、macOS 和 Linux 系统的一致性很好。我们只需要在 Docker 配置文件中定义这些依赖关系，而不是按安装说明分别去安装 Node.js、Elasticsearch 和 Nginx，然后，就可以使用这个配置文件在任何其它地方运行我们的应用程序。而且，因为每个应用程序组件都运行在它自己的独立容器中，它们受本地机器上的其它 “垃圾” 干扰的可能性非常小，因此，在调试问题时，像“它在我这里可以工作！”这类的问题将非常少。</p>
+<h4>2.1 - 安装 Docker &amp; Docker-Compose</h4>
+<p>这个项目只依赖 <a href="https://www.docker.com/">Docker</a> 和 <a href="https://docs.docker.com/compose/">docker-compose</a>，docker-compose 是 Docker 官方支持的一个工具，它用来将定义的多个容器配置 <em>组装</em> 成单一的应用程序栈。</p>
+<ul>
+<li>安装 Docker - <a href="https://docs.docker.com/engine/installation/">https://docs.docker.com/engine/installation/</a></li>
+<li>安装 Docker Compose - <a href="https://docs.docker.com/compose/install/">https://docs.docker.com/compose/install/</a></li>
+</ul>
+<h4>2.2 - 设置项目主目录</h4>
+<p>为项目创建一个主目录（名为 <code>guttenberg_search</code>）。我们的项目将工作在主目录的以下两个子目录中。</p>
+<ul>
+<li><code>/public</code> - 保存前端 Vue.js Web 应用程序。</li>
+<li><code>/server</code> - 服务器端 Node.js 源代码。</li>
+</ul>
+<h4>2.3 - 添加 Docker-Compose 配置</h4>
+<p>接下来，我们将创建一个 <code>docker-compose.yml</code> 文件来定义我们的应用程序栈中的每个容器。</p>
+<ol>
+<li><code>gs-api</code> - 后端应用程序逻辑使用的 Node.js 容器</li>
+<li><code>gs-frontend</code> - 前端 Web 应用程序使用的 Ngnix 容器。</li>
+<li><code>gs-search</code> - 保存和搜索数据的 Elasticsearch 容器。</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="n">version</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;3&#39;</span>
+
+<span class="n">services</span><span class="p">:</span>
+<span class="w">  </span><span class="n">api</span><span class="p">:</span><span class="w"> </span><span class="c1"># Node.js App</span>
+<span class="w">    </span><span class="n">container_name</span><span class="p">:</span><span class="w"> </span><span class="n">gs</span><span class="o">-</span><span class="n">api</span>
+<span class="w">    </span><span class="n">build</span><span class="p">:</span><span class="w"> </span><span class="o">.</span>
+<span class="w">    </span><span class="n">ports</span><span class="p">:</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="s2">&quot;3000:3000&quot;</span><span class="w"> </span><span class="c1"># Expose API port</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="s2">&quot;9229:9229&quot;</span><span class="w"> </span><span class="c1"># Expose Node process debug port (disable in production)</span>
+<span class="w">    </span><span class="n">environment</span><span class="p">:</span><span class="w"> </span><span class="c1"># Set ENV vars</span>
+<span class="w">     </span><span class="o">-</span><span class="w"> </span><span class="n">NODE_ENV</span><span class="o">=</span><span class="n">local</span>
+<span class="w">     </span><span class="o">-</span><span class="w"> </span><span class="n">ES_HOST</span><span class="o">=</span><span class="n">elasticsearch</span>
+<span class="w">     </span><span class="o">-</span><span class="w"> </span><span class="n">PORT</span><span class="o">=</span><span class="mi">3000</span>
+<span class="w">    </span><span class="n">volumes</span><span class="p">:</span><span class="w"> </span><span class="c1"># Attach local book data directory</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="o">./</span><span class="n">books</span><span class="p">:</span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">src</span><span class="o">/</span><span class="n">app</span><span class="o">/</span><span class="n">books</span>
+
+<span class="w">  </span><span class="n">frontend</span><span class="p">:</span><span class="w"> </span><span class="c1"># Nginx Server For Frontend App</span>
+<span class="w">    </span><span class="n">container_name</span><span class="p">:</span><span class="w"> </span><span class="n">gs</span><span class="o">-</span><span class="n">frontend</span>
+<span class="w">    </span><span class="n">image</span><span class="p">:</span><span class="w"> </span><span class="n">nginx</span>
+<span class="w">    </span><span class="n">volumes</span><span class="p">:</span><span class="w"> </span><span class="c1"># Serve local &quot;public&quot; dir</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="o">./</span><span class="n">public</span><span class="p">:</span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">share</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span><span class="n">html</span>
+<span class="w">    </span><span class="n">ports</span><span class="p">:</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="s2">&quot;8080:80&quot;</span><span class="w"> </span><span class="c1"># Forward site to localhost:8080</span>
+
+<span class="w">  </span><span class="n">elasticsearch</span><span class="p">:</span><span class="w"> </span><span class="c1"># Elasticsearch Instance</span>
+<span class="w">    </span><span class="n">container_name</span><span class="p">:</span><span class="w"> </span><span class="n">gs</span><span class="o">-</span><span class="n">search</span>
+<span class="w">    </span><span class="n">image</span><span class="p">:</span><span class="w"> </span><span class="n">docker</span><span class="o">.</span><span class="n">elastic</span><span class="o">.</span><span class="n">co</span><span class="o">/</span><span class="n">elasticsearch</span><span class="o">/</span><span class="n">elasticsearch</span><span class="p">:</span><span class="mf">6.1</span><span class="o">.</span><span class="mi">1</span>
+<span class="w">    </span><span class="n">volumes</span><span class="p">:</span><span class="w"> </span><span class="c1"># Persist ES data in seperate &quot;esdata&quot; volume</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">esdata</span><span class="p">:</span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">share</span><span class="o">/</span><span class="n">elasticsearch</span><span class="o">/</span><span class="n">data</span>
+<span class="w">    </span><span class="n">environment</span><span class="p">:</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">bootstrap</span><span class="o">.</span><span class="n">memory_lock</span><span class="o">=</span><span class="bp">true</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="s2">&quot;ES_JAVA_OPTS=-Xms512m -Xmx512m&quot;</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="n">discovery</span><span class="o">.</span><span class="n">type</span><span class="o">=</span><span class="n">single</span><span class="o">-</span><span class="n">node</span>
+<span class="w">    </span><span class="n">ports</span><span class="p">:</span><span class="w"> </span><span class="c1"># Expose Elasticsearch ports</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="s2">&quot;9300:9300&quot;</span>
+<span class="w">      </span><span class="o">-</span><span class="w"> </span><span class="s2">&quot;9200:9200&quot;</span>
+
+<span class="n">volumes</span><span class="p">:</span><span class="w"> </span><span class="c1"># Define seperate volume for Elasticsearch data</span>
+<span class="w">  </span><span class="n">esdata</span><span class="p">:</span>
+</code></pre></div>
+
+<p>这个文件定义了我们全部的应用程序栈 —— 不需要在你的本地系统上安装 Elasticsearch、Node 和 Nginx。每个容器都将端口转发到宿主机系统（<code>localhost</code>）上，以便于我们在宿主机上去访问和调试 Node API、Elasticsearch 实例和前端 Web 应用程序。</p>
+<h4>2.4 - 添加 Dockerfile</h4>
+<p>对于 Nginx 和 Elasticsearch，我们使用了官方预构建的镜像，而 Node.js 应用程序需要我们自己去构建。</p>
+<p>在应用程序的根目录下定义一个简单的 <code>Dockerfile</code> 配置文件。</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="nx">Use</span><span class="w"> </span><span class="nx">Node</span><span class="w"> </span><span class="nx">v8</span><span class="m m-Double">.9.0</span><span class="w"> </span><span class="nx">LTS</span>
+<span class="nx">FROM</span><span class="w"> </span><span class="nx">node</span><span class="p">:</span><span class="nx">carbon</span>
+
+<span class="err">#</span><span class="w"> </span><span class="nx">Setup</span><span class="w"> </span><span class="nx">app</span><span class="w"> </span><span class="nx">working</span><span class="w"> </span><span class="nx">directory</span>
+<span class="nx">WORKDIR</span><span class="w"> </span><span class="o">/</span><span class="nx">usr</span><span class="o">/</span><span class="nx">src</span><span class="o">/</span><span class="nx">app</span>
+
+<span class="err">#</span><span class="w"> </span><span class="nx">Copy</span><span class="w"> </span><span class="kn">package</span><span class="p">.</span><span class="nx">json</span><span class="w"> </span><span class="k">and</span><span class="w"> </span><span class="kn">package</span><span class="o">-</span><span class="nx">lock</span><span class="p">.</span><span class="nx">json</span>
+<span class="nx">COPY</span><span class="w"> </span><span class="kn">package</span><span class="o">*</span><span class="p">.</span><span class="nx">json</span><span class="w"> </span><span class="p">.</span><span class="o">/</span>
+
+<span class="err">#</span><span class="w"> </span><span class="nx">Install</span><span class="w"> </span><span class="nx">app</span><span class="w"> </span><span class="nx">dependencies</span>
+<span class="nx">RUN</span><span class="w"> </span><span class="nx">npm</span><span class="w"> </span><span class="nx">install</span>
+
+<span class="err">#</span><span class="w"> </span><span class="nx">Copy</span><span class="w"> </span><span class="nx">sourcecode</span>
+<span class="nx">COPY</span><span class="w"> </span><span class="p">.</span><span class="w"> </span><span class="p">.</span>
+
+<span class="err">#</span><span class="w"> </span><span class="nx">Start</span><span class="w"> </span><span class="nx">app</span>
+<span class="nx">CMD</span><span class="w"> </span><span class="p">[</span><span class="w"> </span><span class="s">&quot;npm&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;start&quot;</span><span class="w"> </span><span class="p">]</span>
+</code></pre></div>
+
+<p>这个 Docker 配置扩展了官方的 Node.js 镜像、拷贝我们的应用程序源代码、以及在容器内安装 NPM 依赖。</p>
+<p>我们也增加了一个 <code>.dockerignore</code> 文件，以防止我们不需要的文件拷贝到容器中。</p>
+<div class="highlight"><pre><span></span><code>node_modules/
+npm-debug.log
+books/
+public/
+</code></pre></div>
+
+<blockquote>
+<p>请注意：我们之所以不拷贝 <code>node_modules</code> 目录到我们的容器中 —— 是因为我们要在容器构建过程里面运行 <code>npm install</code>。从宿主机系统拷贝 <code>node_modules</code> 到容器里面可能会引起错误，因为一些包需要为某些操作系统专门构建。比如说，在 macOS 上安装 <code>bcrypt</code> 包，然后尝试将这个模块直接拷贝到一个 Ubuntu 容器上将不能工作，因为 <code>bcyrpt</code> 需要为每个操作系统构建一个特定的二进制文件。</p>
+</blockquote>
+<h4>2.5 - 添加基本文件</h4>
+<p>为了测试我们的配置，我们需要添加一些占位符文件到应用程序目录中。</p>
+<p>在 <code>public/index.html</code> 文件中添加如下内容。</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;html&gt;&lt;body&gt;</span>Hello<span class="w"> </span>World<span class="w"> </span>From<span class="w"> </span>The<span class="w"> </span>Frontend<span class="w"> </span>Container<span class="nt">&lt;/body&gt;&lt;/html&gt;</span>
+</code></pre></div>
+
+<p>接下来，在 <code>server/app.js</code> 中添加 Node.js 占位符文件。</p>
+<div class="highlight"><pre><span></span><code><span class="k">const</span><span class="w"> </span><span class="n">Koa</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">require</span><span class="p">(</span><span class="s1">&#39;koa&#39;</span><span class="p">)</span>
+<span class="k">const</span><span class="w"> </span><span class="n">app</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">new</span><span class="w"> </span><span class="n">Koa</span><span class="p">()</span>
+
+<span class="n">app</span><span class="o">.</span><span class="n">use</span><span class="p">(</span><span class="n">async</span><span class="w"> </span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="n">next</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">ctx</span><span class="o">.</span><span class="n">body</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;Hello World From the Backend Container&#39;</span>
+<span class="p">})</span>
+
+<span class="k">const</span><span class="w"> </span><span class="n">port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">process</span><span class="o">.</span><span class="n">env</span><span class="o">.</span><span class="n">PORT</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="mi">3000</span>
+
+<span class="n">app</span><span class="o">.</span><span class="n">listen</span><span class="p">(</span><span class="n">port</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">err</span><span class="p">)</span><span class="w"> </span><span class="n">console</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+<span class="w">  </span><span class="n">console</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="err">`</span><span class="n">App</span><span class="w"> </span><span class="n">Listening</span><span class="w"> </span><span class="n">on</span><span class="w"> </span><span class="n">Port</span><span class="w"> </span><span class="o">$</span><span class="p">{</span><span class="n">port</span><span class="p">}</span><span class="err">`</span><span class="p">)</span>
+<span class="p">})</span>
+</code></pre></div>
+
+<p>最后，添加我们的 <code>package.json</code> Node 应用配置。</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="s">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;guttenberg-search&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="s">&quot;version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;0.0.1&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="s">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Source code for Elasticsearch tutorial using 100 classic open source books.&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="s">&quot;scripts&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="s">&quot;start&quot;</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;node --inspect=0.0.0.0:9229 server/app.js&quot;</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="s">&quot;repository&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="s">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;git&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s">&quot;url&quot;</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;git+https://github.com/triestpa/guttenberg-search.git&quot;</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="s">&quot;author&quot;</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;patrick.triest@gmail.com&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="s">&quot;license&quot;</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;MIT&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="s">&quot;bugs&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="s">&quot;url&quot;</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://github.com/triestpa/guttenberg-search/issues&quot;</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="s">&quot;homepage&quot;</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://github.com/triestpa/guttenberg-search#readme&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="s">&quot;dependencies&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="s">&quot;elasticsearch&quot;</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;13.3.1&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s">&quot;joi&quot;</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;13.0.1&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s">&quot;koa&quot;</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;2.4.1&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s">&quot;koa-joi-validate&quot;</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;0.5.1&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s">&quot;koa-router&quot;</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;7.2.1&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这个文件定义了应用程序启动命令和 Node.js 包依赖。</p>
+<blockquote>
+<p>注意：不要运行 <code>npm install</code> —— 当它构建时，依赖会在容器内安装。</p>
+</blockquote>
+<h4>2.6 - 测试它的输出</h4>
+<p>现在一切新绪，我们来测试应用程序的每个组件的输出。从应用程序的主目录运行 <code>docker-compose build</code>，它将构建我们的 Node.js 应用程序容器。</p>
+<p><img alt="docker build output" src="/data/attachment/album/201804/29/230009hbbjxdgxxwkfddxg.png"></p>
+<p>接下来，运行 <code>docker-compose up</code> 去启动整个应用程序栈。</p>
+<p><img alt="docker compose output" src="/data/attachment/album/201804/29/230010o50854mg2sggzgqc.png"></p>
+<blockquote>
+<p>这一步可能需要几分钟时间，因为 Docker 要为每个容器去下载基础镜像。以后再次运行，启动应用程序会非常快，因为所需要的镜像已经下载完成了。</p>
+</blockquote>
+<p>在你的浏览器中尝试访问 <code>localhost:8080</code> —— 你将看到简单的 “Hello World” Web 页面。</p>
+<p><img alt="frontend sample output" src="/data/attachment/album/201804/29/230011r1eehrkmgrq4ekx3.png"></p>
+<p>访问 <code>localhost:3000</code> 去验证我们的 Node 服务器，它将返回 “Hello World” 信息。</p>
+<p><img alt="backend sample output" src="/data/attachment/album/201804/29/230012uaczcnck1q9smmae.png"></p>
+<p>最后，访问 <code>localhost:9200</code> 去检查 Elasticsearch 运行状态。它将返回类似如下的内容。</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="s">&quot;name&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">&quot;SLTcfpI&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="s">&quot;cluster_name&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">&quot;docker-cluster&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="s">&quot;cluster_uuid&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">&quot;iId8e0ZeS_mgh9ALlWQ7-w&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="s">&quot;version&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="s">&quot;number&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">&quot;6.1.1&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s">&quot;build_hash&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">&quot;bd92e7f&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s">&quot;build_date&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">&quot;2017-12-17T20:23:25.338Z&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s">&quot;build_snapshot&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">false</span><span class="p">,</span>
+<span class="w">    </span><span class="s">&quot;lucene_version&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">&quot;7.1.0&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s">&quot;minimum_wire_compatibility_version&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">&quot;5.6.0&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s">&quot;minimum_index_compatibility_version&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">&quot;5.0.0&quot;</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="s">&quot;tagline&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">&quot;You Know, for Search&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>如果三个 URL 都显示成功，祝贺你！整个容器栈已经正常运行了，接下来我们进入最有趣的部分。</p>
+<h3>3 - 连接到 Elasticsearch</h3>
+<p>我们要做的第一件事情是，让我们的应用程序连接到我们本地的 Elasticsearch 实例上。</p>
+<h4>3.0 - 添加 ES 连接模块</h4>
+<p>在新文件 <code>server/connection.js</code> 中添加如下的 Elasticsearch 初始化代码。</p>
+<div class="highlight"><pre><span></span><code><span class="nx">const</span><span class="w"> </span><span class="nx">elasticsearch</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">require</span><span class="p">(</span><span class="err">&#39;</span><span class="nx">elasticsearch</span><span class="err">&#39;</span><span class="p">)</span>
+
+<span class="c1">// Core ES variables for this project</span>
+<span class="nx">const</span><span class="w"> </span><span class="nx">index</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="err">&#39;</span><span class="kn">library</span><span class="err">&#39;</span>
+<span class="nx">const</span><span class="w"> </span><span class="k">type</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="err">&#39;</span><span class="nx">novel</span><span class="err">&#39;</span>
+<span class="nx">const</span><span class="w"> </span><span class="nx">port</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mi">9200</span>
+<span class="nx">const</span><span class="w"> </span><span class="nx">host</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">process</span><span class="p">.</span><span class="nx">env</span><span class="p">.</span><span class="nx">ES_HOST</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="err">&#39;</span><span class="nx">localhost</span><span class="err">&#39;</span>
+<span class="nx">const</span><span class="w"> </span><span class="nx">client</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">new</span><span class="w"> </span><span class="nx">elasticsearch</span><span class="p">.</span><span class="nx">Client</span><span class="p">({</span><span class="w"> </span><span class="nx">host</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">host</span><span class="p">,</span><span class="w"> </span><span class="nx">port</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">})</span>
+
+<span class="cm">/** Check the ES connection status */</span>
+<span class="nx">async</span><span class="w"> </span><span class="nx">function</span><span class="w"> </span><span class="nx">checkConnection</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="kd">let</span><span class="w"> </span><span class="nx">isConnected</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">  </span><span class="k">while</span><span class="w"> </span><span class="p">(!</span><span class="nx">isConnected</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="err">&#39;</span><span class="nx">Connecting</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">ES</span><span class="err">&#39;</span><span class="p">)</span>
+<span class="w">    </span><span class="nx">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nx">const</span><span class="w"> </span><span class="nx">health</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">await</span><span class="w"> </span><span class="nx">client</span><span class="p">.</span><span class="nx">cluster</span><span class="p">.</span><span class="nx">health</span><span class="p">({})</span>
+<span class="w">      </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nx">health</span><span class="p">)</span>
+<span class="w">      </span><span class="nx">isConnected</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="nx">catch</span><span class="w"> </span><span class="p">(</span><span class="nx">err</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="err">&#39;</span><span class="nx">Connection</span><span class="w"> </span><span class="nx">Failed</span><span class="p">,</span><span class="w"> </span><span class="nx">Retrying</span><span class="o">...</span><span class="err">&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="nx">checkConnection</span><span class="p">()</span>
+</code></pre></div>
+
+<p>现在，我们重新构建我们的 Node 应用程序，我们将使用 <code>docker-compose build</code> 来做一些改变。接下来，运行 <code>docker-compose up -d</code> 去启动应用程序栈，它将以守护进程的方式在后台运行。</p>
+<p>应用程序启动之后，在命令行中运行 <code>docker exec gs-api "node" "server/connection.js"</code>，以便于在容器内运行我们的脚本。你将看到类似如下的系统输出信息。</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nl">cluster_name:</span><span class="w"> </span><span class="p">&#39;</span><span class="n">docker</span><span class="o">-</span><span class="n">cluster</span><span class="p">&#39;,</span>
+<span class="w">  </span><span class="nl">status:</span><span class="w"> </span><span class="p">&#39;</span><span class="n">yellow</span><span class="p">&#39;,</span>
+<span class="w">  </span><span class="nl">timed_out:</span><span class="w"> </span><span class="n">false</span><span class="p">,</span>
+<span class="w">  </span><span class="nl">number_of_nodes:</span><span class="w"> </span><span class="mh">1</span><span class="p">,</span>
+<span class="w">  </span><span class="nl">number_of_data_nodes:</span><span class="w"> </span><span class="mh">1</span><span class="p">,</span>
+<span class="w">  </span><span class="nl">active_primary_shards:</span><span class="w"> </span><span class="mh">1</span><span class="p">,</span>
+<span class="w">  </span><span class="nl">active_shards:</span><span class="w"> </span><span class="mh">1</span><span class="p">,</span>
+<span class="w">  </span><span class="nl">relocating_shards:</span><span class="w"> </span><span class="mh">0</span><span class="p">,</span>
+<span class="w">  </span><span class="nl">initializing_shards:</span><span class="w"> </span><span class="mh">0</span><span class="p">,</span>
+<span class="w">  </span><span class="nl">unassigned_shards:</span><span class="w"> </span><span class="mh">1</span><span class="p">,</span>
+<span class="w">  </span><span class="nl">delayed_unassigned_shards:</span><span class="w"> </span><span class="mh">0</span><span class="p">,</span>
+<span class="w">  </span><span class="nl">number_of_pending_tasks:</span><span class="w"> </span><span class="mh">0</span><span class="p">,</span>
+<span class="w">  </span><span class="nl">number_of_in_flight_fetch:</span><span class="w"> </span><span class="mh">0</span><span class="p">,</span>
+<span class="w">  </span><span class="nl">task_max_waiting_in_queue_millis:</span><span class="w"> </span><span class="mh">0</span><span class="p">,</span>
+<span class="w">  </span><span class="nl">active_shards_percent_as_number:</span><span class="w"> </span><span class="mh">50</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+
+<p>继续之前，我们先删除最下面的 <code>checkConnection()</code> 调用，因为，我们最终的应用程序将调用外部的连接模块。</p>
+<h4>3.1 - 添加函数去重置索引</h4>
+<p>在 <code>server/connection.js</code> 中的 <code>checkConnection</code> 下面添加如下的函数，以便于重置 Elasticsearch 索引。</p>
+<div class="highlight"><pre><span></span><code><span class="o">/**</span><span class="w"> </span><span class="n">Clear</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">index</span><span class="p">,</span><span class="w"> </span><span class="n">recreate</span><span class="w"> </span><span class="n">it</span><span class="p">,</span><span class="w"> </span><span class="nb">and</span><span class="w"> </span><span class="n">add</span><span class="w"> </span><span class="n">mappings</span><span class="w"> </span><span class="o">*/</span>
+<span class="n">async</span><span class="w"> </span><span class="k">function</span><span class="w"> </span><span class="n">resetIndex</span><span class="w"> </span><span class="p">(</span><span class="n">index</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">await</span><span class="w"> </span><span class="n">client</span><span class="p">.</span><span class="n">indices</span><span class="p">.</span><span class="nb">exists</span><span class="p">({</span><span class="w"> </span><span class="n">index</span><span class="w"> </span><span class="p">}))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">await</span><span class="w"> </span><span class="n">client</span><span class="p">.</span><span class="n">indices</span><span class="p">.</span><span class="nb">delete</span><span class="p">({</span><span class="w"> </span><span class="n">index</span><span class="w"> </span><span class="p">})</span>
+<span class="w">  </span><span class="p">}</span>
+
+<span class="w">  </span><span class="n">await</span><span class="w"> </span><span class="n">client</span><span class="p">.</span><span class="n">indices</span><span class="p">.</span><span class="n">create</span><span class="p">({</span><span class="w"> </span><span class="n">index</span><span class="w"> </span><span class="p">})</span>
+<span class="w">  </span><span class="n">await</span><span class="w"> </span><span class="n">putBookMapping</span><span class="p">()</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h4>3.2 - 添加图书模式</h4>
+<p>接下来，我们将为图书的数据模式添加一个 “映射”。在 <code>server/connection.js</code> 中的 <code>resetIndex</code> 函数下面添加如下的函数。</p>
+<div class="highlight"><pre><span></span><code><span class="o">/**</span><span class="w"> </span><span class="n">Add</span><span class="w"> </span><span class="n">book</span><span class="w"> </span><span class="n">section</span><span class="w"> </span><span class="n">schema</span><span class="w"> </span><span class="n">mapping</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">ES</span><span class="w"> </span><span class="o">*/</span>
+<span class="n">async</span><span class="w"> </span><span class="n">function</span><span class="w"> </span><span class="n">putBookMapping</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="n">schema</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">title</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">type</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;keyword&#39;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="n">author</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">type</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;keyword&#39;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="n">location</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">type</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;integer&#39;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="n">text</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">type</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;text&#39;</span><span class="w"> </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">client</span><span class="o">.</span><span class="n">indices</span><span class="o">.</span><span class="n">putMapping</span><span class="p">({</span><span class="w"> </span><span class="n">index</span><span class="p">,</span><span class="w"> </span><span class="n">type</span><span class="p">,</span><span class="w"> </span><span class="n">body</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">properties</span><span class="p">:</span><span class="w"> </span><span class="n">schema</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">})</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这是为 <code>book</code> 索引定义了一个映射。Elasticsearch 中的 <code>index</code> 大概类似于 SQL 的 <code>table</code> 或者 MongoDB 的 <code>collection</code>。我们通过添加映射来为存储的文档指定每个字段和它的数据类型。Elasticsearch 是无模式的，因此，从技术角度来看，我们是不需要添加映射的，但是，这样做，我们可以更好地控制如何处理数据。</p>
+<p>比如，我们给 <code>title</code> 和 <code>author</code> 字段分配 <code>keyword</code> 类型，给 <code>text</code> 字段分配 <code>text</code> 类型。之所以这样做的原因是，搜索引擎可以区别处理这些字符串字段 —— 在搜索的时候，搜索引擎将在 <code>text</code> 字段中搜索可能的匹配项，而对于 <code>keyword</code> 类型字段，将对它们进行全文匹配。这看上去差别很小，但是它们对在不同的搜索上的速度和行为的影响非常大。</p>
+<p>在文件的底部，导出对外发布的属性和函数，这样我们的应用程序中的其它模块就可以访问它们了。</p>
+<div class="highlight"><pre><span></span><code><span class="n">module</span><span class="o">.</span><span class="n">exports</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">client</span><span class="p">,</span><span class="w"> </span><span class="n">index</span><span class="p">,</span><span class="w"> </span><span class="n">type</span><span class="p">,</span><span class="w"> </span><span class="n">checkConnection</span><span class="p">,</span><span class="w"> </span><span class="n">resetIndex</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3>4 - 加载原始数据</h3>
+<p>我们将使用来自 <a href="https://www.gutenberg.org/">古登堡项目</a> 的数据 —— 它致力于为公共提供免费的线上电子书。在这个项目中，我们将使用 100 本经典图书来充实我们的图书馆，包括《福尔摩斯探案集》、《金银岛》、《基督山复仇记》、《环游世界八十天》、《罗密欧与朱丽叶》 和《奥德赛》。</p>
+<p><img alt="Book Covers" src="/data/attachment/album/201804/29/230012dngaozogh81o85zn.jpg"></p>
+<h4>4.1 - 下载图书文件</h4>
+<p>我将这 100 本书打包成一个文件，你可以从这里下载它 —— <a href="https://cdn.patricktriest.com/data/books.zip">https://cdn.patricktriest.com/data/books.zip</a></p>
+<p>将这个文件解压到你的项目的 <code>books/</code> 目录中。</p>
+<p>你可以使用以下的命令来完成（需要在命令行下使用 <a href="https://www.gnu.org/software/wget/">wget</a> 和 <a href="https://theunarchiver.com/command-line">The Unarchiver</a>）。</p>
+<div class="highlight"><pre><span></span><code>wget https://cdn.patricktriest.com/data/books.zip
+unar books.zip
+</code></pre></div>
+
+<h4>4.2 - 预览一本书</h4>
+<p>尝试打开其中的一本书的文件，假设打开的是 <code>219-0.txt</code>。你将注意到它开头是一个公开访问的协议，接下来是一些标识这本书的书名、作者、发行日期、语言和字符编码的行。</p>
+<div class="highlight"><pre><span></span><code><span class="n">Title</span><span class="o">:</span><span class="w"> </span><span class="n">Heart</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="n">Darkness</span>
+
+<span class="n">Author</span><span class="o">:</span><span class="w"> </span><span class="n">Joseph</span><span class="w"> </span><span class="n">Conrad</span>
+
+<span class="n">Release</span><span class="w"> </span><span class="n">Date</span><span class="o">:</span><span class="w"> </span><span class="n">February</span><span class="w"> </span><span class="mi">1995</span><span class="w"> </span><span class="o">[</span><span class="n">EBook</span><span class="w"> </span><span class="err">#</span><span class="mi">219</span><span class="o">]</span>
+<span class="n">Last</span><span class="w"> </span><span class="n">Updated</span><span class="o">:</span><span class="w"> </span><span class="n">September</span><span class="w"> </span><span class="mi">7</span><span class="o">,</span><span class="w"> </span><span class="mi">2016</span>
+
+<span class="n">Language</span><span class="o">:</span><span class="w"> </span><span class="n">English</span>
+
+<span class="n">Character</span><span class="w"> </span><span class="kd">set</span><span class="w"> </span><span class="n">encoding</span><span class="o">:</span><span class="w"> </span><span class="n">UTF</span><span class="o">-</span><span class="mi">8</span>
+</code></pre></div>
+
+<p>在 <code>*** START OF THIS PROJECT GUTENBERG EBOOK HEART OF DARKNESS ***</code> 这些行后面，是这本书的正式内容。</p>
+<p>如果你滚动到本书的底部，你将看到类似 <code>*** END OF THIS PROJECT GUTENBERG EBOOK HEART OF DARKNESS ***</code> 信息，接下来是本书更详细的协议版本。</p>
+<p>下一步，我们将使用程序从文件头部来解析书的元数据，提取 <code>*** START OF</code> 和 <code>***END OF</code> 之间的内容。</p>
+<h4>4.3 - 读取数据目录</h4>
+<p>我们将写一个脚本来读取每本书的内容，并将这些数据添加到 Elasticsearch。我们将定义一个新的 Javascript 文件 <code>server/load_data.js</code> 来执行这些操作。</p>
+<p>首先，我们将从 <code>books/</code> 目录中获取每个文件的列表。</p>
+<p>在 <code>server/load_data.js</code> 中添加下列内容。</p>
+<div class="highlight"><pre><span></span><code><span class="k">const</span><span class="w"> </span><span class="n">fs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">require</span><span class="p">(</span><span class="s1">&#39;fs&#39;</span><span class="p">)</span>
+<span class="k">const</span><span class="w"> </span><span class="n">path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">require</span><span class="p">(</span><span class="s1">&#39;path&#39;</span><span class="p">)</span>
+<span class="k">const</span><span class="w"> </span><span class="n">esConnection</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">require</span><span class="p">(</span><span class="s1">&#39;./connection&#39;</span><span class="p">)</span>
+
+<span class="o">/**</span><span class="w"> </span><span class="n">Clear</span><span class="w"> </span><span class="n">ES</span><span class="w"> </span><span class="n">index</span><span class="p">,</span><span class="w"> </span><span class="n">parse</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">index</span><span class="w"> </span><span class="n">all</span><span class="w"> </span><span class="n">files</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">books</span><span class="w"> </span><span class="n">directory</span><span class="w"> </span><span class="o">*/</span>
+<span class="n">async</span><span class="w"> </span><span class="n">function</span><span class="w"> </span><span class="n">readAndInsertBooks</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="o">//</span><span class="w"> </span><span class="n">Clear</span><span class="w"> </span><span class="n">previous</span><span class="w"> </span><span class="n">ES</span><span class="w"> </span><span class="n">index</span>
+<span class="w">    </span><span class="n">await</span><span class="w"> </span><span class="n">esConnection</span><span class="o">.</span><span class="n">resetIndex</span><span class="p">()</span>
+
+<span class="w">    </span><span class="o">//</span><span class="w"> </span><span class="n">Read</span><span class="w"> </span><span class="n">books</span><span class="w"> </span><span class="n">directory</span>
+<span class="w">    </span><span class="n">let</span><span class="w"> </span><span class="n">files</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fs</span><span class="o">.</span><span class="n">readdirSync</span><span class="p">(</span><span class="s1">&#39;./books&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">file</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">file</span><span class="o">.</span><span class="n">slice</span><span class="p">(</span><span class="o">-</span><span class="mi">4</span><span class="p">)</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s1">&#39;.txt&#39;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">console</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="err">`</span><span class="n">Found</span><span class="w"> </span><span class="o">$</span><span class="p">{</span><span class="n">files</span><span class="o">.</span><span class="n">length</span><span class="p">}</span><span class="w"> </span><span class="n">Files</span><span class="err">`</span><span class="p">)</span>
+
+<span class="w">    </span><span class="o">//</span><span class="w"> </span><span class="n">Read</span><span class="w"> </span><span class="n">each</span><span class="w"> </span><span class="n">book</span><span class="w"> </span><span class="n">file</span><span class="p">,</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">index</span><span class="w"> </span><span class="n">each</span><span class="w"> </span><span class="n">paragraph</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">elasticsearch</span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">let</span><span class="w"> </span><span class="n">file</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="n">files</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="n">console</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="err">`</span><span class="n">Reading</span><span class="w"> </span><span class="n">File</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="o">$</span><span class="p">{</span><span class="n">file</span><span class="p">}</span><span class="err">`</span><span class="p">)</span>
+<span class="w">      </span><span class="k">const</span><span class="w"> </span><span class="n">filePath</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s1">&#39;./books&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">file</span><span class="p">)</span>
+<span class="w">      </span><span class="k">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">title</span><span class="p">,</span><span class="w"> </span><span class="n">author</span><span class="p">,</span><span class="w"> </span><span class="n">paragraphs</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">parseBookFile</span><span class="p">(</span><span class="n">filePath</span><span class="p">)</span>
+<span class="w">      </span><span class="n">await</span><span class="w"> </span><span class="n">insertBookData</span><span class="p">(</span><span class="n">title</span><span class="p">,</span><span class="w"> </span><span class="n">author</span><span class="p">,</span><span class="w"> </span><span class="n">paragraphs</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span><span class="w"> </span><span class="n">catch</span><span class="w"> </span><span class="p">(</span><span class="n">err</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">console</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="n">readAndInsertBooks</span><span class="p">()</span>
+</code></pre></div>
+
+<p>我们将使用一个快捷命令来重构我们的 Node.js 应用程序，并更新运行的容器。</p>
+<p>运行 <code>docker-compose up -d --build</code> 去更新应用程序。这是运行 <code>docker-compose build</code> 和 <code>docker-compose up -d</code> 的快捷命令。</p>
+<p><img alt="docker build output" src="/data/attachment/album/201804/29/230014mx0ryfcj61fe60v6.png"></p>
+<p>为了在容器中运行我们的 <code>load_data</code> 脚本，我们运行 <code>docker exec gs-api "node" "server/load_data.js"</code> 。你将看到 Elasticsearch 的状态输出 <code>Found 100 Books</code>。</p>
+<p>这之后，脚本发生了错误退出，原因是我们调用了一个没有定义的辅助函数（<code>parseBookFile</code>）。</p>
+<p><img alt="docker exec output" src="/data/attachment/album/201804/29/230015gbm7uidbqls3m8ja.png"></p>
+<h4>4.4 - 读取数据文件</h4>
+<p>接下来，我们读取元数据和每本书的内容。</p>
+<p>在 <code>server/load_data.js</code> 中定义新函数。</p>
+<div class="highlight"><pre><span></span><code><span class="o">/**</span><span class="w"> </span><span class="n">Read</span><span class="w"> </span><span class="n">an</span><span class="w"> </span><span class="n">individual</span><span class="w"> </span><span class="n">book</span><span class="w"> </span><span class="n">text</span><span class="w"> </span><span class="n">file</span><span class="p">,</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">extract</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">title</span><span class="p">,</span><span class="w"> </span><span class="n">author</span><span class="p">,</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">paragraphs</span><span class="w"> </span><span class="o">*/</span>
+<span class="n">function</span><span class="w"> </span><span class="n">parseBookFile</span><span class="w"> </span><span class="p">(</span><span class="n">filePath</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="o">//</span><span class="w"> </span><span class="n">Read</span><span class="w"> </span><span class="n">text</span><span class="w"> </span><span class="n">file</span>
+<span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="n">book</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fs</span><span class="o">.</span><span class="n">readFileSync</span><span class="p">(</span><span class="n">filePath</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;utf8&#39;</span><span class="p">)</span>
+
+<span class="w">  </span><span class="o">//</span><span class="w"> </span><span class="n">Find</span><span class="w"> </span><span class="n">book</span><span class="w"> </span><span class="n">title</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">author</span>
+<span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="n">title</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">book</span><span class="o">.</span><span class="k">match</span><span class="p">(</span><span class="o">/^</span><span class="n">Title</span><span class="p">:</span>\<span class="n">s</span><span class="p">(</span><span class="o">.+</span><span class="p">)</span><span class="o">$/</span><span class="n">m</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+<span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="n">authorMatch</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">book</span><span class="o">.</span><span class="k">match</span><span class="p">(</span><span class="o">/^</span><span class="n">Author</span><span class="p">:</span>\<span class="n">s</span><span class="p">(</span><span class="o">.+</span><span class="p">)</span><span class="o">$/</span><span class="n">m</span><span class="p">)</span>
+<span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="n">author</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">authorMatch</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">authorMatch</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">trim</span><span class="p">()</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="p">)</span><span class="w"> </span><span class="err">?</span><span class="w"> </span><span class="s1">&#39;Unknown Author&#39;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">authorMatch</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+<span class="w">  </span><span class="n">console</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="err">`</span><span class="n">Reading</span><span class="w"> </span><span class="n">Book</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="o">$</span><span class="p">{</span><span class="n">title</span><span class="p">}</span><span class="w"> </span><span class="n">By</span><span class="w"> </span><span class="o">$</span><span class="p">{</span><span class="n">author</span><span class="p">}</span><span class="err">`</span><span class="p">)</span>
+
+<span class="w">  </span><span class="o">//</span><span class="w"> </span><span class="n">Find</span><span class="w"> </span><span class="n">Guttenberg</span><span class="w"> </span><span class="n">metadata</span><span class="w"> </span><span class="n">header</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">footer</span>
+<span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="n">startOfBookMatch</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">book</span><span class="o">.</span><span class="k">match</span><span class="p">(</span><span class="o">/^</span>\<span class="o">*</span><span class="p">{</span><span class="mi">3</span><span class="p">}</span>\<span class="n">s</span><span class="o">*</span><span class="n">START</span><span class="w"> </span><span class="n">OF</span><span class="w"> </span><span class="p">(</span><span class="n">THIS</span><span class="o">|</span><span class="n">THE</span><span class="p">)</span><span class="w"> </span><span class="n">PROJECT</span><span class="w"> </span><span class="n">GUTENBERG</span><span class="w"> </span><span class="n">EBOOK</span><span class="o">.+</span>\<span class="o">*</span><span class="p">{</span><span class="mi">3</span><span class="p">}</span><span class="o">$/</span><span class="n">m</span><span class="p">)</span>
+<span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="n">startOfBookIndex</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">startOfBookMatch</span><span class="o">.</span><span class="n">index</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">startOfBookMatch</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">length</span>
+<span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="n">endOfBookIndex</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">book</span><span class="o">.</span><span class="k">match</span><span class="p">(</span><span class="o">/^</span>\<span class="o">*</span><span class="p">{</span><span class="mi">3</span><span class="p">}</span>\<span class="n">s</span><span class="o">*</span><span class="n">END</span><span class="w"> </span><span class="n">OF</span><span class="w"> </span><span class="p">(</span><span class="n">THIS</span><span class="o">|</span><span class="n">THE</span><span class="p">)</span><span class="w"> </span><span class="n">PROJECT</span><span class="w"> </span><span class="n">GUTENBERG</span><span class="w"> </span><span class="n">EBOOK</span><span class="o">.+</span>\<span class="o">*</span><span class="p">{</span><span class="mi">3</span><span class="p">}</span><span class="o">$/</span><span class="n">m</span><span class="p">)</span><span class="o">.</span><span class="n">index</span>
+
+<span class="w">  </span><span class="o">//</span><span class="w"> </span><span class="n">Clean</span><span class="w"> </span><span class="n">book</span><span class="w"> </span><span class="n">text</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">split</span><span class="w"> </span><span class="n">into</span><span class="w"> </span><span class="n">array</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="n">paragraphs</span>
+<span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="n">paragraphs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">book</span>
+<span class="w">    </span><span class="o">.</span><span class="n">slice</span><span class="p">(</span><span class="n">startOfBookIndex</span><span class="p">,</span><span class="w"> </span><span class="n">endOfBookIndex</span><span class="p">)</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">Remove</span><span class="w"> </span><span class="n">Guttenberg</span><span class="w"> </span><span class="n">header</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">footer</span>
+<span class="w">    </span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="o">/</span>\<span class="n">n</span>\<span class="n">s</span><span class="o">+</span>\<span class="n">n</span><span class="o">/</span><span class="n">g</span><span class="p">)</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">Split</span><span class="w"> </span><span class="n">each</span><span class="w"> </span><span class="n">paragraph</span><span class="w"> </span><span class="n">into</span><span class="w"> </span><span class="n">it</span><span class="s1">&#39;s own array entry</span>
+<span class="w">    </span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="n">line</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">line</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="o">/</span>\<span class="n">r</span>\<span class="n">n</span><span class="o">/</span><span class="n">g</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39; &#39;</span><span class="p">)</span><span class="o">.</span><span class="n">trim</span><span class="p">())</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">Remove</span><span class="w"> </span><span class="n">paragraph</span><span class="w"> </span><span class="n">line</span><span class="w"> </span><span class="n">breaks</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">whitespace</span>
+<span class="w">    </span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="n">line</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">line</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="o">/</span><span class="n">_</span><span class="o">/</span><span class="n">g</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="p">))</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">Guttenberg</span><span class="w"> </span><span class="n">uses</span><span class="w"> </span><span class="s2">&quot;_&quot;</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">signify</span><span class="w"> </span><span class="n">italics</span><span class="o">.</span><span class="w">  </span><span class="n">We</span><span class="s1">&#39;ll remove it, since it makes the raw text look messy.</span>
+<span class="w">    </span><span class="o">.</span><span class="n">filter</span><span class="p">((</span><span class="n">line</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">(</span><span class="n">line</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">line</span><span class="o">.</span><span class="n">length</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="p">))</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">Remove</span><span class="w"> </span><span class="n">empty</span><span class="w"> </span><span class="n">lines</span>
+
+<span class="w">  </span><span class="n">console</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="err">`</span><span class="n">Parsed</span><span class="w"> </span><span class="o">$</span><span class="p">{</span><span class="n">paragraphs</span><span class="o">.</span><span class="n">length</span><span class="p">}</span><span class="w"> </span><span class="n">Paragraphs</span>\<span class="n">n</span><span class="err">`</span><span class="p">)</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">title</span><span class="p">,</span><span class="w"> </span><span class="n">author</span><span class="p">,</span><span class="w"> </span><span class="n">paragraphs</span><span class="w"> </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这个函数执行几个重要的任务。</p>
+<ol>
+<li>从文件系统中读取书的文本。</li>
+<li>使用正则表达式（关于正则表达式，请参阅 <a href="https://blog.patricktriest.com/you-should-learn-regex/">这篇文章</a> ）解析书名和作者。</li>
+<li>通过匹配 “古登堡项目” 的头部和尾部，识别书的正文内容。</li>
+<li>提取书的内容文本。</li>
+<li>分割每个段落到它的数组中。</li>
+<li>清理文本并删除空白行。</li>
+</ol>
+<p>它的返回值，我们将构建一个对象，这个对象包含书名、作者、以及书中各段落的数组。</p>
+<p>再次运行 <code>docker-compose up -d --build</code> 和 <code>docker exec gs-api "node" "server/load_data.js"</code>，你将看到输出同之前一样，在输出的末尾有三个额外的行。</p>
+<p><img alt="docker exec output" src="/data/attachment/album/201804/29/230015k9n9u41o1n1tna72.png"></p>
+<p>成功！我们的脚本从文本文件中成功解析出了书名和作者。脚本再次以错误结束，因为到现在为止，我们还没有定义辅助函数。</p>
+<h4>4.5 - 在 ES 中索引数据文件</h4>
+<p>最后一步，我们将批量上传每个段落的数组到 Elasticsearch 索引中。</p>
+<p>在 <code>load_data.js</code> 中添加新的 <code>insertBookData</code> 函数。</p>
+<div class="highlight"><pre><span></span><code><span class="cm">/** Bulk index the book data in Elasticsearch */</span>
+<span class="n">async</span><span class="w"> </span><span class="k">function</span><span class="w"> </span><span class="n">insertBookData</span><span class="w"> </span><span class="p">(</span><span class="n">title</span><span class="p">,</span><span class="w"> </span><span class="n">author</span><span class="p">,</span><span class="w"> </span><span class="n">paragraphs</span><span class="p">)</span><span class="w"> </span><span class="err">{</span>
+<span class="w">  </span><span class="n">let</span><span class="w"> </span><span class="n">bulkOps</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">[]</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="k">Array</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">store</span><span class="w"> </span><span class="k">bulk</span><span class="w"> </span><span class="n">operations</span>
+
+<span class="w">  </span><span class="o">//</span><span class="w"> </span><span class="k">Add</span><span class="w"> </span><span class="n">an</span><span class="w"> </span><span class="k">index</span><span class="w"> </span><span class="k">operation</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="k">each</span><span class="w"> </span><span class="k">section</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">book</span>
+<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">let</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">paragraphs</span><span class="p">.</span><span class="n">length</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="o">//</span><span class="w"> </span><span class="k">Describe</span><span class="w"> </span><span class="k">action</span>
+<span class="w">    </span><span class="n">bulkOps</span><span class="p">.</span><span class="n">push</span><span class="p">(</span><span class="err">{</span><span class="w"> </span><span class="k">index</span><span class="err">:</span><span class="w"> </span><span class="err">{</span><span class="w"> </span><span class="nl">_index</span><span class="p">:</span><span class="w"> </span><span class="n">esConnection</span><span class="p">.</span><span class="k">index</span><span class="p">,</span><span class="w"> </span><span class="nl">_type</span><span class="p">:</span><span class="w"> </span><span class="n">esConnection</span><span class="p">.</span><span class="n">type</span><span class="w"> </span><span class="err">}</span><span class="w"> </span><span class="err">}</span><span class="p">)</span>
+
+<span class="w">    </span><span class="o">//</span><span class="w"> </span><span class="k">Add</span><span class="w"> </span><span class="n">document</span>
+<span class="w">    </span><span class="n">bulkOps</span><span class="p">.</span><span class="n">push</span><span class="p">(</span><span class="err">{</span>
+<span class="w">      </span><span class="n">author</span><span class="p">,</span>
+<span class="w">      </span><span class="n">title</span><span class="p">,</span>
+<span class="w">      </span><span class="nl">location</span><span class="p">:</span><span class="w"> </span><span class="n">i</span><span class="p">,</span>
+<span class="w">      </span><span class="nc">text</span><span class="err">:</span><span class="w"> </span><span class="n">paragraphs</span><span class="o">[</span><span class="n">i</span><span class="o">]</span>
+<span class="w">    </span><span class="err">}</span><span class="p">)</span>
+
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">i</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mi">500</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="err">{</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">Do</span><span class="w"> </span><span class="k">bulk</span><span class="w"> </span><span class="k">insert</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="mi">500</span><span class="w"> </span><span class="n">paragraph</span><span class="w"> </span><span class="n">batches</span>
+<span class="w">      </span><span class="n">await</span><span class="w"> </span><span class="n">esConnection</span><span class="p">.</span><span class="n">client</span><span class="p">.</span><span class="k">bulk</span><span class="p">(</span><span class="err">{</span><span class="w"> </span><span class="nl">body</span><span class="p">:</span><span class="w"> </span><span class="n">bulkOps</span><span class="w"> </span><span class="err">}</span><span class="p">)</span>
+<span class="w">      </span><span class="n">bulkOps</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">[]</span>
+<span class="w">      </span><span class="n">console</span><span class="p">.</span><span class="nf">log</span><span class="p">(</span><span class="err">`</span><span class="n">Indexed</span><span class="w"> </span><span class="n">Paragraphs</span><span class="w"> </span><span class="err">${</span><span class="n">i</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">499</span><span class="err">}</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="err">${</span><span class="n">i</span><span class="err">}`</span><span class="p">)</span>
+<span class="w">    </span><span class="err">}</span>
+<span class="w">  </span><span class="err">}</span>
+
+<span class="w">  </span><span class="o">//</span><span class="w"> </span><span class="k">Insert</span><span class="w"> </span><span class="n">remainder</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="k">bulk</span><span class="w"> </span><span class="n">ops</span><span class="w"> </span><span class="k">array</span>
+<span class="w">  </span><span class="n">await</span><span class="w"> </span><span class="n">esConnection</span><span class="p">.</span><span class="n">client</span><span class="p">.</span><span class="k">bulk</span><span class="p">(</span><span class="err">{</span><span class="w"> </span><span class="nl">body</span><span class="p">:</span><span class="w"> </span><span class="n">bulkOps</span><span class="w"> </span><span class="err">}</span><span class="p">)</span>
+<span class="w">  </span><span class="n">console</span><span class="p">.</span><span class="nf">log</span><span class="p">(</span><span class="err">`</span><span class="n">Indexed</span><span class="w"> </span><span class="n">Paragraphs</span><span class="w"> </span><span class="err">${</span><span class="n">paragraphs</span><span class="p">.</span><span class="n">length</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="p">(</span><span class="n">bulkOps</span><span class="p">.</span><span class="n">length</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">2</span><span class="p">)</span><span class="err">}</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="err">${</span><span class="n">paragraphs</span><span class="p">.</span><span class="n">length</span><span class="err">}\</span><span class="n">n</span><span class="err">\</span><span class="n">n</span><span class="err">\</span><span class="n">n</span><span class="err">`</span><span class="p">)</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<p>这个函数将使用书名、作者和附加元数据的段落位置来索引书中的每个段落。我们通过批量操作来插入段落，它比逐个段落插入要快的多。</p>
+<blockquote>
+<p>我们分批索引段落，而不是一次性插入全部，是为运行这个应用程序的内存稍有点小（1.7 GB）的服务器 <code>search.patricktriest.com</code> 上做的一个重要优化。如果你的机器内存还行（4 GB 以上），你或许不用分批上传。</p>
+</blockquote>
+<p>运行 <code>docker-compose up -d --build</code> 和 <code>docker exec gs-api "node" "server/load_data.js"</code> 一次或多次 —— 现在你将看到前面解析的 100 本书的完整输出，并插入到了 Elasticsearch。这可能需要几分钟时间，甚至更长。</p>
+<p><img alt="data loading output" src="/data/attachment/album/201804/29/230017r89g693r36fd659r.png"></p>
+<h3>5 - 搜索</h3>
+<p>现在，Elasticsearch 中已经有了 100 本书了（大约有 230000 个段落），现在我们尝试搜索查询。</p>
+<h4>5.0 - 简单的 HTTP 查询</h4>
+<p>首先，我们使用 Elasticsearch 的 HTTP API 对它进行直接查询。</p>
+<p>在你的浏览器上访问这个 URL - <code>http://localhost:9200/library/_search?q=text:Java&amp;pretty</code></p>
+<p>在这里，我们将执行一个极简的全文搜索，在我们的图书馆的书中查找 “Java” 这个词。</p>
+<p>你将看到类似于下面的一个 JSON 格式的响应。</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="s">&quot;took&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="mi">11</span><span class="p">,</span>
+<span class="w">  </span><span class="s">&quot;timed_out&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">  </span><span class="s">&quot;_shards&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="s">&quot;total&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<span class="w">    </span><span class="s">&quot;successful&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<span class="w">    </span><span class="s">&quot;skipped&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="s">&quot;failed&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="s">&quot;hits&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="s">&quot;total&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="mi">13</span><span class="p">,</span>
+<span class="w">    </span><span class="s">&quot;max_score&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="m m-Double">14.259304</span><span class="p">,</span>
+<span class="w">    </span><span class="s">&quot;hits&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="s">&quot;_index&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="s">&quot;library&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="s">&quot;_type&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="s">&quot;novel&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="s">&quot;_id&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="s">&quot;p_GwFWEBaZvLlaAUdQgV&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="s">&quot;_score&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="m m-Double">14.259304</span><span class="p">,</span>
+<span class="w">        </span><span class="s">&quot;_source&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="s">&quot;author&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Charles Darwin&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="s">&quot;title&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="s">&quot;On the Origin of Species&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="s">&quot;location&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="mi">1080</span><span class="p">,</span>
+<span class="w">          </span><span class="s">&quot;text&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Java, plants of, 375.&quot;</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="s">&quot;_index&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="s">&quot;library&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="s">&quot;_type&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="s">&quot;novel&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="s">&quot;_id&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="s">&quot;wfKwFWEBaZvLlaAUkjfk&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="s">&quot;_score&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="m m-Double">10.186235</span><span class="p">,</span>
+<span class="w">        </span><span class="s">&quot;_source&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="s">&quot;author&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Edgar Allan Poe&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="s">&quot;title&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="s">&quot;The Works of Edgar Allan Poe&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="s">&quot;location&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="mi">827</span><span class="p">,</span>
+<span class="w">          </span><span class="s">&quot;text&quot;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="s">&quot;After many years spent in foreign travel, I sailed in the year 18-- , from the port of Batavia, in the rich and populous island of Java, on a voyage to the Archipelago of the Sunda islands. I went as passenger--having no other inducement than a kind of nervous restlessness which haunted me as a fiend.&quot;</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="o">...</span>
+<span class="w">    </span><span class="p">]</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>用 Elasticseach 的 HTTP 接口可以测试我们插入的数据是否成功，但是如果直接将这个 API 暴露给 Web 应用程序将有极大的风险。这个 API 将会暴露管理功能（比如直接添加和删除文档），最理想的情况是完全不要对外暴露它。而是写一个简单的 Node.js API 去接收来自客户端的请求，然后（在我们的本地网络中）生成一个正确的查询发送给 Elasticsearch。</p>
+<h4>5.1 - 查询脚本</h4>
+<p>我们现在尝试从我们写的 Node.js 脚本中查询 Elasticsearch。</p>
+<p>创建一个新文件，<code>server/search.js</code>。</p>
+<div class="highlight"><pre><span></span><code><span class="k">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">client</span><span class="p">,</span><span class="w"> </span><span class="n">index</span><span class="p">,</span><span class="w"> </span><span class="n">type</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">require</span><span class="p">(</span><span class="s1">&#39;./connection&#39;</span><span class="p">)</span>
+
+<span class="n">module</span><span class="o">.</span><span class="n">exports</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="o">/**</span><span class="w"> </span><span class="n">Query</span><span class="w"> </span><span class="n">ES</span><span class="w"> </span><span class="n">index</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">provided</span><span class="w"> </span><span class="n">term</span><span class="w"> </span><span class="o">*/</span>
+<span class="w">  </span><span class="n">queryTerm</span><span class="w"> </span><span class="p">(</span><span class="n">term</span><span class="p">,</span><span class="w"> </span><span class="n">offset</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">body</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="n">from</span><span class="p">:</span><span class="w"> </span><span class="n">offset</span><span class="p">,</span>
+<span class="w">      </span><span class="n">query</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">match</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">text</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="n">query</span><span class="p">:</span><span class="w"> </span><span class="n">term</span><span class="p">,</span>
+<span class="w">          </span><span class="n">operator</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;and&#39;</span><span class="p">,</span>
+<span class="w">          </span><span class="n">fuzziness</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;auto&#39;</span>
+<span class="w">        </span><span class="p">}</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">},</span>
+<span class="w">      </span><span class="n">highlight</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">fields</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">text</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">client</span><span class="o">.</span><span class="n">search</span><span class="p">({</span><span class="w"> </span><span class="n">index</span><span class="p">,</span><span class="w"> </span><span class="n">type</span><span class="p">,</span><span class="w"> </span><span class="n">body</span><span class="w"> </span><span class="p">})</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>我们的搜索模块定义一个简单的 <code>search</code> 函数，它将使用输入的词 <code>match</code> 查询。</p>
+<p>这是查询的字段分解 -</p>
+<ul>
+<li><code>from</code> - 允许我们分页查询结果。默认每个查询返回 10 个结果，因此，指定 <code>from: 10</code> 将允许我们取回 10-20 的结果。</li>
+<li><code>query</code> - 这里我们指定要查询的词。</li>
+<li><code>operator</code> - 我们可以修改搜索行为；在本案例中，我们使用 <code>and</code> 操作去对查询中包含所有字元（要查询的词）的结果来确定优先顺序。</li>
+<li><code>fuzziness</code> - 对拼写错误的容错调整，<code>auto</code> 的默认为 <code>fuzziness: 2</code>。模糊值越高，结果越需要更多校正。比如，<code>fuzziness: 1</code> 将允许以 <code>Patricc</code> 为关键字的查询中返回与 <code>Patrick</code> 匹配的结果。</li>
+<li><code>highlights</code> - 为结果返回一个额外的字段，这个字段包含 HTML，以显示精确的文本字集和查询中匹配的关键词。</li>
+</ul>
+<p>你可以去浏览 <a href="https://www.elastic.co/guide/en/elasticsearch/reference/current/full-text-queries.html">Elastic Full-Text Query DSL</a>，学习如何随意调整这些参数，以进一步自定义搜索查询。</p>
+<h3>6 - API</h3>
+<p>为了能够从前端应用程序中访问我们的搜索功能，我们来写一个快速的 HTTP API。</p>
+<h4>6.0 - API 服务器</h4>
+<p>用以下的内容替换现有的 <code>server/app.js</code> 文件。</p>
+<div class="highlight"><pre><span></span><code><span class="k">const</span><span class="w"> </span><span class="n">Koa</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">require</span><span class="p">(</span><span class="s1">&#39;koa&#39;</span><span class="p">)</span>
+<span class="k">const</span><span class="w"> </span><span class="n">Router</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">require</span><span class="p">(</span><span class="s1">&#39;koa-router&#39;</span><span class="p">)</span>
+<span class="k">const</span><span class="w"> </span><span class="n">joi</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">require</span><span class="p">(</span><span class="s1">&#39;joi&#39;</span><span class="p">)</span>
+<span class="k">const</span><span class="w"> </span><span class="n">validate</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">require</span><span class="p">(</span><span class="s1">&#39;koa-joi-validate&#39;</span><span class="p">)</span>
+<span class="k">const</span><span class="w"> </span><span class="n">search</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">require</span><span class="p">(</span><span class="s1">&#39;./search&#39;</span><span class="p">)</span>
+
+<span class="k">const</span><span class="w"> </span><span class="n">app</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">new</span><span class="w"> </span><span class="n">Koa</span><span class="p">()</span>
+<span class="k">const</span><span class="w"> </span><span class="n">router</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">new</span><span class="w"> </span><span class="n">Router</span><span class="p">()</span>
+
+<span class="o">//</span><span class="w"> </span><span class="n">Log</span><span class="w"> </span><span class="n">each</span><span class="w"> </span><span class="n">request</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">console</span>
+<span class="n">app</span><span class="o">.</span><span class="n">use</span><span class="p">(</span><span class="n">async</span><span class="w"> </span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="n">next</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="n">start</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Date</span><span class="o">.</span><span class="n">now</span><span class="p">()</span>
+<span class="w">  </span><span class="n">await</span><span class="w"> </span><span class="n">next</span><span class="p">()</span>
+<span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="n">ms</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Date</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">start</span>
+<span class="w">  </span><span class="n">console</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="err">`</span><span class="o">$</span><span class="p">{</span><span class="n">ctx</span><span class="o">.</span><span class="n">method</span><span class="p">}</span><span class="w"> </span><span class="o">$</span><span class="p">{</span><span class="n">ctx</span><span class="o">.</span><span class="n">url</span><span class="p">}</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="o">$</span><span class="p">{</span><span class="n">ms</span><span class="p">}</span><span class="err">`</span><span class="p">)</span>
+<span class="p">})</span>
+
+<span class="o">//</span><span class="w"> </span><span class="n">Log</span><span class="w"> </span><span class="n">percolated</span><span class="w"> </span><span class="n">errors</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">console</span>
+<span class="n">app</span><span class="o">.</span><span class="n">on</span><span class="p">(</span><span class="s1">&#39;error&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">console</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s1">&#39;Server Error&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">)</span>
+<span class="p">})</span>
+
+<span class="o">//</span><span class="w"> </span><span class="n">Set</span><span class="w"> </span><span class="n">permissive</span><span class="w"> </span><span class="n">CORS</span><span class="w"> </span><span class="n">header</span>
+<span class="n">app</span><span class="o">.</span><span class="n">use</span><span class="p">(</span><span class="n">async</span><span class="w"> </span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="n">next</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">ctx</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s1">&#39;Access-Control-Allow-Origin&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="p">)</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">next</span><span class="p">()</span>
+<span class="p">})</span>
+
+<span class="o">//</span><span class="w"> </span><span class="n">ADD</span><span class="w"> </span><span class="n">ENDPOINTS</span><span class="w"> </span><span class="n">HERE</span>
+
+<span class="k">const</span><span class="w"> </span><span class="n">port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">process</span><span class="o">.</span><span class="n">env</span><span class="o">.</span><span class="n">PORT</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="mi">3000</span>
+
+<span class="n">app</span>
+<span class="w">  </span><span class="o">.</span><span class="n">use</span><span class="p">(</span><span class="n">router</span><span class="o">.</span><span class="n">routes</span><span class="p">())</span>
+<span class="w">  </span><span class="o">.</span><span class="n">use</span><span class="p">(</span><span class="n">router</span><span class="o">.</span><span class="n">allowedMethods</span><span class="p">())</span>
+<span class="w">  </span><span class="o">.</span><span class="n">listen</span><span class="p">(</span><span class="n">port</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">err</span><span class="p">)</span><span class="w"> </span><span class="n">throw</span><span class="w"> </span><span class="n">err</span>
+<span class="w">    </span><span class="n">console</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="err">`</span><span class="n">App</span><span class="w"> </span><span class="n">Listening</span><span class="w"> </span><span class="n">on</span><span class="w"> </span><span class="n">Port</span><span class="w"> </span><span class="o">$</span><span class="p">{</span><span class="n">port</span><span class="p">}</span><span class="err">`</span><span class="p">)</span>
+<span class="w">  </span><span class="p">})</span>
+</code></pre></div>
+
+<p>这些代码将为 <a href="http://koajs.com/">Koa.js</a> Node API 服务器导入服务器依赖，设置简单的日志，以及错误处理。</p>
+<h3>6.1 - 使用查询连接端点</h3>
+<p>接下来，我们将在服务器上添加一个端点，以便于发布我们的 Elasticsearch 查询功能。</p>
+<p>在 <code>server/app.js</code> 文件的 <code>// ADD ENDPOINTS HERE</code> 下面插入下列的代码。</p>
+<div class="highlight"><pre><span></span><code><span class="o">/**</span>
+<span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">GET</span><span class="w"> </span><span class="o">/</span><span class="n">search</span>
+<span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">Search</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">term</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">library</span>
+<span class="w"> </span><span class="o">*/</span>
+<span class="n">router</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;/search&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">async</span><span class="w"> </span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="n">next</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">term</span><span class="p">,</span><span class="w"> </span><span class="n">offset</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">query</span>
+<span class="w">    </span><span class="n">ctx</span><span class="o">.</span><span class="n">body</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">await</span><span class="w"> </span><span class="n">search</span><span class="o">.</span><span class="n">queryTerm</span><span class="p">(</span><span class="n">term</span><span class="p">,</span><span class="w"> </span><span class="n">offset</span><span class="p">)</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<p>使用 <code>docker-compose up -d --build</code> 重启动应用程序。之后在你的浏览器中尝试调用这个搜索端点。比如，<code>http://localhost:3000/search?term=java</code> 这个请求将搜索整个图书馆中提到 “Java” 的内容。</p>
+<p>结果与前面直接调用 Elasticsearch HTTP 界面的结果非常类似。</p>
+<div class="highlight"><pre><span></span><code>{
+<span class="w">    </span>&quot;took&quot;:<span class="w"> </span>242,
+<span class="w">    </span>&quot;timed_out&quot;:<span class="w"> </span>false,
+<span class="w">    </span>&quot;_shards&quot;:<span class="w"> </span>{
+<span class="w">        </span>&quot;total&quot;:<span class="w"> </span>5,
+<span class="w">        </span>&quot;successful&quot;:<span class="w"> </span>5,
+<span class="w">        </span>&quot;skipped&quot;:<span class="w"> </span>0,
+<span class="w">        </span>&quot;failed&quot;:<span class="w"> </span>0
+<span class="w">    </span>},
+<span class="w">    </span>&quot;hits&quot;:<span class="w"> </span>{
+<span class="w">        </span>&quot;total&quot;:<span class="w"> </span>93,
+<span class="w">        </span>&quot;max_score&quot;:<span class="w"> </span>13.356944,
+<span class="w">        </span>&quot;hits&quot;:<span class="w"> </span>[{
+<span class="w">            </span>&quot;_index&quot;:<span class="w"> </span>&quot;library&quot;,
+<span class="w">            </span>&quot;_type&quot;:<span class="w"> </span>&quot;novel&quot;,
+<span class="w">            </span>&quot;_id&quot;:<span class="w"> </span>&quot;eHYHJmEBpQg9B4622421&quot;,
+<span class="w">            </span>&quot;_score&quot;:<span class="w"> </span>13.356944,
+<span class="w">            </span>&quot;_source&quot;:<span class="w"> </span>{
+<span class="w">                </span>&quot;author&quot;:<span class="w"> </span>&quot;Charles<span class="w"> </span>Darwin&quot;,
+<span class="w">                </span>&quot;title&quot;:<span class="w"> </span>&quot;On<span class="w"> </span>the<span class="w"> </span>Origin<span class="w"> </span>of<span class="w"> </span>Species&quot;,
+<span class="w">                </span>&quot;location&quot;:<span class="w"> </span>1080,
+<span class="w">                </span>&quot;text&quot;:<span class="w"> </span>&quot;Java,<span class="w"> </span>plants<span class="w"> </span>of,<span class="w"> </span>375.&quot;
+<span class="w">            </span>},
+<span class="w">            </span>&quot;highlight&quot;:<span class="w"> </span>{
+<span class="w">                </span>&quot;text&quot;:<span class="w"> </span>[&quot;<span class="nt">&lt;em&gt;</span>Java<span class="nt">&lt;/em&gt;</span>,<span class="w"> </span>plants<span class="w"> </span>of,<span class="w"> </span>375.&quot;]
+<span class="w">            </span>}
+<span class="w">        </span>},<span class="w"> </span>{
+<span class="w">            </span>&quot;_index&quot;:<span class="w"> </span>&quot;library&quot;,
+<span class="w">            </span>&quot;_type&quot;:<span class="w"> </span>&quot;novel&quot;,
+<span class="w">            </span>&quot;_id&quot;:<span class="w"> </span>&quot;2HUHJmEBpQg9B462xdNg&quot;,
+<span class="w">            </span>&quot;_score&quot;:<span class="w"> </span>9.030668,
+<span class="w">            </span>&quot;_source&quot;:<span class="w"> </span>{
+<span class="w">                </span>&quot;author&quot;:<span class="w"> </span>&quot;Unknown<span class="w"> </span>Author&quot;,
+<span class="w">                </span>&quot;title&quot;:<span class="w"> </span>&quot;The<span class="w"> </span>King<span class="w"> </span>James<span class="w"> </span>Bible&quot;,
+<span class="w">                </span>&quot;location&quot;:<span class="w"> </span>186,
+<span class="w">                </span>&quot;text&quot;:<span class="w"> </span>&quot;10:4<span class="w"> </span>And<span class="w"> </span>the<span class="w"> </span>sons<span class="w"> </span>of<span class="w"> </span>Javan;<span class="w"> </span>Elishah,<span class="w"> </span>and<span class="w"> </span>Tarshish,<span class="w"> </span>Kittim,<span class="w"> </span>and<span class="w"> </span>Dodanim.&quot;
+<span class="w">            </span>},
+<span class="w">            </span>&quot;highlight&quot;:<span class="w"> </span>{
+<span class="w">                </span>&quot;text&quot;:<span class="w"> </span>[&quot;10:4<span class="w"> </span>And<span class="w"> </span>the<span class="w"> </span>sons<span class="w"> </span>of<span class="w"> </span><span class="nt">&lt;em&gt;</span>Javan<span class="nt">&lt;/em&gt;</span>;<span class="w"> </span>Elishah,<span class="w"> </span>and<span class="w"> </span>Tarshish,<span class="w"> </span>Kittim,<span class="w"> </span>and<span class="w"> </span>Dodanim.&quot;]
+<span class="w">            </span>}
+<span class="w">        </span>}
+<span class="w">        </span>...
+<span class="w">      </span>]
+<span class="w">   </span>}
+}
+</code></pre></div>
+
+<h3>6.2 - 输入校验</h3>
+<p>这个端点现在还很脆弱 —— 我们没有对请求参数做任何的校验，因此，如果是无效的或者错误的值将使服务器出错。</p>
+<p>我们将添加一些使用 <a href="https://github.com/hapijs/joi">Joi</a> 和 <a href="https://github.com/triestpa/koa-joi-validate">Koa-Joi-Validate</a> 库的中间件，以对输入做校验。</p>
+<div class="highlight"><pre><span></span><code><span class="o">/**</span>
+<span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">GET</span><span class="w"> </span><span class="o">/</span><span class="n">search</span>
+<span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">Search</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">term</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">library</span>
+<span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">Query</span><span class="w"> </span><span class="n">Params</span><span class="w"> </span><span class="o">-</span>
+<span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">term</span><span class="p">:</span><span class="w"> </span><span class="n">string</span><span class="w"> </span><span class="n">under</span><span class="w"> </span><span class="mi">60</span><span class="w"> </span><span class="n">characters</span>
+<span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">offset</span><span class="p">:</span><span class="w"> </span><span class="n">positive</span><span class="w"> </span><span class="n">integer</span>
+<span class="w"> </span><span class="o">*/</span>
+<span class="n">router</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;/search&#39;</span><span class="p">,</span>
+<span class="w">  </span><span class="n">validate</span><span class="p">({</span>
+<span class="w">    </span><span class="n">query</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="n">term</span><span class="p">:</span><span class="w"> </span><span class="n">joi</span><span class="o">.</span><span class="n">string</span><span class="p">()</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="mi">60</span><span class="p">)</span><span class="o">.</span><span class="n">required</span><span class="p">(),</span>
+<span class="w">      </span><span class="n">offset</span><span class="p">:</span><span class="w"> </span><span class="n">joi</span><span class="o">.</span><span class="n">number</span><span class="p">()</span><span class="o">.</span><span class="n">integer</span><span class="p">()</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">default</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}),</span>
+<span class="w">  </span><span class="n">async</span><span class="w"> </span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="n">next</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">term</span><span class="p">,</span><span class="w"> </span><span class="n">offset</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">query</span>
+<span class="w">    </span><span class="n">ctx</span><span class="o">.</span><span class="n">body</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">await</span><span class="w"> </span><span class="n">search</span><span class="o">.</span><span class="n">queryTerm</span><span class="p">(</span><span class="n">term</span><span class="p">,</span><span class="w"> </span><span class="n">offset</span><span class="p">)</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<p>现在，重启服务器，如果你使用一个没有搜索关键字的请求（<code>http://localhost:3000/search</code>），你将返回一个带相关消息的 HTTP 400 错误，比如像 <code>Invalid URL Query - child "term" fails because ["term" is required]</code>。</p>
+<p>如果想从 Node 应用程序中查看实时日志，你可以运行 <code>docker-compose logs -f api</code>。</p>
+<h3>7 - 前端应用程序</h3>
+<p>现在我们的 <code>/search</code> 端点已经就绪，我们来连接到一个简单的 Web 应用程序来测试这个 API。</p>
+<h4>7.0 - Vue.js 应用程序</h4>
+<p>我们将使用 Vue.js 去协调我们的前端。</p>
+<p>添加一个新文件 <code>/public/app.js</code>，去控制我们的 Vue.js 应用程序代码。</p>
+<div class="highlight"><pre><span></span><code><span class="k">const</span><span class="w"> </span><span class="n">vm</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">new</span><span class="w"> </span><span class="n">Vue</span><span class="w"> </span><span class="p">({</span>
+<span class="w">  </span><span class="n">el</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;#vue-instance&#39;</span><span class="p">,</span>
+<span class="w">  </span><span class="n">data</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="n">baseUrl</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;http://localhost:3000&#39;</span><span class="p">,</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">API</span><span class="w"> </span><span class="n">url</span>
+<span class="w">      </span><span class="n">searchTerm</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;Hello World&#39;</span><span class="p">,</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">Default</span><span class="w"> </span><span class="n">search</span><span class="w"> </span><span class="n">term</span>
+<span class="w">      </span><span class="n">searchDebounce</span><span class="p">:</span><span class="w"> </span><span class="nb nb-Type">null</span><span class="p">,</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">Timeout</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">search</span><span class="w"> </span><span class="n">bar</span><span class="w"> </span><span class="n">debounce</span>
+<span class="w">      </span><span class="n">searchResults</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">Displayed</span><span class="w"> </span><span class="n">search</span><span class="w"> </span><span class="n">results</span>
+<span class="w">      </span><span class="n">numHits</span><span class="p">:</span><span class="w"> </span><span class="nb nb-Type">null</span><span class="p">,</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">Total</span><span class="w"> </span><span class="n">search</span><span class="w"> </span><span class="n">results</span><span class="w"> </span><span class="n">found</span>
+<span class="w">      </span><span class="n">searchOffset</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">Search</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="n">pagination</span><span class="w"> </span><span class="n">offset</span>
+
+<span class="w">      </span><span class="n">selectedParagraph</span><span class="p">:</span><span class="w"> </span><span class="nb nb-Type">null</span><span class="p">,</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">Selected</span><span class="w"> </span><span class="n">paragraph</span><span class="w"> </span><span class="n">object</span>
+<span class="w">      </span><span class="n">bookOffset</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">Offset</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">book</span><span class="w"> </span><span class="n">paragraphs</span><span class="w"> </span><span class="n">being</span><span class="w"> </span><span class="n">displayed</span>
+<span class="w">      </span><span class="n">paragraphs</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">Paragraphs</span><span class="w"> </span><span class="n">being</span><span class="w"> </span><span class="n">displayed</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">book</span><span class="w"> </span><span class="n">preview</span><span class="w"> </span><span class="n">window</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="n">async</span><span class="w"> </span><span class="n">created</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">this</span><span class="o">.</span><span class="n">searchResults</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">await</span><span class="w"> </span><span class="n">this</span><span class="o">.</span><span class="n">search</span><span class="p">()</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">Search</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">default</span><span class="w"> </span><span class="n">term</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="n">methods</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="o">/**</span><span class="w"> </span><span class="n">Debounce</span><span class="w"> </span><span class="n">search</span><span class="w"> </span><span class="n">input</span><span class="w"> </span><span class="n">by</span><span class="w"> </span><span class="mi">100</span><span class="w"> </span><span class="n">ms</span><span class="w"> </span><span class="o">*/</span>
+<span class="w">    </span><span class="n">onSearchInput</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="n">clearTimeout</span><span class="p">(</span><span class="n">this</span><span class="o">.</span><span class="n">searchDebounce</span><span class="p">)</span>
+<span class="w">      </span><span class="n">this</span><span class="o">.</span><span class="n">searchDebounce</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">setTimeout</span><span class="p">(</span><span class="n">async</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">this</span><span class="o">.</span><span class="n">searchOffset</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">        </span><span class="n">this</span><span class="o">.</span><span class="n">searchResults</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">await</span><span class="w"> </span><span class="n">this</span><span class="o">.</span><span class="n">search</span><span class="p">()</span>
+<span class="w">      </span><span class="p">},</span><span class="w"> </span><span class="mi">100</span><span class="p">)</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="o">/**</span><span class="w"> </span><span class="n">Call</span><span class="w"> </span><span class="n">API</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">search</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">inputted</span><span class="w"> </span><span class="n">term</span><span class="w"> </span><span class="o">*/</span>
+<span class="w">    </span><span class="n">async</span><span class="w"> </span><span class="n">search</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="k">const</span><span class="w"> </span><span class="n">response</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">await</span><span class="w"> </span><span class="n">axios</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="err">`</span><span class="o">$</span><span class="p">{</span><span class="n">this</span><span class="o">.</span><span class="n">baseUrl</span><span class="p">}</span><span class="o">/</span><span class="n">search</span><span class="err">`</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">params</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">term</span><span class="p">:</span><span class="w"> </span><span class="n">this</span><span class="o">.</span><span class="n">searchTerm</span><span class="p">,</span><span class="w"> </span><span class="n">offset</span><span class="p">:</span><span class="w"> </span><span class="n">this</span><span class="o">.</span><span class="n">searchOffset</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">})</span>
+<span class="w">      </span><span class="n">this</span><span class="o">.</span><span class="n">numHits</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">response</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">hits</span><span class="o">.</span><span class="n">total</span>
+<span class="w">      </span><span class="k">return</span><span class="w"> </span><span class="n">response</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">hits</span><span class="o">.</span><span class="n">hits</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="o">/**</span><span class="w"> </span><span class="n">Get</span><span class="w"> </span><span class="n">next</span><span class="w"> </span><span class="n">page</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="n">search</span><span class="w"> </span><span class="n">results</span><span class="w"> </span><span class="o">*/</span>
+<span class="w">    </span><span class="n">async</span><span class="w"> </span><span class="n">nextResultsPage</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">this</span><span class="o">.</span><span class="n">numHits</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">10</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">this</span><span class="o">.</span><span class="n">searchOffset</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">10</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">this</span><span class="o">.</span><span class="n">searchOffset</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">10</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">this</span><span class="o">.</span><span class="n">numHits</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">this</span><span class="o">.</span><span class="n">searchOffset</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">this</span><span class="o">.</span><span class="n">numHits</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">10</span><span class="p">}</span>
+<span class="w">        </span><span class="n">this</span><span class="o">.</span><span class="n">searchResults</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">await</span><span class="w"> </span><span class="n">this</span><span class="o">.</span><span class="n">search</span><span class="p">()</span>
+<span class="w">        </span><span class="n">document</span><span class="o">.</span><span class="n">documentElement</span><span class="o">.</span><span class="n">scrollTop</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="o">/**</span><span class="w"> </span><span class="n">Get</span><span class="w"> </span><span class="n">previous</span><span class="w"> </span><span class="n">page</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="n">search</span><span class="w"> </span><span class="n">results</span><span class="w"> </span><span class="o">*/</span>
+<span class="w">    </span><span class="n">async</span><span class="w"> </span><span class="n">prevResultsPage</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="n">this</span><span class="o">.</span><span class="n">searchOffset</span><span class="w"> </span><span class="o">-=</span><span class="w"> </span><span class="mi">10</span>
+<span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">this</span><span class="o">.</span><span class="n">searchOffset</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">this</span><span class="o">.</span><span class="n">searchOffset</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">}</span>
+<span class="w">      </span><span class="n">this</span><span class="o">.</span><span class="n">searchResults</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">await</span><span class="w"> </span><span class="n">this</span><span class="o">.</span><span class="n">search</span><span class="p">()</span>
+<span class="w">      </span><span class="n">document</span><span class="o">.</span><span class="n">documentElement</span><span class="o">.</span><span class="n">scrollTop</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">})</span>
+</code></pre></div>
+
+<p>这个应用程序非常简单 —— 我们只定义了一些共享的数据属性，以及添加了检索和分页搜索结果的方法。为防止每次按键一次都调用 API，搜索输入有一个 100 毫秒的除颤功能。</p>
+<p>解释 Vue.js 是如何工作的已经超出了本教程的范围，如果你使用过 Angular 或者 React，其实一些也不可怕。如果你完全不熟悉 Vue，想快速了解它的功能，我建议你从官方的快速指南入手 —— <a href="https://vuejs.org/v2/guide/">https://vuejs.org/v2/guide/</a></p>
+<h4>7.1 - HTML</h4>
+<p>使用以下的内容替换 <code>/public/index.html</code> 文件中的占位符，以便于加载我们的 Vue.js 应用程序和设计一个基本的搜索界面。</p>
+<div class="highlight"><pre><span></span><code><span class="cp">&lt;!DOCTYPE html&gt;</span>
+<span class="p">&lt;</span><span class="nt">html</span> <span class="na">lang</span><span class="o">=</span><span class="s">&quot;en&quot;</span><span class="p">&gt;</span>
+<span class="p">&lt;</span><span class="nt">head</span><span class="p">&gt;</span>
+  <span class="p">&lt;</span><span class="nt">meta</span> <span class="na">charset</span><span class="o">=</span><span class="s">&quot;utf-8&quot;</span><span class="p">&gt;</span>
+  <span class="p">&lt;</span><span class="nt">title</span><span class="p">&gt;</span>Elastic Library<span class="p">&lt;/</span><span class="nt">title</span><span class="p">&gt;</span>
+  <span class="p">&lt;</span><span class="nt">meta</span> <span class="na">name</span><span class="o">=</span><span class="s">&quot;description&quot;</span> <span class="na">content</span><span class="o">=</span><span class="s">&quot;Literary Classic Search Engine.&quot;</span><span class="p">&gt;</span>
+  <span class="p">&lt;</span><span class="nt">meta</span> <span class="na">name</span><span class="o">=</span><span class="s">&quot;viewport&quot;</span> <span class="na">content</span><span class="o">=</span><span class="s">&quot;width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no&quot;</span><span class="p">&gt;</span>
+  <span class="p">&lt;</span><span class="nt">link</span> <span class="na">href</span><span class="o">=</span><span class="s">&quot;https://cdnjs.cloudflare.com/ajax/libs/normalize/7.0.0/normalize.min.css&quot;</span> <span class="na">rel</span><span class="o">=</span><span class="s">&quot;stylesheet&quot;</span> <span class="na">type</span><span class="o">=</span><span class="s">&quot;text/css&quot;</span> <span class="p">/&gt;</span>
+  <span class="p">&lt;</span><span class="nt">link</span> <span class="na">href</span><span class="o">=</span><span class="s">&quot;https://cdn.muicss.com/mui-0.9.20/css/mui.min.css&quot;</span> <span class="na">rel</span><span class="o">=</span><span class="s">&quot;stylesheet&quot;</span> <span class="na">type</span><span class="o">=</span><span class="s">&quot;text/css&quot;</span> <span class="p">/&gt;</span>
+  <span class="p">&lt;</span><span class="nt">link</span> <span class="na">href</span><span class="o">=</span><span class="s">&quot;https://fonts.googleapis.com/css?family=EB+Garamond:400,700|Open+Sans&quot;</span> <span class="na">rel</span><span class="o">=</span><span class="s">&quot;stylesheet&quot;</span><span class="p">&gt;</span>
+  <span class="p">&lt;</span><span class="nt">link</span> <span class="na">href</span><span class="o">=</span><span class="s">&quot;styles.css&quot;</span> <span class="na">rel</span><span class="o">=</span><span class="s">&quot;stylesheet&quot;</span> <span class="p">/&gt;</span>
+<span class="p">&lt;/</span><span class="nt">head</span><span class="p">&gt;</span>
+<span class="p">&lt;</span><span class="nt">body</span><span class="p">&gt;</span>
+<span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">&quot;app-container&quot;</span> <span class="na">id</span><span class="o">=</span><span class="s">&quot;vue-instance&quot;</span><span class="p">&gt;</span>
+    <span class="cm">&lt;!-- Search Bar Header --&gt;</span>
+    <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">&quot;mui-panel&quot;</span><span class="p">&gt;</span>
+      <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">&quot;mui-textfield&quot;</span><span class="p">&gt;</span>
+        <span class="p">&lt;</span><span class="nt">input</span> <span class="na">v-model</span><span class="o">=</span><span class="s">&quot;searchTerm&quot;</span> <span class="na">type</span><span class="o">=</span><span class="s">&quot;text&quot;</span> <span class="na">v-on:keyup</span><span class="o">=</span><span class="s">&quot;onSearchInput()&quot;</span><span class="p">&gt;</span>
+        <span class="p">&lt;</span><span class="nt">label</span><span class="p">&gt;</span>Search<span class="p">&lt;/</span><span class="nt">label</span><span class="p">&gt;</span>
+      <span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+    <span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+
+    <span class="cm">&lt;!-- Search Metadata Card --&gt;</span>
+    <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">&quot;mui-panel&quot;</span><span class="p">&gt;</span>
+      <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">&quot;mui--text-headline&quot;</span><span class="p">&gt;</span><span class="cp">{{</span> <span class="nv">numHits</span> <span class="cp">}}</span> Hits<span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+      <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">&quot;mui--text-subhead&quot;</span><span class="p">&gt;</span>Displaying Results <span class="cp">{{</span> <span class="nv">searchOffset</span> <span class="cp">}}</span> - <span class="cp">{{</span> <span class="nv">searchOffset</span> <span class="o">+</span> <span class="m">9</span> <span class="cp">}}</span><span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+    <span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+
+    <span class="cm">&lt;!-- Top Pagination Card --&gt;</span>
+    <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">&quot;mui-panel pagination-panel&quot;</span><span class="p">&gt;</span>
+        <span class="p">&lt;</span><span class="nt">button</span> <span class="na">class</span><span class="o">=</span><span class="s">&quot;mui-btn mui-btn--flat&quot;</span> <span class="na">v-on:click</span><span class="o">=</span><span class="s">&quot;prevResultsPage()&quot;</span><span class="p">&gt;</span>Prev Page<span class="p">&lt;/</span><span class="nt">button</span><span class="p">&gt;</span>
+        <span class="p">&lt;</span><span class="nt">button</span> <span class="na">class</span><span class="o">=</span><span class="s">&quot;mui-btn mui-btn--flat&quot;</span> <span class="na">v-on:click</span><span class="o">=</span><span class="s">&quot;nextResultsPage()&quot;</span><span class="p">&gt;</span>Next Page<span class="p">&lt;/</span><span class="nt">button</span><span class="p">&gt;</span>
+    <span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+
+    <span class="cm">&lt;!-- Search Results Card List --&gt;</span>
+    <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">&quot;search-results&quot;</span> <span class="na">ref</span><span class="o">=</span><span class="s">&quot;searchResults&quot;</span><span class="p">&gt;</span>
+      <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">&quot;mui-panel&quot;</span> <span class="na">v-for</span><span class="o">=</span><span class="s">&quot;hit in searchResults&quot;</span> <span class="na">v-on:click</span><span class="o">=</span><span class="s">&quot;showBookModal(hit)&quot;</span><span class="p">&gt;</span>
+        <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">&quot;mui--text-title&quot;</span> <span class="na">v-html</span><span class="o">=</span><span class="s">&quot;hit.highlight.text[0]&quot;</span><span class="p">&gt;&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+        <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">&quot;mui-divider&quot;</span><span class="p">&gt;&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+        <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">&quot;mui--text-subhead&quot;</span><span class="p">&gt;</span><span class="cp">{{</span> <span class="nv">hit._source.title</span> <span class="cp">}}</span> - <span class="cp">{{</span> <span class="nv">hit._source.author</span> <span class="cp">}}</span><span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+        <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">&quot;mui--text-body2&quot;</span><span class="p">&gt;</span>Location <span class="cp">{{</span> <span class="nv">hit._source.location</span> <span class="cp">}}</span><span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+      <span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+    <span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+
+    <span class="cm">&lt;!-- Bottom Pagination Card --&gt;</span>
+    <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">&quot;mui-panel pagination-panel&quot;</span><span class="p">&gt;</span>
+        <span class="p">&lt;</span><span class="nt">button</span> <span class="na">class</span><span class="o">=</span><span class="s">&quot;mui-btn mui-btn--flat&quot;</span> <span class="na">v-on:click</span><span class="o">=</span><span class="s">&quot;prevResultsPage()&quot;</span><span class="p">&gt;</span>Prev Page<span class="p">&lt;/</span><span class="nt">button</span><span class="p">&gt;</span>
+        <span class="p">&lt;</span><span class="nt">button</span> <span class="na">class</span><span class="o">=</span><span class="s">&quot;mui-btn mui-btn--flat&quot;</span> <span class="na">v-on:click</span><span class="o">=</span><span class="s">&quot;nextResultsPage()&quot;</span><span class="p">&gt;</span>Next Page<span class="p">&lt;/</span><span class="nt">button</span><span class="p">&gt;</span>
+    <span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+
+    <span class="cm">&lt;!-- INSERT BOOK MODAL HERE --&gt;</span>
+<span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<span class="p">&lt;</span><span class="nt">script</span> <span class="na">src</span><span class="o">=</span><span class="s">&quot;https://cdn.muicss.com/mui-0.9.28/js/mui.min.js&quot;</span><span class="p">&gt;&lt;/</span><span class="nt">script</span><span class="p">&gt;</span>
+<span class="p">&lt;</span><span class="nt">script</span> <span class="na">src</span><span class="o">=</span><span class="s">&quot;https://cdnjs.cloudflare.com/ajax/libs/vue/2.5.3/vue.min.js&quot;</span><span class="p">&gt;&lt;/</span><span class="nt">script</span><span class="p">&gt;</span>
+<span class="p">&lt;</span><span class="nt">script</span> <span class="na">src</span><span class="o">=</span><span class="s">&quot;https://cdnjs.cloudflare.com/ajax/libs/axios/0.17.0/axios.min.js&quot;</span><span class="p">&gt;&lt;/</span><span class="nt">script</span><span class="p">&gt;</span>
+<span class="p">&lt;</span><span class="nt">script</span> <span class="na">src</span><span class="o">=</span><span class="s">&quot;app.js&quot;</span><span class="p">&gt;&lt;/</span><span class="nt">script</span><span class="p">&gt;</span>
+<span class="p">&lt;/</span><span class="nt">body</span><span class="p">&gt;</span>
+<span class="p">&lt;/</span><span class="nt">html</span><span class="p">&gt;</span>
+</code></pre></div>
+
+<h4>7.2 - CSS</h4>
+<p>添加一个新文件 <code>/public/styles.css</code>，使用一些自定义的 UI 样式。</p>
+<div class="highlight"><pre><span></span><code><span class="nt">body</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">font-family</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;EB Garamond&#39;</span><span class="p">,</span><span class="w"> </span><span class="kc">serif</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+
+<span class="p">.</span><span class="nc">mui-textfield</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="nt">input</span><span class="o">,</span><span class="w"> </span><span class="p">.</span><span class="nc">mui-btn</span><span class="o">,</span><span class="w"> </span><span class="p">.</span><span class="nc">mui--text-subhead</span><span class="o">,</span><span class="w"> </span><span class="p">.</span><span class="nc">mui-panel</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="p">.</span><span class="nc">mui--text-headline</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">font-family</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;Open Sans&#39;</span><span class="p">,</span><span class="w"> </span><span class="kc">sans-serif</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="p">.</span><span class="nc">all-caps</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">text-transform</span><span class="p">:</span><span class="w"> </span><span class="kc">uppercase</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<span class="p">.</span><span class="nc">app-container</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">padding</span><span class="p">:</span><span class="w"> </span><span class="mi">16</span><span class="kt">px</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<span class="p">.</span><span class="nc">search-results</span><span class="w"> </span><span class="nt">em</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">font-weight</span><span class="p">:</span><span class="w"> </span><span class="kc">bold</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<span class="p">.</span><span class="nc">book-modal</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="nt">button</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">width</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="kt">%</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<span class="p">.</span><span class="nc">search-results</span><span class="w"> </span><span class="p">.</span><span class="nc">mui-divider</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">margin</span><span class="p">:</span><span class="w"> </span><span class="mi">14</span><span class="kt">px</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+
+<span class="p">.</span><span class="nc">search-results</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">display</span><span class="p">:</span><span class="w"> </span><span class="kc">flex</span><span class="p">;</span>
+<span class="w">  </span><span class="k">flex-direction</span><span class="p">:</span><span class="w"> </span><span class="kc">row</span><span class="p">;</span>
+<span class="w">  </span><span class="k">flex-wrap</span><span class="p">:</span><span class="w"> </span><span class="kc">wrap</span><span class="p">;</span>
+<span class="w">  </span><span class="k">justify-content</span><span class="p">:</span><span class="w"> </span><span class="kc">space-around</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="p">.</span><span class="nc">search-results</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="nt">div</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">flex-basis</span><span class="p">:</span><span class="w"> </span><span class="mi">45</span><span class="kt">%</span><span class="p">;</span>
+<span class="w">  </span><span class="k">box-sizing</span><span class="p">:</span><span class="w"> </span><span class="kc">border-box</span><span class="p">;</span>
+<span class="w">  </span><span class="k">cursor</span><span class="p">:</span><span class="w"> </span><span class="kc">pointer</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="p">@</span><span class="k">media</span><span class="w"> </span><span class="o">(</span><span class="nt">max-width</span><span class="o">:</span><span class="w"> </span><span class="nt">600px</span><span class="o">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="p">.</span><span class="nc">search-results</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="nt">div</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">flex-basis</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="kt">%</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="p">.</span><span class="nc">paragraphs-container</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">max-width</span><span class="p">:</span><span class="w"> </span><span class="mi">800</span><span class="kt">px</span><span class="p">;</span>
+<span class="w">  </span><span class="k">margin</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="kc">auto</span><span class="p">;</span>
+<span class="w">  </span><span class="k">margin-bottom</span><span class="p">:</span><span class="w"> </span><span class="mi">48</span><span class="kt">px</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="p">.</span><span class="nc">paragraphs-container</span><span class="w"> </span><span class="p">.</span><span class="nc">mui--text-body1</span><span class="o">,</span><span class="w"> </span><span class="p">.</span><span class="nc">paragraphs-container</span><span class="w"> </span><span class="p">.</span><span class="nc">mui--text-body2</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">font-size</span><span class="p">:</span><span class="w"> </span><span class="mf">1.8</span><span class="kt">rem</span><span class="p">;</span>
+<span class="w">  </span><span class="k">line-height</span><span class="p">:</span><span class="w"> </span><span class="mi">35</span><span class="kt">px</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="p">.</span><span class="nc">book-modal</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">width</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="kt">%</span><span class="p">;</span>
+<span class="w">  </span><span class="k">height</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="kt">%</span><span class="p">;</span>
+<span class="w">  </span><span class="k">padding</span><span class="p">:</span><span class="w"> </span><span class="mi">40</span><span class="kt">px</span><span class="w"> </span><span class="mi">10</span><span class="kt">%</span><span class="p">;</span>
+<span class="w">  </span><span class="k">box-sizing</span><span class="p">:</span><span class="w"> </span><span class="kc">border-box</span><span class="p">;</span>
+<span class="w">  </span><span class="k">margin</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="kc">auto</span><span class="p">;</span>
+<span class="w">  </span><span class="k">background-color</span><span class="p">:</span><span class="w"> </span><span class="kc">white</span><span class="p">;</span>
+<span class="w">  </span><span class="k">overflow-y</span><span class="p">:</span><span class="w"> </span><span class="kc">scroll</span><span class="p">;</span>
+<span class="w">  </span><span class="k">position</span><span class="p">:</span><span class="w"> </span><span class="kc">fixed</span><span class="p">;</span>
+<span class="w">  </span><span class="k">top</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">  </span><span class="k">left</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="p">.</span><span class="nc">pagination-panel</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">display</span><span class="p">:</span><span class="w"> </span><span class="kc">flex</span><span class="p">;</span>
+<span class="w">  </span><span class="k">justify-content</span><span class="p">:</span><span class="w"> </span><span class="kc">space-between</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="p">.</span><span class="nc">title-row</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">display</span><span class="p">:</span><span class="w"> </span><span class="kc">flex</span><span class="p">;</span>
+<span class="w">  </span><span class="k">justify-content</span><span class="p">:</span><span class="w"> </span><span class="kc">space-between</span><span class="p">;</span>
+<span class="w">  </span><span class="k">align-items</span><span class="p">:</span><span class="w"> </span><span class="kc">flex-end</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="p">@</span><span class="k">media</span><span class="w"> </span><span class="o">(</span><span class="nt">max-width</span><span class="o">:</span><span class="w"> </span><span class="nt">600px</span><span class="o">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="p">.</span><span class="nc">title-row</span><span class="p">{</span><span class="w"> </span>
+<span class="w">    </span><span class="k">flex-direction</span><span class="p">:</span><span class="w"> </span><span class="kc">column</span><span class="p">;</span><span class="w"> </span>
+<span class="w">    </span><span class="k">text-align</span><span class="p">:</span><span class="w"> </span><span class="kc">center</span><span class="p">;</span>
+<span class="w">    </span><span class="k">align-items</span><span class="p">:</span><span class="w"> </span><span class="kc">center</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="p">.</span><span class="nc">locations-label</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">text-align</span><span class="p">:</span><span class="w"> </span><span class="kc">center</span><span class="p">;</span>
+<span class="w">  </span><span class="k">margin</span><span class="p">:</span><span class="w"> </span><span class="mi">8</span><span class="kt">px</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="p">.</span><span class="nc">modal-footer</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">position</span><span class="p">:</span><span class="w"> </span><span class="kc">fixed</span><span class="p">;</span>
+<span class="w">  </span><span class="k">bottom</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">  </span><span class="k">left</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">  </span><span class="k">width</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="kt">%</span><span class="p">;</span>
+<span class="w">  </span><span class="k">display</span><span class="p">:</span><span class="w"> </span><span class="kc">flex</span><span class="p">;</span>
+<span class="w">  </span><span class="k">justify-content</span><span class="p">:</span><span class="w"> </span><span class="kc">space-around</span><span class="p">;</span>
+<span class="w">  </span><span class="k">background</span><span class="p">:</span><span class="w"> </span><span class="kc">white</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h4>7.3 - 尝试输出</h4>
+<p>在你的浏览器中打开 <code>localhost:8080</code>，你将看到一个简单的带结果分页功能的搜索界面。在顶部的搜索框中尝试输入不同的关键字来查看它们的搜索情况。</p>
+<p><img alt="preview webapp" src="/data/attachment/album/201804/29/230001e19b9192911jljdu.png"></p>
+<blockquote>
+<p>你没有必要重新运行 <code>docker-compose up</code> 命令以使更改生效。本地的 <code>public</code> 目录是装载在我们的 Nginx 文件服务器容器中，因此，在本地系统中前端的变化将在容器化应用程序中自动反映出来。</p>
+</blockquote>
+<p>如果你尝试点击任何搜索结果，什么反应也没有 —— 因为我们还没有为这个应用程序添加进一步的相关功能。</p>
+<h3>8 - 分页预览</h3>
+<p>如果能点击每个搜索结果，然后查看到来自书中的内容，那将是非常棒的体验。</p>
+<h3>8.0 - 添加 Elasticsearch 查询</h3>
+<p>首先，我们需要定义一个简单的查询去从给定的书中获取段落范围。</p>
+<p>在 <code>server/search.js</code> 文件中添加如下的函数到 <code>module.exports</code> 块中。</p>
+<div class="highlight"><pre><span></span><code><span class="o">/**</span><span class="w"> </span><span class="n">Get</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">specified</span><span class="w"> </span><span class="nb">range</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="n">paragraphs</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">book</span><span class="w"> </span><span class="o">*/</span>
+<span class="n">getParagraphs</span><span class="w"> </span><span class="p">(</span><span class="n">bookTitle</span><span class="p">,</span><span class="w"> </span><span class="n">startLocation</span><span class="p">,</span><span class="w"> </span><span class="n">endLocation</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="n">filter</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">term</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">title</span><span class="p">:</span><span class="w"> </span><span class="n">bookTitle</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="nb">range</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">location</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">gte</span><span class="p">:</span><span class="w"> </span><span class="n">startLocation</span><span class="p">,</span><span class="w"> </span><span class="n">lte</span><span class="p">:</span><span class="w"> </span><span class="n">endLocation</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+
+<span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="n">body</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">size</span><span class="p">:</span><span class="w"> </span><span class="n">endLocation</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">startLocation</span><span class="p">,</span>
+<span class="w">    </span><span class="n">sort</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">location</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;asc&#39;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="n">query</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nb nb-Type">bool</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">filter</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">client</span><span class="o">.</span><span class="n">search</span><span class="p">({</span><span class="w"> </span><span class="n">index</span><span class="p">,</span><span class="w"> </span><span class="n">type</span><span class="p">,</span><span class="w"> </span><span class="n">body</span><span class="w"> </span><span class="p">})</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这个新函数将返回给定的书的开始位置和结束位置之间的一个排序后的段落数组。</p>
+<h4>8.1 - 添加 API 端点</h4>
+<p>现在，我们将这个函数链接到 API 端点。</p>
+<p>添加下列内容到 <code>server/app.js</code> 文件中最初的 <code>/search</code> 端点下面。</p>
+<div class="highlight"><pre><span></span><code><span class="o">/**</span>
+<span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">GET</span><span class="w"> </span><span class="o">/</span><span class="n">paragraphs</span>
+<span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">Get</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="nb">range</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="n">paragraphs</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">specified</span><span class="w"> </span><span class="n">book</span>
+<span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">Query</span><span class="w"> </span><span class="n">Params</span><span class="w"> </span><span class="o">-</span>
+<span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">bookTitle</span><span class="p">:</span><span class="w"> </span><span class="n">string</span><span class="w"> </span><span class="n">under</span><span class="w"> </span><span class="mi">256</span><span class="w"> </span><span class="n">characters</span>
+<span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">start</span><span class="p">:</span><span class="w"> </span><span class="n">positive</span><span class="w"> </span><span class="n">integer</span>
+<span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">end</span><span class="p">:</span><span class="w"> </span><span class="n">positive</span><span class="w"> </span><span class="n">integer</span><span class="w"> </span><span class="n">greater</span><span class="w"> </span><span class="n">than</span><span class="w"> </span><span class="n">start</span>
+<span class="w"> </span><span class="o">*/</span>
+<span class="n">router</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;/paragraphs&#39;</span><span class="p">,</span>
+<span class="w">  </span><span class="n">validate</span><span class="p">({</span>
+<span class="w">    </span><span class="n">query</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="n">bookTitle</span><span class="p">:</span><span class="w"> </span><span class="n">joi</span><span class="o">.</span><span class="n">string</span><span class="p">()</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="mi">256</span><span class="p">)</span><span class="o">.</span><span class="n">required</span><span class="p">(),</span>
+<span class="w">      </span><span class="n">start</span><span class="p">:</span><span class="w"> </span><span class="n">joi</span><span class="o">.</span><span class="n">number</span><span class="p">()</span><span class="o">.</span><span class="n">integer</span><span class="p">()</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">default</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
+<span class="w">      </span><span class="n">end</span><span class="p">:</span><span class="w"> </span><span class="n">joi</span><span class="o">.</span><span class="n">number</span><span class="p">()</span><span class="o">.</span><span class="n">integer</span><span class="p">()</span><span class="o">.</span><span class="n">greater</span><span class="p">(</span><span class="n">joi</span><span class="o">.</span><span class="n">ref</span><span class="p">(</span><span class="s1">&#39;start&#39;</span><span class="p">))</span><span class="o">.</span><span class="n">default</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}),</span>
+<span class="w">  </span><span class="n">async</span><span class="w"> </span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="n">next</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">bookTitle</span><span class="p">,</span><span class="w"> </span><span class="n">start</span><span class="p">,</span><span class="w"> </span><span class="n">end</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">query</span>
+<span class="w">    </span><span class="n">ctx</span><span class="o">.</span><span class="n">body</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">await</span><span class="w"> </span><span class="n">search</span><span class="o">.</span><span class="n">getParagraphs</span><span class="p">(</span><span class="n">bookTitle</span><span class="p">,</span><span class="w"> </span><span class="n">start</span><span class="p">,</span><span class="w"> </span><span class="n">end</span><span class="p">)</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<h4>8.2 - 添加 UI 功能</h4>
+<p>现在，我们的新端点已经就绪，我们为应用程序添加一些从书中查询和显示全部页面的前端功能。</p>
+<p>在 <code>/public/app.js</code> 文件的 <code>methods</code> 块中添加如下的函数。</p>
+<div class="highlight"><pre><span></span><code><span class="w">    </span><span class="o">/**</span><span class="w"> </span><span class="n">Call</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">API</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">get</span><span class="w"> </span><span class="n">current</span><span class="w"> </span><span class="n">page</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="n">paragraphs</span><span class="w"> </span><span class="o">*/</span>
+<span class="w">    </span><span class="n">async</span><span class="w"> </span><span class="n">getParagraphs</span><span class="w"> </span><span class="p">(</span><span class="n">bookTitle</span><span class="p">,</span><span class="w"> </span><span class="n">offset</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="n">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">this</span><span class="o">.</span><span class="n">bookOffset</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">offset</span>
+<span class="w">        </span><span class="k">const</span><span class="w"> </span><span class="n">start</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">this</span><span class="o">.</span><span class="n">bookOffset</span>
+<span class="w">        </span><span class="k">const</span><span class="w"> </span><span class="n">end</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">this</span><span class="o">.</span><span class="n">bookOffset</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">10</span>
+<span class="w">        </span><span class="k">const</span><span class="w"> </span><span class="n">response</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">await</span><span class="w"> </span><span class="n">axios</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="err">`</span><span class="o">$</span><span class="p">{</span><span class="n">this</span><span class="o">.</span><span class="n">baseUrl</span><span class="p">}</span><span class="o">/</span><span class="n">paragraphs</span><span class="err">`</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">params</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">bookTitle</span><span class="p">,</span><span class="w"> </span><span class="n">start</span><span class="p">,</span><span class="w"> </span><span class="n">end</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">})</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">response</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">hits</span><span class="o">.</span><span class="n">hits</span>
+<span class="w">      </span><span class="p">}</span><span class="w"> </span><span class="n">catch</span><span class="w"> </span><span class="p">(</span><span class="n">err</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">console</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="o">/**</span><span class="w"> </span><span class="n">Get</span><span class="w"> </span><span class="n">next</span><span class="w"> </span><span class="n">page</span><span class="w"> </span><span class="p">(</span><span class="n">next</span><span class="w"> </span><span class="mi">10</span><span class="w"> </span><span class="n">paragraphs</span><span class="p">)</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="n">selected</span><span class="w"> </span><span class="n">book</span><span class="w"> </span><span class="o">*/</span>
+<span class="w">    </span><span class="n">async</span><span class="w"> </span><span class="n">nextBookPage</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="n">this</span><span class="o">.$</span><span class="n">refs</span><span class="o">.</span><span class="n">bookModal</span><span class="o">.</span><span class="n">scrollTop</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">      </span><span class="n">this</span><span class="o">.</span><span class="n">paragraphs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">await</span><span class="w"> </span><span class="n">this</span><span class="o">.</span><span class="n">getParagraphs</span><span class="p">(</span><span class="n">this</span><span class="o">.</span><span class="n">selectedParagraph</span><span class="o">.</span><span class="n">_source</span><span class="o">.</span><span class="n">title</span><span class="p">,</span><span class="w"> </span><span class="n">this</span><span class="o">.</span><span class="n">bookOffset</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">10</span><span class="p">)</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="o">/**</span><span class="w"> </span><span class="n">Get</span><span class="w"> </span><span class="n">previous</span><span class="w"> </span><span class="n">page</span><span class="w"> </span><span class="p">(</span><span class="n">previous</span><span class="w"> </span><span class="mi">10</span><span class="w"> </span><span class="n">paragraphs</span><span class="p">)</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="n">selected</span><span class="w"> </span><span class="n">book</span><span class="w"> </span><span class="o">*/</span>
+<span class="w">    </span><span class="n">async</span><span class="w"> </span><span class="n">prevBookPage</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="n">this</span><span class="o">.$</span><span class="n">refs</span><span class="o">.</span><span class="n">bookModal</span><span class="o">.</span><span class="n">scrollTop</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">      </span><span class="n">this</span><span class="o">.</span><span class="n">paragraphs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">await</span><span class="w"> </span><span class="n">this</span><span class="o">.</span><span class="n">getParagraphs</span><span class="p">(</span><span class="n">this</span><span class="o">.</span><span class="n">selectedParagraph</span><span class="o">.</span><span class="n">_source</span><span class="o">.</span><span class="n">title</span><span class="p">,</span><span class="w"> </span><span class="n">this</span><span class="o">.</span><span class="n">bookOffset</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">10</span><span class="p">)</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="o">/**</span><span class="w"> </span><span class="n">Display</span><span class="w"> </span><span class="n">paragraphs</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="n">selected</span><span class="w"> </span><span class="n">book</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">modal</span><span class="w"> </span><span class="n">window</span><span class="w"> </span><span class="o">*/</span>
+<span class="w">    </span><span class="n">async</span><span class="w"> </span><span class="n">showBookModal</span><span class="w"> </span><span class="p">(</span><span class="n">searchHit</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="n">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">document</span><span class="o">.</span><span class="n">body</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">overflow</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;hidden&#39;</span>
+<span class="w">        </span><span class="n">this</span><span class="o">.</span><span class="n">selectedParagraph</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">searchHit</span>
+<span class="w">        </span><span class="n">this</span><span class="o">.</span><span class="n">paragraphs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">await</span><span class="w"> </span><span class="n">this</span><span class="o">.</span><span class="n">getParagraphs</span><span class="p">(</span><span class="n">searchHit</span><span class="o">.</span><span class="n">_source</span><span class="o">.</span><span class="n">title</span><span class="p">,</span><span class="w"> </span><span class="n">searchHit</span><span class="o">.</span><span class="n">_source</span><span class="o">.</span><span class="n">location</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">5</span><span class="p">)</span>
+<span class="w">      </span><span class="p">}</span><span class="w"> </span><span class="n">catch</span><span class="w"> </span><span class="p">(</span><span class="n">err</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">console</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="o">/**</span><span class="w"> </span><span class="n">Close</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">book</span><span class="w"> </span><span class="n">detail</span><span class="w"> </span><span class="n">modal</span><span class="w"> </span><span class="o">*/</span>
+<span class="w">    </span><span class="n">closeBookModal</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="n">document</span><span class="o">.</span><span class="n">body</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">overflow</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;auto&#39;</span>
+<span class="w">      </span><span class="n">this</span><span class="o">.</span><span class="n">selectedParagraph</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb nb-Type">null</span>
+<span class="w">    </span><span class="p">}</span>
+</code></pre></div>
+
+<p>这五个函数提供了通过页码从书中下载和分页（每次十个段落）的逻辑。</p>
+<p>现在，我们需要添加一个 UI 去显示书的页面。在 <code>/public/index.html</code> 的 <code>&lt;!-- INSERT BOOK MODAL HERE --&gt;</code> 注释下面添加如下的内容。</p>
+<div class="highlight"><pre><span></span><code><span class="w">    </span><span class="cm">&lt;!-- Book Paragraphs Modal Window --&gt;</span>
+<span class="w">    </span><span class="nt">&lt;div</span><span class="w"> </span><span class="na">v-if=</span><span class="s">&quot;selectedParagraph&quot;</span><span class="w"> </span><span class="na">ref=</span><span class="s">&quot;bookModal&quot;</span><span class="w"> </span><span class="na">class=</span><span class="s">&quot;book-modal&quot;</span><span class="nt">&gt;</span>
+<span class="w">      </span><span class="nt">&lt;div</span><span class="w"> </span><span class="na">class=</span><span class="s">&quot;paragraphs-container&quot;</span><span class="nt">&gt;</span>
+<span class="w">        </span><span class="cm">&lt;!-- Book Section Metadata --&gt;</span>
+<span class="w">        </span><span class="nt">&lt;div</span><span class="w"> </span><span class="na">class=</span><span class="s">&quot;title-row&quot;</span><span class="nt">&gt;</span>
+<span class="w">          </span><span class="nt">&lt;div</span><span class="w"> </span><span class="na">class=</span><span class="s">&quot;mui--text-display2 all-caps&quot;</span><span class="nt">&gt;</span><span class="cp">{{</span> <span class="nv">selectedParagraph._source.title</span> <span class="cp">}}</span><span class="nt">&lt;/div&gt;</span>
+<span class="w">          </span><span class="nt">&lt;div</span><span class="w"> </span><span class="na">class=</span><span class="s">&quot;mui--text-display1&quot;</span><span class="nt">&gt;</span><span class="cp">{{</span> <span class="nv">selectedParagraph._source.author</span> <span class="cp">}}</span><span class="nt">&lt;/div&gt;</span>
+<span class="w">        </span><span class="nt">&lt;/div&gt;</span>
+<span class="w">        </span><span class="nt">&lt;br&gt;</span>
+<span class="w">        </span><span class="nt">&lt;div</span><span class="w"> </span><span class="na">class=</span><span class="s">&quot;mui-divider&quot;</span><span class="nt">&gt;&lt;/div&gt;</span>
+<span class="w">        </span><span class="nt">&lt;div</span><span class="w"> </span><span class="na">class=</span><span class="s">&quot;mui--text-subhead locations-label&quot;</span><span class="nt">&gt;</span>Locations<span class="w"> </span><span class="cp">{{</span> <span class="nv">bookOffset</span> <span class="o">-</span> <span class="m">5</span> <span class="cp">}}</span><span class="w"> </span>to<span class="w"> </span><span class="cp">{{</span> <span class="nv">bookOffset</span> <span class="o">+</span> <span class="m">5</span> <span class="cp">}}</span><span class="nt">&lt;/div&gt;</span>
+<span class="w">        </span><span class="nt">&lt;div</span><span class="w"> </span><span class="na">class=</span><span class="s">&quot;mui-divider&quot;</span><span class="nt">&gt;&lt;/div&gt;</span>
+<span class="w">        </span><span class="nt">&lt;br&gt;</span>
+
+<span class="w">        </span><span class="cm">&lt;!-- Book Paragraphs --&gt;</span>
+<span class="w">        </span><span class="nt">&lt;div</span><span class="w"> </span><span class="na">v-for=</span><span class="s">&quot;paragraph in paragraphs&quot;</span><span class="nt">&gt;</span>
+<span class="w">          </span><span class="nt">&lt;div</span><span class="w"> </span><span class="na">v-if=</span><span class="s">&quot;paragraph._source.location === selectedParagraph._source.location&quot;</span><span class="w"> </span><span class="na">class=</span><span class="s">&quot;mui--text-body2&quot;</span><span class="nt">&gt;</span>
+<span class="w">            </span><span class="nt">&lt;strong&gt;</span><span class="cp">{{</span> <span class="nv">paragraph._source.text</span> <span class="cp">}}</span><span class="nt">&lt;/strong&gt;</span>
+<span class="w">          </span><span class="nt">&lt;/div&gt;</span>
+<span class="w">          </span><span class="nt">&lt;div</span><span class="w"> </span><span class="err">v-else</span><span class="w"> </span><span class="na">class=</span><span class="s">&quot;mui--text-body1&quot;</span><span class="nt">&gt;</span>
+<span class="w">            </span><span class="cp">{{</span> <span class="nv">paragraph._source.text</span> <span class="cp">}}</span>
+<span class="w">          </span><span class="nt">&lt;/div&gt;</span>
+<span class="w">          </span><span class="nt">&lt;br&gt;</span>
+<span class="w">        </span><span class="nt">&lt;/div&gt;</span>
+<span class="w">      </span><span class="nt">&lt;/div&gt;</span>
+
+<span class="w">      </span><span class="cm">&lt;!-- Book Pagination Footer --&gt;</span>
+<span class="w">      </span><span class="nt">&lt;div</span><span class="w"> </span><span class="na">class=</span><span class="s">&quot;modal-footer&quot;</span><span class="nt">&gt;</span>
+<span class="w">        </span><span class="nt">&lt;button</span><span class="w"> </span><span class="na">class=</span><span class="s">&quot;mui-btn mui-btn--flat&quot;</span><span class="w"> </span><span class="na">v-on:click=</span><span class="s">&quot;prevBookPage()&quot;</span><span class="nt">&gt;</span>Prev<span class="w"> </span>Page<span class="nt">&lt;/button&gt;</span>
+<span class="w">        </span><span class="nt">&lt;button</span><span class="w"> </span><span class="na">class=</span><span class="s">&quot;mui-btn mui-btn--flat&quot;</span><span class="w"> </span><span class="na">v-on:click=</span><span class="s">&quot;closeBookModal()&quot;</span><span class="nt">&gt;</span>Close<span class="nt">&lt;/button&gt;</span>
+<span class="w">        </span><span class="nt">&lt;button</span><span class="w"> </span><span class="na">class=</span><span class="s">&quot;mui-btn mui-btn--flat&quot;</span><span class="w"> </span><span class="na">v-on:click=</span><span class="s">&quot;nextBookPage()&quot;</span><span class="nt">&gt;</span>Next<span class="w"> </span>Page<span class="nt">&lt;/button&gt;</span>
+<span class="w">      </span><span class="nt">&lt;/div&gt;</span>
+<span class="w">    </span><span class="nt">&lt;/div&gt;</span>
+</code></pre></div>
+
+<p>再次重启应用程序服务器（<code>docker-compose up -d --build</code>），然后打开 <code>localhost:8080</code>。当你再次点击搜索结果时，你将能看到关键字附近的段落。如果你感兴趣，你现在甚至可以看这本书的剩余部分。</p>
+<p><img alt="preview webapp book page" src="/data/attachment/album/201804/29/230018xfogb6jahadhk77d.png"></p>
+<p>祝贺你！你现在已经完成了本教程的应用程序。</p>
+<p>你可以去比较你的本地结果与托管在这里的完整示例 —— <a href="https://search.patricktriest.com/">https://search.patricktriest.com/</a>。</p>
+<h3>9 - Elasticsearch 的缺点</h3>
+<h4>9.0 - 耗费资源</h4>
+<p>Elasticsearch 是计算密集型的。<a href="https://www.elastic.co/guide/en/elasticsearch/guide/current/hardware.html">官方建议</a> 运行 ES 的机器最好有 64 GB 的内存，强烈反对在低于 8 GB 内存的机器上运行它。Elasticsearch 是一个 <em>内存中</em> 数据库，这样使它的查询速度非常快，但这也非常占用系统内存。在生产系统中使用时，<a href="https://www.elastic.co/guide/en/elasticsearch/guide/2.x/distributed-cluster.html">他们强烈建议在一个集群中运行多个 Elasticsearch 节点</a>，以实现高可用、自动分区和一个节点失败时的数据冗余。</p>
+<p>我们的这个教程中的应用程序运行在一个 $15/月 的 GCP 计算实例中（ <a href="https://search.patricktriest.com/">search.patricktriest.com</a>），它只有 1.7 GB 的内存，它勉强能运行这个 Elasticsearch 节点；有时候在进行初始的数据加载过程中，整个机器就 ”假死机“ 了。在我的经验中，Elasticsearch 比传统的那些数据库，比如，PostgreSQL 和 MongoDB 耗费的资源要多很多，这样会使托管主机的成本增加很多。</p>
+<h3>9.1 - 与数据库的同步</h3>
+<p>对于大多数应用程序，将数据全部保存在 Elasticsearch 并不是个好的选择。可以使用 ES 作为应用程序的主要事务数据库，但是一般不推荐这样做，因为在 Elasticsearch 中缺少 ACID，如果大量读取数据的时候，它能导致写操作丢失。在许多案例中，ES 服务器更多是一个特定的角色，比如做应用程序中的一个文本搜索功能。这种特定的用途，要求它从主数据库中复制数据到 Elasticsearch 实例中。</p>
+<p>比如，假设我们将用户信息保存在一个 PostgreSQL 表中，但是用 Elasticsearch 去提供我们的用户搜索功能。如果一个用户，比如，“Albert”，决定将他的名字改成 “Al”，我们将需要把这个变化同时反映到我们主要的 PostgreSQL 数据库和辅助的 Elasticsearch 集群中。</p>
+<p>正确地集成它们可能比较棘手，最好的答案将取决于你现有的应用程序栈。这有多种开源方案可选，从 <a href="https://github.com/mongodb-labs/mongo-connector">用一个进程去关注 MongoDB 操作日志</a> 并自动同步检测到的变化到 ES，到使用一个 <a href="https://github.com/zombodb/zombodb">PostgresSQL 插件</a> 去创建一个定制的、基于 PSQL 的索引来与 Elasticsearch 进行自动沟通。</p>
+<p>如果没有有效的预构建选项可用，你可能需要在你的服务器代码中增加一些钩子，这样可以基于数据库的变化来手动更新 Elasticsearch 索引。最后一招，我认为是一个最后的选择，因为，使用定制的业务逻辑去保持 ES 的同步可能很复杂，这将会给应用程序引入很多的 bug。</p>
+<p>让 Elasticsearch 与一个主数据库同步，将使它的架构更加复杂，其复杂性已经超越了 ES 的相关缺点，但是当在你的应用程序中考虑添加一个专用的搜索引擎的利弊得失时，这个问题是值的好好考虑的。</p>
+<h3>总结</h3>
+<p>在很多现在流行的应用程序中，全文搜索是一个非常重要的功能 —— 而且是很难实现的一个功能。对于在你的应用程序中添加一个快速而又可定制的文本搜索，Elasticsearch 是一个非常好的选择，但是，在这里也有一个替代者。<a href="https://lucene.apache.org/solr/">Apache Solr</a> 是一个类似的开源搜索平台，它是基于 Apache Lucene 构建的，与 Elasticsearch 的核心库是相同的。<a href="https://www.algolia.com/">Algolia</a> 是一个搜索即服务的 Web 平台，它已经很快流行了起来，并且它对新手非常友好，很易于上手（但是作为折衷，它的可定制性较小，并且使用成本较高）。</p>
+<p>“搜索” 特性并不是 Elasticsearch 唯一功能。ES 也是日志存储和分析的常用工具，在一个 ELK（Elasticsearch、Logstash、Kibana）架构配置中通常会使用它。灵活的全文搜索功能使得 Elasticsearch 在数据量非常大的科学任务中用处很大 —— 比如，在一个数据集中正确的/标准化的条目拼写，或者为了类似的词组搜索一个文本数据集。</p>
+<p>对于你自己的项目，这里有一些创意。</p>
+<ul>
+<li>添加更多你喜欢的书到教程的应用程序中，然后创建你自己的私人图书馆搜索引擎。</li>
+<li>利用来自 <a href="https://scholar.google.com/">Google Scholar</a> 的论文索引，创建一个学术抄袭检测引擎。</li>
+<li>通过将字典中的每个词索引到 Elasticsearch，创建一个拼写检查应用程序。</li>
+<li>通过将 <a href="https://aws.amazon.com/public-datasets/common-crawl/">Common Crawl Corpus</a> 加载到 Elasticsearch 中，构建你自己的与谷歌竞争的因特网搜索引擎（注意，它可能会超过 50 亿个页面，这是一个成本极高的数据集）。</li>
+<li>在 journalism 上使用 Elasticsearch：在最近的大规模泄露的文档中搜索特定的名字和关键词，比如， <a href="https://en.wikipedia.org/wiki/Panama_Papers">Panama Papers</a> 和 <a href="https://en.wikipedia.org/wiki/Paradise_Papers">Paradise Papers</a>。</li>
+</ul>
+<p>本教程中应用程序的源代码是 100% 公开的，你可以在 GitHub 仓库上找到它们 —— <a href="https://github.com/triestpa/guttenberg-search">https://github.com/triestpa/guttenberg-search</a></p>
+<p>我希望你喜欢这个教程！你可以在下面的评论区，发表任何你的想法、问题、或者评论。</p>
+<p>via: <a href="https://blog.patricktriest.com/text-search-docker-elasticsearch/">https://blog.patricktriest.com/text-search-docker-elasticsearch/</a></p>
+<p>作者：<a href="https://blog.patricktriest.com/author/patrick/">Patrick Triest</a> 译者：<a href="https://github.com/qhwdw">qhwdw</a> 校对：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创编译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

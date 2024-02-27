@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>RHEL/CentOS 7 中配置 PXE 网络启动服务器</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Matei Cezar PXE服务器——预启动执行环境——指示客户端计算机直接从网络接口启动、运行或安装操作系统，而不需要烧录CD/DVD或使用某个物理介质，它可以减轻 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/02/rhelcentos-7-zhong-pei-zhi-pxe-wang-luo-qi-dong-fu-wu-qi.html" rel="bookmark"
+           title="Permalink to RHEL/CentOS 7 中配置 PXE 网络启动服务器">RHEL/CentOS 7 中配置 PXE 网络启动服务器</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-02-17T14:28:27+01:00">
+                Published: Tue 17 February 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Matei Cezar</p>
+<p><strong>PXE服务器</strong>——预启动执行环境——指示客户端计算机直接从网络接口启动、运行或安装操作系统，而不需要烧录CD/DVD或使用某个物理介质，它可以减轻你网络中多台机器同时安装Linux发行版的工作。</p>
+<p><img alt="Setting PXE Network Boot in RHEL/CentOS 7" src="/data/attachment/album/201502/17/142831msc4mfmejsemfqq9.png"></p>
+<p><em>在RHEL/CentOS 7中设置PXE网络启动</em></p>
+<h4>前置阅读</h4>
+<ul>
+<li><a href="http://www.tecmint.com/centos-7-installation/">CentOS 7最小化安装步骤</a></li>
+<li><a href="http://www.tecmint.com/redhat-enterprise-linux-7-installation/">RHEL 7最小化安装步骤</a></li>
+<li><a href="http://linux.cn/article-3977-1.html">在RHEL/CentOS 7中配置静态IP地址</a></li>
+<li><a href="http://www.tecmint.com/remove-unwanted-services-in-centos-7/">移除RHEL/CentOS 7中不要的服务</a></li>
+<li><a href="http://www.tecmint.com/install-ntp-server-in-centos/">安装NTP服务器以设置RHEL/CentOS 7的正确时间</a></li>
+</ul>
+<p>本文将介绍如何在配置有本地镜像安装仓库的<strong>RHEL/CentOS 7</strong> 64位上安装并配置一台<strong>PXE服务器</strong>，仓库源由CentOS 7 DVD 的 ISO镜像提供，并由<strong>DNSMASQ</strong>服务器提供解析。</p>
+<p>该机器提供了<strong>DNS</strong>和<strong>DHCP</strong>服务，用于网络启动引导的<strong>Syslinux</strong>包，<strong>TFTP-Server</strong>——提供了可通过网络使用<strong>小文件传输协议</strong>下载的可启动镜像，以及提供本地挂载DVD镜像的<strong>VSFTPD</strong>服务器——它将扮演官方RHEL/CentOS 7镜像安装仓库的角色，安装器将从这里提取所需的包。</p>
+<h3>步骤1： 安装并配置DNSMASQ服务器</h3>
+<p><strong>1.</strong> 不需要提醒你来确定你的网络接口卡吧，除非你的服务器上有多个网络接口卡，该网卡必须配置有静态IP地址，该IP地址必须处于你要提供PXE服务的网段中。</p>
+<p>那么，在你配置好静态IP地址后，更新你的系统并进行其它初始设置。请使用以下命令来安装<strong>DNSMASQ</strong>进程。</p>
+<div class="highlight"><pre><span></span><code># yum install dnsmasq
+</code></pre></div>
+
+<p><img alt="Install dnsmasq Package" src="/data/attachment/album/201502/17/142833de1646o86lzeb4be.jpg"></p>
+<p><em>安装dnsmasq包</em></p>
+<p><strong>2.</strong> DNSMASQ的默认的主配置文件位于<strong>/etc</strong>目录中，虽然不需要任何说明就能看懂，但编辑起来确实相当困难的，即使有很详细的说明性注释。</p>
+<p>首先，确保你备份了该文件，以便你需要在以后对它进行恢复。然后使用你爱用的文本编辑器创建一个新的空配置文件，命令如下。</p>
+<div class="highlight"><pre><span></span><code># mv /etc/dnsmasq.conf  /etc/dnsmasq.conf.backup
+# nano /etc/dnsmasq.conf
+</code></pre></div>
+
+<p><strong>3.</strong> 现在，复制并粘贴以下配置到<strong>dnsmasq.conf</strong>文件中，并确保根据如下说明进行相应修改，以适应你的网络设置。</p>
+<div class="highlight"><pre><span></span><code><span class="n">interface</span><span class="o">=</span><span class="n">eno16777736</span><span class="p">,</span><span class="n">lo</span>
+<span class="c1">#bind-interfaces</span>
+<span class="n">domain</span><span class="o">=</span><span class="n">centos7</span><span class="o">.</span><span class="n">lan</span>
+<span class="c1"># DHCP range-leases</span>
+<span class="n">dhcp</span><span class="o">-</span><span class="nb">range</span><span class="o">=</span><span class="w"> </span><span class="n">eno16777736</span><span class="p">,</span><span class="mf">192.168</span><span class="o">.</span><span class="mf">1.3</span><span class="p">,</span><span class="mf">192.168</span><span class="o">.</span><span class="mf">1.253</span><span class="p">,</span><span class="mf">255.255</span><span class="o">.</span><span class="mf">255.0</span><span class="p">,</span><span class="mi">1</span><span class="n">h</span>
+<span class="c1"># PXE</span>
+<span class="n">dhcp</span><span class="o">-</span><span class="n">boot</span><span class="o">=</span><span class="n">pxelinux</span><span class="o">.</span><span class="mi">0</span><span class="p">,</span><span class="n">pxeserver</span><span class="p">,</span><span class="mf">192.168</span><span class="o">.</span><span class="mf">1.20</span>
+<span class="c1"># Gateway</span>
+<span class="n">dhcp</span><span class="o">-</span><span class="n">option</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span><span class="mf">192.168</span><span class="o">.</span><span class="mf">1.1</span>
+<span class="c1"># DNS</span>
+<span class="n">dhcp</span><span class="o">-</span><span class="n">option</span><span class="o">=</span><span class="mi">6</span><span class="p">,</span><span class="mf">92.168</span><span class="o">.</span><span class="mf">1.1</span><span class="p">,</span><span class="w"> </span><span class="mf">8.8</span><span class="o">.</span><span class="mf">8.8</span>
+<span class="n">server</span><span class="o">=</span><span class="mf">8.8</span><span class="o">.</span><span class="mf">4.4</span>
+<span class="c1"># Broadcast Address</span>
+<span class="n">dhcp</span><span class="o">-</span><span class="n">option</span><span class="o">=</span><span class="mi">28</span><span class="p">,</span><span class="mf">10.0</span><span class="o">.</span><span class="mf">0.255</span>
+<span class="c1"># NTP Server</span>
+<span class="n">dhcp</span><span class="o">-</span><span class="n">option</span><span class="o">=</span><span class="mi">42</span><span class="p">,</span><span class="mf">0.0</span><span class="o">.</span><span class="mf">0.0</span>
+
+<span class="n">pxe</span><span class="o">-</span><span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;Press F8 for menu.&quot;</span><span class="p">,</span><span class="w"> </span><span class="mi">60</span>
+<span class="n">pxe</span><span class="o">-</span><span class="n">service</span><span class="o">=</span><span class="n">x86PC</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;Install CentOS 7 from network server 192.168.1.20&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">pxelinux</span>
+<span class="n">enable</span><span class="o">-</span><span class="n">tftp</span>
+<span class="n">tftp</span><span class="o">-</span><span class="n">root</span><span class="o">=/</span><span class="k">var</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">tftpboot</span>
+</code></pre></div>
+
+<p><img alt="Dnsmasq Configuration" src="/data/attachment/album/201502/17/142835ebrqlhoqo4ehb9he.jpg"></p>
+<p><em>Dnsmasq配置</em></p>
+<p>你需要修改的声明有以下这些：</p>
+<ul>
+<li><strong>interface</strong> – 服务器需要监听并提供服务的网络接口。</li>
+<li><strong>bind-interfaces</strong> – 取消注释来绑定到该网络接口</li>
+<li><strong>domain</strong> – 替换为你的域名。</li>
+<li><strong>dhcp-range</strong> – 替换为你的网络掩码定义的网段。</li>
+<li><strong>dhcp-boot</strong> – 替换该IP地址为你的网络接口IP地址。</li>
+<li><strong>dhcp-option=3,192.168.1.1</strong> – 替换该IP地址为你的网段的网关。</li>
+<li><strong>dhcp-option=6,92.168.1.1</strong> – 替换该IP地址为你的DNS服务器IP——可以定义多个IP地址。</li>
+<li><strong>server=8.8.4.4</strong> – 这里放置DNS转发服务器IP地址。</li>
+<li><strong>dhcp-option=28,10.0.0.255</strong> – 替换该IP地址为网络广播地址——可选项。</li>
+<li><strong>dhcp-option=42,0.0.0.0</strong> – 这里放置网络时钟服务器——可选项（0.0.0.0地址表示参考自身）。</li>
+<li><strong>pxe-prompt</strong> – 保持默认——按F8进入菜单，60秒等待时间。</li>
+<li><strong>pxe=service</strong> – 使用x86PC作为32为/64位架构，并在字符串引述中输入菜单描述提示。其它类型值可以是：PC98,IA<em>EFI,Alpha,Arc</em>x86,Intel<em>Lean</em>Client,IA32<em>EFI,BC</em>EFI,Xscale<em>EFI和X86-64</em>EFI。</li>
+<li><strong>enable-tftp</strong> – 启用内建TFTP服务器。</li>
+<li><strong>tftp-root</strong> – 使用/var/lib/tftpboot——所有网络启动文件所在位置。</li>
+</ul>
+<p>其它和配置文件相关的高级选项，请参阅<a href="http://www.thekelleys.org.uk/dnsmasq/docs/dnsmasq-man.html">dnsmasq手册</a>。</p>
+<h3>步骤2： 安装SYSLINUX启动加载器</h3>
+<p><strong>4.</strong> 在编辑并保存<strong>DNSMASQ</strong>主配置文件后，我们将继续安装<strong>Syslinux</strong> PXE启动加载器，命令如下。</p>
+<div class="highlight"><pre><span></span><code># yum install syslinux
+</code></pre></div>
+
+<p><img alt="Install Syslinux Bootloaders" src="/data/attachment/album/201502/17/142837bepwhyhe6esys0wq.jpg"></p>
+<p><em>安装Syslinux启动加载器</em></p>
+<p><strong>5.</strong> PXE启动加载器文件位于<strong>/usr/share/syslinux</strong>系统绝对路径下，你可以通过列出该路径下的内容来查看。该步骤不是必须的，但你可能需要知道该路径，因为在下一步中，我们将拷贝该路径下的所有内容到<strong>TFTP服务器</strong>路径下。</p>
+<div class="highlight"><pre><span></span><code># ls /usr/share/syslinux
+</code></pre></div>
+
+<p><img alt="Syslinux Files" src="/data/attachment/album/201502/17/142839rbn61m4v66nib6rb.jpg"></p>
+<p><em>Syslinux文件</em></p>
+<h3>步骤3： 安装TFTP-Server并加入SYSLINUX加载启动器</h3>
+<p><strong>6.</strong> 现在，让我们进入下一步，安装<strong>TFTP-Server</strong>。然后，拷贝上述位置中Syslinux包提供所有启动加载器文件到<strong>/var/lib/tftpboot</strong>路径中，命令如下。</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># yum install tftp-server</span>
+<span class="c1"># cp -r /usr/share/syslinux/* /var/lib/tftpboot</span>
+</code></pre></div>
+
+<p><img alt="Install TFTP Server" src="/data/attachment/album/201502/17/142841qemobo57nimp9eog.jpg"></p>
+<p><em>安装TFTP服务器</em></p>
+<h3>步骤4： 设置PXE服务器配置文件</h3>
+<p><strong>7.</strong> 通常，<strong>PXE服务器</strong>从位于<strong>pxelinux.cfg</strong>文件夹中一组指定的文件中读取配置（首先是<strong>GUID</strong>文件，接下来是<strong>MAC</strong>文件，最后是<strong>Default</strong>文件），该文件夹必须位于DNSMASQ主配置文件中<strong>tftp-root</strong>声明指定的目录中。</p>
+<p>创建需要的目录<strong>pxelinux.cfg</strong>，然后添加<strong>default</strong>文件到该目录中，命令如下。</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># mkdir /var/lib/tftpboot/pxelinux.cfg</span>
+<span class="c1"># touch /var/lib/tftpboot/pxelinux.cfg/default</span>
+</code></pre></div>
+
+<p><strong>8.</strong> 现在，该来编辑<strong>PXE服务器</strong>配置文件了，为它添加合理的Linux发行版安装选项。请注意，该文件中使用的所有路径必须是相对于<strong>/var/lib/tftpboot</strong>目录的。</p>
+<p>下面，你可以看到配置文件的样例，你可以使用该模板，但请修改安装镜像（kernel和initrd文件）、协议（FTP、HTTP、HTTPS、NFS）以及映射你网络安装源仓库和路径的IP地址等参数。</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># nano /var/lib/tftpboot/pxelinux.cfg/default</span>
+</code></pre></div>
+
+<p>添加以下整个节录到文件中。</p>
+<div class="highlight"><pre><span></span><code>default menu.c32
+prompt 0
+timeout 300
+ONTIMEOUT local
+
+menu title ########## PXE Boot Menu ##########
+
+label 1
+menu label ^1) Install CentOS 7 x64 with Local Repo
+kernel centos7/vmlinuz
+append initrd=centos7/initrd.img method=ftp://192.168.1.20/pub devfs=nomount
+
+label 2
+menu label ^2) Install CentOS 7 x64 with http://mirror.centos.org Repo
+kernel centos7/vmlinuz
+append initrd=centos7/initrd.img method=http://mirror.centos.org/centos/7/os/x86_64/ devfs=nomount ip=dhcp
+
+label 3
+menu label ^3) Install CentOS 7 x64 with Local Repo using VNC
+kernel centos7/vmlinuz
+append  initrd=centos7/initrd.img method=ftp://192.168.1.20/pub devfs=nomount inst.vnc inst.vncpassword=password
+
+label 4
+menu label ^4) Boot from local drive
+</code></pre></div>
+
+<p><img alt="Configure PXE Server" src="/data/attachment/album/201502/17/142842g24t5d44tg1swaya.jpg"></p>
+<p><em>配置PXE服务器</em></p>
+<p>正如你所见，CentOS 7启动镜像（kernel和initrd）位于名为<strong>centos7</strong>的目录，该目录是<strong>/var/lib/tftpboot</strong>目录的相对路径（其系统绝对路径为<strong>/var/lib/tftpboot/centos7</strong>），而安装器仓库位于可通过FTP协议访问的<strong>192.168.1.20/pub</strong>网络位置中——在本例中，这些仓库位于本地，因为IP地址和PXE服务器地址相同。</p>
+<p>同时，菜单<strong>label 3</strong>指定客户端安装应该通过<strong>VNC</strong>从一个远程位置实现（这里替换VNC密码为一个健壮的密码），如果你在一台没有输入输出的客户端上安装，菜单<strong>label 2</strong>指定了作为安装源的一个CentOS 7官方互联网镜像（这种情况要求客户端通过DHCP和NAT连接到互联网）。</p>
+<p><strong>重要</strong>：正如你在上述配置中所看到的，我们使用了CentOS 7进行演示，但是你也可以定义一个 RHEL 7镜像。而下面的整个的说明和配置都只是基于CentOS 7的，所以在选发行版时要注意一下。</p>
+<h3>步骤5： 添加CentOS 7启动镜像到PXE服务器</h3>
+<p><strong>9.</strong> 对于此步骤，需要用到CentOS的kernel和initrd文件。要获取这些文件，你需要<strong>CentOS 7 DVD ISO</strong>镜像。所以，去下载CentOS DVD镜像吧，然后把它（刻录成光盘）放入你的DVD驱动器并挂载镜像到<strong>/mnt</strong>路径，命令见下面。</p>
+<p>使用DVD，而不是最小化CD镜像的原因在于，在后面我们将使用该DVD的内容为<strong>FTP</strong>源创建本地安装器仓库。</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span><span class="nv">mount</span><span class="w"> </span><span class="o">-</span><span class="nv">o</span><span class="w"> </span><span class="k">loop</span><span class="w"> </span><span class="o">/</span><span class="nv">dev</span><span class="o">/</span><span class="nv">cdrom</span><span class="w">  </span><span class="o">/</span><span class="nv">mnt</span>
+#<span class="w"> </span><span class="nv">ls</span><span class="w"> </span><span class="o">/</span><span class="nv">mnt</span>
+</code></pre></div>
+
+<p><img alt="Mount CentOS DVD" src="/data/attachment/album/201502/17/142844chzh6i5diij6h25t.jpg"></p>
+<p><em>挂载CentOS DVD</em></p>
+<p>如果你的机器没有DVD驱动器，你也可以使用<strong>wget</strong>或<strong>curl</strong>工具从<a href="http://isoredirect.centos.org/centos/7/isos/x86_64/">CentOS镜像站</a>下载<strong>CentOS 7 DVD ISO</strong>到本地并挂载。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> wget http://mirrors.xservers.ro/centos/7.0.1406/isos/x86_64/CentOS-7.0-1406-x86_64-DVD.iso
+<span class="gh">#</span> mount -o loop /path/to/centos-dvd.iso  /mnt
+</code></pre></div>
+
+<p><strong>10.</strong> 在DVD内容可供使用后，创建<strong>centos7</strong>目录并将CentOS 7 的可启动的 kernel和initrd映像文件从DVD挂载位置拷贝到centos7文件夹。</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># mkdir /var/lib/tftpboot/centos7</span>
+<span class="c1"># cp /mnt/images/pxeboot/vmlinuz  /var/lib/tftpboot/centos7</span>
+<span class="c1"># cp /mnt/images/pxeboot/initrd.img  /var/lib/tftpboot/centos7</span>
+</code></pre></div>
+
+<p><img alt="Copy CentOS Bootable Files" src="/data/attachment/album/201502/17/142845waqlezkddcc1aqdj.jpg"></p>
+<p><em>拷贝CentOS可启动文件</em></p>
+<p>使用该方法的原因在于，今后你可能会在<strong>/var/lib/tftpboot</strong>路径中创建新的独立的目录，并添加其它Linux发行版到PXE菜单中，你就不会将整个目录结构弄得一团糟了。</p>
+<h3>步骤6： 创建CentOS 7本地镜像安装源</h3>
+<p><strong>11.</strong> 虽然你可以通过多种协议设置<strong>安装源镜像</strong>，如HTTP、HTTPS或NFS，但对于本指南，我选择了使用<strong>FTP</strong>协议。因为通过<strong>vsftpd</strong>，你可以很便捷地配置，而且它也很稳定。</p>
+<p>接下里，安装vsftpd进程，然后复制所有DVD挂载目录中的内容到<strong>vsftpd</strong>默认服务器路径下（<strong>/var/ftp/pub</strong>）——这会花费一些时间，这取决于你的系统资源。然后为该路径设置可读权限，命令如下。</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># yum install vsftpd</span>
+<span class="c1"># cp -r /mnt/*  /var/ftp/pub/ </span>
+<span class="c1"># chmod -R 755 /var/ftp/pub</span>
+</code></pre></div>
+
+<p><img alt="Install Vsftpd Server" src="/data/attachment/album/201502/17/142847w3mpdk85d2kq8tzm.jpg"></p>
+<p><em>安装Vsftpd服务器</em></p>
+<p><img alt="Copy Files to FTP Path" src="/data/attachment/album/201502/17/142848fn3rte8b2yry2enb.jpg"></p>
+<p><em>拷贝Files到FTP路径</em></p>
+<p><img alt="Set Permissions on FTP Path" src="/data/attachment/album/201502/17/142849nbhbtozzyu3tzyd1.jpg"></p>
+<p><em>设置FTP路径的权限</em></p>
+<h3>步骤7： 在系统范围内启动并启用进程</h3>
+<p><strong>12.</strong> 既然PXE服务器配置已经完成，那么就来启动<strong>DNSMASQ</strong>和<strong>VSFTPD</strong>服务器吧。验证它们的状况并在系统上启用，以便让这些服务在每次系统重启后都能随系统启动，命令如下。</p>
+<div class="highlight"><pre><span></span><code># systemctl start dnsmasq
+# systemctl status dnsmasq
+# systemctl start vsftpd
+# systemctl status vsftpd
+# systemctl enable dnsmasq
+# systemctl enable vsftpd
+</code></pre></div>
+
+<p><img alt="Start Dnsmasq Service" src="/data/attachment/album/201502/17/142851ay5pzzrpngnpv7lx.jpg"></p>
+<p><em>启动Dnsmasq服务</em></p>
+<p><img alt="Start Vsftpd Service" src="/data/attachment/album/201502/17/142853l5yyi740nthh600y.jpg"></p>
+<p><em>启动Vsftpd服务</em></p>
+<h3>步骤8： 打开防火墙并测试FTP安装源</h3>
+<p><strong>13.</strong> 要获取需要在防火墙打开的端口列表，以便让客户机可访问并从PXE服务器启动，请运行<strong>netstat</strong>命令并根据dnsmasq和vsftpd监听列表添加CentOS 7防火墙规则。</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># netstat -tulpn</span>
+<span class="c1"># firewall-cmd --add-service=ftp --permanent    ## Port 21</span>
+<span class="c1"># firewall-cmd --add-service=dns --permanent    ## Port 53</span>
+<span class="c1"># firewall-cmd --add-service=dhcp --permanent   ## Port 67</span>
+<span class="c1"># firewall-cmd --add-port=69/udp --permanent    ## Port for TFTP</span>
+<span class="c1"># firewall-cmd --add-port=4011/udp --permanent  ## Port for ProxyDHCP</span>
+<span class="c1"># firewall-cmd --reload  ## Apply rules</span>
+</code></pre></div>
+
+<p><img alt="Check Listening Ports" src="/data/attachment/album/201502/17/142854rgohthq33ziht9zi.jpg"></p>
+<p><em>检查监听端口</em></p>
+<p><img alt="Open Ports in Firewall" src="/data/attachment/album/201502/17/142856u9ghcucpss8vgysv.jpg"></p>
+<p><em>在防火墙上开启端口</em></p>
+<p><strong>14.</strong> 要测试FTP安装源网络路径，请在本地或另外一台计算机上打开浏览器（<a href="http://www.tecmint.com/command-line-web-browsers/"><strong>lynx</strong></a>就可以做此事），然后输入你架设有FTP服务的PXE服务器的IP地址，并在填入的URL后面加上<strong>/pub</strong>网络位置，结果应该和截图中看到的一样。</p>
+<div class="highlight"><pre><span></span><code>ftp://192.168.1.20/pub
+</code></pre></div>
+
+<p><img alt="Access FTP Files via Browser" src="/data/attachment/album/201502/17/142857j11m8nnbum6wdmdf.jpg"></p>
+<p><em>通过浏览器访问FTP文件</em></p>
+<p><strong>15.</strong> 要解决PXE服务器最终的配置或其它信息产生的问题，请在live模式下诊断，命令如下：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># tailf /var/log/messages</span>
+</code></pre></div>
+
+<p><img alt="Check PXE Logs for Errors" src="/data/attachment/album/201502/17/142859xteswtx3fgs3g8jx.jpg"></p>
+<p><em>检查PXE日志错误</em></p>
+<p><strong>16.</strong> 最后，最终所需的步骤就是卸载CentOS 7 DVD，并移除物理介质。</p>
+<div class="highlight"><pre><span></span><code># umount /mnt
+</code></pre></div>
+
+<h3>步骤9： 配置客户端从网络启动</h3>
+<p><strong>17.</strong> 现在，你的客户端可以通过它们的系统BIOS或在<strong>BIOS开机自检</strong>时按指定键来配置网络启动作为<strong>首选启动设备</strong>，具体方法见主板说明手册。</p>
+<p>为了选择网络启动，在第一次PXE提示符出现时，请按下<strong>F8</strong>键进入到PXE安装界面，然后敲<strong>回车</strong>键继续进入PXE菜单。</p>
+<p><img alt="PXE Network Boot" src="/data/attachment/album/201502/17/142901mxl5g4l5z5qklk1a.jpg"></p>
+<p><em>PXE网络启动</em></p>
+<p><img alt="PXE Network OS Boot" src="/data/attachment/album/201502/17/142902ljqvuebftijbgjbb.jpg"></p>
+<p><em>PXE网络OS启动</em></p>
+<p><strong>18.</strong> 一旦你进入PXE菜单，请选择你的CentOS 7安装类型，敲<strong>回车</strong>键继续安装过程，就像你使用本地启动介质安装一样。</p>
+<p>请记住这一点，使用菜单中的变体2需要激活目标客户端上的互联网连接。在下面的屏幕截图中，你可以通过VNC看到远程安装的实例。</p>
+<p><img alt="PXE Menu" src="/data/attachment/album/201502/17/142904sdmmao1100yg1gjy.jpg"></p>
+<p><em>PXE菜单</em></p>
+<p><img alt="Remote Linux Installation via VNC" src="/data/attachment/album/201502/17/142905p04pcjdsdxtx29dc.jpg"></p>
+<p><em>通过VNC远程安装Linux</em></p>
+<p><img alt="Remote Installation of CentOS" src="/data/attachment/album/201502/17/142907qllrl3lz31bx3jj3.jpg"></p>
+<p><em>远程安装CentOS</em></p>
+<p>以上是<strong>CentOS 7</strong>上配置最小化<strong>PXE服务器</strong>的所有内容。在我的本系列下一篇文章中，我将讨论其它PXE服务器配置过程中的其它问题，如怎样使用<strong>Kickstart</strong>文件来配置自动化安装<strong>CentOS 7</strong>，以及添加其它Linux发行版到PXE菜单——<strong>Ubuntu Server</strong>和<strong>Debian 7</strong>。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

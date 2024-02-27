@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在 Fedora 中结合权能使用 Podman</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Shiwanibiradar 容器化是一项蓬勃发展的技术。在不久的将来，多达百分之七十五的全球组织可能会运行某种类型的容器化技术。由 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2020/11/zai-fedora-zhong-jie-he-quan-neng-shi-yong-podman.html" rel="bookmark"
+           title="Permalink to 在 Fedora 中结合权能使用 Podman">在 Fedora 中结合权能使用 Podman</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2020-11-25T22:06:57+01:00">
+                Published: Wed 25 November 2020
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Shiwanibiradar</p>
+<p><img alt="" src="/data/attachment/album/202011/25/220701co4nmvtpkpjwzvno.jpg"></p>
+<p>容器化是一项蓬勃发展的技术。在不久的将来，多达百分之七十五的全球组织可能会运行某种类型的容器化技术。由于广泛使用的技术更容易成为黑客攻击的目标，因此保护容器的安全就显得尤为重要。本文将演示如何使用 POSIX <ruby> <a href="https://www.linuxjournal.com/magazine/making-root-unprivileged">  权能 </a> <rt>  Capability </rt></ruby> 来保护 Podman 容器的安全。Podman 是 RHEL8 中默认的容器管理工具。</p>
+<h3>确定 Podman 容器的权限模式</h3>
+<p>容器以特权模式或无特权模式运行。在特权模式下，<a href="https://linuxcontainers.org/lxc/security/#privileged-containers">容器的 uid 0 被映射到宿主机的 uid 0</a>。对于某些情况，无特权的容器<a href="https://github.com/containers/podman/blob/master/rootless.md">缺乏对宿主机资源的充分访问能力</a>。但不管其操作模式如何，包括<ruby> 强制访问控制 <rt>  Mandatory Access Control </rt></ruby>（MAC：如 apparmor、SELinux 等）、seccomp 过滤器、删除<ruby> 权能 <rt>  Capability </rt></ruby>、命名空间等在内的技术有助于确保容器的安全。</p>
+<p>要从容器外部确定特权模式：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>podman<span class="w"> </span>inspect<span class="w"> </span>--format<span class="o">=</span><span class="s2">&quot;{{.HostConfig.Privileged}}&quot;</span><span class="w"> </span>&lt;container<span class="w"> </span>id&gt;
+</code></pre></div>
+
+<p>如果上面的命令返回 <code>true</code>，那么容器在特权模式下运行。如果返回 <code>false</code>，那么容器在非特权模式下运行。</p>
+<p>要从容器内部确定特权模式：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ip<span class="w"> </span>link<span class="w"> </span>add<span class="w"> </span>dummy0<span class="w"> </span><span class="nb">type</span><span class="w"> </span>dummy
+</code></pre></div>
+
+<p>如果该命令允许你创建一个接口，那么你运行的是一个特权容器，否则你运行的是一个非特权容器。</p>
+<h3>权能</h3>
+<p>命名空间隔离了容器的进程，使其无法任意访问宿主机的资源，也无法访问在同一宿主机上运行的其他容器的资源。然而，在<strong>特权</strong>容器内的进程仍然可以做一些事情，如改变 IP 路由表、跟踪任意进程和加载内核模块。<ruby> 权能 <rt>  Capability </rt></ruby>允许人们对容器内的进程可以访问或更改的资源施加更细微的限制，即使容器在特权模式下运行也一样。权能还允许人们为无特权的容器分配它本来不会拥有的特权。</p>
+<p>例如，如果要将 <code>NET_ADMIN</code> 功能添加到一个无特权的容器中，以便在容器内部创建一个网络接口，你可以用下面的参数运行 <code>podman</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="nx">root</span><span class="err">@</span><span class="nx">vm1</span><span class="w"> </span><span class="o">~</span><span class="p">]</span><span class="err">#</span><span class="w"> </span><span class="nx">podman</span><span class="w"> </span><span class="nx">run</span><span class="w"> </span><span class="o">-</span><span class="nx">it</span><span class="w"> </span><span class="o">--</span><span class="nx">cap</span><span class="o">-</span><span class="nx">add</span><span class="p">=</span><span class="nx">NET_ADMIN</span><span class="w"> </span><span class="nx">centos</span>
+<span class="p">[</span><span class="nx">root</span><span class="err">@</span><span class="nx">b27fea33ccf1</span><span class="w"> </span><span class="o">/</span><span class="p">]</span><span class="err">#</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">link</span><span class="w"> </span><span class="nx">add</span><span class="w"> </span><span class="nx">dummy0</span><span class="w"> </span><span class="k">type</span><span class="w"> </span><span class="nx">dummy</span>
+<span class="p">[</span><span class="nx">root</span><span class="err">@</span><span class="nx">b27fea33ccf1</span><span class="w"> </span><span class="o">/</span><span class="p">]</span><span class="err">#</span><span class="w"> </span><span class="nx">ip</span><span class="w"> </span><span class="nx">link</span>
+</code></pre></div>
+
+<p>上面的命令演示了在一个无特权的容器中创建一个 <code>dummy0</code> 接口。如果没有 <code>NET_ADMIN</code> 权能，非特权容器将无法创建接口。上面的命令演示了如何将一个权能授予一个无特权的容器。</p>
+<p>目前，大约有 <a href="https://man7.org/linux/man-pages/man7/capabilities.7.html">39 种权能</a>可以被授予或拒绝。特权容器默认会被授予许多权能。建议从特权容器中删除不需要的权能，以使其更加安全。</p>
+<p>要从容器中删除所有权能：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>podman<span class="w"> </span>run<span class="w"> </span>-it<span class="w"> </span>-d<span class="w"> </span>--name<span class="w"> </span>mycontainer<span class="w"> </span>--cap-drop<span class="o">=</span>all<span class="w"> </span>centos
+</code></pre></div>
+
+<p>列出一个容器的权能：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>podman<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>48f11d9fa512<span class="w"> </span>capsh<span class="w"> </span>--print
+</code></pre></div>
+
+<p>上述命令显示没有向容器授予任何权能。</p>
+<p>请参考 <code>capabilities</code> 手册页以获取完整的权能列表：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>man<span class="w"> </span>capabilities
+</code></pre></div>
+
+<p>可以使用 <code>capsh</code> 命令来列出目前拥有的权能：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>capsh<span class="w"> </span>--print
+</code></pre></div>
+
+<p>作为另一个例子，下面的命令演示了如何从容器中删除 <code>NET_RAW</code> 权能。如果没有 <code>NET_RAW</code> 权能，就不能从容器中 <code>ping</code> 互联网上的服务器。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>podman<span class="w"> </span>run<span class="w"> </span>-it<span class="w"> </span>--name<span class="w"> </span>mycontainer1<span class="w"> </span>--cap-drop<span class="o">=</span>net_raw<span class="w"> </span>centos
+&gt;&gt;&gt;<span class="w"> </span>ping<span class="w"> </span>google.com<span class="w"> </span><span class="o">(</span>will<span class="w"> </span>output<span class="w"> </span>error,<span class="w"> </span>operation<span class="w"> </span>not<span class="w"> </span>permitted<span class="o">)</span>
+</code></pre></div>
+
+<p>最后一个例子，如果你的容器只需要 <code>SETUID</code> 和 <code>SETGID</code> 权能，你可以删除所有权能，然后只重新添加这两个权能来实现这样的权限设置。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>podman<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>--cap-drop<span class="o">=</span>all<span class="w"> </span>--cap-add<span class="o">=</span>setuid<span class="w"> </span>--cap-add<span class="o">=</span>setgid<span class="w"> </span>fedora<span class="w"> </span>sleep<span class="w"> </span><span class="m">5</span><span class="w"> </span>&gt;<span class="w"> </span>/dev/null<span class="p">;</span><span class="w"> </span>pscap<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>sleep
+</code></pre></div>
+
+<p>上面的 <code>pscap</code> 命令会显示容器被授予的权能。</p>
+<p>我希望你喜欢这个关于如何使用权能来保护 Podman 容器的简短探索。</p>
+<p>谢谢！</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

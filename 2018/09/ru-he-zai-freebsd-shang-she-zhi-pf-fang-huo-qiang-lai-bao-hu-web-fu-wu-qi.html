@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何在 FreeBSD 上设置 PF 防火墙来保护 Web 服务器</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Vivek Gite 我是从 Linux 迁移过来的 FreeBSD 新用户，Linux 中使用的是 netfilter 防火墙框架（LCTT 译注：netfilter 是由 Rusty Russell 提出的 Linux 2.4 内核防火墙框架）。那 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/09/ru-he-zai-freebsd-shang-she-zhi-pf-fang-huo-qiang-lai-bao-hu-web-fu-wu-qi.html" rel="bookmark"
+           title="Permalink to 如何在 FreeBSD 上设置 PF 防火墙来保护 Web 服务器">如何在 FreeBSD 上设置 PF 防火墙来保护 Web 服务器</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-09-15T22:39:00+02:00">
+                Published: Sat 15 September 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Vivek Gite</p>
+<p><img alt="" src="/data/attachment/album/201809/15/223918yw8s808787d6707q.jpg"></p>
+<p>我是从 Linux 迁移过来的 FreeBSD 新用户，Linux 中使用的是 netfilter 防火墙框架（LCTT 译注：netfilter 是由 Rusty Russell 提出的 Linux 2.4 内核防火墙框架）。那么在 FreeBSD 上，我该如何设置 PF 防火墙，来保护只有一个公共 IP 地址和端口的 web 服务器呢？</p>
+<p>PF 是<ruby> 包过滤器 <rt>  packet filter </rt></ruby>的简称。它是为 OpenBSD 开发的，但是已经被移植到了 FreeBSD 以及其它操作系统上。PF 是一个包状态过滤引擎。在这篇教程中，我将向你展示如何在 FreeBSD 10.x 以及 11.x 中设置 PF 防火墙，从而来保护 web 服务器。</p>
+<h3>第一步：开启 PF 防火墙</h3>
+<p>你需要把下面这几行内容添加到文件 <code>/etc/rc.conf</code> 文件中：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># echo &#39;pf_enable=&quot;YES&quot;&#39; &gt;&gt; /etc/rc.conf</span>
+<span class="c1"># echo &#39;pf_rules=&quot;/usr/local/etc/pf.conf&quot;&#39; &gt;&gt; /etc/rc.conf</span>
+<span class="c1"># echo &#39;pflog_enable=&quot;YES&quot;&#39; &gt;&gt; /etc/rc.conf</span>
+<span class="c1"># echo &#39;pflog_logfile=&quot;/var/log/pflog&quot;&#39; &gt;&gt; /etc/rc.conf</span>
+</code></pre></div>
+
+<p>在这里：</p>
+<ol>
+<li><code>pf_enable="YES"</code> - 开启 PF 服务</li>
+<li><code>pf_rules="/usr/local/etc/pf.conf"</code> - 从文件 <code>/usr/local/etc/pf.conf</code> 中读取 PF 规则</li>
+<li><code>pflog_enable="YES"</code> - 为 PF 服务打开日志支持</li>
+<li><code>pflog_logfile="/var/log/pflog"</code> - 存储日志的文件，即日志存于文件 <code>/var/log/pflog</code> 中</li>
+</ol>
+<h3>第二步：在 <code>/usr/local/etc/pf.conf</code> 文件中创建防火墙规则</h3>
+<p>输入下面这个命令打开文件（超级用户模式下）：</p>
+<div class="highlight"><pre><span></span><code># vi /usr/local/etc/pf.conf
+</code></pre></div>
+
+<p>在文件中添加下面这些 PF 规则集：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="nx">vim</span><span class="p">:</span><span class="w"> </span><span class="nx">set</span><span class="w"> </span><span class="nx">ft</span><span class="p">=</span><span class="nx">pf</span>
+<span class="err">#</span><span class="w"> </span><span class="o">/</span><span class="nx">usr</span><span class="o">/</span><span class="nx">local</span><span class="o">/</span><span class="nx">etc</span><span class="o">/</span><span class="nx">pf</span><span class="p">.</span><span class="nx">conf</span>
+
+<span class="err">##</span><span class="w"> </span><span class="nx">设置公共端口</span><span class="w"> </span><span class="err">##</span>
+<span class="nx">ext_if</span><span class="p">=</span><span class="s">&quot;vtnet0&quot;</span>
+
+<span class="err">##</span><span class="w"> </span><span class="nx">设置服务器公共</span><span class="w"> </span><span class="nx">IP</span><span class="w"> </span><span class="nx">地址</span><span class="w"> </span><span class="err">##</span>
+<span class="nx">ext_if_ip</span><span class="p">=</span><span class="s">&quot;172.xxx.yyy.zzz&quot;</span>
+
+<span class="err">##</span><span class="w"> </span><span class="nx">设置并删除下面这些公共端口上的</span><span class="w"> </span><span class="nx">IP</span><span class="w"> </span><span class="nx">范围</span><span class="w"> </span><span class="err">##</span>
+<span class="nx">martians</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">&quot;{ 127.0.0.0/8, 192.168.0.0/16, 172.16.0.0/12, \</span>
+<span class="s">          10.0.0.0/8, 169.254.0.0/16, 192.0.2.0/24, \</span>
+<span class="s">          0.0.0.0/8, 240.0.0.0/4 }&quot;</span>
+
+<span class="err">##</span><span class="w"> </span><span class="nx">设置</span><span class="w"> </span><span class="nx">http</span><span class="p">(</span><span class="mi">80</span><span class="p">)</span><span class="o">/</span><span class="nx">https</span><span class="w"> </span><span class="p">(</span><span class="mi">443</span><span class="p">)</span><span class="w"> </span><span class="nx">端口</span><span class="w"> </span><span class="err">##</span>
+<span class="nx">webports</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">&quot;{http, https}&quot;</span>
+
+<span class="err">##</span><span class="w"> </span><span class="nx">启用下面这些服务</span><span class="w"> </span><span class="err">##</span>
+<span class="nx">int_tcp_services</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">&quot;{domain, ntp, smtp, www, https, ftp, ssh}&quot;</span>
+<span class="nx">int_udp_services</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">&quot;{domain, ntp}&quot;</span>
+
+<span class="err">##</span><span class="w"> </span><span class="nx">跳过回环端口</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">跳过端口上的所有</span><span class="w"> </span><span class="nx">PF</span><span class="w"> </span><span class="nx">处理</span><span class="w"> </span><span class="err">##</span>
+<span class="nx">set</span><span class="w"> </span><span class="nx">skip</span><span class="w"> </span><span class="nx">on</span><span class="w"> </span><span class="nx">lo</span>
+
+<span class="err">##</span><span class="w"> </span><span class="nx">设置</span><span class="w"> </span><span class="nx">PF</span><span class="w"> </span><span class="nx">应该统计的端口信息</span><span class="err">，</span><span class="nx">如发送</span><span class="o">/</span><span class="nx">接收字节数</span><span class="err">，</span><span class="nx">通过</span><span class="o">/</span><span class="nx">禁止的包的数目</span><span class="w"> </span><span class="err">##</span>
+<span class="nx">set</span><span class="w"> </span><span class="nx">loginterface</span><span class="w"> </span><span class="err">$</span><span class="nx">ext_if</span>
+
+<span class="err">##</span><span class="w"> </span><span class="nx">设置默认策略</span><span class="w"> </span><span class="err">##</span>
+<span class="nx">block</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">log</span><span class="w"> </span><span class="nx">all</span>
+<span class="nx">block</span><span class="w"> </span><span class="nx">out</span><span class="w"> </span><span class="nx">all</span>
+
+<span class="err">#</span><span class="w"> </span><span class="nx">基于</span><span class="w"> </span><span class="nx">IP</span><span class="w"> </span><span class="nx">分片的错误处理来防御攻击</span><span class="w"> </span>
+<span class="nx">scrub</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">all</span>
+
+<span class="err">#</span><span class="w"> </span><span class="nx">删除所有不可达路由地址</span>
+<span class="nx">block</span><span class="w"> </span><span class="nx">drop</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">quick</span><span class="w"> </span><span class="nx">on</span><span class="w"> </span><span class="err">$</span><span class="nx">ext_if</span><span class="w"> </span><span class="nx">from</span><span class="w"> </span><span class="err">$</span><span class="nx">martians</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">any</span>
+<span class="nx">block</span><span class="w"> </span><span class="nx">drop</span><span class="w"> </span><span class="nx">out</span><span class="w"> </span><span class="nx">quick</span><span class="w"> </span><span class="nx">on</span><span class="w"> </span><span class="err">$</span><span class="nx">ext_if</span><span class="w"> </span><span class="nx">from</span><span class="w"> </span><span class="nx">any</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="err">$</span><span class="nx">martians</span>
+
+<span class="err">##</span><span class="w"> </span><span class="nx">禁止欺骗包</span>
+<span class="nx">antispoof</span><span class="w"> </span><span class="nx">quick</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="err">$</span><span class="nx">ext_if</span>
+
+<span class="err">#</span><span class="w"> </span><span class="nx">打开</span><span class="w"> </span><span class="nx">SSH</span><span class="w"> </span><span class="nx">端口</span><span class="err">，</span><span class="nx">SSH</span><span class="w"> </span><span class="nx">服务仅从</span><span class="w"> </span><span class="nx">VPN</span><span class="w"> </span><span class="nx">IP</span><span class="w"> </span><span class="mi">139</span><span class="p">.</span><span class="nx">xx</span><span class="p">.</span><span class="nx">yy</span><span class="p">.</span><span class="nx">zz</span><span class="w"> </span><span class="nx">监听</span><span class="w"> </span><span class="mi">22</span><span class="w"> </span><span class="nx">号端口</span>
+<span class="err">#</span><span class="w"> </span><span class="nx">出于安全原因</span><span class="err">，</span><span class="nx">我不允许</span><span class="o">/</span><span class="nx">接收</span><span class="w"> </span><span class="nx">SSH</span><span class="w"> </span><span class="nx">流量</span>
+<span class="nx">pass</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">quick</span><span class="w"> </span><span class="nx">on</span><span class="w"> </span><span class="err">$</span><span class="nx">ext_if</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">proto</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">from</span><span class="w"> </span><span class="mi">139</span><span class="p">.</span><span class="nx">xxx</span><span class="p">.</span><span class="nx">yyy</span><span class="p">.</span><span class="nx">zzz</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="err">$</span><span class="nx">ext_if_ip</span><span class="w"> </span><span class="nx">port</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">ssh</span><span class="w"> </span><span class="nx">flags</span><span class="w"> </span><span class="nx">S</span><span class="o">/</span><span class="nx">SA</span><span class="w"> </span><span class="nx">keep</span><span class="w"> </span><span class="nx">state</span><span class="w"> </span><span class="nx">label</span><span class="w"> </span><span class="s">&quot;USER_RULE: Allow SSH from 139.xxx.yyy.zzz&quot;</span>
+<span class="err">##</span><span class="w"> </span><span class="nx">使用下面这些规则来为所有来自任何</span><span class="w"> </span><span class="nx">IP</span><span class="w"> </span><span class="nx">地址的用户开启</span><span class="w"> </span><span class="nx">SSH</span><span class="w"> </span><span class="nx">服务</span><span class="w"> </span><span class="err">#</span>
+<span class="err">##</span><span class="w"> </span><span class="nx">pass</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">proto</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="err">$</span><span class="nx">ext_if</span><span class="w"> </span><span class="nx">port</span><span class="w"> </span><span class="nx">ssh</span>
+<span class="err">###</span><span class="w"> </span><span class="p">[</span><span class="w"> </span><span class="nx">OR</span><span class="w"> </span><span class="p">]</span><span class="w"> </span><span class="err">###</span>
+<span class="err">##</span><span class="w"> </span><span class="nx">pass</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">proto</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="err">$</span><span class="nx">ext_if</span><span class="w"> </span><span class="nx">port</span><span class="w"> </span><span class="mi">22</span><span class="w"> </span>
+
+<span class="err">#</span><span class="w"> </span><span class="nx">Allow</span><span class="w"> </span><span class="nx">Ping</span><span class="o">-</span><span class="nx">Pong</span><span class="w"> </span><span class="nx">stuff</span><span class="p">.</span><span class="w"> </span><span class="nx">Be</span><span class="w"> </span><span class="nx">a</span><span class="w"> </span><span class="nx">good</span><span class="w"> </span><span class="nx">sysadmin</span><span class="w"> </span>
+<span class="nx">pass</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">proto</span><span class="w"> </span><span class="nx">icmp</span><span class="w"> </span><span class="nx">icmp</span><span class="o">-</span><span class="k">type</span><span class="w"> </span><span class="nx">echoreq</span>
+
+<span class="err">#</span><span class="w"> </span><span class="nx">All</span><span class="w"> </span><span class="nx">access</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">our</span><span class="w"> </span><span class="nx">Nginx</span><span class="o">/</span><span class="nx">Apache</span><span class="o">/</span><span class="nx">Lighttpd</span><span class="w"> </span><span class="nx">Webserver</span><span class="w"> </span><span class="nx">ports</span><span class="w"> </span>
+<span class="nx">pass</span><span class="w"> </span><span class="nx">proto</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">from</span><span class="w"> </span><span class="nx">any</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="err">$</span><span class="nx">ext_if</span><span class="w"> </span><span class="nx">port</span><span class="w"> </span><span class="err">$</span><span class="nx">webports</span>
+
+<span class="err">#</span><span class="w"> </span><span class="nx">允许重要的发送流量</span>
+<span class="nx">pass</span><span class="w"> </span><span class="nx">out</span><span class="w"> </span><span class="nx">quick</span><span class="w"> </span><span class="nx">on</span><span class="w"> </span><span class="err">$</span><span class="nx">ext_if</span><span class="w"> </span><span class="nx">proto</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">any</span><span class="w"> </span><span class="nx">port</span><span class="w"> </span><span class="err">$</span><span class="nx">int_tcp_services</span>
+<span class="nx">pass</span><span class="w"> </span><span class="nx">out</span><span class="w"> </span><span class="nx">quick</span><span class="w"> </span><span class="nx">on</span><span class="w"> </span><span class="err">$</span><span class="nx">ext_if</span><span class="w"> </span><span class="nx">proto</span><span class="w"> </span><span class="nx">udp</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">any</span><span class="w"> </span><span class="nx">port</span><span class="w"> </span><span class="err">$</span><span class="nx">int_udp_services</span>
+
+<span class="err">#</span><span class="w"> </span><span class="nx">在下面添加自定义规则</span>
+</code></pre></div>
+
+<p>保存并关闭文件。欢迎来参考我的<a href="https://github.com/nixcraft/pf.conf/blob/master/pf.conf">规则集</a>。如果要检查语法错误，可以运行：</p>
+<div class="highlight"><pre><span></span><code># service pf check
+</code></pre></div>
+
+<p>或</p>
+<div class="highlight"><pre><span></span><code>/etc/rc.d/pf check
+</code></pre></div>
+
+<p>或</p>
+<div class="highlight"><pre><span></span><code># pfctl -n -f /usr/local/etc/pf.conf
+</code></pre></div>
+
+<h3>第三步：开始运行 PF 防火墙</h3>
+<p>命令如下。请小心，如果是基于 SSH 的会话，你可能会和服务器断开连接。</p>
+<h4>开启 PF 防火墙：</h4>
+<div class="highlight"><pre><span></span><code># service pf start
+</code></pre></div>
+
+<h4>停用 PF 防火墙：</h4>
+<div class="highlight"><pre><span></span><code># service pf stop
+</code></pre></div>
+
+<h4>检查语法错误：</h4>
+<div class="highlight"><pre><span></span><code># service pf check
+</code></pre></div>
+
+<h4>重启服务：</h4>
+<div class="highlight"><pre><span></span><code># service pf restart
+</code></pre></div>
+
+<h4>查看 PF 状态：</h4>
+<div class="highlight"><pre><span></span><code># service pf status
+</code></pre></div>
+
+<p>示例输出：</p>
+<div class="highlight"><pre><span></span><code><span class="n">Status</span><span class="o">:</span><span class="w"> </span><span class="n">Enabled</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="n">days</span><span class="w"> </span><span class="mi">00</span><span class="o">:</span><span class="mi">02</span><span class="o">:</span><span class="mi">18</span><span class="w">           </span><span class="n">Debug</span><span class="o">:</span><span class="w"> </span><span class="n">Urgent</span>
+
+<span class="n">Interface</span><span class="w"> </span><span class="n">Stats</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">vtnet0</span><span class="w">            </span><span class="n">IPv4</span><span class="w">             </span><span class="n">IPv6</span>
+<span class="w">  </span><span class="n">Bytes</span><span class="w"> </span><span class="n">In</span><span class="w">                           </span><span class="mi">19463</span><span class="w">                </span><span class="mi">0</span>
+<span class="w">  </span><span class="n">Bytes</span><span class="w"> </span><span class="n">Out</span><span class="w">                          </span><span class="mi">18541</span><span class="w">                </span><span class="mi">0</span>
+<span class="w">  </span><span class="n">Packets</span><span class="w"> </span><span class="n">In</span>
+<span class="w">    </span><span class="n">Passed</span><span class="w">                             </span><span class="mi">244</span><span class="w">                </span><span class="mi">0</span>
+<span class="w">    </span><span class="n">Blocked</span><span class="w">                              </span><span class="mi">3</span><span class="w">                </span><span class="mi">0</span>
+<span class="w">  </span><span class="n">Packets</span><span class="w"> </span><span class="n">Out</span>
+<span class="w">    </span><span class="n">Passed</span><span class="w">                             </span><span class="mi">136</span><span class="w">                </span><span class="mi">0</span>
+<span class="w">    </span><span class="n">Blocked</span><span class="w">                             </span><span class="mi">12</span><span class="w">                </span><span class="mi">0</span>
+
+<span class="n">State</span><span class="w"> </span><span class="n">Table</span><span class="w">                          </span><span class="n">Total</span><span class="w">             </span><span class="n">Rate</span>
+<span class="w">  </span><span class="n">current</span><span class="w"> </span><span class="n">entries</span><span class="w">                        </span><span class="mi">1</span><span class="w">               </span>
+<span class="w">  </span><span class="n">searches</span><span class="w">                             </span><span class="mi">395</span><span class="w">            </span><span class="mf">2.9</span><span class="o">/</span><span class="n">s</span>
+<span class="w">  </span><span class="n">inserts</span><span class="w">                                </span><span class="mi">4</span><span class="w">            </span><span class="mf">0.0</span><span class="o">/</span><span class="n">s</span>
+<span class="w">  </span><span class="n">removals</span><span class="w">                               </span><span class="mi">3</span><span class="w">            </span><span class="mf">0.0</span><span class="o">/</span><span class="n">s</span>
+<span class="n">Counters</span>
+<span class="w">  </span><span class="n">match</span><span class="w">                                 </span><span class="mi">19</span><span class="w">            </span><span class="mf">0.1</span><span class="o">/</span><span class="n">s</span>
+<span class="w">  </span><span class="n">bad</span><span class="o">-</span><span class="n">offset</span><span class="w">                             </span><span class="mi">0</span><span class="w">            </span><span class="mf">0.0</span><span class="o">/</span><span class="n">s</span>
+<span class="w">  </span><span class="n">fragment</span><span class="w">                               </span><span class="mi">0</span><span class="w">            </span><span class="mf">0.0</span><span class="o">/</span><span class="n">s</span>
+<span class="w">  </span><span class="n">short</span><span class="w">                                  </span><span class="mi">0</span><span class="w">            </span><span class="mf">0.0</span><span class="o">/</span><span class="n">s</span>
+<span class="w">  </span><span class="n">normalize</span><span class="w">                              </span><span class="mi">0</span><span class="w">            </span><span class="mf">0.0</span><span class="o">/</span><span class="n">s</span>
+<span class="w">  </span><span class="n">memory</span><span class="w">                                 </span><span class="mi">0</span><span class="w">            </span><span class="mf">0.0</span><span class="o">/</span><span class="n">s</span>
+<span class="w">  </span><span class="n">bad</span><span class="o">-</span><span class="n">timestamp</span><span class="w">                          </span><span class="mi">0</span><span class="w">            </span><span class="mf">0.0</span><span class="o">/</span><span class="n">s</span>
+<span class="w">  </span><span class="n">congestion</span><span class="w">                             </span><span class="mi">0</span><span class="w">            </span><span class="mf">0.0</span><span class="o">/</span><span class="n">s</span>
+<span class="w">  </span><span class="n">ip</span><span class="o">-</span><span class="n">option</span><span class="w">                              </span><span class="mi">0</span><span class="w">            </span><span class="mf">0.0</span><span class="o">/</span><span class="n">s</span>
+<span class="w">  </span><span class="n">proto</span><span class="o">-</span><span class="n">cksum</span><span class="w">                            </span><span class="mi">0</span><span class="w">            </span><span class="mf">0.0</span><span class="o">/</span><span class="n">s</span>
+<span class="w">  </span><span class="n">state</span><span class="o">-</span><span class="n">mismatch</span><span class="w">                         </span><span class="mi">0</span><span class="w">            </span><span class="mf">0.0</span><span class="o">/</span><span class="n">s</span>
+<span class="w">  </span><span class="n">state</span><span class="o">-</span><span class="n">insert</span><span class="w">                           </span><span class="mi">0</span><span class="w">            </span><span class="mf">0.0</span><span class="o">/</span><span class="n">s</span>
+<span class="w">  </span><span class="n">state</span><span class="o">-</span><span class="n">limit</span><span class="w">                            </span><span class="mi">0</span><span class="w">            </span><span class="mf">0.0</span><span class="o">/</span><span class="n">s</span>
+<span class="w">  </span><span class="n">src</span><span class="o">-</span><span class="n">limit</span><span class="w">                              </span><span class="mi">0</span><span class="w">            </span><span class="mf">0.0</span><span class="o">/</span><span class="n">s</span>
+<span class="w">  </span><span class="n">synproxy</span><span class="w">                               </span><span class="mi">0</span><span class="w">            </span><span class="mf">0.0</span><span class="o">/</span><span class="n">s</span>
+<span class="w">  </span><span class="n">map</span><span class="o">-</span><span class="n">failed</span><span class="w">                             </span><span class="mi">0</span><span class="w">            </span><span class="mf">0.0</span><span class="o">/</span><span class="n">s</span>
+</code></pre></div>
+
+<h4>开启/关闭/重启 pflog 服务的命令</h4>
+<p>输入下面这些命令：</p>
+<div class="highlight"><pre><span></span><code># service pflog start
+# service pflog stop
+# service pflog restart
+</code></pre></div>
+
+<h3>第四步：<code>pfctl</code> 命令的简单介绍</h3>
+<p>你需要使用 <code>pfctl</code> 命令来查看 PF 规则集和参数配置，包括来自<ruby> 包过滤器 <rt>  packet filter </rt></ruby>的状态信息。让我们来看一下所有常见命令：</p>
+<h4>显示 PF 规则信息</h4>
+<div class="highlight"><pre><span></span><code># pfctl -s rules
+</code></pre></div>
+
+<p>示例输出：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">block</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">log</span><span class="w"> </span><span class="nx">all</span>
+<span class="nx">block</span><span class="w"> </span><span class="nx">drop</span><span class="w"> </span><span class="nx">out</span><span class="w"> </span><span class="nx">all</span>
+<span class="nx">block</span><span class="w"> </span><span class="nx">drop</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">quick</span><span class="w"> </span><span class="nx">on</span><span class="w"> </span><span class="p">!</span><span class="w"> </span><span class="nx">vtnet0</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">from</span><span class="w"> </span><span class="mi">172</span><span class="p">.</span><span class="nx">xxx</span><span class="p">.</span><span class="nx">yyy</span><span class="p">.</span><span class="nx">zzz</span><span class="o">/</span><span class="mi">24</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">any</span>
+<span class="nx">block</span><span class="w"> </span><span class="nx">drop</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">quick</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">from</span><span class="w"> </span><span class="mi">172</span><span class="p">.</span><span class="nx">xxx</span><span class="p">.</span><span class="nx">yyy</span><span class="p">.</span><span class="nx">zzz</span><span class="o">/</span><span class="mi">24</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">any</span>
+<span class="nx">pass</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">quick</span><span class="w"> </span><span class="nx">on</span><span class="w"> </span><span class="nx">vtnet0</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">proto</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">from</span><span class="w"> </span><span class="mi">139</span><span class="p">.</span><span class="nx">aaa</span><span class="p">.</span><span class="nx">ccc</span><span class="p">.</span><span class="nx">ddd</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="mi">172</span><span class="p">.</span><span class="nx">xxx</span><span class="p">.</span><span class="nx">yyy</span><span class="p">.</span><span class="nx">zzz</span><span class="o">/</span><span class="mi">24</span><span class="w"> </span><span class="nx">port</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">ssh</span><span class="w"> </span><span class="nx">flags</span><span class="w"> </span><span class="nx">S</span><span class="o">/</span><span class="nx">SA</span><span class="w"> </span><span class="nx">keep</span><span class="w"> </span><span class="nx">state</span><span class="w"> </span><span class="nx">label</span><span class="w"> </span><span class="s">&quot;USER_RULE: Allow SSH from 139.aaa.ccc.ddd&quot;</span>
+<span class="nx">pass</span><span class="w"> </span><span class="nx">inet</span><span class="w"> </span><span class="nx">proto</span><span class="w"> </span><span class="nx">icmp</span><span class="w"> </span><span class="nx">all</span><span class="w"> </span><span class="nx">icmp</span><span class="o">-</span><span class="k">type</span><span class="w"> </span><span class="nx">echoreq</span><span class="w"> </span><span class="nx">keep</span><span class="w"> </span><span class="nx">state</span>
+<span class="nx">pass</span><span class="w"> </span><span class="nx">out</span><span class="w"> </span><span class="nx">quick</span><span class="w"> </span><span class="nx">on</span><span class="w"> </span><span class="nx">vtnet0</span><span class="w"> </span><span class="nx">proto</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">from</span><span class="w"> </span><span class="nx">any</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">any</span><span class="w"> </span><span class="nx">port</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">domain</span><span class="w"> </span><span class="nx">flags</span><span class="w"> </span><span class="nx">S</span><span class="o">/</span><span class="nx">SA</span><span class="w"> </span><span class="nx">keep</span><span class="w"> </span><span class="nx">state</span>
+<span class="nx">pass</span><span class="w"> </span><span class="nx">out</span><span class="w"> </span><span class="nx">quick</span><span class="w"> </span><span class="nx">on</span><span class="w"> </span><span class="nx">vtnet0</span><span class="w"> </span><span class="nx">proto</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">from</span><span class="w"> </span><span class="nx">any</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">any</span><span class="w"> </span><span class="nx">port</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">ntp</span><span class="w"> </span><span class="nx">flags</span><span class="w"> </span><span class="nx">S</span><span class="o">/</span><span class="nx">SA</span><span class="w"> </span><span class="nx">keep</span><span class="w"> </span><span class="nx">state</span>
+<span class="nx">pass</span><span class="w"> </span><span class="nx">out</span><span class="w"> </span><span class="nx">quick</span><span class="w"> </span><span class="nx">on</span><span class="w"> </span><span class="nx">vtnet0</span><span class="w"> </span><span class="nx">proto</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">from</span><span class="w"> </span><span class="nx">any</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">any</span><span class="w"> </span><span class="nx">port</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">smtp</span><span class="w"> </span><span class="nx">flags</span><span class="w"> </span><span class="nx">S</span><span class="o">/</span><span class="nx">SA</span><span class="w"> </span><span class="nx">keep</span><span class="w"> </span><span class="nx">state</span>
+<span class="nx">pass</span><span class="w"> </span><span class="nx">out</span><span class="w"> </span><span class="nx">quick</span><span class="w"> </span><span class="nx">on</span><span class="w"> </span><span class="nx">vtnet0</span><span class="w"> </span><span class="nx">proto</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">from</span><span class="w"> </span><span class="nx">any</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">any</span><span class="w"> </span><span class="nx">port</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">http</span><span class="w"> </span><span class="nx">flags</span><span class="w"> </span><span class="nx">S</span><span class="o">/</span><span class="nx">SA</span><span class="w"> </span><span class="nx">keep</span><span class="w"> </span><span class="nx">state</span>
+<span class="nx">pass</span><span class="w"> </span><span class="nx">out</span><span class="w"> </span><span class="nx">quick</span><span class="w"> </span><span class="nx">on</span><span class="w"> </span><span class="nx">vtnet0</span><span class="w"> </span><span class="nx">proto</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">from</span><span class="w"> </span><span class="nx">any</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">any</span><span class="w"> </span><span class="nx">port</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">https</span><span class="w"> </span><span class="nx">flags</span><span class="w"> </span><span class="nx">S</span><span class="o">/</span><span class="nx">SA</span><span class="w"> </span><span class="nx">keep</span><span class="w"> </span><span class="nx">state</span>
+<span class="nx">pass</span><span class="w"> </span><span class="nx">out</span><span class="w"> </span><span class="nx">quick</span><span class="w"> </span><span class="nx">on</span><span class="w"> </span><span class="nx">vtnet0</span><span class="w"> </span><span class="nx">proto</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">from</span><span class="w"> </span><span class="nx">any</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">any</span><span class="w"> </span><span class="nx">port</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">ftp</span><span class="w"> </span><span class="nx">flags</span><span class="w"> </span><span class="nx">S</span><span class="o">/</span><span class="nx">SA</span><span class="w"> </span><span class="nx">keep</span><span class="w"> </span><span class="nx">state</span>
+<span class="nx">pass</span><span class="w"> </span><span class="nx">out</span><span class="w"> </span><span class="nx">quick</span><span class="w"> </span><span class="nx">on</span><span class="w"> </span><span class="nx">vtnet0</span><span class="w"> </span><span class="nx">proto</span><span class="w"> </span><span class="nx">tcp</span><span class="w"> </span><span class="nx">from</span><span class="w"> </span><span class="nx">any</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">any</span><span class="w"> </span><span class="nx">port</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">ssh</span><span class="w"> </span><span class="nx">flags</span><span class="w"> </span><span class="nx">S</span><span class="o">/</span><span class="nx">SA</span><span class="w"> </span><span class="nx">keep</span><span class="w"> </span><span class="nx">state</span>
+<span class="nx">pass</span><span class="w"> </span><span class="nx">out</span><span class="w"> </span><span class="nx">quick</span><span class="w"> </span><span class="nx">on</span><span class="w"> </span><span class="nx">vtnet0</span><span class="w"> </span><span class="nx">proto</span><span class="w"> </span><span class="nx">udp</span><span class="w"> </span><span class="nx">from</span><span class="w"> </span><span class="nx">any</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">any</span><span class="w"> </span><span class="nx">port</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">domain</span><span class="w"> </span><span class="nx">keep</span><span class="w"> </span><span class="nx">state</span>
+<span class="nx">pass</span><span class="w"> </span><span class="nx">out</span><span class="w"> </span><span class="nx">quick</span><span class="w"> </span><span class="nx">on</span><span class="w"> </span><span class="nx">vtnet0</span><span class="w"> </span><span class="nx">proto</span><span class="w"> </span><span class="nx">udp</span><span class="w"> </span><span class="nx">from</span><span class="w"> </span><span class="nx">any</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">any</span><span class="w"> </span><span class="nx">port</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">ntp</span><span class="w"> </span><span class="nx">keep</span><span class="w"> </span><span class="nx">state</span>
+</code></pre></div>
+
+<h4>显示每条规则的详细内容</h4>
+<div class="highlight"><pre><span></span><code># pfctl -v -s rules
+</code></pre></div>
+
+<p>在每条规则的详细输出中添加规则编号：</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span><span class="nv">pfctl</span><span class="w"> </span><span class="o">-</span><span class="nv">vvsr</span><span class="w"> </span><span class="k">show</span>
+</code></pre></div>
+
+<h4>显示状态信息</h4>
+<div class="highlight"><pre><span></span><code># pfctl -s state
+# pfctl -s state | more
+# pfctl -s state | grep &#39;something&#39;
+</code></pre></div>
+
+<h4>如何在命令行中禁止 PF 服务</h4>
+<div class="highlight"><pre><span></span><code># pfctl -d
+</code></pre></div>
+
+<h4>如何在命令行中启用 PF 服务</h4>
+<div class="highlight"><pre><span></span><code># pfctl -e
+</code></pre></div>
+
+<h4>如何在命令行中刷新 PF 规则/NAT/路由表</h4>
+<div class="highlight"><pre><span></span><code># pfctl -F all
+</code></pre></div>
+
+<p>示例输出：</p>
+<div class="highlight"><pre><span></span><code>rules cleared
+nat cleared
+0 tables deleted.
+2 states cleared
+source tracking entries cleared
+pf: statistics cleared
+pf: interface flags reset
+</code></pre></div>
+
+<h4>如何在命令行中仅刷新 PF 规则</h4>
+<div class="highlight"><pre><span></span><code># pfctl -F rules
+</code></pre></div>
+
+<h4>如何在命令行中仅刷新队列</h4>
+<div class="highlight"><pre><span></span><code># pfctl -F queue
+</code></pre></div>
+
+<h4>如何在命令行中刷新统计信息（它不是任何规则的一部分）</h4>
+<div class="highlight"><pre><span></span><code># pfctl -F info
+</code></pre></div>
+
+<h4>如何在命令行中清除所有计数器</h4>
+<div class="highlight"><pre><span></span><code># pfctl -z clear
+</code></pre></div>
+
+<h3>第五步：查看 PF 日志</h3>
+<p>PF 日志是二进制格式的。使用下面这一命令来查看：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># tcpdump -n -e -ttt -r /var/log/pflog</span>
+</code></pre></div>
+
+<p>示例输出：</p>
+<div class="highlight"><pre><span></span><code>Aug 29 15:41:11.757829 rule 0/(match) block in on vio0: 86.47.225.151.55806 &gt; 45.FOO.BAR.IP.23: S 757158343:757158343(0) win 52206 [tos 0x28]
+Aug 29 15:41:44.193309 rule 0/(match) block in on vio0: 5.196.83.88.25461 &gt; 45.FOO.BAR.IP.26941: S 2224505792:2224505792(0) ack 4252565505 win 17520 (DF) [tos 0x24]
+Aug 29 15:41:54.628027 rule 0/(match) block in on vio0: 45.55.13.94.50217 &gt; 45.FOO.BAR.IP.465: S 3941123632:3941123632(0) win 65535
+Aug 29 15:42:11.126427 rule 0/(match) block in on vio0: 87.250.224.127.59862 &gt; 45.FOO.BAR.IP.80: S 248176545:248176545(0) win 28200 &lt;mss 1410,sackOK,timestamp 1044055305 0,nop,wscale 8&gt; (DF)
+Aug 29 15:43:04.953537 rule 0/(match) block in on vio0: 77.72.82.22.47218 &gt; 45.FOO.BAR.IP.7475: S 1164335542:1164335542(0) win 1024
+Aug 29 15:43:05.122156 rule 0/(match) block in on vio0: 77.72.82.22.47218 &gt; 45.FOO.BAR.IP.7475: R 1164335543:1164335543(0) win 1200
+Aug 29 15:43:37.302410 rule 0/(match) block in on vio0: 94.130.12.27.18080 &gt; 45.FOO.BAR.IP.64857: S 683904905:683904905(0) ack 4000841729 win 16384 &lt;mss 1460&gt;
+Aug 29 15:44:46.574863 rule 0/(match) block in on vio0: 77.72.82.22.47218 &gt; 45.FOO.BAR.IP.7677: S 3451987887:3451987887(0) win 1024
+Aug 29 15:44:46.819754 rule 0/(match) block in on vio0: 77.72.82.22.47218 &gt; 45.FOO.BAR.IP.7677: R 3451987888:3451987888(0) win 1200
+Aug 29 15:45:21.194752 rule 0/(match) block in on vio0: 185.40.4.130.55910 &gt; 45.FOO.BAR.IP.80: S 3106068642:3106068642(0) win 1024
+Aug 29 15:45:32.999219 rule 0/(match) block in on vio0: 185.40.4.130.55910 &gt; 45.FOO.BAR.IP.808: S 322591763:322591763(0) win 1024
+Aug 29 15:46:30.157884 rule 0/(match) block in on vio0: 77.72.82.22.47218 &gt; 45.FOO.BAR.IP.6511: S 2412580953:2412580953(0) win 1024 [tos 0x28]
+Aug 29 15:46:30.252023 rule 0/(match) block in on vio0: 77.72.82.22.47218 &gt; 45.FOO.BAR.IP.6511: R 2412580954:2412580954(0) win 1200 [tos 0x28]
+Aug 29 15:49:44.337015 rule 0/(match) block in on vio0: 189.219.226.213.22640 &gt; 45.FOO.BAR.IP.23: S 14807:14807(0) win 14600 [tos 0x28]
+Aug 29 15:49:55.161572 rule 0/(match) block in on vio0: 5.196.83.88.25461 &gt; 45.FOO.BAR.IP.40321: S 1297217585:1297217585(0) ack 1051525121 win 17520 (DF) [tos 0x24]
+Aug 29 15:49:59.735391 rule 0/(match) block in on vio0: 36.7.147.209.2545 &gt; 45.FOO.BAR.IP.3389: SWE 3577047469:3577047469(0) win 8192 &lt;mss 1460,nop,wscale 8,nop,nop,sackOK&gt; (DF) [tos 0x2 (E)]
+Aug 29 15:50:00.703229 rule 0/(match) block in on vio0: 36.7.147.209.2546 &gt; 45.FOO.BAR.IP.3389: SWE 1539382950:1539382950(0) win 8192 &lt;mss 1460,nop,wscale 8,nop,nop,sackOK&gt; (DF) [tos 0x2 (E)]
+Aug 29 15:51:33.880334 rule 0/(match) block in on vio0: 45.55.22.21.53510 &gt; 45.FOO.BAR.IP.2362: udp 14
+Aug 29 15:51:34.006656 rule 0/(match) block in on vio0: 77.72.82.22.47218 &gt; 45.FOO.BAR.IP.6491: S 151489102:151489102(0) win 1024 [tos 0x28]
+Aug 29 15:51:34.274654 rule 0/(match) block in on vio0: 77.72.82.22.47218 &gt; 45.FOO.BAR.IP.6491: R 151489103:151489103(0) win 1200 [tos 0x28]
+Aug 29 15:51:36.393019 rule 0/(match) block in on vio0: 60.191.38.78.4249 &gt; 45.FOO.BAR.IP.8000: S 3746478095:3746478095(0) win 29200 (DF)
+Aug 29 15:51:57.213051 rule 0/(match) block in on vio0: 24.137.245.138.7343 &gt; 45.FOO.BAR.IP.5358: S 14134:14134(0) win 14600
+Aug 29 15:52:37.852219 rule 0/(match) block in on vio0: 122.226.185.125.51128 &gt; 45.FOO.BAR.IP.23: S 1715745381:1715745381(0) win 5840 &lt;mss 1420,sackOK,timestamp 13511417 0,nop,wscale 2&gt; (DF)
+Aug 29 15:53:31.309325 rule 0/(match) block in on vio0: 189.218.148.69.377 &gt; 45.FOO.BAR.IP5358: S 65340:65340(0) win 14600 [tos 0x28]
+Aug 29 15:53:31.809570 rule 0/(match) block in on vio0: 13.93.104.140.53184 &gt; 45.FOO.BAR.IP.1433: S 39854048:39854048(0) win 1024
+Aug 29 15:53:32.138231 rule 0/(match) block in on vio0: 13.93.104.140.53184 &gt; 45.FOO.BAR.IP.1433: R 39854049:39854049(0) win 1200
+Aug 29 15:53:41.459088 rule 0/(match) block in on vio0: 77.72.82.22.47218 &gt; 45.FOO.BAR.IP.6028: S 168338703:168338703(0) win 1024
+Aug 29 15:53:41.789732 rule 0/(match) block in on vio0: 77.72.82.22.47218 &gt; 45.FOO.BAR.IP.6028: R 168338704:168338704(0) win 1200
+Aug 29 15:54:34.993594 rule 0/(match) block in on vio0: 212.47.234.50.5102 &gt; 45.FOO.BAR.IP.5060: udp 408 (DF) [tos 0x28]
+Aug 29 15:54:57.987449 rule 0/(match) block in on vio0: 51.15.69.145.5100 &gt; 45.FOO.BAR.IP.5060: udp 406 (DF) [tos 0x28]
+Aug 29 15:55:07.001743 rule 0/(match) block in on vio0: 190.83.174.214.58863 &gt; 45.FOO.BAR.IP.23: S 757158343:757158343(0) win 27420
+Aug 29 15:55:51.269549 rule 0/(match) block in on vio0: 142.217.201.69.26112 &gt; 45.FOO.BAR.IP.22: S 757158343:757158343(0) win 22840 &lt;mss 1460&gt;
+Aug 29 15:58:41.346028 rule 0/(match) block in on vio0: 169.1.29.111.29765 &gt; 45.FOO.BAR.IP.23: S 757158343:757158343(0) win 28509
+Aug 29 15:59:11.575927 rule 0/(match) block in on vio0: 187.160.235.162.32427 &gt; 45.FOO.BAR.IP.5358: S 22445:22445(0) win 14600 [tos 0x28]
+Aug 29 15:59:37.826598 rule 0/(match) block in on vio0: 94.74.81.97.54656 &gt; 45.FOO.BAR.IP.3128: S 2720157526:2720157526(0) win 1024 [tos 0x28]stateful
+Aug 29 15:59:37.991171 rule 0/(match) block in on vio0: 94.74.81.97.54656 &gt; 45.FOO.BAR.IP.3128: R 2720157527:2720157527(0) win 1200 [tos 0x28]
+Aug 29 16:01:36.990050 rule 0/(match) block in on vio0: 182.18.8.28.23299 &gt; 45.FOO.BAR.IP.445: S 1510146048:1510146048(0) win 16384
+</code></pre></div>
+
+<p>如果要查看实时日志，可以运行：</p>
+<div class="highlight"><pre><span></span><code># tcpdump -n -e -ttt -i pflog0
+</code></pre></div>
+
+<p>如果你想了解更多信息，可以访问 <a href="https://www.openbsd.org/faq/pf/">PF FAQ</a> 和 <a href="https://www.freebsd.org/doc/handbook/firewalls.html">FreeBSD HANDBOOK</a> 以及下面这些 man 页面：</p>
+<div class="highlight"><pre><span></span><code># man tcpdump
+# man pfctl
+# man pf
+</code></pre></div>
+
+<h3>关于作者</h3>
+<p>我是 nixCraft 的创立者，一个经验丰富的系统管理员，同时也是一位 Linux 操作系统/Unix shell 脚本培训师。我在不同的行业与全球客户工作过，包括 IT、教育、国防和空间研究、以及非营利组织。你可以在 <a href="https://twitter.com/nixcraft">Twitter</a>、<a href="https://facebook.com/nixcraft">Facebook</a> 或 <a href="https://plus.google.com/+CybercitiBiz">Google+</a> 上面关注我。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

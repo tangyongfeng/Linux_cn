@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>udev 入门：管理设备事件的 Linux 子系统</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Seth Kenlon 创建这样一个脚本，当指定的设备插入时触发你的计算机去做一个指定动作。 udev 是一个为你的计算机提供设备事 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/12/udev-ru-men-guan-li-she-bei-shi-jian-de-linux-zi-xi-tong.html" rel="bookmark"
+           title="Permalink to udev 入门：管理设备事件的 Linux 子系统">udev 入门：管理设备事件的 Linux 子系统</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-12-09T22:12:08+01:00">
+                Published: Sun 09 December 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Seth Kenlon</p>
+<blockquote>
+<p>创建这样一个脚本，当指定的设备插入时触发你的计算机去做一个指定动作。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/201812/09/221138aqmuwpuu5uxlw85w.jpg"></p>
+<p>udev 是一个为你的计算机提供设备事件的 Linux 子系统。通俗来讲就是，当你的计算机上插入了像网卡、外置硬盘（包括 U 盘）、鼠标、键盘、游戏操纵杆和手柄、DVD-ROM 驱动器等等设备时，代码能够检测到它们。这样就能写出很多可能非常有用的实用程序，而它已经很好了，普通用户就可以写出脚本去做一些事情，比如当某个硬盘驱动器插入时，执行某个任务。</p>
+<p>这篇文章教你去如何写一个由一些 udev 事件触发的 <a href="https://linux.die.net/man/8/udev">udev</a> 脚本，比如插入了一个 U 盘。当你理解了 udev 的工作原理，你就可以用它去做各种事情，比如当一个游戏手柄连接后加载一个指定的驱动程序，或者当你用于备份的驱动器连接后，自动执行备份工作。</p>
+<h3>一个初级的脚本</h3>
+<p>使用 udev 的最佳方式是从一个小的代码块开始。不要指望从一开始就写出完整的脚本，而是从最简单的确认 udev 触发了某些指定的事件开始。</p>
+<p>对于你的脚本，依据你的目标，并不是在任何情况下都能保证你亲眼看到你的脚本运行结果的，因此需要在你的脚本日志中确认它成功触发了。而日志文件通常放在 <code>/var</code> 目录下，但那个目录通常是 root 用户的领地。对于测试目的，可以使用 <code>/tmp</code>，它可以被普通用户访问并且在重启动后就被清除了。</p>
+<p>打开你喜欢的文本编辑器，然后输入下面的简单脚本：</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/bash</span>
+
+<span class="nb">echo</span><span class="w"> </span><span class="nv">$date</span><span class="w"> </span>&gt;<span class="w"> </span>/tmp/udev.log
+</code></pre></div>
+
+<p>把这个脚本放在 <code>/usr/local/bin</code> 或缺省可运行路径的位置中。将它命名为 <code>trigger.sh</code>，并运行 <code>chmod +x</code> 授予可运行权限：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>mv<span class="w"> </span>trigger.sh<span class="w"> </span>/usr/local/bin
+$<span class="w"> </span>sudo<span class="w"> </span>chmod<span class="w"> </span>+x<span class="w"> </span>/usr/local/bin/trigger.sh
+</code></pre></div>
+
+<p>这个脚本没有任何和 udev 有关的事情。当它运行时，这个脚本将在文件 <code>/tmp/udev.log</code> 中放入当前的时间戳。你可以自己测试一下这个脚本：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>/usr/local/bin/trigger.sh
+$<span class="w"> </span>cat<span class="w"> </span>/tmp/udev.log
+Tue<span class="w"> </span>Oct<span class="w"> </span><span class="m">31</span><span class="w"> </span><span class="m">01</span>:05:28<span class="w"> </span>NZDT<span class="w"> </span><span class="m">2035</span>
+</code></pre></div>
+
+<p>接下来让 udev 去触发这个脚本。</p>
+<h3>唯一设备识别</h3>
+<p>为了让你的脚本能够被一个设备事件触发，udev 必须要知道在什么情况下调用该脚本。在现实中，你可以通过它的颜色、制造商、以及插入到你的计算机这一事实来识别一个 U 盘。而你的计算机，它需要一系列不同的标准。</p>
+<p>udev 通过序列号、制造商、以及提供商 ID 和产品 ID 号来识别设备。由于现在你的 udev 脚本还处于它的生命周期的早期阶段，因此要尽可能地宽泛、非特定和包容。换句话说就是，你希望首先去捕获尽可能多的有效 udev 事件来触发你的脚本。</p>
+<p>使用 <code>udevadm monitor</code> 命令你可以实时利用 udev，并且可以看到当你插入不同设备时发生了什么。用 root 权限试一试。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>su
+<span class="c1"># udevadm monitor</span>
+</code></pre></div>
+
+<p>该监视函数输出接收到的事件：</p>
+<ul>
+<li>UDEV：在规则处理之后发出 udev 事件</li>
+<li>KERNEL：内核发送 uevent 事件</li>
+</ul>
+<p>在 <code>udevadm monitor</code> 命令运行时，插入一个 U 盘，你将看到各种信息在你的屏幕上滚动而出。注意那一个 <code>ADD</code> 事件的事件类型。这是你所需要的识别事件类型的一个好方法。</p>
+<p><code>udevadm monitor</code> 命令提供了许多很好的信息，但是你可以使用 <code>udevadm info</code> 命令以更好看的格式来看到它，假如你知道你的 U 盘当前已经位于你的 <code>/dev</code> 树。如果不在这个树下，拔下它并重新插入，然后立即运行这个命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>su<span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;dmesg | tail | fgrep -i sd*&#39;</span>
+</code></pre></div>
+
+<p>举例来说，如果那个命令返回 <code>sdb: sdb1</code>，说明内核已经给你的 U 盘分配了 <code>sdb</code> 卷标。</p>
+<p>或者，你可以使用 <code>lsblk</code> 命令去查看所有连接到你的系统上的驱动器，包括它的大小和分区。</p>
+<p>现在，你的驱动器已经处于你的文件系统中了，你可以使用下面的命令去查看那个设备的相关 udev 信息：</p>
+<div class="highlight"><pre><span></span><code># udevadm info -a -n /dev/sdb | less
+</code></pre></div>
+
+<p>这个命令将返回许多信息。现在我们只关心信息中的第一个块。</p>
+<p>你的任务是从 udev 的报告中找出能唯一标识那个设备的部分，然后当计算机检测到这些唯一属性时，告诉 udev 去触发你的脚本。</p>
+<p><code>udevadm info</code> 命令处理一个（由设备路径指定的）设备上的报告，接着“遍历”父级设备链。对于找到的大多数设备，它以一个“键值对”格式输出所有可能的属性。你可以写一个规则，从一个单个的父级设备属性上去匹配插入设备的属性。</p>
+<div class="highlight"><pre><span></span><code>looking at device &#39;/devices/000:000/blah/blah//block/sdb&#39;:
+  KERNEL==&quot;sdb&quot;
+  SUBSYSTEM==&quot;block&quot;
+  DRIVER==&quot;&quot;
+  ATTR{ro}==&quot;0&quot;
+  ATTR{size}==&quot;125722368&quot;
+  ATTR{stat}==&quot; 2765 1537 5393&quot;
+  ATTR{range}==&quot;16&quot;
+  ATTR{discard\_alignment}==&quot;0&quot;
+  ATTR{removable}==&quot;1&quot;
+  ATTR{blah}==&quot;blah&quot;
+</code></pre></div>
+
+<p>一个 udev 规则必须包含来自单个父级设备的一个属性。</p>
+<p>父级属性是描述一个设备的最基本的东西，比如它是插入到一个物理端口的东西、或是一个容量多大的东西、或这是一个可移除的设备。</p>
+<p>由于 <code>KERNEL</code> 卷标 <code>sdb</code> 可能会由于分配给在它之前插入的其它驱动器而发生变化，因此卷标并不是一个 udev 规则的父级属性的好选择。但是，在做概念论证时你可以使用它。一个事件的最佳候选者是 <code>SUBSYSTEM</code> 属性，它表示那个设备是一个 “block” 系统设备（也就是为什么我们要使用 <code>lsblk</code> 命令来列出设备的原因）。</p>
+<p>在 <code>/etc/udev/rules.d</code> 目录中打开一个名为 <code>80-local.rules</code> 的文件，然后输入如下代码：</p>
+<div class="highlight"><pre><span></span><code>SUBSYSTEM==&quot;block&quot;, ACTION==&quot;add&quot;, RUN+=&quot;/usr/local/bin/trigger.sh&quot;
+</code></pre></div>
+
+<p>保存文件，拔下你的测试 U 盘，然后重启动系统。</p>
+<p>等等，重启动 Linux 机器？</p>
+<p>理论上说，你只需要运行 <code>udevadm control —reload</code> 即可，它将重新加载所有规则，但是在我们实验的现阶段，最好要排除可能影响实验结果的所有因素。udev 是非常复杂的，为了不让你躺在床上整晚都在思考为什么这个规则不能正常工作，是因为语法错误吗？还是应该重启动一下。所以，不管 POSIX 自负地告诉你过什么，你都应该去重启动一下。</p>
+<p>当你的系统重启动完毕之后，（使用 <code>Ctl+Alt+F3</code> 或类似快捷键）切换到一个文本控制台，并插入你的 U 盘。如果你运行了一个最新的内核，当你插入 U 盘后你或许可以看到一大堆输出。如果看到一个错误信息，比如 “Could not execute /usr/local/bin/trigger.sh”，或许是因为你忘了授予这个脚本可运行的权限。否则你将看到的是，一个设备插入，它得到内核设备分配的一些东西，等等。</p>
+<p>现在，见证奇迹的时刻到了。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cat<span class="w"> </span>/tmp/udev.log
+Tue<span class="w"> </span>Oct<span class="w"> </span><span class="m">31</span><span class="w"> </span><span class="m">01</span>:35:28<span class="w"> </span>NZDT<span class="w"> </span><span class="m">2035</span>
+</code></pre></div>
+
+<p>如果你在 <code>/tmp/udev.log</code> 中看到了最新的日期和时间，那么说明 udev 已经成功触发了你的脚本。</p>
+<h3>改进规则做一些有用的事情</h3>
+<p>现在的问题是使用的规则太通用了。插入一个鼠标、一个 U 盘、或某个人的 U 盘都将盲目地触发这个脚本。现在，我们开始专注于希望触发你的脚本的是确定的某个 U 盘。</p>
+<p>实现上述目标的一种方式是使用提供商 ID 和产品 ID。你可以使用 <code>lsusb</code> 命令去得到这些数字。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>lsusb
+Bus<span class="w"> </span><span class="m">001</span><span class="w"> </span>Device<span class="w"> </span><span class="m">002</span>:<span class="w"> </span>ID<span class="w"> </span><span class="m">8087</span>:0024<span class="w"> </span>Slacker<span class="w"> </span>Corp.<span class="w"> </span>Hub
+Bus<span class="w"> </span><span class="m">002</span><span class="w"> </span>Device<span class="w"> </span><span class="m">002</span>:<span class="w"> </span>ID<span class="w"> </span><span class="m">8087</span>:0024<span class="w"> </span>Slacker<span class="w"> </span>Corp.<span class="w"> </span>Hub
+Bus<span class="w"> </span><span class="m">003</span><span class="w"> </span>Device<span class="w"> </span><span class="m">005</span>:<span class="w"> </span>ID<span class="w"> </span>03f0:3307<span class="w"> </span>TyCoon<span class="w"> </span>Corp.
+Bus<span class="w"> </span><span class="m">003</span><span class="w"> </span>Device<span class="w"> </span><span class="m">001</span>:<span class="w"> </span>ID<span class="w"> </span>1d6b:0002<span class="w"> </span>Linux<span class="w"> </span>Foundation<span class="w"> </span><span class="m">2</span>.0<span class="w"> </span>hub
+Bus<span class="w"> </span><span class="m">001</span><span class="w"> </span>Device<span class="w"> </span><span class="m">003</span>:<span class="w"> </span>ID<span class="w"> </span>13d3:5165<span class="w"> </span>SBo<span class="w"> </span>Networks
+</code></pre></div>
+
+<p>在这个例子中，<code>TyCoon Corp</code> 前面的 <code>03f0:3307</code> 就表示了提供商 ID 和产品 ID 的属性。你也可以通过 <code>udevadm info -a -n /dev/sdb | grep vendor</code> 的输出来查看这些数字，但是从 <code>lsusb</code> 的输出中可以很容易地一眼找到这些数字。</p>
+<p>现在，可以在你的脚本中包含这些属性了。</p>
+<div class="highlight"><pre><span></span><code>SUBSYSTEM==&quot;block&quot;, ATTRS{idVendor}==&quot;03f0&quot;, ACTION==&quot;add&quot;, RUN+=&quot;/usr/local/bin/thumb.sh&quot;
+</code></pre></div>
+
+<p>测试它（是的，为了确保不会有来自 udev 的影响因素，我们仍然建议先重新启动一下），它应该会像前面一样工作，现在，如果你插入一个不同公司制造的 U 盘（因为它们的提供商 ID 不一样）、或插入一个鼠标、或插入一个打印机，这个脚本将不会被触发。</p>
+<p>继续添加新属性来进一步专注于你希望去触发你的脚本的那个唯一的 U 盘。使用 <code>udevadm info -a -n /dev/sdb</code> 命令，你可以找出像提供商名字、序列号、或产品名这样的东西。</p>
+<p>为了保证思路清晰，确保每次只添加一个新属性。我们（和在网上看到的其他人）在 udev 规则中所遇到的大多数错误都是因为一次添加了太多的属性，而奇怪为什么不能正常工作了。逐个测试属性是最安全的作法，这样可以确保 udev 能够成功识别到你的设备。</p>
+<h3>安全</h3>
+<p>编写 udev 规则当插入一个驱动器后自动去做一些事情，将带来安全方面的担忧。在我的机器上，我甚至都没有打开自动挂载功能，而基于本文的目的，当设备插入时，脚本和规则可以运行一些命令来做一些事情。</p>
+<p>在这里需要记住两个事情。</p>
+<ol>
+<li>聚焦于你的 udev 规则，当你真实地使用它们时，一旦让规则发挥作用将触发脚本。执行一个脚本去盲目地复制数据到你的计算上，或从你的计算机上复制出数据，是一个很糟糕的主意，因为有可能会遇到一个人拿着和你相同品牌的 U 盘插入到你的机器上的情况。</li>
+<li>不要在写了 udev 规则和脚本后忘记了它们的存在。我知道哪个计算上有我的 udev 规则，这些机器一般是我的个人计算机，而不是那些我带着去开会或办公室工作的计算机。一台计算机的 “社交” 程度越高，它就越不能有 udev 规则存在于它上面，因为它将潜在地导致我的数据最终可能会出现在某个人的设备、或某个人的数据中、或在我的设备上出现恶意程序。</li>
+</ol>
+<p>换句话说就是，随着一个 GNU 系统提供了一个这么强大的功能，你的任务是小心地如何使用它们的强大功能。如果你滥用它或不小心谨慎地使用它，最终将让你出问题，它非常可能会导致可怕的问题。</p>
+<h3>现实中的 Udev</h3>
+<p>现在，你可以确认你的脚本是由 udev 触发的，那么，可以将你的关注点转到脚本功能上了。到目前为止，这个脚本是没有用的，它除了记录脚本已经运行过了这一事实外，再没有做更多的事情。</p>
+<p>我使用 udev 去触发我的 U 盘的 <a href="https://gitlab.com/slackermedia/attachup">自动备份</a> 。这个创意是，将我正在处理的文档的主副本保存在我的 U 盘上（因为我随身带着它，这样就可以随时处理它），并且在我每次将 U 盘插入到那台机器上时，这些主文档将备份回我的计算机上。换句话说就是，我的计算机是备份驱动器，而产生的数据是移动的。源代码是可用的，你可以随意查看 <code>attachup</code> 的代码，以进一步限制你的 udev 的测试示例。</p>
+<p>虽然我使用 udev 最多的情况就是这个例子，但是 udev 能抓取很多的事件，像游戏手柄（当连接游戏手柄时，让系统去加载 xboxdrv 模块）、摄像头、麦克风（当指定的麦克风连接时用于去设置输入），所以应该意识到，它能做的事情远比这个示例要多。</p>
+<p>我的备份系统的一个简化版本是由两个命令组成的一个过程：</p>
+<div class="highlight"><pre><span></span><code>SUBSYSTEM==&quot;block&quot;, ATTRS{idVendor}==&quot;03f0&quot;, ACTION==&quot;add&quot;, SYMLINK+=&quot;safety%n&quot;
+SUBSYSTEM==&quot;block&quot;, ATTRS{idVendor}==&quot;03f0&quot;, ACTION==&quot;add&quot;, RUN+=&quot;/usr/local/bin/trigger.sh&quot;
+</code></pre></div>
+
+<p>第一行使用属性去检测我的 U 盘，这在前面已经讨论过了，接着在设备树中为我的 U 盘分配一个符号链接，给它分配的符号连接是 <code>safety%n</code>。这个 <code>%n</code> 是一个 udev 宏，它是内核分配给这个设备的任意数字，比如 sdb1、sdb2、sdb3、等等。因此 <code>%n</code> 应该是 1 或 2 或 3。</p>
+<p>这将在 dev 树中创建一个符号链接，因此它不会干涉插入一个设备的正常过程。这意味着，如果你在自动挂载设备的桌面环境中使用它，将不会出现问题。</p>
+<p>第二行运行这个脚本。</p>
+<p>我的备份脚本如下：</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/bash</span>
+
+mount<span class="w"> </span>/dev/safety1<span class="w"> </span>/mnt/hd
+sleep<span class="w"> </span><span class="m">2</span>
+rsync<span class="w"> </span>-az<span class="w"> </span>/mnt/hd/<span class="w"> </span>/home/seth/backups/<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>umount<span class="w"> </span>/dev/safety1
+</code></pre></div>
+
+<p>这个脚本使用符号链接，这将避免出现 udev 命名导致的意外情况（例如，假设一个命名为 DISK 的 U 盘已经插入到我的计算机上，而我插入的其它 U 盘恰好名字也是 DISK，那么第二个 U 盘的卷标将被命名为 <code>DISK_</code>，这将导致我的脚本不会正常运行），它在我喜欢的挂载点 <code>/mnt/hd</code> 上挂载了 <code>safety1</code>（驱动器的第一个分区）。</p>
+<p>一旦 <code>safely</code> 挂载之后，它将使用 <a href="https://opensource.com/article/17/1/rsync-backup-linux">rsync</a> 将驱动器备份到我的备份文件夹（我真实使用的脚本用的是 <code>rdiff-backup</code>，而你可以使用任何一个你喜欢的自动备份解决方案）。</p>
+<h3>udev 让你的设备你做主</h3>
+<p>udev 是一个非常灵活的系统，它可以让你用其它系统很少敢提供给用户的方式去定义规则和功能。学习它，使用它，去享受 POSIX 的强大吧。</p>
+<p>本文内容来自 <a href="http://slackermedia.info/handbook/doku.php?id=backup">Slackermedia Handbook</a>，它以 <a href="http://www.gnu.org/licenses/fdl-1.3.html">GNU Free Documentation License 1.3</a> 许可证授权使用。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

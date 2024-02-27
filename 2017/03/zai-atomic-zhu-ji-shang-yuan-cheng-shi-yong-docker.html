@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在 Atomic 主机上远程使用 Docker</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Trishna Guha 来自 Atomic 项目 的 Atomic 主机是一个轻量级的容器基于的操作系统，它可以运行 Linux 容器。它已被优化为用作云环境的容器 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/03/zai-atomic-zhu-ji-shang-yuan-cheng-shi-yong-docker.html" rel="bookmark"
+           title="Permalink to 在 Atomic 主机上远程使用 Docker">在 Atomic 主机上远程使用 Docker</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-03-03T10:34:45+01:00">
+                Published: Fri 03 March 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Trishna Guha</p>
+<p><img alt="remote-atomic-docker" src="/data/attachment/album/201703/03/103449ryt3tg43yhgvh212.jpg"></p>
+<p>来自 <a href="http://www.projectatomic.io/">Atomic 项目</a> 的 Atomic 主机是一个轻量级的容器基于的操作系统，它可以运行 Linux 容器。它已被优化为用作云环境的容器运行时系统。例如，它可以托管 Docker 守护进程和容器。有时，你可能需要在该主机上运行 docker 命令，并从其他地方管理服务器。本文介绍如何远程访问 Fedora Atomic 主机（<a href="https://getfedora.org/atomic/">你可以在这里下载到它</a>）上的 <a href="https://www.docker.com/">Docker</a> 守护进程。整个过程由 <a href="https://www.ansible.com/">Ansible</a> 自动完成 - 在涉及到自动化的一切上，这真是一个伟大的工具！</p>
+<h3>安全备忘录</h3>
+<p>由于我们通过网络连接，所以我们使用 <a href="https://en.wikipedia.org/wiki/Transport_Layer_Security">TLS</a> 保护 Docker 守护进程。此过程需要客户端证书和服务器证书。OpenSSL 包用于创建用于建立 TLS 连接的证书密钥。这里，Atomic 主机运行守护程序，我们的本地的 <a href="https://getfedora.org/en/workstation/">Fedora Workstation</a> 充当客户端。</p>
+<p>在你按照这些步骤进行之前，请注意，<em>任何</em>在客户端上可以访问 TLS 证书的进程在服务器上具有<strong>完全的 root 访问权限</strong>。 因此，客户端可以在服务器上做任何它想做的事情。我们需要仅向可信任的特定客户端主机授予证书访问权限。你应该将客户端证书仅复制到完全由你控制的客户端主机。但即使在这种情况下，客户端机器的安全也至关重要。</p>
+<p>不过，此方法只是远程访问守护程序的一种方法。编排工具通常提供更安全的控制。下面的简单方法适用于个人实验，可能不适合开放式网络。</p>
+<h3>获取 Ansible role</h3>
+<p><a href="https://twitter.com/CHouseknecht">Chris Houseknecht</a> 写了一个 Ansible role，它会创造所需的所有证书。这样，你不需要手动运行 <code>openssl</code> 命令了。 这些在 <a href="https://github.com/ansible/role-secure-docker-daemon">Ansible role 仓库</a>中提供。将它克隆到你当前的工作主机。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>mkdir<span class="w"> </span>docker-remote-access
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>docker-remote-access
+$<span class="w"> </span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/ansible/role-secure-docker-daemon.git
+</code></pre></div>
+
+<h3>创建配置文件</h3>
+<p>接下来，你必须创建 Ansible 配置文件、<ruby> 清单 <rp>  （ </rp> <rt>  inventory </rt> <rp>  ） </rp></ruby>和<ruby> 剧本 <rp>  （ </rp> <rt>  playbook </rt> <rp>  ） </rp></ruby>文件以设置客户端和守护进程。以下说明在 Atomic 主机上创建客户端和服务器证书。然后，获取客户端证书到本地。最后，它们会配置守护进程以及客户端，使它们能彼此交互。</p>
+<p>这里是你需要的目录结构。如下所示，创建下面的每个文件。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>tree<span class="w"> </span>docker-remote-access/
+docker-remote-access/
+├──<span class="w"> </span>ansible.cfg
+├──<span class="w"> </span>inventory
+├──<span class="w"> </span>remote-access.yml
+└──<span class="w"> </span>role-secure-docker-daemon
+</code></pre></div>
+
+<p><code>ansible.cfg</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>vim<span class="w"> </span>ansible.cfg
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="k">[defaults]</span>
+<span class="na">inventory</span><span class="o">=</span><span class="s">inventory</span>
+</code></pre></div>
+
+<p>清单文件（<code>inventory</code>）：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>vim<span class="w"> </span>inventory
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="k">[daemonhost]</span>
+<span class="na">&#39;IP_OF_ATOMIC_HOST&#39; ansible_ssh_private_key_file</span><span class="o">=</span><span class="s">&#39;PRIVATE_KEY_FILE&#39;</span>
+</code></pre></div>
+
+<p>将清单文件（<code>inventory</code>） 中的 <code>IP_OF_ATOMIC_HOST</code> 替换为 Atomic 主机的 IP。将 <code>PRIVATE_KEY_FILE</code> 替换为本地系统上的 SSH 私钥文件的位置。</p>
+<p>剧本文件（<code>remote-access.yml</code>）：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>vim<span class="w"> </span>remote-access.yml
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">Docker</span><span class="w"> </span><span class="n">Client</span><span class="w"> </span><span class="n">Set</span><span class="w"> </span><span class="n">up</span>
+<span class="w">  </span><span class="n">hosts</span><span class="p">:</span><span class="w"> </span><span class="n">daemonhost</span>
+<span class="w">  </span><span class="n">gather_facts</span><span class="p">:</span><span class="w"> </span><span class="n">no</span>
+<span class="w">  </span><span class="n">tasks</span><span class="p">:</span>
+<span class="w">    </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">Make</span><span class="w"> </span><span class="o">~/.</span><span class="n">docker</span><span class="w"> </span><span class="n">directory</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">docker</span><span class="w"> </span><span class="n">certs</span>
+<span class="w">      </span><span class="n">local_action</span><span class="p">:</span><span class="w"> </span><span class="n">file</span><span class="w"> </span><span class="n">path</span><span class="o">=</span><span class="s1">&#39;~/.docker&#39;</span><span class="w"> </span><span class="n">state</span><span class="o">=</span><span class="s1">&#39;directory&#39;</span>
+
+<span class="w">    </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">Add</span><span class="w"> </span><span class="n">Environment</span><span class="w"> </span><span class="n">variables</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="o">~/.</span><span class="n">bashrc</span>
+<span class="w">      </span><span class="n">local_action</span><span class="p">:</span><span class="w"> </span><span class="n">lineinfile</span><span class="w"> </span><span class="n">dest</span><span class="o">=</span><span class="s1">&#39;~/.bashrc&#39;</span><span class="w"> </span><span class="n">line</span><span class="o">=</span><span class="s1">&#39;export DOCKER_TLS_VERIFY=1</span><span class="se">\n</span><span class="s1">export DOCKER_CERT_PATH=~/.docker/</span><span class="se">\n</span><span class="s1">export DOCKER_HOST=tcp://{{ inventory_hostname }}:2376</span><span class="se">\n</span><span class="s1">&#39;</span><span class="w"> </span><span class="n">state</span><span class="o">=</span><span class="s1">&#39;present&#39;</span>
+
+<span class="w">    </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">Source</span><span class="w"> </span><span class="o">~/.</span><span class="n">bashrc</span><span class="w"> </span><span class="n">file</span>
+<span class="w">      </span><span class="n">local_action</span><span class="p">:</span><span class="w"> </span><span class="n">shell</span><span class="w"> </span><span class="n">source</span><span class="w"> </span><span class="o">~/.</span><span class="n">bashrc</span>
+
+<span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">Docker</span><span class="w"> </span><span class="n">Daemon</span><span class="w"> </span><span class="n">Set</span><span class="w"> </span><span class="n">up</span>
+<span class="w">  </span><span class="n">hosts</span><span class="p">:</span><span class="w"> </span><span class="n">daemonhost</span>
+<span class="w">  </span><span class="n">gather_facts</span><span class="p">:</span><span class="w"> </span><span class="n">no</span>
+<span class="w">  </span><span class="n">remote_user</span><span class="p">:</span><span class="w"> </span><span class="n">fedora</span>
+<span class="w">  </span><span class="n">become</span><span class="p">:</span><span class="w"> </span><span class="n">yes</span>
+<span class="w">  </span><span class="n">become_method</span><span class="p">:</span><span class="w"> </span><span class="n">sudo</span>
+<span class="w">  </span><span class="n">become_user</span><span class="p">:</span><span class="w"> </span><span class="n">root</span>
+<span class="w">  </span><span class="n">roles</span><span class="p">:</span>
+<span class="w">    </span><span class="o">-</span><span class="w"> </span><span class="n">role</span><span class="p">:</span><span class="w"> </span><span class="n">role</span><span class="o">-</span><span class="n">secure</span><span class="o">-</span><span class="n">docker</span><span class="o">-</span><span class="n">daemon</span>
+<span class="w">      </span><span class="n">dds_host</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;{{ inventory_hostname }}&quot;</span>
+<span class="w">      </span><span class="n">dds_server_cert_path</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">docker</span>
+<span class="w">      </span><span class="n">dds_restart_docker</span><span class="p">:</span><span class="w"> </span><span class="n">no</span>
+<span class="w">  </span><span class="n">tasks</span><span class="p">:</span>
+<span class="w">    </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">fetch</span><span class="w"> </span><span class="n">ca</span><span class="o">.</span><span class="n">pem</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="n">daemon</span><span class="w"> </span><span class="n">host</span>
+<span class="w">      </span><span class="n">fetch</span><span class="p">:</span>
+<span class="w">        </span><span class="n">src</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="n">root</span><span class="o">/.</span><span class="n">docker</span><span class="o">/</span><span class="n">ca</span><span class="o">.</span><span class="n">pem</span>
+<span class="w">        </span><span class="n">dest</span><span class="p">:</span><span class="w"> </span><span class="o">~/.</span><span class="n">docker</span><span class="o">/</span>
+<span class="w">        </span><span class="n">fail_on_missing</span><span class="p">:</span><span class="w"> </span><span class="n">yes</span>
+<span class="w">        </span><span class="n">flat</span><span class="p">:</span><span class="w"> </span><span class="n">yes</span>
+<span class="w">    </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">fetch</span><span class="w"> </span><span class="n">cert</span><span class="o">.</span><span class="n">pem</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="n">daemon</span><span class="w"> </span><span class="n">host</span>
+<span class="w">      </span><span class="n">fetch</span><span class="p">:</span>
+<span class="w">        </span><span class="n">src</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="n">root</span><span class="o">/.</span><span class="n">docker</span><span class="o">/</span><span class="n">cert</span><span class="o">.</span><span class="n">pem</span>
+<span class="w">        </span><span class="n">dest</span><span class="p">:</span><span class="w"> </span><span class="o">~/.</span><span class="n">docker</span><span class="o">/</span>
+<span class="w">        </span><span class="n">fail_on_missing</span><span class="p">:</span><span class="w"> </span><span class="n">yes</span>
+<span class="w">        </span><span class="n">flat</span><span class="p">:</span><span class="w"> </span><span class="n">yes</span>
+<span class="w">    </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">fetch</span><span class="w"> </span><span class="n">key</span><span class="o">.</span><span class="n">pem</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="n">daemon</span><span class="w"> </span><span class="n">host</span>
+<span class="w">      </span><span class="n">fetch</span><span class="p">:</span>
+<span class="w">        </span><span class="n">src</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="n">root</span><span class="o">/.</span><span class="n">docker</span><span class="o">/</span><span class="n">key</span><span class="o">.</span><span class="n">pem</span>
+<span class="w">        </span><span class="n">dest</span><span class="p">:</span><span class="w"> </span><span class="o">~/.</span><span class="n">docker</span><span class="o">/</span>
+<span class="w">        </span><span class="n">fail_on_missing</span><span class="p">:</span><span class="w"> </span><span class="n">yes</span>
+<span class="w">        </span><span class="n">flat</span><span class="p">:</span><span class="w"> </span><span class="n">yes</span>
+<span class="w">    </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">Remove</span><span class="w"> </span><span class="n">Environment</span><span class="w"> </span><span class="n">variable</span><span class="w"> </span><span class="n">OPTIONS</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">sysconfig</span><span class="o">/</span><span class="n">docker</span>
+<span class="w">      </span><span class="n">lineinfile</span><span class="p">:</span>
+<span class="w">        </span><span class="n">dest</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">sysconfig</span><span class="o">/</span><span class="n">docker</span>
+<span class="w">        </span><span class="n">regexp</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;^OPTIONS&#39;</span>
+<span class="w">        </span><span class="n">state</span><span class="p">:</span><span class="w"> </span><span class="n">absent</span>
+
+<span class="w">    </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">Modify</span><span class="w"> </span><span class="n">Environment</span><span class="w"> </span><span class="n">variable</span><span class="w"> </span><span class="n">OPTIONS</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">sysconfig</span><span class="o">/</span><span class="n">docker</span>
+<span class="w">      </span><span class="n">lineinfile</span><span class="p">:</span>
+<span class="w">        </span><span class="n">dest</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">sysconfig</span><span class="o">/</span><span class="n">docker</span>
+<span class="w">        </span><span class="n">line</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;OPTIONS=&#39;--selinux-enabled --log-driver=journald --tlsverify --tlscacert=/etc/docker/ca.pem --tlscert=/etc/docker/server-cert.pem --tlskey=/etc/docker/server-key.pem -H=0.0.0.0:2376 -H=unix:///var/run/docker.sock&#39;&quot;</span>
+<span class="w">        </span><span class="n">state</span><span class="p">:</span><span class="w"> </span><span class="n">present</span>
+
+<span class="w">    </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">Remove</span><span class="w"> </span><span class="n">client</span><span class="w"> </span><span class="n">certs</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="n">daemon</span><span class="w"> </span><span class="n">host</span>
+<span class="w">      </span><span class="n">file</span><span class="p">:</span>
+<span class="w">        </span><span class="n">path</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="n">root</span><span class="o">/.</span><span class="n">docker</span>
+<span class="w">        </span><span class="n">state</span><span class="p">:</span><span class="w"> </span><span class="n">absent</span>
+
+<span class="w">    </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">Reload</span><span class="w"> </span><span class="n">Docker</span><span class="w"> </span><span class="n">daemon</span>
+<span class="w">      </span><span class="n">command</span><span class="p">:</span><span class="w"> </span><span class="n">systemctl</span><span class="w"> </span><span class="n">daemon</span><span class="o">-</span><span class="n">reload</span>
+<span class="w">    </span><span class="o">-</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="n">Restart</span><span class="w"> </span><span class="n">Docker</span><span class="w"> </span><span class="n">daemon</span>
+<span class="w">      </span><span class="n">command</span><span class="p">:</span><span class="w"> </span><span class="n">systemctl</span><span class="w"> </span><span class="n">restart</span><span class="w"> </span><span class="n">docker</span><span class="o">.</span><span class="n">service</span>
+</code></pre></div>
+
+<h3>访问 Atomic 主机</h3>
+<p>现在运行 Ansible 剧本：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ansible-playbook<span class="w"> </span>remote-access.yml
+</code></pre></div>
+
+<p>确保 tcp 端口 2376 在你的 Atomic 主机上打开了。如果你在使用 Openstack，请在安全规则中添加 TCP 端口 2376。 如果你使用 AWS，请将其添加到你的安全组。</p>
+<p>现在，在你的工作站上作为普通用户运行的 <code>docker</code> 命令与 Atomic 主机的守护进程通信，并在那里执行命令。你不需要手动 <code>ssh</code> 或在 Atomic 主机上发出命令。这可以让你远程、轻松、安全地启动容器化应用程序。</p>
+<p>如果你想克隆 Ansible 剧本和配置文件，这里是 <a href="https://github.com/trishnaguha/fedora-cloud-ansible/tree/master/docker-remote-access">git 仓库</a>。</p>
+<p><img alt="docker-daemon" src="/data/attachment/album/201703/03/103449g9dsp93n2esseww9.jpg"></p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

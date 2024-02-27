@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何让 Linux 机器加入 Windows 的 AD 域</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: 拿铁不加糖 对于帐户统一管理系统或软件来说，在 Linux 下你可能知道 NIS、OpenLDAP、samba 或者是 RedHat、IBM 的产品，在 Windows 下当然就是最出名 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2016/08/ru-he-rang-linux-ji-qi-jia-ru-windows-de-ad-yu.html" rel="bookmark"
+           title="Permalink to 如何让 Linux 机器加入 Windows 的 AD 域">如何让 Linux 机器加入 Windows 的 AD 域</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2016-08-19T08:43:00+02:00">
+                Published: Fri 19 August 2016
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: 拿铁不加糖</p>
+<p>对于帐户统一管理系统或软件来说，在 Linux 下你可能知道 NIS、OpenLDAP、samba 或者是 RedHat、IBM 的产品，在 Windows 下当然就是最出名的<ruby> 活动目录 <rp>  （ </rp> <rt>  Active Directory </rt> <rp>  ） </rp></ruby>（AD）了，这里就来探讨一下如何让 Linux 的计算机加入 AD 域。</p>
+<p><img alt="" src="/data/attachment/album/201608/18/220956ztyx4r8o0706jr06.jpg"></p>
+<p>首先，先简单介绍一下 AD 域。自 Windows 2000 以来，AD 一直是 Windows 的身份验证和目录服务，AD 基于 LDAP 实现其功能，其使用 DNS 进行主机名的解析，使用 Kerberos V5 进行用户身份验证，使用 LDAP V3 进行统一的帐户管理。</p>
+<p>目标：在 AD 域中，将 Linux 服务器加入 AD，以使 Domain Admins 用户组成员可以登录操作 Linux 服务器，不需要在 Linux 服务器中单独创建帐户。</p>
+<p>环境：一台 Windows Server 2012 R2 操作系统的服务器，安装有 AD 并作为<ruby> 域控制器 <rp>  （ </rp> <rt>  Domain Controller </rt> <rp>  ） </rp></ruby>（DC），同时也作为 DNS 服务器和时间服务器；一台 RedHat Enterprise Linux 6.x 的服务器，请自行配置好网络及 YUM 源。有关 AD 域服务器的搭建，由于比较简单，请自行查阅资料完成，这里不再详述。</p>
+<p>这里以 Windows 服务器地址为 192.168.2.122，域名为 contoso.com，主机名为 ad.contoso.com；Linux 服务器地址为 192.168.2.150，主机名为 lemon20.contoso.com。</p>
+<p><strong>1、安装所需软件：</strong></p>
+<div class="highlight"><pre><span></span><code># yum -y install samba samba-client samba-common samba-winbind samba-winbind-clients krb5-workstation ntpdate
+</code></pre></div>
+
+<p><strong>2、设置服务自启动并启动服务：</strong></p>
+<div class="highlight"><pre><span></span><code># chkconfig smb on
+# chkconfig winbind on
+# service smb start
+# service winbind start
+</code></pre></div>
+
+<p><strong>3、修改 /etc/hosts 文件，添加主机对应记录：</strong></p>
+<div class="highlight"><pre><span></span><code><span class="mf">127.0.0.1</span><span class="w"> </span><span class="n">localhost</span><span class="w"> </span><span class="n">localhost</span><span class="mf">.</span><span class="n">localdomain</span><span class="w"> </span><span class="n">localhost4</span><span class="w"> </span><span class="n">localhost4</span><span class="mf">.</span><span class="n">localdomain4</span>
+<span class="p">::</span><span class="mf">1</span><span class="w"> </span><span class="n">localhost</span><span class="w"> </span><span class="n">localhost</span><span class="mf">.</span><span class="n">localdomain</span><span class="w"> </span><span class="n">localhost6</span><span class="w"> </span><span class="n">localhost6</span><span class="mf">.</span><span class="n">localdomain6</span>
+<span class="mf">192.168.2.150</span><span class="w"> </span><span class="n">lemon20</span><span class="mf">.</span><span class="kr">cont</span><span class="n">oso</span><span class="mf">.</span><span class="n">com</span><span class="w"> </span><span class="n">lemon20</span>
+</code></pre></div>
+
+<p><strong>4、设置 DNS 地址并与 AD 服务器同步时间：</strong></p>
+<div class="highlight"><pre><span></span><code># echo &quot;nameserver 192.168.2.122&quot; &gt;&gt; /etc/resolv.conf
+# ntpdate ad.contoso.com
+</code></pre></div>
+
+<p><strong>5、设置 Kerberos 票据（可选）：</strong></p>
+<p>销毁已经存在的所有票据：</p>
+<div class="highlight"><pre><span></span><code># kdestroy
+</code></pre></div>
+
+<p>查看当前是否还存在票据：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> klist                           
+klist: No credentials cache found (ticket cache FILE:/tmp/krb5cc_0)  
+</code></pre></div>
+
+<p>生成新的票据，注意域名大写。</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="n">kinit</span><span class="w"> </span><span class="n">administrator</span><span class="nv">@CONTOSO</span><span class="p">.</span><span class="n">COM</span>
+<span class="err">#</span><span class="w"> </span><span class="n">klist</span>
+<span class="n">Ticket</span><span class="w"> </span><span class="nl">cache</span><span class="p">:</span><span class="w"> </span><span class="k">FILE</span><span class="err">:</span><span class="o">/</span><span class="n">tmp</span><span class="o">/</span><span class="n">krb5cc_0</span>
+<span class="k">Default</span><span class="w"> </span><span class="nl">principal</span><span class="p">:</span><span class="w"> </span><span class="n">administrator</span><span class="nv">@CONTOSO</span><span class="p">.</span><span class="n">COM</span>
+<span class="n">Valid</span><span class="w"> </span><span class="n">starting</span><span class="w">     </span><span class="n">Expires</span><span class="w">            </span><span class="n">Service</span><span class="w"> </span><span class="n">principal</span>
+<span class="mi">08</span><span class="o">/</span><span class="mi">02</span><span class="o">/</span><span class="mi">16</span><span class="w"> </span><span class="mi">22</span><span class="err">:</span><span class="mi">35</span><span class="err">:</span><span class="mi">26</span><span class="w">  </span><span class="mi">08</span><span class="o">/</span><span class="mi">03</span><span class="o">/</span><span class="mi">16</span><span class="w"> </span><span class="mi">08</span><span class="err">:</span><span class="mi">35</span><span class="err">:</span><span class="mi">29</span><span class="w">  </span><span class="n">krbtgt</span><span class="o">/</span><span class="n">CONTOSO</span><span class="p">.</span><span class="n">COM</span><span class="nv">@CONTOSO</span><span class="p">.</span><span class="n">COM</span>
+<span class="n">renew</span><span class="w"> </span><span class="n">until</span><span class="w"> </span><span class="mi">08</span><span class="o">/</span><span class="mi">09</span><span class="o">/</span><span class="mi">16</span><span class="w"> </span><span class="mi">22</span><span class="err">:</span><span class="mi">35</span><span class="err">:</span><span class="mi">26</span>
+</code></pre></div>
+
+<p><strong>6、以命令方式设置 samba 与 Kerberos，并加入 AD 域：</strong></p>
+<div class="highlight"><pre><span></span><code>#authconfig --enablewinbind  --enablewins --enablewinbindauth --smbsecurity ads --smbworkgroup=CONTOSO --smbrealm CONTOSO.COM --smbservers=ad.contoso.com --enablekrb5 --krb5realm=CONTOSO.COM --krb5kdc=ad.contoso.com --krb5adminserver=ad.contoso.com --enablekrb5kdcdns --enablekrb5realmdns --enablewinbindoffline --winbindtemplateshell=/bin/bash --winbindjoin=administrator --update --enablelocauthorize --enablemkhomedir --enablewinbindusedefaultdomain
+</code></pre></div>
+
+<p>注意命令中的大小写，此步骤也可以使用 authconfig-tui 完成。</p>
+<p><strong>7、增加 sudo 权限（可选）：</strong></p>
+<div class="highlight"><pre><span></span><code># visudo
+</code></pre></div>
+
+<p>加入下列设置：</p>
+<div class="highlight"><pre><span></span><code><span class="c">%MYDOMAIN\\domain\ admins ALL=(ALL)  NOPASSWD: ALL</span>
+</code></pre></div>
+
+<p><strong>8、确认是否正确加入 AD 域：</strong></p>
+<p>查看 AD 的相关信息</p>
+<div class="highlight"><pre><span></span><code># net ads info  
+</code></pre></div>
+
+<p>查看 MYDOMAIN\USERID 的使用者帐户</p>
+<div class="highlight"><pre><span></span><code># wbinfo -u 
+</code></pre></div>
+
+<p><strong>补充：</strong></p>
+<p>如果启用 selinux 的话，需要安装 oddjobmkhomedir 并启动其服务，这样才能确保系统对创建的家目录设置合适的 SELinux 安全上下文。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

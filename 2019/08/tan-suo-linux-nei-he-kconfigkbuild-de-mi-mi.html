@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>探索 Linux 内核：Kconfig/kbuild 的秘密</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Cao Jin 深入理解 Linux 配置/构建系统是如何工作的。 自从 Linux 内核代码迁移到 Git 以来，Linux 内核配置/构建系统（也称为 Kconfig/kbuild）已存在 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/08/tan-suo-linux-nei-he-kconfigkbuild-de-mi-mi.html" rel="bookmark"
+           title="Permalink to 探索 Linux 内核：Kconfig/kbuild 的秘密">探索 Linux 内核：Kconfig/kbuild 的秘密</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-08-15T09:40:04+02:00">
+                Published: Thu 15 August 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Cao Jin</p>
+<blockquote>
+<p>深入理解 Linux 配置/构建系统是如何工作的。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/201908/15/093935dvyk5znoaooaooba.jpg"></p>
+<p>自从 Linux 内核代码迁移到 Git 以来，Linux 内核配置/构建系统（也称为 Kconfig/kbuild）已存在很长时间了。然而，作为支持基础设施，它很少成为人们关注的焦点；甚至在日常工作中使用它的内核开发人员也从未真正思考过它。</p>
+<p>为了探索如何编译 Linux 内核，本文将深入介绍 Kconfig/kbuild 内部的过程，解释如何生成 <code>.config</code> 文件和 <code>vmlinux</code>/<code>bzImage</code> 文件，并介绍一个巧妙的依赖性跟踪技巧。</p>
+<h3>Kconfig</h3>
+<p>构建内核的第一步始终是配置。Kconfig 有助于使 Linux 内核高度模块化和可定制。Kconfig 为用户提供了许多配置目标：</p>
+<table>
+<thead>
+<tr>
+<th>配置目标</th>
+<th>解释</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>config</code></td>
+<td>利用命令行程序更新当前配置</td>
+</tr>
+<tr>
+<td><code>nconfig</code></td>
+<td>利用基于 ncurses 菜单的程序更新当前配置</td>
+</tr>
+<tr>
+<td><code>menuconfig</code></td>
+<td>利用基于菜单的程序更新当前配置</td>
+</tr>
+<tr>
+<td><code>xconfig</code></td>
+<td>利用基于 Qt 的前端程序更新当前配置</td>
+</tr>
+<tr>
+<td><code>gconfig</code></td>
+<td>利用基于 GTK+ 的前端程序更新当前配置</td>
+</tr>
+<tr>
+<td><code>oldconfig</code></td>
+<td>基于提供的 <code>.config</code> 更新当前配置</td>
+</tr>
+<tr>
+<td><code>localmodconfig</code></td>
+<td>更新当前配置，禁用没有载入的模块</td>
+</tr>
+<tr>
+<td><code>localyesconfig</code></td>
+<td>更新当前配置，转换本地模块到核心</td>
+</tr>
+<tr>
+<td><code>defconfig</code></td>
+<td>带有来自架构提供的 <code>defconcig</code> 默认值的新配置</td>
+</tr>
+<tr>
+<td><code>savedefconfig</code></td>
+<td>保存当前配置为 <code>./defconfig</code>（最小配置）</td>
+</tr>
+<tr>
+<td><code>allnoconfig</code></td>
+<td>所有选项回答为 <code>no</code> 的新配置</td>
+</tr>
+<tr>
+<td><code>allyesconfig</code></td>
+<td>所有选项回答为 <code>yes</code> 的新配置</td>
+</tr>
+<tr>
+<td><code>allmodconfig</code></td>
+<td>尽可能选择所有模块的新配置</td>
+</tr>
+<tr>
+<td><code>alldefconfig</code></td>
+<td>所有符号（选项）设置为默认值的新配置</td>
+</tr>
+<tr>
+<td><code>randconfig</code></td>
+<td>所有选项随机选择的新配置</td>
+</tr>
+<tr>
+<td><code>listnewconfig</code></td>
+<td>列出新选项</td>
+</tr>
+<tr>
+<td><code>olddefconfig</code></td>
+<td>同 <code>oldconfig</code> 一样，但设置新符号（选项）为其默认值而无须提问</td>
+</tr>
+<tr>
+<td><code>kvmconfig</code></td>
+<td>启用支持 KVM 访客内核模块的附加选项</td>
+</tr>
+<tr>
+<td><code>xenconfig</code></td>
+<td>启用支持 xen 的 dom0 和 访客内核模块的附加选项</td>
+</tr>
+<tr>
+<td><code>tinyconfig</code></td>
+<td>配置尽可能小的内核</td>
+</tr>
+</tbody>
+</table>
+<p>我认为 <code>menuconfig</code> 是这些目标中最受欢迎的。这些目标由不同的<ruby> 主程序 <rt>  host program </rt></ruby>处理，这些程序由内核提供并在内核构建期间构建。一些目标有 GUI（为了方便用户），而大多数没有。与 Kconfig 相关的工具和源代码主要位于内核源代码中的 <code>scripts/kconfig/</code> 下。从 <code>scripts/kconfig/Makefile</code> 中可以看到，这里有几个主程序，包括 <code>conf</code>、<code>mconf</code> 和 <code>nconf</code>。除了 <code>conf</code> 之外，每个都负责一个基于 GUI 的配置目标，因此，<code>conf</code> 处理大多数目标。</p>
+<p>从逻辑上讲，Kconfig 的基础结构有两部分：一部分实现一种<a href="https://github.com/torvalds/linux/blob/master/Documentation/kbuild/kconfig-language.txt">新语言</a>来定义配置项（参见内核源代码下的 Kconfig 文件），另一部分解析 Kconfig 语言并处理配置操作。</p>
+<p>大多数配置目标具有大致相同的内部过程（如下所示）：</p>
+<p><img alt="" src="/data/attachment/album/201908/15/094007pyitxql4sq42x9qf.png"></p>
+<p>请注意，所有配置项都具有默认值。</p>
+<p>第一步读取源代码根目录下的 Kconfig 文件，构建初始配置数据库；然后它根据如下优先级读取现有配置文件来更新初始数据库：</p>
+<ol>
+<li><code>.config</code></li>
+<li><code>/lib/modules/$(shell,uname -r)/.config</code></li>
+<li><code>/etc/kernel-config</code></li>
+<li><code>/boot/config-$(shell,uname -r)</code></li>
+<li><code>ARCH_DEFCONFIG</code></li>
+<li><code>arch/$(ARCH)/defconfig</code></li>
+</ol>
+<p>如果你通过 <code>menuconfig</code> 进行基于 GUI 的配置或通过 <code>oldconfig</code> 进行基于命令行的配置，则根据你的自定义更新数据库。最后，该配置数据库被转储到 <code>.config</code> 文件中。</p>
+<p>但 <code>.config</code> 文件不是内核构建的最终素材；这就是 <code>syncconfig</code> 目标存在的原因。<code>syncconfig</code>曾经是一个名为 <code>silentoldconfig</code> 的配置目标，但它没有做到其旧名称所说的工作，所以它被重命名。此外，因为它是供内部使用的（不适用于用户），所以它已从上述列表中删除。</p>
+<p>以下是 <code>syncconfig</code> 的作用：</p>
+<p><img alt="" src="/data/attachment/album/201908/15/094007x7z8998x7r0f48iy.png"></p>
+<p><code>syncconfig</code> 将 <code>.config</code> 作为输入并输出许多其他文件，这些文件分为三类：</p>
+<ul>
+<li><code>auto.conf</code> ＆ <code>tristate.conf</code> 用于 makefile 文本处理。例如，你可以在组件的 makefile 中看到这样的语句：<code>obj-$(CONFIG_GENERIC_CALIBRATE_DELAY) += calibrate.o</code>。</li>
+<li><code>autoconf.h</code> 用于 C 语言的源文件。</li>
+<li><code>include/config/</code> 下空的头文件用于 kbuild 期间的配置依赖性跟踪。下面会解释。</li>
+</ul>
+<p>配置完成后，我们将知道哪些文件和代码片段未编译。</p>
+<h3>kbuild</h3>
+<p>组件式构建，称为<em>递归 make</em>，是 GNU <code>make</code> 管理大型项目的常用方法。kbuild 是递归 make 的一个很好的例子。通过将源文件划分为不同的模块/组件，每个组件都由其自己的 makefile 管理。当你开始构建时，顶级 makefile 以正确的顺序调用每个组件的 makefile、构建组件，并将它们收集到最终的执行程序中。</p>
+<p>kbuild 指向到不同类型的 makefile：</p>
+<ul>
+<li><code>Makefile</code> 位于源代码根目录的顶级 makefile。</li>
+<li><code>.config</code> 是内核配置文件。</li>
+<li><code>arch/$(ARCH)/Makefile</code> 是架构的 makefile，它用于补充顶级 makefile。</li>
+<li><code>scripts/Makefile.*</code> 描述所有的 kbuild makefile 的通用规则。</li>
+<li>最后，大约有 500 个 kbuild makefile。</li>
+</ul>
+<p>顶级 makefile 会将架构 makefile 包含进去，读取 <code>.config</code> 文件，下到子目录，在 <code>scripts/ Makefile.*</code> 中定义的例程的帮助下，在每个组件的 makefile 上调用 <code>make</code>，构建每个中间对象，并将所有的中间对象链接为 <code>vmlinux</code>。内核文档 <a href="https://www.mjmwired.net/kernel/Documentation/kbuild/makefiles.txt">Documentation/kbuild/makefiles.txt</a> 描述了这些 makefile 的方方面面。</p>
+<p>作为一个例子，让我们看看如何在 x86-64 上生成 <code>vmlinux</code>：</p>
+<p><img alt="vmlinux overview" src="/data/attachment/album/201908/15/094008erqyz6d6cttg6tz2.png" title="vmlinux overview"></p>
+<p>（此插图基于 Richard Y. Steven 的<a href="https://blog.csdn.net/richardysteven/article/details/52502734">博客</a>。有过更新，并在作者允许的情况下使用。）</p>
+<p>进入 <code>vmlinux</code> 的所有 <code>.o</code> 文件首先进入它们自己的 <code>built-in.a</code>，它通过变量<code>KBUILD_VMLINUX_INIT</code>、<code>KBUILD_VMLINUX_MAIN</code>、<code>KBUILD_VMLINUX_LIBS</code> 表示，然后被收集到 <code>vmlinux</code> 文件中。</p>
+<p>在下面这个简化的 makefile 代码的帮助下，了解如何在 Linux 内核中实现递归 make：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># In top Makefile</span>
+<span class="n">vmlinux</span><span class="p">:</span><span class="w"> </span><span class="n">scripts</span><span class="o">/</span><span class="n">link</span><span class="o">-</span><span class="n">vmlinux</span><span class="o">.</span><span class="n">sh</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">vmlinux</span><span class="o">-</span><span class="n">deps</span><span class="p">)</span>
+<span class="w">                </span><span class="o">+$</span><span class="p">(</span><span class="n">call</span><span class="w"> </span><span class="n">if_changed</span><span class="p">,</span><span class="n">link</span><span class="o">-</span><span class="n">vmlinux</span><span class="p">)</span>
+
+<span class="c1"># Variable assignments</span>
+<span class="n">vmlinux</span><span class="o">-</span><span class="n">deps</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">KBUILD_LDS</span><span class="p">)</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">KBUILD_VMLINUX_INIT</span><span class="p">)</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">KBUILD_VMLINUX_MAIN</span><span class="p">)</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">KBUILD_VMLINUX_LIBS</span><span class="p">)</span>
+
+<span class="k">export</span><span class="w"> </span><span class="n">KBUILD_VMLINUX_INIT</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">head</span><span class="o">-</span><span class="n">y</span><span class="p">)</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">init</span><span class="o">-</span><span class="n">y</span><span class="p">)</span>
+<span class="k">export</span><span class="w"> </span><span class="n">KBUILD_VMLINUX_MAIN</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">core</span><span class="o">-</span><span class="n">y</span><span class="p">)</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">libs</span><span class="o">-</span><span class="n">y2</span><span class="p">)</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">drivers</span><span class="o">-</span><span class="n">y</span><span class="p">)</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">net</span><span class="o">-</span><span class="n">y</span><span class="p">)</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">virt</span><span class="o">-</span><span class="n">y</span><span class="p">)</span>
+<span class="k">export</span><span class="w"> </span><span class="n">KBUILD_VMLINUX_LIBS</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">libs</span><span class="o">-</span><span class="n">y1</span><span class="p">)</span>
+<span class="k">export</span><span class="w"> </span><span class="n">KBUILD_LDS</span><span class="w">          </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">arch</span><span class="o">/$</span><span class="p">(</span><span class="n">SRCARCH</span><span class="p">)</span><span class="o">/</span><span class="n">kernel</span><span class="o">/</span><span class="n">vmlinux</span><span class="o">.</span><span class="n">lds</span>
+
+<span class="n">init</span><span class="o">-</span><span class="n">y</span><span class="w">          </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">init</span><span class="o">/</span>
+<span class="n">drivers</span><span class="o">-</span><span class="n">y</span><span class="w">       </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">drivers</span><span class="o">/</span><span class="w"> </span><span class="n">sound</span><span class="o">/</span><span class="w"> </span><span class="n">firmware</span><span class="o">/</span>
+<span class="n">net</span><span class="o">-</span><span class="n">y</span><span class="w">           </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">net</span><span class="o">/</span>
+<span class="n">libs</span><span class="o">-</span><span class="n">y</span><span class="w">          </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">lib</span><span class="o">/</span>
+<span class="n">core</span><span class="o">-</span><span class="n">y</span><span class="w">          </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">usr</span><span class="o">/</span>
+<span class="n">virt</span><span class="o">-</span><span class="n">y</span><span class="w">          </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">virt</span><span class="o">/</span>
+
+<span class="c1"># Transform to corresponding built-in.a</span>
+<span class="n">init</span><span class="o">-</span><span class="n">y</span><span class="w">          </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">patsubst</span><span class="w"> </span><span class="o">%/</span><span class="p">,</span><span class="w"> </span><span class="o">%/</span><span class="n">built</span><span class="o">-</span><span class="ow">in</span><span class="o">.</span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">init</span><span class="o">-</span><span class="n">y</span><span class="p">))</span>
+<span class="n">core</span><span class="o">-</span><span class="n">y</span><span class="w">          </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">patsubst</span><span class="w"> </span><span class="o">%/</span><span class="p">,</span><span class="w"> </span><span class="o">%/</span><span class="n">built</span><span class="o">-</span><span class="ow">in</span><span class="o">.</span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">core</span><span class="o">-</span><span class="n">y</span><span class="p">))</span>
+<span class="n">drivers</span><span class="o">-</span><span class="n">y</span><span class="w">       </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">patsubst</span><span class="w"> </span><span class="o">%/</span><span class="p">,</span><span class="w"> </span><span class="o">%/</span><span class="n">built</span><span class="o">-</span><span class="ow">in</span><span class="o">.</span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">drivers</span><span class="o">-</span><span class="n">y</span><span class="p">))</span>
+<span class="n">net</span><span class="o">-</span><span class="n">y</span><span class="w">           </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">patsubst</span><span class="w"> </span><span class="o">%/</span><span class="p">,</span><span class="w"> </span><span class="o">%/</span><span class="n">built</span><span class="o">-</span><span class="ow">in</span><span class="o">.</span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">net</span><span class="o">-</span><span class="n">y</span><span class="p">))</span>
+<span class="n">libs</span><span class="o">-</span><span class="n">y1</span><span class="w">         </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">patsubst</span><span class="w"> </span><span class="o">%/</span><span class="p">,</span><span class="w"> </span><span class="o">%/</span><span class="n">lib</span><span class="o">.</span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">libs</span><span class="o">-</span><span class="n">y</span><span class="p">))</span>
+<span class="n">libs</span><span class="o">-</span><span class="n">y2</span><span class="w">         </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">patsubst</span><span class="w"> </span><span class="o">%/</span><span class="p">,</span><span class="w"> </span><span class="o">%/</span><span class="n">built</span><span class="o">-</span><span class="ow">in</span><span class="o">.</span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">filter</span><span class="o">-</span><span class="n">out</span><span class="w"> </span><span class="o">%.</span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">libs</span><span class="o">-</span><span class="n">y</span><span class="p">)))</span>
+<span class="n">virt</span><span class="o">-</span><span class="n">y</span><span class="w">          </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">patsubst</span><span class="w"> </span><span class="o">%/</span><span class="p">,</span><span class="w"> </span><span class="o">%/</span><span class="n">built</span><span class="o">-</span><span class="ow">in</span><span class="o">.</span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">virt</span><span class="o">-</span><span class="n">y</span><span class="p">))</span>
+
+<span class="c1"># Setup the dependency. vmlinux-deps are all intermediate objects, vmlinux-dirs</span>
+<span class="c1"># are phony targets, so every time comes to this rule, the recipe of vmlinux-dirs</span>
+<span class="c1"># will be executed. Refer &quot;4.6 Phony Targets&quot; of `info make`</span>
+<span class="o">$</span><span class="p">(</span><span class="n">sort</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">vmlinux</span><span class="o">-</span><span class="n">deps</span><span class="p">)):</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">vmlinux</span><span class="o">-</span><span class="n">dirs</span><span class="p">)</span><span class="w"> </span><span class="p">;</span>
+
+<span class="c1"># Variable vmlinux-dirs is the directory part of each built-in.a</span>
+<span class="n">vmlinux</span><span class="o">-</span><span class="n">dirs</span><span class="w">    </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">patsubst</span><span class="w"> </span><span class="o">%/</span><span class="p">,</span><span class="o">%</span><span class="p">,</span><span class="o">$</span><span class="p">(</span><span class="n">filter</span><span class="w"> </span><span class="o">%/</span><span class="p">,</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">init</span><span class="o">-</span><span class="n">y</span><span class="p">)</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">init</span><span class="o">-</span><span class="n">m</span><span class="p">)</span><span class="w"> </span>\
+<span class="w">                     </span><span class="o">$</span><span class="p">(</span><span class="n">core</span><span class="o">-</span><span class="n">y</span><span class="p">)</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">core</span><span class="o">-</span><span class="n">m</span><span class="p">)</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">drivers</span><span class="o">-</span><span class="n">y</span><span class="p">)</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">drivers</span><span class="o">-</span><span class="n">m</span><span class="p">)</span><span class="w"> </span>\
+<span class="w">                     </span><span class="o">$</span><span class="p">(</span><span class="n">net</span><span class="o">-</span><span class="n">y</span><span class="p">)</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">net</span><span class="o">-</span><span class="n">m</span><span class="p">)</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">libs</span><span class="o">-</span><span class="n">y</span><span class="p">)</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">libs</span><span class="o">-</span><span class="n">m</span><span class="p">)</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">virt</span><span class="o">-</span><span class="n">y</span><span class="p">)))</span>
+
+<span class="c1"># The entry of recursive make</span>
+<span class="o">$</span><span class="p">(</span><span class="n">vmlinux</span><span class="o">-</span><span class="n">dirs</span><span class="p">):</span>
+<span class="w">                </span><span class="o">$</span><span class="p">(</span><span class="n">Q</span><span class="p">)</span><span class="o">$</span><span class="p">(</span><span class="n">MAKE</span><span class="p">)</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">build</span><span class="p">)</span><span class="o">=$</span><span class="err">@</span><span class="w"> </span><span class="n">need</span><span class="o">-</span><span class="n">builtin</span><span class="o">=</span><span class="mi">1</span>
+</code></pre></div>
+
+<p>递归 make 的<ruby> 配方 <rt>  recipe </rt></ruby>被扩展开是这样的：</p>
+<div class="highlight"><pre><span></span><code>make -f scripts/Makefile.build obj=init need-builtin=1
+</code></pre></div>
+
+<p>这意味着 <code>make</code> 将进入 <code>scripts/Makefile.build</code> 以继续构建每个 <code>built-in.a</code>。在<code>scripts/link-vmlinux.sh</code> 的帮助下，<code>vmlinux</code> 文件最终位于源根目录下。</p>
+<h4>vmlinux 与 bzImage 对比</h4>
+<p>许多 Linux 内核开发人员可能不清楚 <code>vmlinux</code> 和 <code>bzImage</code> 之间的关系。例如，这是他们在 x86-64 中的关系：</p>
+<p><img alt="" src="/data/attachment/album/201908/15/094009rbakjbua0qne0umn.png"></p>
+<p>源代码根目录下的 <code>vmlinux</code> 被剥离、压缩后，放入 <code>piggy.S</code>，然后与其他对等对象链接到 <code>arch/x86/boot/compressed/vmlinux</code>。同时，在 <code>arch/x86/boot</code> 下生成一个名为 <code>setup.bin</code> 的文件。可能有一个可选的第三个文件，它带有重定位信息，具体取决于 <code>CONFIG_X86_NEED_RELOCS</code> 的配置。</p>
+<p>由内核提供的称为 <code>build</code> 的宿主程序将这两个（或三个）部分构建到最终的 <code>bzImage</code> 文件中。</p>
+<h4>依赖跟踪</h4>
+<p>kbuild 跟踪三种依赖关系：</p>
+<ol>
+<li>所有必备文件（<code>*.c</code> 和 <code>*.h</code>）</li>
+<li>所有必备文件中使用的 <code>CONFIG_</code> 选项</li>
+<li>用于编译该目标的命令行依赖项</li>
+</ol>
+<p>第一个很容易理解，但第二个和第三个呢？ 内核开发人员经常会看到如下代码：</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#ifdef CONFIG_SMP</span>
+<span class="n">__boot_cpu_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cpu</span><span class="p">;</span>
+<span class="cp">#endif</span>
+</code></pre></div>
+
+<p>当 <code>CONFIG_SMP</code> 改变时，这段代码应该重新编译。编译源文件的命令行也很重要，因为不同的命令行可能会导致不同的目标文件。</p>
+<p>当 <code>.c</code> 文件通过 <code>#include</code> 指令使用头文件时，你需要编写如下规则：</p>
+<div class="highlight"><pre><span></span><code>main.o: defs.h
+        recipe...
+</code></pre></div>
+
+<p>管理大型项目时，需要大量的这些规则；把它们全部写下来会很乏味无聊。幸运的是，大多数现代 C 编译器都可以通过查看源文件中的 <code>#include</code> 行来为你编写这些规则。对于 GNU 编译器集合（GCC），只需添加一个命令行参数：<code>-MD depfile</code></p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="nx">In</span><span class="w"> </span><span class="nx">scripts</span><span class="o">/</span><span class="nx">Makefile</span><span class="p">.</span><span class="nx">lib</span>
+<span class="nx">c_flags</span><span class="w">        </span><span class="p">=</span><span class="w"> </span><span class="o">-</span><span class="nx">Wp</span><span class="p">,</span><span class="o">-</span><span class="nx">MD</span><span class="p">,</span><span class="err">$</span><span class="p">(</span><span class="nx">depfile</span><span class="p">)</span><span class="w"> </span><span class="err">$</span><span class="p">(</span><span class="nx">NOSTDINC_FLAGS</span><span class="p">)</span><span class="w"> </span><span class="err">$</span><span class="p">(</span><span class="nx">LINUXINCLUDE</span><span class="p">)</span><span class="w">     </span>\
+<span class="w">                 </span><span class="o">-</span><span class="nx">include</span><span class="w"> </span><span class="err">$</span><span class="p">(</span><span class="nx">srctree</span><span class="p">)</span><span class="o">/</span><span class="nx">include</span><span class="o">/</span><span class="nx">linux</span><span class="o">/</span><span class="nx">compiler_types</span><span class="p">.</span><span class="nx">h</span><span class="w">       </span>\
+<span class="w">                 </span><span class="err">$</span><span class="p">(</span><span class="nx">__c_flags</span><span class="p">)</span><span class="w"> </span><span class="err">$</span><span class="p">(</span><span class="nx">modkern_cflags</span><span class="p">)</span><span class="w">                           </span>\
+<span class="w">                 </span><span class="err">$</span><span class="p">(</span><span class="nx">basename_flags</span><span class="p">)</span><span class="w"> </span><span class="err">$</span><span class="p">(</span><span class="nx">modname_flags</span><span class="p">)</span>
+</code></pre></div>
+
+<p>这将生成一个 <code>.d</code> 文件，内容如下：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">init_task</span><span class="p">.</span><span class="nx">o</span><span class="p">:</span><span class="w"> </span><span class="nx">init</span><span class="o">/</span><span class="nx">init_task</span><span class="p">.</span><span class="nx">c</span><span class="w"> </span><span class="nx">include</span><span class="o">/</span><span class="nx">linux</span><span class="o">/</span><span class="nx">kconfig</span><span class="p">.</span><span class="nx">h</span><span class="w"> </span>\
+<span class="w">    </span><span class="nx">include</span><span class="o">/</span><span class="nx">generated</span><span class="o">/</span><span class="nx">autoconf</span><span class="p">.</span><span class="nx">h</span><span class="w"> </span><span class="nx">include</span><span class="o">/</span><span class="nx">linux</span><span class="o">/</span><span class="nx">init_task</span><span class="p">.</span><span class="nx">h</span><span class="w"> </span>\
+<span class="w">    </span><span class="nx">include</span><span class="o">/</span><span class="nx">linux</span><span class="o">/</span><span class="nx">rcupdate</span><span class="p">.</span><span class="nx">h</span><span class="w"> </span><span class="nx">include</span><span class="o">/</span><span class="nx">linux</span><span class="o">/</span><span class="nx">types</span><span class="p">.</span><span class="nx">h</span><span class="w"> </span>\
+<span class="w">    </span><span class="o">...</span>
+</code></pre></div>
+
+<p>然后主程序 <a href="https://github.com/torvalds/linux/blob/master/scripts/basic/fixdep.c">fixdep</a> 通过将 depfile 文件和命令行作为输入来处理其他两个依赖项，然后以 makefile 格式输出一个 <code>.&lt;target&gt;.cmd</code> 文件，它记录命令行和目标的所有先决条件（包括配置）。 它看起来像这样：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="nx">The</span><span class="w"> </span><span class="nx">command</span><span class="w"> </span><span class="nx">line</span><span class="w"> </span><span class="nx">used</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">compile</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="nx">target</span>
+<span class="nx">cmd_init</span><span class="o">/</span><span class="nx">init_task</span><span class="p">.</span><span class="nx">o</span><span class="w"> </span><span class="p">:=</span><span class="w"> </span><span class="nx">gcc</span><span class="w"> </span><span class="o">-</span><span class="nx">Wp</span><span class="p">,</span><span class="o">-</span><span class="nx">MD</span><span class="p">,</span><span class="nx">init</span><span class="o">/</span><span class="p">.</span><span class="nx">init_task</span><span class="p">.</span><span class="nx">o</span><span class="p">.</span><span class="nx">d</span><span class="w">  </span><span class="o">-</span><span class="nx">nostdinc</span><span class="w"> </span><span class="o">...</span>
+<span class="o">...</span>
+<span class="err">#</span><span class="w"> </span><span class="nx">The</span><span class="w"> </span><span class="nx">dependency</span><span class="w"> </span><span class="nx">files</span>
+<span class="nx">deps_init</span><span class="o">/</span><span class="nx">init_task</span><span class="p">.</span><span class="nx">o</span><span class="w"> </span><span class="p">:=</span><span class="w"> </span>\
+<span class="w">    </span><span class="err">$</span><span class="p">(</span><span class="nx">wildcard</span><span class="w"> </span><span class="nx">include</span><span class="o">/</span><span class="nx">config</span><span class="o">/</span><span class="nx">posix</span><span class="o">/</span><span class="nx">timers</span><span class="p">.</span><span class="nx">h</span><span class="p">)</span><span class="w"> </span>\
+<span class="w">    </span><span class="err">$</span><span class="p">(</span><span class="nx">wildcard</span><span class="w"> </span><span class="nx">include</span><span class="o">/</span><span class="nx">config</span><span class="o">/</span><span class="nx">arch</span><span class="o">/</span><span class="nx">task</span><span class="o">/</span><span class="nx">struct</span><span class="o">/</span><span class="nx">on</span><span class="o">/</span><span class="nx">stack</span><span class="p">.</span><span class="nx">h</span><span class="p">)</span><span class="w"> </span>\
+<span class="w">    </span><span class="err">$</span><span class="p">(</span><span class="nx">wildcard</span><span class="w"> </span><span class="nx">include</span><span class="o">/</span><span class="nx">config</span><span class="o">/</span><span class="nx">thread</span><span class="o">/</span><span class="nx">info</span><span class="o">/</span><span class="k">in</span><span class="o">/</span><span class="nx">task</span><span class="p">.</span><span class="nx">h</span><span class="p">)</span><span class="w"> </span>\
+<span class="w">    </span><span class="o">...</span>
+<span class="w">    </span><span class="nx">include</span><span class="o">/</span><span class="nx">uapi</span><span class="o">/</span><span class="nx">linux</span><span class="o">/</span><span class="nx">types</span><span class="p">.</span><span class="nx">h</span><span class="w"> </span>\
+<span class="w">    </span><span class="nx">arch</span><span class="o">/</span><span class="nx">x86</span><span class="o">/</span><span class="nx">include</span><span class="o">/</span><span class="nx">uapi</span><span class="o">/</span><span class="nx">asm</span><span class="o">/</span><span class="nx">types</span><span class="p">.</span><span class="nx">h</span><span class="w"> </span>\
+<span class="w">    </span><span class="nx">include</span><span class="o">/</span><span class="nx">uapi</span><span class="o">/</span><span class="nx">asm</span><span class="o">-</span><span class="nx">generic</span><span class="o">/</span><span class="nx">types</span><span class="p">.</span><span class="nx">h</span><span class="w"> </span>\
+<span class="w">    </span><span class="o">...</span>
+</code></pre></div>
+
+<p>在递归 make 中，<code>.&lt;target&gt;.cmd</code> 文件将被包含，以提供所有依赖关系信息并帮助决定是否重建目标。</p>
+<p>这背后的秘密是 <code>fixdep</code> 将解析 depfile（<code>.d</code> 文件），然后解析里面的所有依赖文件，搜索所有 <code>CONFIG_</code> 字符串的文本，将它们转换为相应的空的头文件，并将它们添加到目标的先决条件。每次配置更改时，相应的空的头文件也将更新，因此 kbuild 可以检测到该更改并重建依赖于它的目标。因为还记录了命令行，所以很容易比较最后和当前的编译参数。</p>
+<h3>展望未来</h3>
+<p>Kconfig/kbuild 在很长一段时间内没有什么变化，直到新的维护者 Masahiro Yamada 于 2017 年初加入，现在 kbuild 正在再次积极开发中。如果你不久后看到与本文中的内容不同的内容，请不要感到惊讶。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

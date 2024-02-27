@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在 RHEL/CentOS 上为Web服务器架设 “XR”（Crossroads） 负载均衡器</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Thilina Uvindasiri Crossroads 是一个独立的服务，它是一个用于Linux和TCP服务的开源负载均衡和故障转移实用程序。它可用于HTTP，HTTPS，SSH，SMTP 和 DNS 等，它也是一个多线程的工具，在提供负载均衡服务 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/07/zai-rhelcentos-shang-wei-webfu-wu-qi-jia-she-xrcrossroads-fu-zai-jun-heng-qi.html" rel="bookmark"
+           title="Permalink to 在 RHEL/CentOS 上为Web服务器架设 “XR”（Crossroads） 负载均衡器">在 RHEL/CentOS 上为Web服务器架设 “XR”（Crossroads） 负载均衡器</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-07-23T07:22:00+02:00">
+                Published: Thu 23 July 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Thilina Uvindasiri</p>
+<p>Crossroads 是一个独立的服务，它是一个用于Linux和TCP服务的开源负载均衡和故障转移实用程序。它可用于HTTP，HTTPS，SSH，SMTP 和 DNS 等，它也是一个多线程的工具，在提供负载均衡服务时，它可以只使用一块内存空间以此来提高性能。</p>
+<p>首先来看看 XR 是如何工作的。我们可以将 XR 放到网络客户端和服务器之间，它可以将客户端的请求分配到服务器上以平衡负载。</p>
+<p>如果一台服务器宕机，XR 会转发客户端请求到另一个服务器，所以客户感觉不到停顿。看看下面的图来了解什么样的情况下，我们要使用 XR 处理。</p>
+<p><img alt="Install XR Crossroads Load Balancer" src="/data/attachment/album/201507/22/233024yqxkjhzcp4uzequb.jpg"></p>
+<p><em>安装 XR Crossroads 负载均衡器</em></p>
+<p>这里有两个 Web 服务器，一个网关服务器，我们将在网关服务器上安装和设置 XR 以接收客户端请求，并分发到服务器。</p>
+<p>XR Crossroads 网关服务器：172.16.1.204</p>
+<p>Web 服务器01：172.16.1.222</p>
+<p>Web 服务器02：192.168.1.161</p>
+<p>在上述情况下，我们网关服务器（即 XR Crossroads）的IP地址是172.16.1.204，webserver01 为172.16.1.222，它监听8888端口，webserver02 是192.168.1.161，它监听端口5555。</p>
+<p>现在，我们需要的是均衡所有的请求，通过 XR 网关从网上接收请求然后分发它到两个web服务器已达到负载均衡。</p>
+<h3>第1步：在网关服务器上安装 XR Crossroads 负载均衡器</h3>
+<p><strong>1. 不幸的是，没有为 crossroads 提供可用的 RPM 包，我们只能从源码安装。</strong></p>
+<p>要编译 XR，你必须在系统上安装 C++ 编译器和 GNU make 组件，才能避免安装错误。</p>
+<div class="highlight"><pre><span></span><code># yum install gcc gcc-c++ make
+</code></pre></div>
+
+<p>接下来，去他们的官方网站（<a href="https://crossroads.e-tunity.com/">https://crossroads.e-tunity.com</a>）下载此压缩包（即 crossroads-stable.tar.gz）。</p>
+<p>或者，您可以使用 wget 去下载包然后解压在任何位置（如：/usr/src/），进入解压目录，并使用 “make install” 命令安装。</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># wget https://crossroads.e-tunity.com/downloads/crossroads-stable.tar.gz</span>
+<span class="c1"># tar -xvf crossroads-stable.tar.gz</span>
+<span class="c1"># cd crossroads-2.74/</span>
+<span class="c1"># make install</span>
+</code></pre></div>
+
+<p><img alt="Install XR Crossroads Load Balancer" src="/data/attachment/album/201507/22/233027u0e8fgz9853exfe5.png"></p>
+<p><em>安装 XR Crossroads 负载均衡器</em></p>
+<p>安装完成后，二进制文件安装在 /usr/sbin 目录下，XR 的配置文件在 /etc 下名为 “xrctl.xml” 。</p>
+<p><strong>2. 最后一个条件，你需要两个web服务器。为了方便使用，我在一台服务器中创建两个 Python SimpleHTTPServer 实例。</strong></p>
+<p>要了解如何设置一个 python SimpleHTTPServer，请阅读我们此处的文章 <a href="http://www.tecmint.com/python-simplehttpserver-to-create-webserver-or-serve-files-instantly/">使用 SimpleHTTPServer 轻松创建两个 web 服务器</a>.</p>
+<p>正如我所说的，我们要使用两个web服务器，webserver01 通过8888端口运行在172.16.1.222上，webserver02 通过5555端口运行在192.168.1.161上。</p>
+<p><img alt="XR WebServer 01" src="/data/attachment/album/201507/22/233028d18ep1oalhz160do.jpg"></p>
+<p><em>XR WebServer 01</em></p>
+<p><img alt="XR WebServer 02" src="/data/attachment/album/201507/22/233028s0n1y7kffk327kmn.jpg"></p>
+<p><em>XR WebServer 02</em></p>
+<h3>第2步: 配置 XR Crossroads 负载均衡器</h3>
+<p><strong>3. 所需都已经就绪。现在我们要做的就是配置<code>xrctl.xml</code> 文件并通过 XR 服务器接受来自互联网的请求分发到 web 服务器上。</strong></p>
+<p>现在用 <a href="http://www.tecmint.com/vi-editor-usage/">vi/vim 编辑器</a>打开<code>xrctl.xml</code>文件。</p>
+<div class="highlight"><pre><span></span><code><span class="c"># vim /etc/xrctl.xml</span>
+</code></pre></div>
+
+<p>并作如下修改。</p>
+<div class="highlight"><pre><span></span><code><span class="cp">&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;</span>
+<span class="nt">&lt;configuration&gt;</span>
+<span class="nt">&lt;system&gt;</span>
+<span class="nt">&lt;uselogger&gt;</span>true<span class="nt">&lt;/uselogger&gt;</span>
+<span class="nt">&lt;logdir&gt;</span>/tmp<span class="nt">&lt;/logdir&gt;</span>
+<span class="nt">&lt;/system&gt;</span>
+<span class="nt">&lt;service&gt;</span>
+<span class="nt">&lt;name&gt;</span>Tecmint<span class="nt">&lt;/name&gt;</span>
+<span class="nt">&lt;server&gt;</span>
+<span class="nt">&lt;address&gt;</span>172.16.1.204:8080<span class="nt">&lt;/address&gt;</span>
+<span class="nt">&lt;type&gt;</span>tcp<span class="nt">&lt;/type&gt;</span>
+<span class="nt">&lt;webinterface&gt;</span>0:8010<span class="nt">&lt;/webinterface&gt;</span>
+<span class="nt">&lt;verbose&gt;</span>yes<span class="nt">&lt;/verbose&gt;</span>
+<span class="nt">&lt;clientreadtimeout&gt;</span>0<span class="nt">&lt;/clientreadtimeout&gt;</span>
+<span class="nt">&lt;clientwritetimout&gt;</span>0<span class="nt">&lt;/clientwritetimeout&gt;</span>
+<span class="nt">&lt;backendreadtimeout&gt;</span>0<span class="nt">&lt;/backendreadtimeout&gt;</span>
+<span class="nt">&lt;backendwritetimeout&gt;</span>0<span class="nt">&lt;/backendwritetimeout&gt;</span>
+<span class="nt">&lt;/server&gt;</span>
+<span class="nt">&lt;backend&gt;</span>
+<span class="nt">&lt;address&gt;</span>172.16.1.222:8888<span class="nt">&lt;/address&gt;</span>
+<span class="nt">&lt;/backend&gt;</span>
+<span class="nt">&lt;backend&gt;</span>
+<span class="nt">&lt;address&gt;</span>192.168.1.161:5555<span class="nt">&lt;/address&gt;</span>
+<span class="nt">&lt;/backend&gt;</span>
+<span class="nt">&lt;/service&gt;</span>
+<span class="nt">&lt;/configuration&gt;</span>
+</code></pre></div>
+
+<p><img alt="Configure XR Crossroads Load Balancer" src="/data/attachment/album/201507/22/233030cv5iiutrifz5i3ua.jpg"></p>
+<p><em>配置 XR Crossroads 负载均衡器</em></p>
+<p>在这里，你可以看到在 xrctl.xml 中配置了一个非常基本的 XR 。我已经定义了 XR 服务器在哪里，XR 的后端服务和端口及 XR 的 web 管理界面是什么。</p>
+<p><strong>4. 现在，你需要通过以下命令来启动该 XR 守护进程。</strong></p>
+<div class="highlight"><pre><span></span><code># xrctl start
+# xrctl status
+</code></pre></div>
+
+<p><img alt="Start XR Crossroads" src="/data/attachment/album/201507/22/233032ewblzowertrqbbee.jpg"></p>
+<p><em>启动 XR Crossroads</em></p>
+<p><strong>5. 好的。现在是时候来检查该配置是否可以工作正常了。打开两个网页浏览器，输入 XR 服务器的 IP 地址和端口，并查看输出。</strong></p>
+<p><img alt="Verify Web Server Load Balancing" src="/data/attachment/album/201507/22/233039fhsjp7cng7b5bh26.jpg"></p>
+<p><em>验证 Web 服务器负载均衡</em></p>
+<p>太棒了。它工作正常。是时候玩玩 XR 了。（LCTT 译注：可以看到两个请求分别分配到了不同服务器。）</p>
+<p><strong>6. 现在可以通过我们配置的网络管理界面的端口来登录到 XR Crossroads 仪表盘。在浏览器输入你的 XR 服务器的 IP 地址和你配置在 xrctl.xml 中的管理端口。</strong></p>
+<div class="highlight"><pre><span></span><code>http://172.16.1.204:8010
+</code></pre></div>
+
+<p><img alt="XR Crossroads Dashboard" src="/data/attachment/album/201507/22/233044kbwqxxq3bh8bhk38.jpg"></p>
+<p><em>XR Crossroads 仪表盘</em></p>
+<p>看起来像上面一样。它容易理解，用户界面​​友好，易于使用。它在右上角显示每个服务器能容纳多少个连接，以及关于接收该请求的附加细节。你也可以设置每个服务器承担的负载量，最大连接数和平均负载等。</p>
+<p>最大的好处是，即使没有配置文件 xrctl.xml，你也可以做到这一点。你唯一要做的就是运行以下命令，它就会把这一切搞定。</p>
+<div class="highlight"><pre><span></span><code># xr --verbose --server tcp:172.16.1.204:8080 --backend 172.16.1.222:8888 --backend 192.168.1.161:5555
+</code></pre></div>
+
+<p>上面语法的详细说明：</p>
+<ul>
+<li>-verbose 将显示命令执行后的信息。</li>
+<li>-server 定义你在安装包中的 XR 服务器。</li>
+<li>-backend 定义你需要平衡分配到 Web 服务器的流量。</li>
+<li>tcp 说明我们使用 TCP 服务。</li>
+</ul>
+<p>欲了解更多详情，有关文件及 CROSSROADS 的配置，请访问他们的官方网站: <a href="https://crossroads.e-tunity.com/">https://crossroads.e-tunity.com/</a>.</p>
+<p>XR Corssroads 使用许多方法来提高服务器性能，避免宕机，让你的管理任务更轻松，更简便。希望你喜欢此文章，并随时在下面发表你的评论和建议，方便与我们保持联系。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

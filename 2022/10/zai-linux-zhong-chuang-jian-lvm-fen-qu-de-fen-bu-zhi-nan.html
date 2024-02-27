@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在 Linux 中创建 LVM 分区的分步指南</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: James Kiarie 在本指南中，我们将逐步介绍如何在 Linux 中创建 LVM 分区。 LVM 代表 “ 逻辑卷管理 Logical Volume Management ”，它是专门为服务器管理 Linux 系统上 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2022/10/zai-linux-zhong-chuang-jian-lvm-fen-qu-de-fen-bu-zhi-nan.html" rel="bookmark"
+           title="Permalink to 在 Linux 中创建 LVM 分区的分步指南">在 Linux 中创建 LVM 分区的分步指南</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2022-10-18T11:36:17+02:00">
+                Published: Tue 18 October 2022
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: James Kiarie</p>
+<p><img alt="" src="/data/attachment/album/202210/18/113615swffwazya3nyfve2.jpg"></p>
+<blockquote>
+<p>在本指南中，我们将逐步介绍如何在 Linux 中创建 LVM 分区。</p>
+</blockquote>
+<p>LVM 代表 “<ruby> 逻辑卷管理 <rt>  Logical Volume Management </rt></ruby>”，它是专门为服务器管理 Linux 系统上的磁盘或存储的推荐方式。 LVM 分区的主要优点之一是我们可以实时扩展其大小而无需停机。 LVM 分区也可以缩小，但不推荐。</p>
+<p>为了演示，我在我的 Ubuntu 22.04 系统上连接了 15GB 磁盘，我们将从命令行在该磁盘上创建 LVM 分区。</p>
+<h5>准备</h5>
+<ul>
+<li>连接到 Linux 系统的原始磁盘</li>
+<li>具有 sudo 权限的本地用户</li>
+<li>预装 lvm2 包</li>
+</ul>
+<p>事不宜迟，让我们深入了解这些步骤。</p>
+<h3>步骤 1、识别新连接的原始磁盘</h3>
+<p>登录到你的系统，打开终端并运行以下 <code>dmesg</code> 命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>dmesg<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-i<span class="w"> </span>sd
+</code></pre></div>
+
+<p>在输出中，查找大小为 15GB 的新磁盘。</p>
+<p><img alt="dmesg-command-new-attached-disk-linux" src="/data/attachment/album/202210/18/113618icvckmdctcwietas.png"></p>
+<p>识别新连接的原始磁盘的另一种方法是通过 <code>fdisk</code> 命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>fdisk<span class="w"> </span>-l<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-i<span class="w"> </span>/dev/sd
+</code></pre></div>
+
+<p>输出：</p>
+<p><img alt="fdisk-command-output-new-disk" src="/data/attachment/album/202210/18/113618pzeg7en8vqb72w1a.png"></p>
+<p>从上面的输出，可以确认新连接的磁盘是 <code>/dev/sdb</code>。</p>
+<h3>步骤 2、创建 PV（物理卷）</h3>
+<p>在开始在磁盘 <code>/dev/sdb</code> 上创建<ruby> 物理卷 <rt>  Physical Volume </rt></ruby>（PV）之前，请确保已安装 <code>lvm2</code> 包。如果未安装，请运行以下命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>lvm2<span class="w">     </span>//<span class="w"> </span>On<span class="w"> </span>Ubuntu<span class="w"> </span>/<span class="w"> </span>Debian
+$<span class="w"> </span>sudo<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> </span>lvm2<span class="w">    </span>//<span class="w"> </span>on<span class="w"> </span>RHEL<span class="w"> </span>/<span class="w"> </span>CentOS
+</code></pre></div>
+
+<p>运行以下 <code>pvcreate</code> 命令在磁盘 <code>/dev/sdb</code> 上创建 PV：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>pvcreate<span class="w"> </span>/dev/sdb
+<span class="w">  </span>Physical<span class="w"> </span>volume<span class="w"> </span><span class="s2">&quot;/dev/sdb&quot;</span><span class="w"> </span>successfully<span class="w"> </span>created.
+$
+</code></pre></div>
+
+<p>要验证 PV 状态，运行：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>pvs<span class="w"> </span>/dev/sdb
+或者
+$<span class="w"> </span>sudo<span class="w"> </span>pvdisplay<span class="w"> </span>/dev/sdb
+</code></pre></div>
+
+<p><img alt="pvdisplay-command-output-linux" src="/data/attachment/album/202210/18/113619jn9a77a6o6w6tvrr.png"></p>
+<h3>步骤 3、创建 VG（卷组）</h3>
+<p>要创建<ruby> 卷组 <rt>  Volume Group </rt></ruby>（VG），我们将使用 <code>vgcreate</code> 命令。创建 VG 意味着将 PV 添加到其中。</p>
+<p>语法：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>vgcreare<span class="w"> </span>&lt;vg_name&gt;<span class="w">  </span>&lt;pv&gt;
+</code></pre></div>
+
+<p>在我们的例子中，命令是：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>vgcreate<span class="w"> </span>volgrp01<span class="w"> </span>/dev/sdb
+<span class="w">  </span>Volume<span class="w"> </span>group<span class="w"> </span><span class="s2">&quot;volgrp01&quot;</span><span class="w"> </span>successfully<span class="w"> </span>created
+$
+</code></pre></div>
+
+<p>运行以下命令以验证 VG（<code>volgrp01</code>）的状态：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>vgs<span class="w"> </span>volgrp01
+或者
+$<span class="w"> </span>sudo<span class="w"> </span>vgdisplay<span class="w"> </span>volgrp01
+</code></pre></div>
+
+<p>上述命令的输出：</p>
+<p><img alt="vgs-command-output-linux" src="/data/attachment/album/202210/18/113620myys3otbawa3y7tz.png"></p>
+<p>以上输出确认大小为 15 GiB 的卷组 <code>volgrp01</code> 已成功创建，一个<ruby> 物理扩展Physical Extend</ruby>（PE）的大小为 4 MB。创建 VG 时可以更改 PE 大小。</p>
+<h3>步骤 4、创建 LV（逻辑卷）</h3>
+<p><code>lvcreate</code> 命令用于从 VG 中创建<ruby> 逻辑卷 <rt>  Logical Volume </rt></ruby> LV。 <code>lvcreate</code> 命令的语法如下所示：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>lvcreate<span class="w"> </span>-L<span class="w"> </span>&lt;Size-of-LV&gt;<span class="w"> </span>-n<span class="w"> </span>&lt;LV-Name&gt;<span class="w">   </span>&lt;VG-Name&gt;
+</code></pre></div>
+
+<p>在我们的例子中，以下命令将用于创建大小为 14 GB 的 LV：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>lvcreate<span class="w"> </span>-L<span class="w"> </span>14G<span class="w"> </span>-n<span class="w"> </span>lv01<span class="w"> </span>volgrp01
+<span class="w">  </span>Logical<span class="w"> </span>volume<span class="w"> </span><span class="s2">&quot;lv01&quot;</span><span class="w"> </span>created.
+$
+</code></pre></div>
+
+<p>验证 LV 的状态，运行：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>lvs<span class="w"> </span>/dev/volgrp01/lv01
+或者
+$<span class="w"> </span>sudo<span class="w"> </span>lvdisplay<span class="w"> </span>/dev/volgrp01/lv01
+</code></pre></div>
+
+<p>输出：</p>
+<p><img alt="lvs-command-output-linux" src="/data/attachment/album/202210/18/113620qdkeuswsfc53gd3f.png"></p>
+<p>上面的输出显示 LV（<code>lv01</code>）已成功创建，大小为 14 GiB。</p>
+<h3>步骤 5、格式化 LVM 分区</h3>
+<p>使用 <code>mkfs</code> 命令格式化 LVM 分区。在我们的例子中，LVM 分区是 <code>/dev/volgrp01/lv01</code>。</p>
+<p>注意：我们可以将分区格式化为 ext4 或 xfs，因此请根据你的设置和要求选择文件系统类型。</p>
+<p>运行以下命令将 LVM 分区格式化为 ext4 文件系统。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>mkfs.ext4<span class="w"> </span>/dev/volgrp01/lv01
+</code></pre></div>
+
+<p><img alt="mkfs-ext4-filesystem-lvm" src="/data/attachment/album/202210/18/113621h6lzlo6qdqrzt6qx.png"></p>
+<p>执行下面的命令，用 xfs 文件系统格式化 LVM 分区：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>mkfs.xfs<span class="w"> </span>/dev/volgrp01/lv01
+</code></pre></div>
+
+<p>要使用上述格式化分区，我们必须将其挂载到某个文件夹中。所以，让我们创建一个文件夹 <code>/mnt/data</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>mkdir<span class="w"> </span>/mnt/data
+</code></pre></div>
+
+<p>现在运行 <code>mount</code> 命令将其挂载到 <code>/mnt/data</code> 文件夹：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>mount<span class="w"> </span>/dev/volgrp01/lv01<span class="w"> </span>/mnt/data/
+$<span class="w"> </span>df<span class="w"> </span>-Th<span class="w"> </span>/mnt/data/
+Filesystem<span class="w">                </span>Type<span class="w">  </span>Size<span class="w">  </span>Used<span class="w"> </span>Avail<span class="w"> </span>Use%<span class="w"> </span>Mounted<span class="w"> </span>on
+/dev/mapper/volgrp01-lv01<span class="w"> </span>ext4<span class="w">   </span>14G<span class="w">   </span>24K<span class="w">   </span>13G<span class="w">   </span><span class="m">1</span>%<span class="w"> </span>/mnt/data
+$
+</code></pre></div>
+
+<p>尝试创建一些没用的文件，运行以下命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>/mnt/data/
+$<span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;testing lvm partition&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>sudo<span class="w"> </span>tee<span class="w"> </span>dummy.txt
+$<span class="w"> </span>cat<span class="w"> </span>dummy.txt
+testing<span class="w"> </span>lvm<span class="w"> </span>partition
+$
+$<span class="w"> </span>sudo<span class="w"> </span>rm<span class="w"> </span>-f<span class="w">  </span>dummy.txt
+</code></pre></div>
+
+<p>完美，以上命令输出确认我们可以访问 LVM 分区。</p>
+<p>要永久挂载上述 LVM 分区，请使用以下 <code>echo</code> 命令将其条目添加到 <code>fstab</code> 文件中：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;/dev/volgrp01/lv01  /mnt/data  ext4  defaults 0 0&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>sudo<span class="w">  </span>tee<span class="w"> </span>-a<span class="w"> </span>/etc/fstab
+$<span class="w"> </span>sudo<span class="w"> </span>mount<span class="w"> </span>-a
+</code></pre></div>
+
+<p>以上就是本指南的全部内容，感谢阅读。请在下面的评论区发表你的问题和反馈。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 LVM 为你的 Fedora 系统添加存储</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Tim Bosse 有时需要在系统中添加另一块磁盘。这就是 逻辑卷管理 Logical Volume Management （LVM）的用武之地。LVM 的好处之处在于它相当灵活。有几 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2020/12/shi-yong-lvm-wei-ni-de-fedora-xi-tong-tian-jia-cun-chu.html" rel="bookmark"
+           title="Permalink to 使用 LVM 为你的 Fedora 系统添加存储">使用 LVM 为你的 Fedora 系统添加存储</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2020-12-20T10:05:18+01:00">
+                Published: Sun 20 December 2020
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Tim Bosse</p>
+<p><img alt="" src="/data/attachment/album/202012/20/100519bj1df01ffhdw831k.jpg"></p>
+<p>有时需要在系统中添加另一块磁盘。这就是<ruby> 逻辑卷管理 <rt>  Logical Volume Management </rt></ruby>（LVM）的用武之地。LVM 的好处之处在于它相当灵活。有几种方法可以添加一块磁盘。这篇文章介绍了一种方法。</p>
+<h3>注意！</h3>
+<p>这篇文章并不包括将新的磁盘物理地安装到系统中的过程。请查阅你的系统和磁盘文档，了解如何正确地进行安装。</p>
+<p><strong>重要：</strong> 一定要确保你已经备份重要数据。如果新磁盘已有数据，那么本文中描述的步骤将破坏数据。</p>
+<h3>最好了解</h3>
+<p>本文并没有深入介绍 LVM 的每一个功能，重点是添加磁盘。但基本上你要了解，LVM 有<ruby> 卷组 <rt>  volume group </rt></ruby>（VG），它由一个或多个分区和/或磁盘组成。你把这些分区或磁盘以<ruby> 物理卷 <rt>  physical volume </rt></ruby>（PV）的方式添加到卷组。一个卷组可以分成许多<ruby> 逻辑卷 <rt>  logical volume </rt></ruby>（LV）。逻辑卷可以作为文件系统、ramdisk 等其他存储使用。更多信息可以在<a href="https://en.wikipedia.org/wiki/Logical_Volume_Manager_(Linux)">这里</a>中找到。</p>
+<p>可以看作是，把物理卷形成一个存储池（一个卷组），然后从这个存储池中划分出逻辑卷，供你的系统直接使用。</p>
+<h3>准备</h3>
+<p>确保你能看到你要添加的磁盘。在添加磁盘之前使用 <code>lsblk</code> 查看哪些存储空间已经可用或正在使用。</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">lsblk</span>
+<span class="n">NAME</span><span class="w">                   </span><span class="nl">MAJ</span><span class="p">:</span><span class="nf">MIN</span><span class="w"> </span><span class="n">RM</span><span class="w">  </span><span class="k">SIZE</span><span class="w"> </span><span class="n">RO</span><span class="w"> </span><span class="n">TYPE</span><span class="w"> </span><span class="n">MOUNTPOINT</span>
+<span class="n">zram0</span><span class="w">                  </span><span class="mi">251</span><span class="err">:</span><span class="mi">0</span><span class="w">    </span><span class="mi">0</span><span class="w">  </span><span class="mi">989</span><span class="n">M</span><span class="w">  </span><span class="mi">0</span><span class="w"> </span><span class="k">disk</span><span class="w"> </span><span class="o">[</span><span class="n">SWAP</span><span class="o">]</span>
+<span class="n">vda</span><span class="w">                    </span><span class="mi">252</span><span class="err">:</span><span class="mi">0</span><span class="w">    </span><span class="mi">0</span><span class="w">   </span><span class="mi">20</span><span class="n">G</span><span class="w">  </span><span class="mi">0</span><span class="w"> </span><span class="k">disk</span>
+<span class="err">├─</span><span class="n">vda1</span><span class="w">                 </span><span class="mi">252</span><span class="err">:</span><span class="mi">1</span><span class="w">    </span><span class="mi">0</span><span class="w">    </span><span class="mi">1</span><span class="n">G</span><span class="w">  </span><span class="mi">0</span><span class="w"> </span><span class="n">part</span><span class="w"> </span><span class="o">/</span><span class="n">boot</span>
+<span class="err">└─</span><span class="n">vda2</span><span class="w">                 </span><span class="mi">252</span><span class="err">:</span><span class="mi">2</span><span class="w">    </span><span class="mi">0</span><span class="w">   </span><span class="mi">19</span><span class="n">G</span><span class="w">  </span><span class="mi">0</span><span class="w"> </span><span class="n">part</span>
+<span class="err">└─</span><span class="n">fedora_fedora</span><span class="o">-</span><span class="n">root</span><span class="w">   </span><span class="mi">253</span><span class="err">:</span><span class="mi">0</span><span class="w">    </span><span class="mi">0</span><span class="w">   </span><span class="mi">19</span><span class="n">G</span><span class="w">  </span><span class="mi">0</span><span class="w"> </span><span class="n">lvm</span><span class="w">  </span><span class="o">/</span>
+</code></pre></div>
+
+<p>本文使用的是带有虚拟存储的虚拟机，因此设备名称以 <code>vda</code> 开头代表第一个磁盘，<code>vdb</code> 代表第二个磁盘，以此类推。你的设备名称可能不同。许多系统会将 <code>sda</code> 作为第一个物理磁盘，<code>sdb</code> 代表第二个磁盘，以此类推。</p>
+<p>当已连接新磁盘，并且你的系统已备份且正在运行，再次使用 <code>lsblk</code> 来查看新的块设备。</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">lsblk</span>
+<span class="n">NAME</span><span class="w">                   </span><span class="nl">MAJ</span><span class="p">:</span><span class="nf">MIN</span><span class="w"> </span><span class="n">RM</span><span class="w">  </span><span class="k">SIZE</span><span class="w"> </span><span class="n">RO</span><span class="w"> </span><span class="n">TYPE</span><span class="w"> </span><span class="n">MOUNTPOINT</span>
+<span class="n">zram0</span><span class="w">                  </span><span class="mi">251</span><span class="err">:</span><span class="mi">0</span><span class="w">    </span><span class="mi">0</span><span class="w">  </span><span class="mi">989</span><span class="n">M</span><span class="w">  </span><span class="mi">0</span><span class="w"> </span><span class="k">disk</span><span class="w"> </span><span class="o">[</span><span class="n">SWAP</span><span class="o">]</span>
+<span class="n">vda</span><span class="w">                    </span><span class="mi">252</span><span class="err">:</span><span class="mi">0</span><span class="w">    </span><span class="mi">0</span><span class="w">   </span><span class="mi">20</span><span class="n">G</span><span class="w">  </span><span class="mi">0</span><span class="w"> </span><span class="k">disk</span>
+<span class="err">├─</span><span class="n">vda1</span><span class="w">                 </span><span class="mi">252</span><span class="err">:</span><span class="mi">1</span><span class="w">    </span><span class="mi">0</span><span class="w">    </span><span class="mi">1</span><span class="n">G</span><span class="w">  </span><span class="mi">0</span><span class="w"> </span><span class="n">part</span><span class="w"> </span><span class="o">/</span><span class="n">boot</span>
+<span class="err">└─</span><span class="n">vda2</span><span class="w">                 </span><span class="mi">252</span><span class="err">:</span><span class="mi">2</span><span class="w">    </span><span class="mi">0</span><span class="w">   </span><span class="mi">19</span><span class="n">G</span><span class="w">  </span><span class="mi">0</span><span class="w"> </span><span class="n">part</span>
+<span class="err">└─</span><span class="n">fedora_fedora</span><span class="o">-</span><span class="n">root</span><span class="w"> </span><span class="mi">253</span><span class="err">:</span><span class="mi">0</span><span class="w">    </span><span class="mi">0</span><span class="w">   </span><span class="mi">19</span><span class="n">G</span><span class="w">  </span><span class="mi">0</span><span class="w"> </span><span class="n">lvm</span><span class="w">  </span><span class="o">/</span>
+<span class="n">vdb</span><span class="w">                    </span><span class="mi">252</span><span class="err">:</span><span class="mi">16</span><span class="w">   </span><span class="mi">0</span><span class="w">   </span><span class="mi">10</span><span class="n">G</span><span class="w">  </span><span class="mi">0</span><span class="w"> </span><span class="k">disk</span>
+</code></pre></div>
+
+<p>现在有一个名为 <code>vdb</code> 的新设备。该设备的位置是 <code>/dev/vdb</code>。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ls<span class="w"> </span>-l<span class="w"> </span>/dev/vdb
+brw-rw----.<span class="w"> </span><span class="m">1</span><span class="w"> </span>root<span class="w"> </span>disk<span class="w"> </span><span class="m">252</span>,<span class="w"> </span><span class="m">16</span><span class="w"> </span>Nov<span class="w"> </span><span class="m">24</span><span class="w"> </span><span class="m">12</span>:56<span class="w"> </span>/dev/vdb
+</code></pre></div>
+
+<p>我们可以看到磁盘，但我们还不能用 LVM 来使用它。如果你运行 <code>blkid</code>，你应该不会看到它被列出。对于这个和之后的命令，你需要确保你的系统<a href="https://fedoramagazine.org/howto-use-sudo/">已配置好，这样你可以使用 sudo</a>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>blkid
+/dev/vda1:<span class="w"> </span><span class="nv">UUID</span><span class="o">=</span><span class="s2">&quot;4847cb4d-6666-47e3-9e3b-12d83b2d2448&quot;</span><span class="w"> </span><span class="nv">BLOCK_SIZE</span><span class="o">=</span><span class="s2">&quot;4096&quot;</span><span class="w"> </span><span class="nv">TYPE</span><span class="o">=</span><span class="s2">&quot;ext4&quot;</span><span class="w"> </span><span class="nv">PARTUUID</span><span class="o">=</span><span class="s2">&quot;830679b8-01&quot;</span>
+/dev/vda2:<span class="w"> </span><span class="nv">UUID</span><span class="o">=</span><span class="s2">&quot;k5eWpP-6MXw-foh5-Vbgg-JMZ1-VEf9-ARaGNd&quot;</span><span class="w"> </span><span class="nv">TYPE</span><span class="o">=</span><span class="s2">&quot;LVM2_member&quot;</span><span class="w"> </span><span class="nv">PARTUUID</span><span class="o">=</span><span class="s2">&quot;830679b8-02&quot;</span>
+/dev/mapper/fedora_fedora-root:<span class="w"> </span><span class="nv">UUID</span><span class="o">=</span><span class="s2">&quot;f8ab802f-8c5f-4766-af33-90e78573f3cc&quot;</span><span class="w"> </span><span class="nv">BLOCK_SIZE</span><span class="o">=</span><span class="s2">&quot;4096&quot;</span><span class="w"> </span><span class="nv">TYPE</span><span class="o">=</span><span class="s2">&quot;ext4&quot;</span>
+/dev/zram0:<span class="w"> </span><span class="nv">UUID</span><span class="o">=</span><span class="s2">&quot;fc6d7a48-2bd5-4066-9bcf-f062b61f6a60&quot;</span><span class="w"> </span><span class="nv">TYPE</span><span class="o">=</span><span class="s2">&quot;swap&quot;</span>
+</code></pre></div>
+
+<h3>将磁盘添加到 LVM 中</h3>
+<p>使用 <code>pvcreate</code> 初始化磁盘。你需要传递设备的完整路径。在这个例子中，它是 <code>/dev/vdb</code>。在你的系统中，它可能是 <code>/dev/sdb</code> 或其他设备名。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>pvcreate<span class="w"> </span>/dev/vdb
+Physical<span class="w"> </span>volume<span class="w"> </span><span class="s2">&quot;/dev/vdb&quot;</span><span class="w"> </span>successfully<span class="w"> </span>created.
+</code></pre></div>
+
+<p>当你运行 <code>blkid</code> 时，你应该看到磁盘已经被初始化为一个 <code>LVM2_member</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>blkid
+/dev/vda1:<span class="w"> </span><span class="nv">UUID</span><span class="o">=</span><span class="s2">&quot;4847cb4d-6666-47e3-9e3b-12d83b2d2448&quot;</span><span class="w"> </span><span class="nv">BLOCK_SIZE</span><span class="o">=</span><span class="s2">&quot;4096&quot;</span><span class="w"> </span><span class="nv">TYPE</span><span class="o">=</span><span class="s2">&quot;ext4&quot;</span><span class="w"> </span><span class="nv">PARTUUID</span><span class="o">=</span><span class="s2">&quot;830679b8-01&quot;</span>
+/dev/vda2:<span class="w"> </span><span class="nv">UUID</span><span class="o">=</span><span class="s2">&quot;k5eWpP-6MXw-foh5-Vbgg-JMZ1-VEf9-ARaGNd&quot;</span><span class="w"> </span><span class="nv">TYPE</span><span class="o">=</span><span class="s2">&quot;LVM2_member&quot;</span><span class="w"> </span><span class="nv">PARTUUID</span><span class="o">=</span><span class="s2">&quot;830679b8-02&quot;</span>
+/dev/mapper/fedora_fedora-root:<span class="w"> </span><span class="nv">UUID</span><span class="o">=</span><span class="s2">&quot;f8ab802f-8c5f-4766-af33-90e78573f3cc&quot;</span><span class="w"> </span><span class="nv">BLOCK_SIZE</span><span class="o">=</span><span class="s2">&quot;4096&quot;</span><span class="w"> </span><span class="nv">TYPE</span><span class="o">=</span><span class="s2">&quot;ext4&quot;</span>
+/dev/zram0:<span class="w"> </span><span class="nv">UUID</span><span class="o">=</span><span class="s2">&quot;fc6d7a48-2bd5-4066-9bcf-f062b61f6a60&quot;</span><span class="w"> </span><span class="nv">TYPE</span><span class="o">=</span><span class="s2">&quot;swap&quot;</span>
+/dev/vdb:<span class="w"> </span><span class="nv">UUID</span><span class="o">=</span><span class="s2">&quot;4uUUuI-lMQY-WyS5-lo0W-lqjW-Qvqw-RqeroE&quot;</span><span class="w"> </span><span class="nv">TYPE</span><span class="o">=</span><span class="s2">&quot;LVM2_member&quot;</span>
+</code></pre></div>
+
+<p>你可以使用 <code>pvs</code> 列出当前所有可用的物理卷：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>pvs
+PV<span class="w">         </span>VG<span class="w">            </span>Fmt<span class="w">  </span>Attr<span class="w"> </span>PSize<span class="w">   </span>PFree
+/dev/vda2<span class="w">  </span>fedora_fedora<span class="w"> </span>lvm2<span class="w"> </span>a--<span class="w">  </span>&lt;<span class="m">19</span>.00g<span class="w">     </span><span class="m">0</span>
+/dev/vdb<span class="w">                 </span>lvm2<span class="w"> </span>---<span class="w">   </span><span class="m">10</span>.00g<span class="w"> </span><span class="m">10</span>.00g
+</code></pre></div>
+
+<p><code>/dev/vdb</code> 被列为一个 PV （物理卷），但还没有分配到一个 VG （卷组）。</p>
+<h3>将物理卷添加到一个卷组</h3>
+<p>你可以使用 <code>vgs</code> 找到可用的卷组列表：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>vgs
+VG<span class="w">            </span><span class="c1">#PV #LV #SN Attr   VSize   VFree</span>
+fedora_fedora<span class="w">   </span><span class="m">1</span><span class="w">   </span><span class="m">1</span><span class="w">   </span><span class="m">0</span><span class="w"> </span>wz--n-<span class="w"> </span><span class="m">19</span>.00g<span class="w">    </span><span class="m">0</span>
+</code></pre></div>
+
+<p>在本例中，只有一个卷组可用。接下来，将物理卷添加到 <code>fedora_fedora</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>vgextend<span class="w"> </span>fedora_fedora<span class="w"> </span>/dev/vdb
+Volume<span class="w"> </span>group<span class="w"> </span><span class="s2">&quot;fedora_fedora&quot;</span><span class="w"> </span>successfully<span class="w"> </span>extended
+</code></pre></div>
+
+<p>你现在应该看到物理卷已被添加到卷组中：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>pvs<span class="w"> </span>
+PV<span class="w">        </span>VG<span class="w">            </span>Fmt<span class="w">  </span>Attr<span class="w"> </span>PSize<span class="w">   </span>PFree
+/dev/vda2<span class="w"> </span>fedora_fedora<span class="w"> </span>lvm2<span class="w"> </span>a–<span class="w">   </span>&lt;<span class="m">19</span>.00g<span class="w"> </span><span class="m">0</span>
+/dev/vdb<span class="w">  </span>fedora_fedora<span class="w"> </span>lvm2<span class="w"> </span>a–<span class="w">   </span>&lt;<span class="m">10</span>.00g<span class="w"> </span>&lt;<span class="m">10</span>.00g
+</code></pre></div>
+
+<p>看一下卷组：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>vgs
+VG<span class="w">            </span><span class="c1">#PV #LV #SN Attr  VSize  VFree</span>
+fedora_fedora<span class="w"> </span><span class="m">2</span><span class="w">   </span><span class="m">1</span><span class="w">   </span><span class="m">0</span><span class="w">   </span>wz–n-<span class="w"> </span><span class="m">28</span>.99g<span class="w"> </span>&lt;<span class="m">10</span>.00g
+</code></pre></div>
+
+<p>你也可以获得具体卷组和物理卷的详细列表：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>vgdisplay<span class="w"> </span>fedora_fedora
+---<span class="w"> </span>Volume<span class="w"> </span>group<span class="w"> </span>---
+VG<span class="w"> </span>Name<span class="w">               </span>fedora_fedora
+System<span class="w"> </span>ID
+Format<span class="w">                </span>lvm2
+Metadata<span class="w"> </span>Areas<span class="w">        </span><span class="m">2</span>
+Metadata<span class="w"> </span>Sequence<span class="w"> </span>No<span class="w">  </span><span class="m">3</span>
+VG<span class="w"> </span>Access<span class="w">             </span>read/write
+VG<span class="w"> </span>Status<span class="w">             </span>resizable
+MAX<span class="w"> </span>LV<span class="w">                </span><span class="m">0</span>
+Cur<span class="w"> </span>LV<span class="w">                </span><span class="m">1</span>
+Open<span class="w"> </span>LV<span class="w">               </span><span class="m">1</span>
+Max<span class="w"> </span>PV<span class="w">                </span><span class="m">0</span>
+Cur<span class="w"> </span>PV<span class="w">                </span><span class="m">2</span>
+Act<span class="w"> </span>PV<span class="w">                </span><span class="m">2</span>
+VG<span class="w"> </span>Size<span class="w">               </span><span class="m">28</span>.99<span class="w"> </span>GiB
+PE<span class="w"> </span>Size<span class="w">               </span><span class="m">4</span>.00<span class="w"> </span>MiB
+Total<span class="w"> </span>PE<span class="w">              </span><span class="m">7422</span>
+Alloc<span class="w"> </span>PE<span class="w"> </span>/<span class="w"> </span>Size<span class="w">       </span><span class="m">4863</span><span class="w"> </span>/<span class="w"> </span><span class="m">19</span>.00<span class="w"> </span>GiB
+Free<span class="w">  </span>PE<span class="w"> </span>/<span class="w"> </span>Size<span class="w">       </span><span class="m">2559</span><span class="w"> </span>/<span class="w"> </span><span class="m">10</span>.00<span class="w"> </span>GiB
+VG<span class="w"> </span>UUID<span class="w">               </span>C5dL2s-dirA-SQ15-TfQU-T3yt-l83E-oI6pkp
+</code></pre></div>
+
+<p>看下物理卷：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>pvdisplay<span class="w"> </span>/dev/vdb
+---<span class="w"> </span>Physical<span class="w"> </span>volume<span class="w"> </span>---
+PV<span class="w"> </span>Name<span class="w">               </span>/dev/vdb
+VG<span class="w"> </span>Name<span class="w">               </span>fedora_fedora
+PV<span class="w"> </span>Size<span class="w">               </span><span class="m">10</span>.00<span class="w"> </span>GiB<span class="w"> </span>/<span class="w"> </span>not<span class="w"> </span>usable<span class="w"> </span><span class="m">4</span>.00<span class="w"> </span>MiB
+Allocatable<span class="w">           </span>yes
+PE<span class="w"> </span>Size<span class="w">               </span><span class="m">4</span>.00<span class="w"> </span>MiB
+Total<span class="w"> </span>PE<span class="w">              </span><span class="m">2559</span>
+Free<span class="w"> </span>PE<span class="w">               </span><span class="m">2559</span>
+Allocated<span class="w"> </span>PE<span class="w">          </span><span class="m">0</span>
+PV<span class="w"> </span>UUID<span class="w">               </span>4uUUuI-lMQY-WyS5-lo0W-lqjW-Qvqw-RqeroE<span class="w"> </span>
+</code></pre></div>
+
+<p>现在我们已经添加了磁盘，我们可以为逻辑卷 （LV） 分配空间：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>lvs
+LV<span class="w"> </span>VG<span class="w"> </span>Attr<span class="w"> </span>LSize<span class="w"> </span>Pool<span class="w"> </span>Origin<span class="w"> </span>Data%<span class="w"> </span>Meta%<span class="w"> </span>Move<span class="w"> </span>Log<span class="w"> </span>Cpy%Sync<span class="w"> </span>Convert
+root<span class="w"> </span>fedora_fedora<span class="w"> </span>-wi-ao----<span class="w"> </span><span class="m">19</span>.00g
+</code></pre></div>
+
+<p>看一下逻辑卷。下面是详细的逻辑卷信息：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>lvdisplay<span class="w"> </span>fedora_fedora/root
+---<span class="w"> </span>Logical<span class="w"> </span>volume<span class="w"> </span>---
+LV<span class="w"> </span>Path<span class="w">                </span>/dev/fedora_fedora/root
+LV<span class="w"> </span>Name<span class="w">                </span>root
+VG<span class="w"> </span>Name<span class="w">                </span>fedora_fedora
+LV<span class="w"> </span>UUID<span class="w">                </span>yqc9cw-AvOw-G1Ni-bCT3-3HAa-qnw3-qUSHGM
+LV<span class="w"> </span>Write<span class="w"> </span>Access<span class="w">        </span>read/write
+LV<span class="w"> </span>Creation<span class="w"> </span>host,<span class="w"> </span><span class="nb">time</span><span class="w"> </span>fedora,<span class="w"> </span><span class="m">2020</span>-11-24<span class="w"> </span><span class="m">11</span>:44:36<span class="w"> </span>-0500
+LV<span class="w"> </span>Status<span class="w">              </span>available
+LV<span class="w"> </span>Size<span class="w">                </span><span class="m">19</span>.00<span class="w"> </span>GiB
+Current<span class="w"> </span>LE<span class="w">             </span><span class="m">4863</span>
+Segments<span class="w">               </span><span class="m">1</span>
+Allocation<span class="w">             </span>inherit
+Read<span class="w"> </span>ahead<span class="w"> </span>sectors<span class="w">     </span>auto
+-<span class="w"> </span>currently<span class="w"> </span><span class="nb">set</span><span class="w"> </span>to<span class="w">     </span><span class="m">256</span>
+Block<span class="w"> </span>device<span class="w">           </span><span class="m">253</span>:0
+</code></pre></div>
+
+<p>查看根文件系统（<code>/</code>）的大小，并将它与逻辑卷大小进行比较。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>df<span class="w"> </span>-h<span class="w"> </span>/
+Filesystem<span class="w">                      </span>Size<span class="w">  </span>Used<span class="w"> </span>Avail<span class="w"> </span>Use%<span class="w"> </span>Mounted<span class="w"> </span>on
+/dev/mapper/fedora_fedora-root<span class="w">   </span>19G<span class="w">  </span><span class="m">1</span>.4G<span class="w">   </span>17G<span class="w">   </span><span class="m">8</span>%<span class="w"> </span>/
+</code></pre></div>
+
+<p>逻辑卷和文件系统大小都为 19G。让我们给根逻辑卷（<code>root</code>）增加 5G。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>lvresize<span class="w"> </span>-L<span class="w"> </span>+5G<span class="w"> </span>fedora_fedora/root
+Size<span class="w"> </span>of<span class="w"> </span>logical<span class="w"> </span>volume<span class="w"> </span>fedora_fedora/root<span class="w"> </span>changed<span class="w"> </span>from<span class="w"> </span><span class="m">19</span>.00<span class="w"> </span>GiB<span class="w"> </span><span class="o">(</span><span class="m">4863</span><span class="w"> </span>extents<span class="o">)</span><span class="w"> </span>to<span class="w"> </span><span class="m">24</span>.00<span class="w"> </span>GiB<span class="w"> </span><span class="o">(</span><span class="m">6143</span><span class="w"> </span>extents<span class="o">)</span>.
+Logical<span class="w"> </span>volume<span class="w"> </span>fedora_fedora/root<span class="w"> </span>successfully<span class="w"> </span>resized.
+</code></pre></div>
+
+<p>我们现在有 24G 的逻辑卷可用。看看根文件系统（<code>/</code>）。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>df<span class="w"> </span>-h<span class="w"> </span>/
+Filesystem<span class="w">                      </span>Size<span class="w">  </span>Used<span class="w"> </span>Avail<span class="w"> </span>Use%<span class="w"> </span>Mounted<span class="w"> </span>on
+/dev/mapper/fedora_fedora-root<span class="w">   </span>19G<span class="w">  </span><span class="m">1</span>.4G<span class="w">   </span>17G<span class="w">   </span><span class="m">8</span>%<span class="w"> </span>/
+</code></pre></div>
+
+<p>我们仍然显示只有 19G 的空闲空间，这是因为逻辑卷与文件系统不一样。要使用增加到逻辑卷的新空间，请调整文件系统的大小。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>resize2fs<span class="w"> </span>/dev/fedora_fedora/root
+resize2fs<span class="w"> </span><span class="m">1</span>.45.6<span class="w"> </span><span class="o">(</span><span class="m">20</span>-Mar-2020<span class="o">)</span>
+Filesystem<span class="w"> </span>at<span class="w"> </span>/dev/fedora_fedora/root<span class="w"> </span>is<span class="w"> </span>mounted<span class="w"> </span>on<span class="w"> </span>/<span class="p">;</span><span class="w"> </span>on-line<span class="w"> </span>resizing<span class="w"> </span>required
+<span class="nv">old_desc_blocks</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">3</span>,<span class="w"> </span><span class="nv">new_desc_blocks</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">3</span>
+The<span class="w"> </span>filesystem<span class="w"> </span>on<span class="w"> </span>/dev/fedora_fedora/root<span class="w"> </span>is<span class="w"> </span>now<span class="w"> </span><span class="m">6290432</span><span class="w"> </span><span class="o">(</span>4k<span class="o">)</span><span class="w"> </span>blocks<span class="w"> </span>long.
+</code></pre></div>
+
+<p>看看文件系统的大小。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>df<span class="w"> </span>-h<span class="w"> </span>/
+Filesystem<span class="w">                      </span>Size<span class="w">  </span>Used<span class="w"> </span>Avail<span class="w"> </span>Use%<span class="w"> </span>Mounted<span class="w"> </span>on
+/dev/mapper/fedora_fedora-root<span class="w">   </span>24G<span class="w">  </span><span class="m">1</span>.4G<span class="w">   </span>21G<span class="w">   </span><span class="m">7</span>%<span class="w"> </span>/
+</code></pre></div>
+
+<p>正如你所看到的，根文件系统（<code>/</code>）已经占用了逻辑卷上的所有可用空间，而且不需要重新启动。</p>
+<p>现在你已经将一个磁盘初始化为物理卷，并使用新的物理卷扩展了卷组。之后，你增加了逻辑卷的大小，并调整了文件系统的大小，以使用逻辑卷的新空间。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

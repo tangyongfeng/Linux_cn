@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>用 NetworkManager 配置 WireGuard 虚拟私有网络</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Maurizio Garcia 虚拟私有网络 Virtual Private Networks 应用广泛。如今有各种方案可供使用，用户可通过这些方案访问任意类型的资源，同时保持其 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2021/05/yong-networkmanager-pei-zhi-wireguard-xu-ni-si-you-wang-luo.html" rel="bookmark"
+           title="Permalink to 用 NetworkManager 配置 WireGuard 虚拟私有网络">用 NetworkManager 配置 WireGuard 虚拟私有网络</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2021-05-10T23:56:44+02:00">
+                Published: Mon 10 May 2021
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Maurizio Garcia</p>
+<p><img alt="" src="/data/attachment/album/202105/10/235609bmbzbr4bikupbjjr.jpg"></p>
+<p><ruby> 虚拟私有网络 <rt>  Virtual Private Networks </rt></ruby>应用广泛。如今有各种方案可供使用，用户可通过这些方案访问任意类型的资源，同时保持其机密性与隐私性。</p>
+<p>最近，WireGuard 因为其简单性、速度与安全性成为最广泛使用的虚拟私有网络协议之一。WireGuard 最早应用于 Linux 内核，但目前可以用在其他平台，例如 iOS、Android 等。</p>
+<p>WireGuard 使用 UDP 作为其传输协议，并在 Critokey Routing（CKR）的基础上建立对等节点之间的通信。每个对等节点（无论是服务器或客户端）都有一对<ruby> 密钥 <rt>  key </rt></ruby>（公钥与私钥），公钥与许可 IP 间建立通信连接。有关 WireGuard 更多信息请访问其 <a href="https://www.wireguard.com/">主页</a>。</p>
+<p>本文描述了如何在两个对等节点（PeerA 与 PeerB）间设置 WireGuard。两个节点均运行 Fedora Linux 系统，使用 NetworkManager 进行持久性配置。</p>
+<h3>WireGuard 设置与网络配置</h3>
+<p>在 PeerA 与 PeerB 之间建立持久性虚拟私有网络连接只需三步：</p>
+<ol>
+<li>安装所需软件包。</li>
+<li>生成<ruby> 密钥对 <rt>  key pair </rt></ruby>。</li>
+<li>配置 WireGuard 接口。</li>
+</ol>
+<h3>安装</h3>
+<p>在两个对等节点（PeerA 与 PeerB）上安装 <code>wireguard-tools</code> 软件包：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>-i
+<span class="c1"># dnf -y install wireguard-tools</span>
+</code></pre></div>
+
+<p>这个包可以从 Fedora Linux 更新库中找到。它在 <code>/etc/wireguard/</code> 中创建一个配置目录。在这里你将创建密钥和接口配置文件。</p>
+<h3>生成密钥对</h3>
+<p>现在，使用 <code>wg</code> 工具在每个节点上生成公钥与私钥：</p>
+<div class="highlight"><pre><span></span><code><span class="p">#</span><span class="w"> </span><span class="n">cd</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">wireguard</span>
+<span class="p">#</span><span class="w"> </span><span class="n">wg</span><span class="w"> </span><span class="n">genkey</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">tee</span><span class="w"> </span><span class="n">privatekey</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">wg</span><span class="w"> </span><span class="n">pubkey</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">publickey</span>
+</code></pre></div>
+
+<h3>在 PeerA 上配置 WireGuard 接口</h3>
+<p>WireGuard 接口命名规则为 <code>wg0</code>、<code>wg1</code> 等等。完成下述步骤为 WireGuard 接口创建配置：</p>
+<ul>
+<li>PeerA 节点上配置想要的 IP 地址与掩码。</li>
+<li>该节点监听的 UDP 端口。</li>
+<li>PeerA 的私钥。</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">EOF</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">wireguard</span><span class="o">/</span><span class="n">wg0</span><span class="p">.</span><span class="n">conf</span>
+<span class="o">[</span><span class="n">Interface</span><span class="o">]</span>
+<span class="n">Address</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">172.16.1.254</span><span class="o">/</span><span class="mi">24</span>
+<span class="n">SaveConfig</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">true</span>
+<span class="n">ListenPort</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">60001</span>
+<span class="n">PrivateKey</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mAoO2RxlqRvCZZoHhUDiW3</span><span class="o">+</span><span class="n">zAazcZoELrYbgl</span><span class="o">+</span><span class="n">TpPEc</span><span class="o">=</span>
+
+<span class="o">[</span><span class="n">Peer</span><span class="o">]</span>
+<span class="n">PublicKey</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">IOePXA9igeRqzCSzw4dhpl4</span><span class="o">+</span><span class="mi">6</span><span class="n">l</span><span class="o">/</span><span class="n">NiQvkDSAnj5LtShw</span><span class="o">=</span>
+<span class="n">AllowedIPs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">172.16.1.2</span><span class="o">/</span><span class="mi">32</span>
+<span class="n">EOF</span>
+</code></pre></div>
+
+<p>允许 UDP 流量通过节点监听的端口：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># firewall-cmd --add-port=60001/udp --permanent --zone=public</span>
+<span class="c1"># firewall-cmd --reload</span>
+<span class="n">success</span>
+</code></pre></div>
+
+<p>最后，将接口配置文件导入 NetworkManager。这样，WireGuard 接口在重启后将持续存在。</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># nmcli con import type wireguard file /etc/wireguard/wg0.conf</span>
+<span class="n">Connection</span> <span class="s1">&#39;wg0&#39;</span> <span class="p">(</span><span class="mi">21</span><span class="n">d939af</span><span class="o">-</span><span class="mf">9e55</span><span class="o">-</span><span class="mi">4</span><span class="n">df2</span><span class="o">-</span><span class="n">bacf</span><span class="o">-</span><span class="n">a13a4a488377</span><span class="p">)</span> <span class="n">successfully</span> <span class="n">added</span><span class="o">.</span>
+</code></pre></div>
+
+<p>验证 <code>wg0</code>的状态：</p>
+<div class="highlight"><pre><span></span><code><span class="c"># wg</span>
+<span class="c">interface: wg0</span>
+<span class="c">  public key: FEPcisOjLaZsJbYSxb0CI5pvbXwIB3BCjMUPxuaLrH8=</span>
+<span class="c">  private key: (hidden)</span>
+<span class="c">  listening port: 60001</span>
+
+<span class="c">peer: IOePXA9igeRqzCSzw4dhpl4</span><span class="nb">+</span><span class="c">6l/NiQvkDSAnj5LtShw=</span>
+<span class="c">  allowed ips: 172</span><span class="nt">.</span><span class="c">16</span><span class="nt">.</span><span class="c">1</span><span class="nt">.</span><span class="c">2/32</span>
+
+<span class="c"># nmcli </span><span class="nb">-</span><span class="c">p device show wg0</span>
+
+<span class="c">===============================================================================</span>
+<span class="c">                             Device details (wg0)</span>
+<span class="c">===============================================================================</span>
+<span class="c">GENERAL</span><span class="nt">.</span><span class="c">DEVICE:                         wg0</span>
+<span class="nb">-------------------------------------------------------------------------------</span>
+<span class="c">GENERAL</span><span class="nt">.</span><span class="c">TYPE:                           wireguard</span>
+<span class="nb">-------------------------------------------------------------------------------</span>
+<span class="c">GENERAL</span><span class="nt">.</span><span class="c">HWADDR:                         (unknown)</span>
+<span class="nb">-------------------------------------------------------------------------------</span>
+<span class="c">GENERAL</span><span class="nt">.</span><span class="c">MTU:                            1420</span>
+<span class="nb">-------------------------------------------------------------------------------</span>
+<span class="c">GENERAL</span><span class="nt">.</span><span class="c">STATE:                          100 (connected)</span>
+<span class="nb">-------------------------------------------------------------------------------</span>
+<span class="c">GENERAL</span><span class="nt">.</span><span class="c">CONNECTION:                     wg0</span>
+<span class="nb">-------------------------------------------------------------------------------</span>
+<span class="c">GENERAL</span><span class="nt">.</span><span class="c">CON</span><span class="nb">-</span><span class="c">PATH:                       /org/freedesktop/NetworkManager/ActiveC</span><span class="nv">&gt;</span>
+<span class="nb">-------------------------------------------------------------------------------</span>
+<span class="c">IP4</span><span class="nt">.</span><span class="c">ADDRESS</span><span class="k">[</span><span class="c">1</span><span class="k">]</span><span class="c">:                         172</span><span class="nt">.</span><span class="c">16</span><span class="nt">.</span><span class="c">1</span><span class="nt">.</span><span class="c">254/24</span>
+<span class="c">IP4</span><span class="nt">.</span><span class="c">GATEWAY:                            </span><span class="nb">--</span>
+<span class="c">IP4</span><span class="nt">.</span><span class="c">ROUTE</span><span class="k">[</span><span class="c">1</span><span class="k">]</span><span class="c">:                           dst = 172</span><span class="nt">.</span><span class="c">16</span><span class="nt">.</span><span class="c">1</span><span class="nt">.</span><span class="c">0/24</span><span class="nt">,</span><span class="c"> nh = 0</span><span class="nt">.</span><span class="c">0</span><span class="nt">.</span><span class="c">0</span><span class="nt">.</span><span class="c">0</span><span class="nt">,</span><span class="c"> mt =</span><span class="nv">&gt;</span>
+<span class="nb">-------------------------------------------------------------------------------</span>
+<span class="c">IP6</span><span class="nt">.</span><span class="c">GATEWAY:                            </span><span class="nb">--</span>
+<span class="nb">-------------------------------------------------------------------------------</span>
+</code></pre></div>
+
+<p>上述输出显示接口 <code>wg0</code> 已连接。现在，它可以和虚拟私有网络 IP 地址为 172.16.1.2 的对等节点通信。</p>
+<h3>在 PeerB 上配置 WireGuard 接口</h3>
+<p>现在可以在第二个对等节点上创建 <code>wg0</code> 接口的配置文件了。确保你已经完成以下步骤：</p>
+<ul>
+<li>PeerB 节点上设置 IP 地址与掩码。</li>
+<li>PeerB 的私钥。</li>
+<li>PeerA 的公钥。</li>
+<li>PeerA 的 IP 地址或主机名、监听 WireGuard 流量的 UDP 端口。</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">EOF</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">wireguard</span><span class="o">/</span><span class="n">wg0</span><span class="p">.</span><span class="n">conf</span>
+<span class="o">[</span><span class="n">Interface</span><span class="o">]</span>
+<span class="n">Address</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">172.16.1.2</span>
+<span class="n">SaveConfig</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">true</span>
+<span class="n">PrivateKey</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">UBiF85o7937fBK84c2qLFQwEr6eDhLSJsb5SAq1lF3c</span><span class="o">=</span>
+
+<span class="o">[</span><span class="n">Peer</span><span class="o">]</span>
+<span class="n">PublicKey</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">FEPcisOjLaZsJbYSxb0CI5pvbXwIB3BCjMUPxuaLrH8</span><span class="o">=</span>
+<span class="n">AllowedIPs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">172.16.1.254</span><span class="o">/</span><span class="mi">32</span>
+<span class="n">Endpoint</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">peera</span><span class="p">.</span><span class="n">example</span><span class="p">.</span><span class="nl">com</span><span class="p">:</span><span class="mi">60001</span>
+<span class="n">EOF</span>
+</code></pre></div>
+
+<p>最后一步是将接口配置文件导入 NetworkManager。如上所述，这一步是重启后保持 WireGuard 接口持续存在的关键。</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># nmcli con import type wireguard file /etc/wireguard/wg0.conf</span>
+<span class="n">Connection</span> <span class="s1">&#39;wg0&#39;</span> <span class="p">(</span><span class="mi">39</span><span class="n">bdaba7</span><span class="o">-</span><span class="mi">8</span><span class="n">d91</span><span class="o">-</span><span class="mi">4334</span><span class="o">-</span><span class="n">bc8f</span><span class="o">-</span><span class="mi">85</span><span class="n">fa978777d8</span><span class="p">)</span> <span class="n">successfully</span> <span class="n">added</span><span class="o">.</span>
+</code></pre></div>
+
+<p>验证 <code>wg0</code> 的状态：</p>
+<div class="highlight"><pre><span></span><code><span class="c"># wg</span>
+<span class="c">interface: wg0</span>
+<span class="c">  public key: IOePXA9igeRqzCSzw4dhpl4</span><span class="nb">+</span><span class="c">6l/NiQvkDSAnj5LtShw=</span>
+<span class="c">  private key: (hidden)</span>
+<span class="c">  listening port: 47749</span>
+
+<span class="c">peer: FEPcisOjLaZsJbYSxb0CI5pvbXwIB3BCjMUPxuaLrH8=</span>
+<span class="c">  endpoint: 192</span><span class="nt">.</span><span class="c">168</span><span class="nt">.</span><span class="c">124</span><span class="nt">.</span><span class="c">230:60001</span>
+<span class="c">  allowed ips: 172</span><span class="nt">.</span><span class="c">16</span><span class="nt">.</span><span class="c">1</span><span class="nt">.</span><span class="c">254/32</span>
+
+<span class="c"># nmcli </span><span class="nb">-</span><span class="c">p device show wg0</span>
+
+<span class="c">===============================================================================</span>
+<span class="c">                             Device details (wg0)</span>
+<span class="c">===============================================================================</span>
+<span class="c">GENERAL</span><span class="nt">.</span><span class="c">DEVICE:                         wg0</span>
+<span class="nb">-------------------------------------------------------------------------------</span>
+<span class="c">GENERAL</span><span class="nt">.</span><span class="c">TYPE:                           wireguard</span>
+<span class="nb">-------------------------------------------------------------------------------</span>
+<span class="c">GENERAL</span><span class="nt">.</span><span class="c">HWADDR:                         (unknown)</span>
+<span class="nb">-------------------------------------------------------------------------------</span>
+<span class="c">GENERAL</span><span class="nt">.</span><span class="c">MTU:                            1420</span>
+<span class="nb">-------------------------------------------------------------------------------</span>
+<span class="c">GENERAL</span><span class="nt">.</span><span class="c">STATE:                          100 (connected)</span>
+<span class="nb">-------------------------------------------------------------------------------</span>
+<span class="c">GENERAL</span><span class="nt">.</span><span class="c">CONNECTION:                     wg0</span>
+<span class="nb">-------------------------------------------------------------------------------</span>
+<span class="c">GENERAL</span><span class="nt">.</span><span class="c">CON</span><span class="nb">-</span><span class="c">PATH:                       /org/freedesktop/NetworkManager/ActiveC</span><span class="nv">&gt;</span>
+<span class="nb">-------------------------------------------------------------------------------</span>
+<span class="c">IP4</span><span class="nt">.</span><span class="c">ADDRESS</span><span class="k">[</span><span class="c">1</span><span class="k">]</span><span class="c">:                         172</span><span class="nt">.</span><span class="c">16</span><span class="nt">.</span><span class="c">1</span><span class="nt">.</span><span class="c">2/32</span>
+<span class="c">IP4</span><span class="nt">.</span><span class="c">GATEWAY:                            </span><span class="nb">--</span>
+<span class="nb">-------------------------------------------------------------------------------</span>
+<span class="c">IP6</span><span class="nt">.</span><span class="c">GATEWAY:                            </span><span class="nb">--</span>
+<span class="nb">-------------------------------------------------------------------------------</span>
+</code></pre></div>
+
+<p>上述输出显示接口 <code>wg0</code> 已连接。现在，它可以和虚拟私有网络 IP 地址为 172.16.1.254 的对等节点通信。</p>
+<h3>验证节点间通信</h3>
+<p>完成上述步骤后，两个对等节点可以通过虚拟私有网络连接相互通信，以下是 ICMP 测试结果：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">root@peerb ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">ping</span><span class="w"> </span><span class="mf">172.16.1.254</span><span class="w"> </span><span class="o">-</span><span class="n">c</span><span class="w"> </span><span class="mi">4</span>
+<span class="n">PING</span><span class="w"> </span><span class="mf">172.16.1.254</span><span class="w"> </span><span class="p">(</span><span class="mf">172.16.1.254</span><span class="p">)</span><span class="w"> </span><span class="mi">56</span><span class="p">(</span><span class="mi">84</span><span class="p">)</span><span class="w"> </span><span class="n">bytes</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="k">data</span><span class="p">.</span>
+<span class="mi">64</span><span class="w"> </span><span class="n">bytes</span><span class="w"> </span><span class="k">from</span><span class="w"> </span><span class="mf">172.16.1.254</span><span class="err">:</span><span class="w"> </span><span class="n">icmp_seq</span><span class="o">=</span><span class="mi">1</span><span class="w"> </span><span class="n">ttl</span><span class="o">=</span><span class="mi">64</span><span class="w"> </span><span class="nc">time</span><span class="o">=</span><span class="mf">0.566</span><span class="w"> </span><span class="n">ms</span>
+<span class="mi">64</span><span class="w"> </span><span class="n">bytes</span><span class="w"> </span><span class="k">from</span><span class="w"> </span><span class="mf">172.16.1.254</span><span class="err">:</span><span class="w"> </span><span class="n">icmp_seq</span><span class="o">=</span><span class="mi">2</span><span class="w"> </span><span class="n">ttl</span><span class="o">=</span><span class="mi">64</span><span class="w"> </span><span class="nc">time</span><span class="o">=</span><span class="mf">1.33</span><span class="w"> </span><span class="n">ms</span>
+<span class="mi">64</span><span class="w"> </span><span class="n">bytes</span><span class="w"> </span><span class="k">from</span><span class="w"> </span><span class="mf">172.16.1.254</span><span class="err">:</span><span class="w"> </span><span class="n">icmp_seq</span><span class="o">=</span><span class="mi">3</span><span class="w"> </span><span class="n">ttl</span><span class="o">=</span><span class="mi">64</span><span class="w"> </span><span class="nc">time</span><span class="o">=</span><span class="mf">1.67</span><span class="w"> </span><span class="n">ms</span>
+<span class="mi">64</span><span class="w"> </span><span class="n">bytes</span><span class="w"> </span><span class="k">from</span><span class="w"> </span><span class="mf">172.16.1.254</span><span class="err">:</span><span class="w"> </span><span class="n">icmp_seq</span><span class="o">=</span><span class="mi">4</span><span class="w"> </span><span class="n">ttl</span><span class="o">=</span><span class="mi">64</span><span class="w"> </span><span class="nc">time</span><span class="o">=</span><span class="mf">1.47</span><span class="w"> </span><span class="n">ms</span>
+</code></pre></div>
+
+<p>在这种情况下，如果你在 PeerA 端口 60001 上捕获 UDP 通信，则将看到依赖 WireGuard 协议的通信过程和加密的数据：</p>
+<p><img alt="捕获依赖 WireGuard 协议的节点间 UDP 流量" src="/data/attachment/album/202105/10/235646u6ft6u6wff5fu6wt.png"></p>
+<h2>总结</h2>
+<p>虚拟私有网络很常见。在用于部署虚拟私有网络的各种协议和工具中，WireGuard 是一种简单、轻巧和安全的选择。它可以在对等节点之间基于 CryptoKey 路由建立安全的点对点连接，过程非常简单。此外，NetworkManager 支持 WireGuard 接口，允许重启后进行持久配置。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

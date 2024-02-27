@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>计算机实验室之树莓派：课程 7 屏幕02</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Alex Chadwick 屏幕02 课程在屏幕01 的基础上构建，它教你如何绘制线和一个生成伪随机数的小特性。假设你已经有了 课程 6：屏 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li class="active"><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/02/ji-suan-ji-shi-yan-shi-zhi-shu-mei-pai-ke-cheng-7-ping-mu-02.html" rel="bookmark"
+           title="Permalink to 计算机实验室之树莓派：课程 7 屏幕02">计算机实验室之树莓派：课程 7 屏幕02</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-02-19T21:38:08+01:00">
+                Published: Tue 19 February 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/shu-mei-pai">树莓派</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Alex Chadwick</p>
+<p><img alt="" src="/data/attachment/album/201902/19/213559hs1rb3423gt3msjk.jpg"></p>
+<p>屏幕02 课程在屏幕01 的基础上构建，它教你如何绘制线和一个生成伪随机数的小特性。假设你已经有了 <a href="/article-10540-1.html">课程 6：屏幕01</a> 的操作系统代码，我们将以它为基础来构建。</p>
+<h3>1、点</h3>
+<p>现在，我们的屏幕已经正常工作了，现在开始去创建一个更实用的图像，是水到渠成的事。如果我们能够绘制出更实用的图形那就更好了。如果我们能够在屏幕上的两点之间绘制一条线，那我们就能够组合这些线绘制出更复杂的图形了。</p>
+<p>我们将尝试用汇编代码去实现它，但在开始时，我们确实需要使用一些其它的函数去辅助。我们需要一个这样的函数，我将调用 <code>SetPixel</code> 去修改指定像素的颜色，而在寄存器 <code>r0</code> 和 <code>r1</code> 中提供输入。如果我们写出的代码可以在任意内存中而不仅仅是屏幕上绘制图形，这将在以后非常有用，因此，我们首先需要一些控制真实绘制位置的方法。我认为实现上述目标的最好方法是，能够有一个内存片段用于保存将要绘制的图形。我应该最终得到的是一个存储地址，它通常指向到自上次的帧缓存结构上。我们将一直在我们的代码中使用这个绘制方法。这样，如果我们想在我们的操作系统的另一部分绘制一个不同的图像，我们就可以生成一个不同结构的地址值，而使用的是完全相同的代码。为简单起见，我们将使用另一个数据片段去控制我们绘制的颜色。</p>
+<blockquote>
+<p>为了绘制出更复杂的图形，一些方法使用一个着色函数而不是一个颜色去绘制。每个点都能够调用着色函数来确定在那里用什么颜色去绘制。</p>
+</blockquote>
+<p>复制下列代码到一个名为 <code>drawing.s</code> 的新文件中。</p>
+<div class="highlight"><pre><span></span><code><span class="na">.section</span><span class="w"> </span><span class="no">.data</span>
+<span class="na">.align</span><span class="w"> </span><span class="mi">1</span>
+<span class="nl">foreColour:</span>
+<span class="na">.hword</span><span class="w"> </span><span class="mi">0xFFFF</span>
+
+<span class="na">.align</span><span class="w"> </span><span class="mi">2</span>
+<span class="nl">graphicsAddress:</span>
+<span class="na">.int</span><span class="w"> </span><span class="mi">0</span>
+
+<span class="na">.section</span><span class="w"> </span><span class="no">.text</span>
+<span class="na">.globl</span><span class="w"> </span><span class="no">SetForeColour</span>
+<span class="nl">SetForeColour:</span>
+<span class="nf">cmp</span><span class="w"> </span><span class="no">r0</span><span class="p">,</span><span class="mi">#0</span><span class="no">x10000</span>
+<span class="nf">movhs</span><span class="w"> </span><span class="no">pc</span><span class="p">,</span><span class="no">lr</span>
+<span class="nf">ldr</span><span class="w"> </span><span class="no">r1</span><span class="p">,</span><span class="err">=</span><span class="no">foreColour</span>
+<span class="nf">strh</span><span class="w"> </span><span class="no">r0</span><span class="p">,[</span><span class="no">r1</span><span class="p">]</span>
+<span class="nf">mov</span><span class="w"> </span><span class="no">pc</span><span class="p">,</span><span class="no">lr</span>
+
+<span class="na">.globl</span><span class="w"> </span><span class="no">SetGraphicsAddress</span>
+<span class="nl">SetGraphicsAddress:</span>
+<span class="nf">ldr</span><span class="w"> </span><span class="no">r1</span><span class="p">,</span><span class="err">=</span><span class="no">graphicsAddress</span>
+<span class="nf">str</span><span class="w"> </span><span class="no">r0</span><span class="p">,[</span><span class="no">r1</span><span class="p">]</span>
+<span class="nf">mov</span><span class="w"> </span><span class="no">pc</span><span class="p">,</span><span class="no">lr</span>
+</code></pre></div>
+
+<p>这段代码就是我上面所说的一对函数以及它们的数据。我们将在 <code>main.s</code> 中使用它们，在绘制图像之前去控制在何处绘制什么内容。</p>
+<p>我们的下一个任务是去实现一个 <code>SetPixel</code> 方法。它需要带两个参数，像素的 x 和 y 轴，并且它应该要使用 <code>graphicsAddress</code> 和 <code>foreColour</code>，我们只定义精确控制在哪里绘制什么图像即可。如果你认为你能立即实现这些，那么去动手实现吧，如果不能，按照我们提供的步骤，按示例去实现它。</p>
+<blockquote>
+<p>构建一个通用方法，比如 <code>SetPixel</code>，我们将在它之上构建另一个方法是一个很好的想法。但我们必须要确保这个方法很快，因为我们要经常使用它。</p>
+</blockquote>
+<ol>
+<li>加载 <code>graphicsAddress</code>。</li>
+<li>检查像素的 x 和 y 轴是否小于宽度和高度。</li>
+<li>计算要写入的像素地址（提示：<code>frameBufferAddress +（x + y * 宽度）* 像素大小</code>）</li>
+<li>加载 <code>foreColour</code>。</li>
+<li>保存到地址。</li>
+</ol>
+<p>上述步骤实现如下：</p>
+<p>1、加载 <code>graphicsAddress</code>。</p>
+<div class="highlight"><pre><span></span><code><span class="p">.</span><span class="n">globl</span><span class="w"> </span><span class="n">DrawPixel</span>
+<span class="nl">DrawPixel</span><span class="p">:</span>
+<span class="n">px</span><span class="w"> </span><span class="p">.</span><span class="n">req</span><span class="w"> </span><span class="n">r0</span>
+<span class="n">py</span><span class="w"> </span><span class="p">.</span><span class="n">req</span><span class="w"> </span><span class="n">r1</span>
+<span class="n">addr</span><span class="w"> </span><span class="p">.</span><span class="n">req</span><span class="w"> </span><span class="n">r2</span>
+<span class="n">ldr</span><span class="w"> </span><span class="n">addr</span><span class="p">,</span><span class="o">=</span><span class="n">graphicsAddress</span>
+<span class="n">ldr</span><span class="w"> </span><span class="n">addr</span><span class="p">,</span><span class="o">[</span><span class="n">addr</span><span class="o">]</span>
+</code></pre></div>
+
+<p>2、记住，宽度和高度被各自保存在帧缓冲偏移量的 0 和 4 处。如有必要可以参考 <code>frameBuffer.s</code>。</p>
+<div class="highlight"><pre><span></span><code><span class="nx">height</span><span class="w"> </span><span class="p">.</span><span class="nx">req</span><span class="w"> </span><span class="nx">r3</span>
+<span class="nx">ldr</span><span class="w"> </span><span class="nx">height</span><span class="p">,[</span><span class="kd">addr</span><span class="p">,</span><span class="err">#</span><span class="mi">4</span><span class="p">]</span>
+<span class="nx">sub</span><span class="w"> </span><span class="nx">height</span><span class="p">,</span><span class="err">#</span><span class="mi">1</span>
+<span class="nx">cmp</span><span class="w"> </span><span class="nx">py</span><span class="p">,</span><span class="nx">height</span>
+<span class="nx">movhi</span><span class="w"> </span><span class="nx">pc</span><span class="p">,</span><span class="nx">lr</span>
+<span class="p">.</span><span class="nx">unreq</span><span class="w"> </span><span class="nx">height</span>
+
+<span class="nx">width</span><span class="w"> </span><span class="p">.</span><span class="nx">req</span><span class="w"> </span><span class="nx">r3</span>
+<span class="nx">ldr</span><span class="w"> </span><span class="nx">width</span><span class="p">,[</span><span class="kd">addr</span><span class="p">,</span><span class="err">#</span><span class="mi">0</span><span class="p">]</span>
+<span class="nx">sub</span><span class="w"> </span><span class="nx">width</span><span class="p">,</span><span class="err">#</span><span class="mi">1</span>
+<span class="nx">cmp</span><span class="w"> </span><span class="nx">px</span><span class="p">,</span><span class="nx">width</span>
+<span class="nx">movhi</span><span class="w"> </span><span class="nx">pc</span><span class="p">,</span><span class="nx">lr</span>
+</code></pre></div>
+
+<p>3、确实，这段代码是专用于高色值帧缓存的，因为我使用一个逻辑左移操作去计算地址。你可能希望去编写一个不需要专用的高色值帧缓冲的函数版本，记得去更新 <code>SetForeColour</code> 的代码。它实现起来可能更复杂一些。</p>
+<div class="highlight"><pre><span></span><code><span class="nx">ldr</span><span class="w"> </span><span class="kd">addr</span><span class="p">,[</span><span class="kd">addr</span><span class="p">,</span><span class="err">#</span><span class="mi">32</span><span class="p">]</span>
+<span class="nx">add</span><span class="w"> </span><span class="nx">width</span><span class="p">,</span><span class="err">#</span><span class="mi">1</span>
+<span class="nx">mla</span><span class="w"> </span><span class="nx">px</span><span class="p">,</span><span class="nx">py</span><span class="p">,</span><span class="nx">width</span><span class="p">,</span><span class="nx">px</span>
+<span class="p">.</span><span class="nx">unreq</span><span class="w"> </span><span class="nx">width</span>
+<span class="p">.</span><span class="nx">unreq</span><span class="w"> </span><span class="nx">py</span>
+<span class="nx">add</span><span class="w"> </span><span class="kd">addr</span><span class="p">,</span><span class="w"> </span><span class="nx">px</span><span class="p">,</span><span class="nx">lsl</span><span class="w"> </span><span class="err">#</span><span class="mi">1</span>
+<span class="p">.</span><span class="nx">unreq</span><span class="w"> </span><span class="nx">px</span>
+</code></pre></div>
+
+<blockquote>
+<p><code>mla dst,reg1,reg2,reg3</code> 将寄存器 <code>reg1</code> 和 <code>reg2</code> 中的值相乘，然后将结果与寄存器 <code>reg3</code> 中的值相加，并将结果的低 32 位保存到 <code>dst</code> 中。</p>
+</blockquote>
+<p>4、这是专用于高色值的。</p>
+<div class="highlight"><pre><span></span><code><span class="n">fore</span><span class="w"> </span><span class="p">.</span><span class="n">req</span><span class="w"> </span><span class="n">r3</span>
+<span class="n">ldr</span><span class="w"> </span><span class="n">fore</span><span class="p">,</span><span class="o">=</span><span class="n">foreColour</span>
+<span class="n">ldrh</span><span class="w"> </span><span class="n">fore</span><span class="p">,</span><span class="o">[</span><span class="n">fore</span><span class="o">]</span>
+</code></pre></div>
+
+<p>5、这是专用于高色值的。</p>
+<div class="highlight"><pre><span></span><code><span class="n">strh</span><span class="w"> </span><span class="n">fore</span><span class="p">,</span><span class="o">[</span><span class="n">addr</span><span class="o">]</span>
+<span class="p">.</span><span class="n">unreq</span><span class="w"> </span><span class="n">fore</span>
+<span class="p">.</span><span class="n">unreq</span><span class="w"> </span><span class="n">addr</span>
+<span class="n">mov</span><span class="w"> </span><span class="n">pc</span><span class="p">,</span><span class="n">lr</span>
+</code></pre></div>
+
+<h3>2、线</h3>
+<p>问题是，线的绘制并不是你所想像的那么简单。到目前为止，你必须认识到，编写一个操作系统时，几乎所有的事情都必须我们自己去做，绘制线条也不例外。我建议你们花点时间想想如何在任意两点之间绘制一条线。</p>
+<p>我估计大多数的策略可能是去计算线的梯度，并沿着它来绘制。这看上去似乎很完美，但它事实上是个很糟糕的主意。主要问题是它涉及到除法，我们知道在汇编中，做除法很不容易，并且还要始终记录小数，这也很困难。事实上，在这里，有一个叫布鲁塞姆的算法，它非常适合汇编代码，因为它只使用加法、减法和位移运算。</p>
+<blockquote>
+<p>在我们日常编程中，我们对像除法这样的运算通常懒得去优化。但是操作系统不同，它必须高效，因此我们要始终专注于如何让事情做的尽可能更好。</p>
+<p>我们从定义一个简单的直线绘制算法开始，代码如下：</p>
+<p>```
+/<em> 我们希望从 (x0,y0) 到 (x1,y1) 去绘制一条线，只使用一个函数 setPixel(x,y)，它的功能是在给定的 (x,y) 上绘制一个点。 </em>/</p>
+<p>if x1 &gt; x0 then</p>
+<p>set deltax to x1 - x0
+set stepx to +1</p>
+<p>otherwise</p>
+<p>set deltax to x0 - x1
+set stepx to -1</p>
+<p>end if</p>
+<p>if y1 &gt; y0 then</p>
+<p>set deltay to y1 - y0
+set stepy to +1</p>
+<p>otherwise</p>
+<p>set deltay to y0 - y1
+set stepy to -1</p>
+<p>end if</p>
+<p>if deltax &gt; deltay then</p>
+<p>set error to 0
+until x0 = x1 + stepx</p>
+<p>setPixel(x0, y0)
+set error to error + deltax ÷ deltay
+if error ≥ 0.5 then</p>
+<p>set y0 to y0 + stepy
+set error to error - 1</p>
+<p>end if
+set x0 to x0 + stepx</p>
+<p>repeat</p>
+<p>otherwise</p>
+<p>end if
+```</p>
+<p>这个算法用来表示你可能想像到的那些东西。变量 <code>error</code> 用来记录你离实线的距离。沿着 x 轴每走一步，这个 <code>error</code> 的值都会增加，而沿着 y 轴每走一步，这个 <code>error</code> 值就会减 1 个单位。<code>error</code> 是用于测量距离 y 轴的距离。</p>
+<p>虽然这个算法是有效的，但它存在一个重要的问题，很明显，我们使用了小数去保存 <code>error</code>，并且也使用了除法。所以，一个立即要做的优化将是去改变 <code>error</code> 的单位。这里并不需要用特定的单位去保存它，只要我们每次使用它时都按相同数量去伸缩即可。所以，我们可以重写这个算法，通过在所有涉及 <code>error</code> 的等式上都简单地乘以 <code>deltay</code>，从面让它简化。下面只展示主要的循环：</p>
+<p>```
+set error to 0 × deltay
+until x0 = x1 + stepx</p>
+<p>setPixel(x0, y0)
+set error to error + deltax ÷ deltay × deltay
+if error ≥ 0.5 × deltay then</p>
+<p>set y0 to y0 + stepy
+set error to error - 1 × deltay</p>
+<p>end if
+set x0 to x0 + stepx</p>
+<p>repeat
+```</p>
+<p>它将简化为：</p>
+<p>```
+cset error to 0
+until x0 = x1 + stepx</p>
+<p>setPixel(x0, y0)
+set error to error + deltax
+if error × 2 ≥ deltay then</p>
+<p>set y0 to y0 + stepy
+set error to error - deltay</p>
+<p>end if
+set x0 to x0 + stepx</p>
+<p>repeat
+```</p>
+<p>突然，我们有了一个更好的算法。现在，我们看一下如何完全去除所需要的除法运算。最好保留唯一的被 2 相乘的乘法运算，我们知道它可以通过左移 1 位来实现！现在，这是非常接近布鲁塞姆算法的，但还可以进一步优化它。现在，我们有一个 <code>if</code> 语句，它将导致产生两个代码块，其中一个用于 x 差异较大的线，另一个用于 y 差异较大的线。对于这两种类型的线，如果审查代码能够将它们转换成一个单语句，还是很值得去做的。</p>
+<p>困难之处在于，在第一种情况下，<code>error</code> 是与 y 一起变化，而第二种情况下 <code>error</code> 是与 x 一起变化。解决方案是在一个变量中同时记录它们，使用负的 <code>error</code> 去表示 x 中的一个 <code>error</code>，而用正的 <code>error</code> 表示它是 y 中的。</p>
+<p>```
+set error to deltax - deltay
+until x0 = x1 + stepx or y0 = y1 + stepy</p>
+<p>setPixel(x0, y0)
+if error × 2 &gt; -deltay then</p>
+<p>set x0 to x0 + stepx
+set error to error - deltay</p>
+<p>end if
+if error × 2 &lt; deltax then</p>
+<p>set y0 to y0 + stepy
+set error to error + deltax</p>
+<p>end if</p>
+<p>repeat
+```</p>
+<p>你可能需要一些时间来搞明白它。在每一步中，我们都认为它正确地在 x 和 y 中移动。我们通过检查来做到这一点，如果我们在 x 或 y 轴上移动，<code>error</code> 的数量会变低，那么我们就继续这样移动。</p>
+<p>布鲁塞姆算法是在 1962 年由 Jack Elton Bresenham 开发，当时他 24 岁，正在攻读博士学位。</p>
+</blockquote>
+<p>用于画线的布鲁塞姆算法可以通过以下的伪代码来描述。以下伪代码是文本，它只是看起来有点像是计算机指令而已，但它却能让程序员实实在在地理解算法，而不是为机器可读。</p>
+<div class="highlight"><pre><span></span><code><span class="o">/*</span><span class="w"> </span>我们希望从<span class="w"> </span><span class="p">(</span><span class="n">x0</span><span class="p">,</span><span class="n">y0</span><span class="p">)</span><span class="w"> </span>到<span class="w"> </span><span class="p">(</span><span class="n">x1</span><span class="p">,</span><span class="n">y1</span><span class="p">)</span><span class="w"> </span>去绘制一条线，只使用一个函数<span class="w"> </span><span class="n">setPixel</span><span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="n">y</span><span class="p">)</span>，它的功能是在给定的<span class="w"> </span><span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="n">y</span><span class="p">)</span><span class="w"> </span>上绘制一个点。<span class="w"> </span><span class="o">*/</span>
+
+<span class="k">if</span><span class="w"> </span><span class="n">x1</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">x0</span><span class="w"> </span><span class="nb">then</span>
+<span class="w">    </span><span class="k">set</span><span class="w"> </span><span class="n">deltax</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">x1</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">x0</span>
+<span class="w">    </span><span class="k">set</span><span class="w"> </span><span class="n">stepx</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="o">+</span><span class="mi">1</span>
+<span class="k">otherwise</span>
+<span class="w">    </span><span class="k">set</span><span class="w"> </span><span class="n">deltax</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">x0</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">x1</span>
+<span class="w">    </span><span class="k">set</span><span class="w"> </span><span class="n">stepx</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span>
+<span class="k">end</span><span class="w"> </span><span class="k">if</span>
+
+<span class="k">set</span><span class="w"> </span><span class="nb">error</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">deltax</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">deltay</span>
+<span class="k">until</span><span class="w"> </span><span class="n">x0</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">x1</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">stepx</span><span class="w"> </span><span class="nb">or</span><span class="w"> </span><span class="n">y0</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">y1</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">stepy</span>
+<span class="w">    </span><span class="n">setPixel</span><span class="p">(</span><span class="n">x0</span><span class="p">,</span><span class="w"> </span><span class="n">y0</span><span class="p">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nb">error</span><span class="w"> </span>×<span class="w"> </span><span class="mi">2</span><span class="w"> </span>≥<span class="w"> </span><span class="o">-</span><span class="n">deltay</span><span class="w"> </span><span class="nb">then</span>
+<span class="w">        </span><span class="k">set</span><span class="w"> </span><span class="n">x0</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">x0</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">stepx</span>
+<span class="w">        </span><span class="k">set</span><span class="w"> </span><span class="nb">error</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="nb">error</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">deltay</span>
+<span class="w">    </span><span class="k">end</span><span class="w"> </span><span class="k">if</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nb">error</span><span class="w"> </span>×<span class="w"> </span><span class="mi">2</span><span class="w"> </span>≤<span class="w"> </span><span class="n">deltax</span><span class="w"> </span><span class="nb">then</span>
+<span class="w">        </span><span class="k">set</span><span class="w"> </span><span class="n">y0</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">y0</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">stepy</span>
+<span class="w">        </span><span class="k">set</span><span class="w"> </span><span class="nb">error</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="nb">error</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">deltax</span>
+<span class="w">    </span><span class="k">end</span><span class="w"> </span><span class="k">if</span>
+<span class="n">repeat</span>
+</code></pre></div>
+
+<p>与我们目前所使用的编号列表不同，这个算法的表示方式更常用。看看你能否自己实现它。我在下面提供了我的实现作为参考。</p>
+<div class="highlight"><pre><span></span><code><span class="na">.globl</span><span class="w"> </span><span class="no">DrawLine</span>
+<span class="nl">DrawLine:</span>
+<span class="nf">push</span><span class="w"> </span><span class="p">{</span><span class="no">r4</span><span class="p">,</span><span class="no">r5</span><span class="p">,</span><span class="no">r6</span><span class="p">,</span><span class="no">r7</span><span class="p">,</span><span class="no">r8</span><span class="p">,</span><span class="no">r9</span><span class="p">,</span><span class="no">r10</span><span class="p">,</span><span class="no">r11</span><span class="p">,</span><span class="no">r12</span><span class="p">,</span><span class="no">lr</span><span class="p">}</span>
+<span class="nf">x0</span><span class="w"> </span><span class="no">.req</span><span class="w"> </span><span class="no">r9</span>
+<span class="nf">x1</span><span class="w"> </span><span class="no">.req</span><span class="w"> </span><span class="no">r10</span>
+<span class="nf">y0</span><span class="w"> </span><span class="no">.req</span><span class="w"> </span><span class="no">r11</span>
+<span class="nf">y1</span><span class="w"> </span><span class="no">.req</span><span class="w"> </span><span class="no">r12</span>
+
+<span class="nf">mov</span><span class="w"> </span><span class="no">x0</span><span class="p">,</span><span class="no">r0</span>
+<span class="nf">mov</span><span class="w"> </span><span class="no">x1</span><span class="p">,</span><span class="no">r2</span>
+<span class="nf">mov</span><span class="w"> </span><span class="no">y0</span><span class="p">,</span><span class="no">r1</span>
+<span class="nf">mov</span><span class="w"> </span><span class="no">y1</span><span class="p">,</span><span class="no">r3</span>
+
+<span class="nf">dx</span><span class="w"> </span><span class="no">.req</span><span class="w"> </span><span class="no">r4</span>
+<span class="nf">dyn</span><span class="w"> </span><span class="no">.req</span><span class="w"> </span><span class="no">r5</span><span class="w">  </span><span class="cm">/* 注意，我们只使用 -deltay，因此为了速度，我保存它的负值。（因此命名为 dyn）*/</span>
+<span class="nf">sx</span><span class="w"> </span><span class="no">.req</span><span class="w"> </span><span class="no">r6</span>
+<span class="nf">sy</span><span class="w"> </span><span class="no">.req</span><span class="w"> </span><span class="no">r7</span>
+<span class="nf">err</span><span class="w"> </span><span class="no">.req</span><span class="w"> </span><span class="no">r8</span>
+
+<span class="nf">cmp</span><span class="w"> </span><span class="no">x0</span><span class="p">,</span><span class="no">x1</span>
+<span class="nf">subgt</span><span class="w"> </span><span class="no">dx</span><span class="p">,</span><span class="no">x0</span><span class="p">,</span><span class="no">x1</span>
+<span class="nf">movgt</span><span class="w"> </span><span class="no">sx</span><span class="p">,</span><span class="mi">#-1</span>
+<span class="nf">suble</span><span class="w"> </span><span class="no">dx</span><span class="p">,</span><span class="no">x1</span><span class="p">,</span><span class="no">x0</span>
+<span class="nf">movle</span><span class="w"> </span><span class="no">sx</span><span class="p">,</span><span class="mi">#1</span>
+
+<span class="nf">cmp</span><span class="w"> </span><span class="no">y0</span><span class="p">,</span><span class="no">y1</span>
+<span class="nf">subgt</span><span class="w"> </span><span class="no">dyn</span><span class="p">,</span><span class="no">y1</span><span class="p">,</span><span class="no">y0</span>
+<span class="nf">movgt</span><span class="w"> </span><span class="no">sy</span><span class="p">,</span><span class="mi">#-1</span>
+<span class="nf">suble</span><span class="w"> </span><span class="no">dyn</span><span class="p">,</span><span class="no">y0</span><span class="p">,</span><span class="no">y1</span>
+<span class="nf">movle</span><span class="w"> </span><span class="no">sy</span><span class="p">,</span><span class="mi">#1</span>
+
+<span class="nf">add</span><span class="w"> </span><span class="no">err</span><span class="p">,</span><span class="no">dx</span><span class="p">,</span><span class="no">dyn</span>
+<span class="nf">add</span><span class="w"> </span><span class="no">x1</span><span class="p">,</span><span class="no">sx</span>
+<span class="nf">add</span><span class="w"> </span><span class="no">y1</span><span class="p">,</span><span class="no">sy</span>
+
+<span class="nl">pixelLoop$:</span>
+
+<span class="w">    </span><span class="nf">teq</span><span class="w"> </span><span class="no">x0</span><span class="p">,</span><span class="no">x1</span>
+<span class="w">    </span><span class="nf">teqne</span><span class="w"> </span><span class="no">y0</span><span class="p">,</span><span class="no">y1</span>
+<span class="w">    </span><span class="nf">popeq</span><span class="w"> </span><span class="p">{</span><span class="no">r4</span><span class="p">,</span><span class="no">r5</span><span class="p">,</span><span class="no">r6</span><span class="p">,</span><span class="no">r7</span><span class="p">,</span><span class="no">r8</span><span class="p">,</span><span class="no">r9</span><span class="p">,</span><span class="no">r10</span><span class="p">,</span><span class="no">r11</span><span class="p">,</span><span class="no">r12</span><span class="p">,</span><span class="no">pc</span><span class="p">}</span>
+
+<span class="w">    </span><span class="nf">mov</span><span class="w"> </span><span class="no">r0</span><span class="p">,</span><span class="no">x0</span>
+<span class="w">    </span><span class="nf">mov</span><span class="w"> </span><span class="no">r1</span><span class="p">,</span><span class="no">y0</span>
+<span class="w">    </span><span class="nf">bl</span><span class="w"> </span><span class="no">DrawPixel</span>
+
+<span class="w">    </span><span class="nf">cmp</span><span class="w"> </span><span class="no">dyn</span><span class="p">,</span><span class="w"> </span><span class="no">err</span><span class="p">,</span><span class="no">lsl</span><span class="w"> </span><span class="mi">#1</span>
+<span class="w">    </span><span class="nf">addle</span><span class="w"> </span><span class="no">err</span><span class="p">,</span><span class="no">dyn</span>
+<span class="w">    </span><span class="nf">addle</span><span class="w"> </span><span class="no">x0</span><span class="p">,</span><span class="no">sx</span>
+
+<span class="w">    </span><span class="nf">cmp</span><span class="w"> </span><span class="no">dx</span><span class="p">,</span><span class="w"> </span><span class="no">err</span><span class="p">,</span><span class="no">lsl</span><span class="w"> </span><span class="mi">#1</span>
+<span class="w">    </span><span class="nf">addge</span><span class="w"> </span><span class="no">err</span><span class="p">,</span><span class="no">dx</span>
+<span class="w">    </span><span class="nf">addge</span><span class="w"> </span><span class="no">y0</span><span class="p">,</span><span class="no">sy</span>
+
+<span class="w">    </span><span class="nf">b</span><span class="w"> </span><span class="no">pixelLoop$</span>
+
+<span class="na">.unreq</span><span class="w"> </span><span class="no">x0</span>
+<span class="na">.unreq</span><span class="w"> </span><span class="no">x1</span>
+<span class="na">.unreq</span><span class="w"> </span><span class="no">y0</span>
+<span class="na">.unreq</span><span class="w"> </span><span class="no">y1</span>
+<span class="na">.unreq</span><span class="w"> </span><span class="no">dx</span>
+<span class="na">.unreq</span><span class="w"> </span><span class="no">dyn</span>
+<span class="na">.unreq</span><span class="w"> </span><span class="no">sx</span>
+<span class="na">.unreq</span><span class="w"> </span><span class="no">sy</span>
+<span class="na">.unreq</span><span class="w"> </span><span class="no">err</span>
+</code></pre></div>
+
+<h3>3、随机性</h3>
+<p>到目前，我们可以绘制线条了。虽然我们可以使用它来绘制图片及诸如此类的东西（你可以随意去做！），我想应该借此机会引入计算机中随机性的概念。我将这样去做，选择一对随机的坐标，然后从上一对坐标用渐变色绘制一条线到那个点。我这样做纯粹是认为它看起来很漂亮。</p>
+<p>那么，总结一下，我们如何才能产生随机数呢？不幸的是，我们并没有产生随机数的一些设备（这种设备很罕见）。因此只能利用我们目前所学过的操作，需要我们以某种方式来发明“随机数”。你很快就会意识到这是不可能的。各种操作总是给出定义好的结果，用相同的寄存器运行相同的指令序列总是给出相同的答案。而我们要做的是推导出一个伪随机序列。这意味着数字在外人看来是随机的，但实际上它是完全确定的。因此，我们需要一个生成随机数的公式。其中有人可能会想到很垃圾的数学运算，比如：4x<sup> 2</sup>! / 64，而事实上它产生的是一个低质量的随机数。在这个示例中，如果 x 是 0，那么答案将是 0。看起来很愚蠢，我们需要非常谨慎地选择一个能够产生高质量随机数的方程式。</p>
+<blockquote>
+<p>硬件随机数生成器很少用在安全中，因为可预测的随机数序列可能影响某些加密的安全。</p>
+</blockquote>
+<p>我将要教给你的方法叫“二次同余发生器”。这是一个非常好的选择，因为它能够在 5 个指令中实现，并且能够产生一个从 0 到 232-1 之间的看似很随机的数字序列。</p>
+<p>不幸的是，对为什么使用如此少的指令能够产生如此长的序列的原因的研究，已经远超出了本课程的教学范围。但我还是鼓励有兴趣的人去研究它。它的全部核心所在就是下面的二次方程，其中 <code>xn</code> 是产生的第 <code>n</code> 个随机数。</p>
+<blockquote>
+<p>这类讨论经常寻求一个问题，那就是我们所谓的随机数到底是什么？通常从统计学的角度来说的随机性是：一组没有明显模式或属性能够概括它的数的序列。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/201902/19/213759nkzqs3py8idxakk8.jpg"></p>
+<p>这个方程受到以下的限制：</p>
+<ol>
+<li>a 是偶数</li>
+<li>b = a + 1 mod 4</li>
+<li>c 是奇数</li>
+</ol>
+<p>如果你之前没有见到过 <code>mod</code> 运算，我来解释一下，它的意思是被它后面的数相除之后的余数。比如 <code>b = a + 1 mod 4</code> 的意思是 <code>b</code> 是 <code>a + 1</code> 除以 <code>4</code> 的余数，因此，如果 <code>a</code> 是 12，那么 <code>b</code> 将是 <code>1</code>，因为 <code>a + 1</code> 是 13，而 <code>13</code> 除以 4 的结果是 3 余 1。</p>
+<p>复制下列代码到名为 <code>random.s</code> 的文件中。</p>
+<div class="highlight"><pre><span></span><code><span class="na">.globl</span><span class="w"> </span><span class="no">Random</span>
+<span class="nl">Random:</span>
+<span class="nf">xnm</span><span class="w"> </span><span class="no">.req</span><span class="w"> </span><span class="no">r0</span>
+<span class="nf">a</span><span class="w"> </span><span class="no">.req</span><span class="w"> </span><span class="no">r1</span>
+
+<span class="nf">mov</span><span class="w"> </span><span class="no">a</span><span class="p">,</span><span class="mi">#0</span><span class="no">xef00</span>
+<span class="nf">mul</span><span class="w"> </span><span class="no">a</span><span class="p">,</span><span class="no">xnm</span>
+<span class="nf">mul</span><span class="w"> </span><span class="no">a</span><span class="p">,</span><span class="no">xnm</span>
+<span class="nf">add</span><span class="w"> </span><span class="no">a</span><span class="p">,</span><span class="no">xnm</span>
+<span class="na">.unreq</span><span class="w"> </span><span class="no">xnm</span>
+<span class="nf">add</span><span class="w"> </span><span class="no">r0</span><span class="p">,</span><span class="no">a</span><span class="p">,</span><span class="mi">#73</span>
+
+<span class="na">.unreq</span><span class="w"> </span><span class="no">a</span>
+<span class="nf">mov</span><span class="w"> </span><span class="no">pc</span><span class="p">,</span><span class="no">lr</span>
+</code></pre></div>
+
+<p>这是随机函数的一个实现，使用一个在寄存器 <code>r0</code> 中最后生成的值作为输入，而接下来的数字则是输出。在我的案例中，我使用 a = EF00<sub> 16</sub>，b = 1, c = 73。这个选择是随意的，但是需要满足上述的限制。你可以使用任何数字代替它们，只要符合上述的规则就行。</p>
+<h3>4、Pi-casso</h3>
+<p>OK，现在我们有了所有我们需要的函数，我们来试用一下它们。获取帧缓冲信息的地址之后，按如下的要求修改 <code>main</code>：</p>
+<ol>
+<li>使用包含了帧缓冲信息地址的寄存器 <code>r0</code> 调用 <code>SetGraphicsAddress</code>。</li>
+<li>设置四个寄存器为 0。一个将是最后的随机数，一个将是颜色，一个将是最后的 x 坐标，而最后一个将是最后的 y 坐标。</li>
+<li>调用 <code>random</code> 去产生下一个 x 坐标，使用最后一个随机数作为输入。</li>
+<li>调用 <code>random</code> 再次去生成下一个 y 坐标，使用你生成的 x 坐标作为输入。</li>
+<li>更新最后的随机数为 y 坐标。</li>
+<li>使用 <code>colour</code> 值调用 <code>SetForeColour</code>，接着增加 <code>colour</code> 值。如果它大于 FFFF~16~，确保它返回为 0。</li>
+<li>我们生成的 x 和 y 坐标将介于 0 到 FFFFFFFF<sub> 16</sub>。通过将它们逻辑右移 22 位，将它们转换为介于 0 到 1023<sub> 10</sub> 之间的数。</li>
+<li>检查 y 坐标是否在屏幕上。验证 y 坐标是否介于 0 到 767<sub> 10</sub> 之间。如果不在这个区间，返回到第 3 步。</li>
+<li>从最后的 x 坐标和 y 坐标到当前的 x 坐标和 y 坐标之间绘制一条线。</li>
+<li>更新最后的 x 和 y 坐标去为当前的坐标。</li>
+<li>返回到第 3 步。</li>
+</ol>
+<p>一如既往，你可以在下载页面上找到这个解决方案。</p>
+<p>在你完成之后，在树莓派上做测试。你应该会看到一系列颜色递增的随机线条以非常快的速度出现在屏幕上。它一直持续下去。如果你的代码不能正常工作，请查看我们的排错页面。</p>
+<p>如果一切顺利，恭喜你！我们现在已经学习了有意义的图形和随机数。我鼓励你去使用它绘制线条，因为它能够用于渲染你想要的任何东西，你可以去探索更复杂的图案了。它们中的大多数都可以由线条生成，但这需要更好的策略？如果你愿意写一个画线程序，尝试使用 <code>SetPixel</code> 函数。如果不是去设置像素值而是一点点地增加它，会发生什么情况？你可以用它产生什么样的图案？在下一节课 <a href="https://www.cl.cam.ac.uk/projects/raspberrypi/tutorials/os/screen03.html">课程 8：屏幕 03</a> 中，我们将学习绘制文本的宝贵技能。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

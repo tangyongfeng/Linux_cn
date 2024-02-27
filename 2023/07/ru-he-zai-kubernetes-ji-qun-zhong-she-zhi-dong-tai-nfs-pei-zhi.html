@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何在 Kubernetes 集群中设置动态 NFS 配置</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Pradeep Kumar 在这篇文章中，我们将向你展示如何在 Kubernetes（k8s）集群中设置动态 NFS 配置。 Kubernetes 中的动态 NFS 存储配置允许你按需自动为 Kubernetes …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2023/07/ru-he-zai-kubernetes-ji-qun-zhong-she-zhi-dong-tai-nfs-pei-zhi.html" rel="bookmark"
+           title="Permalink to 如何在 Kubernetes 集群中设置动态 NFS 配置">如何在 Kubernetes 集群中设置动态 NFS 配置</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2023-07-28T22:29:00+02:00">
+                Published: Fri 28 July 2023
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Pradeep Kumar</p>
+<p><img alt="" src="/data/attachment/album/202307/28/222834togtruhoeuh3gtr1.jpg"></p>
+<blockquote>
+<p>在这篇文章中，我们将向你展示如何在 Kubernetes（k8s）集群中设置动态 NFS 配置。</p>
+</blockquote>
+<p>Kubernetes 中的动态 NFS 存储配置允许你按需自动为 Kubernetes 应用配置和管理 NFS（网络文件系统）卷。它允许创建持久卷（PV）和持久卷声明（PVC），而无需手动干预或预配置存储。</p>
+<p>NFS 配置程序负责动态创建 PV 并将其绑定到 PVC。它与 NFS 服务器交互，为每个 PVC 创建目录或卷。</p>
+<h3>先决条件</h3>
+<ul>
+<li>预装 Kubernetes 集群</li>
+<li>具有 Kubernetes 集群管理员权限的普通用户</li>
+<li>互联网连接</li>
+</ul>
+<p>事不宜迟，让我们深入探讨步骤：</p>
+<h3>步骤 1、准备 NFS 服务器</h3>
+<p>就我而言，我将在 Kubernetes 主节点（Ubuntu 22.04）上安装 NFS 服务器。登录主节点并运行以下命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>apt<span class="w"> </span>update
+$<span class="w"> </span>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>nfs-kernel-server<span class="w"> </span>-y
+</code></pre></div>
+
+<p>创建以下文件夹并使用 NFS 共享它：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>mkdir<span class="w"> </span>/opt/dynamic-storage
+$<span class="w"> </span>sudo<span class="w"> </span>chown<span class="w"> </span>-R<span class="w"> </span>nobody:nogroup<span class="w"> </span>/opt/dynamic-storage
+$<span class="w"> </span>sudo<span class="w"> </span>chmod<span class="w"> </span><span class="m">777</span><span class="w"> </span>/opt/dynamic-storage
+</code></pre></div>
+
+<p>在 <code>/etc/exports</code> 文件中添加以下条目：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>vi<span class="w"> </span>/etc/exports
+/opt/dynamic-storage<span class="w"> </span><span class="m">192</span>.168.1.0/24<span class="o">(</span>rw,sync,no_subtree_check<span class="o">)</span>
+</code></pre></div>
+
+<p>保存并关闭文件。</p>
+<p>注意：不要忘记更改导出文件中适合你的部署的网络。</p>
+<p>要使上述更改生效，请运行：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>exportfs<span class="w"> </span>-a
+$<span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>restart<span class="w"> </span>nfs-kernel-server
+$<span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>status<span class="w"> </span>nfs-kernel-server
+</code></pre></div>
+
+<p><img alt="NFS-Service-Status-Kubernetes-Master-Ubuntu" src="/data/attachment/album/202307/28/223041bzx61xy1g16ktzsi.jpg"></p>
+<p>在工作节点上，使用以下 <code>apt</code> 命令安装 <code>nfs-common</code> 包。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>nfs-common<span class="w"> </span>-y
+</code></pre></div>
+
+<h3>步骤 2、安装和配置 NFS 客户端配置程序</h3>
+<p>NFS 子目录外部配置程序在 Kubernetes 集群中部署 NFS 客户端配置程序。配置程序负责动态创建和管理由 NFS 存储支持的持久卷（PV）和持久卷声明（PVC）。</p>
+<p>因此，要安装 NFS 子目录外部配置程序，首先使用以下命令集安装 <code>helm</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>curl<span class="w"> </span>-fsSL<span class="w"> </span>-o<span class="w"> </span>get_helm.sh<span class="w"> </span>https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+$<span class="w"> </span>chmod<span class="w"> </span><span class="m">700</span><span class="w"> </span>get_helm.sh
+$<span class="w"> </span>./get_helm.sh
+</code></pre></div>
+
+<p>运行以下命令来启用 <code>helm</code> 仓库：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>helm<span class="w"> </span>repo<span class="w"> </span>add<span class="w"> </span>nfs-subdir-external-provisioner<span class="w"> </span>https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner
+</code></pre></div>
+
+<p>使用以下 <code>helm</code> 命令部署配置程序：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>helm<span class="w"> </span>install<span class="w"> </span>-n<span class="w"> </span>nfs-provisioning<span class="w"> </span>--create-namespace<span class="w"> </span>nfs-subdir-external-provisioner<span class="w"> </span>nfs-subdir-external-provisioner/nfs-subdir-external-provisioner<span class="w"> </span>--set<span class="w"> </span>nfs.server<span class="o">=</span><span class="m">192</span>.168.1.139<span class="w"> </span>--set<span class="w"> </span>nfs.path<span class="o">=</span>/opt/dynamic-storage
+</code></pre></div>
+
+<p><img alt="helm-install-nfs-provisioning-kubernetes-cluster" src="/data/attachment/album/202307/28/223102j8wpwx1p7xmxzvpr.jpg"></p>
+<p>上面的 <code>helm</code> 命令将自动创建 <code>nfs-provisioning</code> 命名空间，并安装 NFS 配置程序的容器荚/部署、名称为 <code>nfs-client</code> 的存储类，并将创建所需的 rbac。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>kubectl<span class="w"> </span>get<span class="w"> </span>all<span class="w"> </span>-n<span class="w"> </span>nfs-provisioning
+$<span class="w"> </span>kubectl<span class="w"> </span>get<span class="w"> </span>sc<span class="w"> </span>-n<span class="w"> </span>nfs-provisioning
+</code></pre></div>
+
+<p><img alt="kubectl-get-all-nfs-provisioning-kubernetes-cluster" src="/data/attachment/album/202307/28/223115t81slq74u9q8ddss.jpg"></p>
+<p>完美，上面的输出确认了配置程序容器荚和存储类已成功创建。</p>
+<h3>步骤 3、创建持久卷声明（PVC）</h3>
+<p>让我们创建 PVC 来为你的容器荚或部署请求存储。PVC 将从存储类 <code>nfs-client</code> 请求特定数量的存储：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>vi<span class="w"> </span>demo-pvc.yml
+kind:<span class="w"> </span>PersistentVolumeClaim
+apiVersion:<span class="w"> </span>v1
+metadata:
+<span class="w">  </span>name:<span class="w"> </span>demo-claim
+<span class="w">  </span>namespace:<span class="w"> </span>nfs-provisioning
+spec:
+<span class="w">  </span>storageClassName:<span class="w"> </span>nfs-client
+<span class="w">  </span>accessModes:
+<span class="w">    </span>-<span class="w"> </span>ReadWriteMany
+<span class="w">  </span>resources:
+<span class="w">    </span>requests:
+<span class="w">      </span>storage:<span class="w"> </span>10Mi
+</code></pre></div>
+
+<p>保存并关闭文件。</p>
+<p><img alt="PVC-Yaml-Dynamic-NFS-Kubernetes" src="/data/attachment/album/202307/28/223127zwz9zy98yy80ity1.jpg"></p>
+<p>运行以下 <code>kubectl</code> 命令以使用上面创建的 YML 文件创建 PVC：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>kubectl<span class="w"> </span>create<span class="w"> </span>-f<span class="w"> </span>demo-pvc.yml
+</code></pre></div>
+
+<p>验证 PVC 和 PV 是否创建：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>kubectl<span class="w"> </span>get<span class="w"> </span>pv,pvc<span class="w"> </span>-n<span class="w"> </span>nfs-provisioning
+</code></pre></div>
+
+<p><img alt="Verify-pv-pvc-dynamic-nfs-kubernetes-cluster" src="/data/attachment/album/202307/28/223143i0jiziu2dnk2pi9z.jpg"></p>
+<p>太好了，上面的输出表明 PV 和 PVC 创建成功。</p>
+<h3>步骤 4、测试并验证动态 NFS 配置</h3>
+<p>为了测试和验证动态 NFS 配置，请使用以下 YML 文件启动测试容器荚：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>vi<span class="w"> </span>test-pod.yml
+kind:<span class="w"> </span>Pod
+apiVersion:<span class="w"> </span>v1
+metadata:
+<span class="w">  </span>name:<span class="w"> </span>test-pod
+<span class="w">  </span>namespace:<span class="w"> </span>nfs-provisioning
+spec:
+<span class="w">  </span>containers:
+<span class="w">  </span>-<span class="w"> </span>name:<span class="w"> </span>test-pod
+<span class="w">    </span>image:<span class="w"> </span>busybox:latest
+<span class="w">    </span>command:
+<span class="w">      </span>-<span class="w"> </span><span class="s2">&quot;/bin/sh&quot;</span>
+<span class="w">    </span>args:
+<span class="w">      </span>-<span class="w"> </span><span class="s2">&quot;-c&quot;</span>
+<span class="w">      </span>-<span class="w"> </span><span class="s2">&quot;touch /mnt/SUCCESS &amp;&amp; sleep 600&quot;</span>
+<span class="w">    </span>volumeMounts:
+<span class="w">      </span>-<span class="w"> </span>name:<span class="w"> </span>nfs-pvc
+<span class="w">        </span>mountPath:<span class="w"> </span><span class="s2">&quot;/mnt&quot;</span>
+<span class="w">  </span>restartPolicy:<span class="w"> </span><span class="s2">&quot;Never&quot;</span>
+<span class="w">  </span>volumes:
+<span class="w">    </span>-<span class="w"> </span>name:<span class="w"> </span>nfs-pvc
+<span class="w">      </span>persistentVolumeClaim:
+<span class="w">        </span>claimName:<span class="w"> </span>demo-claim
+</code></pre></div>
+
+<p><img alt="Pod-Yml-Dynamic-NFS-kubernetes" src="/data/attachment/album/202307/28/223216ib8gmhkqzhmmagfq.jpg"></p>
+<p>使用以下 <code>kubectl</code> 命令部署容器荚：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>kubectl<span class="w"> </span>create<span class="w"> </span>-f<span class="w"> </span>test-pod.yml
+</code></pre></div>
+
+<p>验证 <code>test-pod</code> 的状态：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>kubectl<span class="w"> </span>get<span class="w"> </span>pods<span class="w"> </span>-n<span class="w"> </span>nfs-provisioning
+</code></pre></div>
+
+<p><img alt="Verify-Test-Pod-Using-NFS-Volume-Kubernetes" src="/data/attachment/album/202307/28/223241kwy855mbwz5jm5wb.jpg"></p>
+<p>登录到容器荚并验证 NFS 卷是否已安装。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>kubectl<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>test-pod<span class="w"> </span>-n<span class="w"> </span>nfs-provisioning<span class="w"> </span>/bin/sh
+</code></pre></div>
+
+<p><img alt="Access-Dynamic-NFS-Inside-Pod-Kubernetes" src="/data/attachment/album/202307/28/223252dsbotdzi1zoofcys.jpg"></p>
+<p>太棒了，上面容器荚的输出确认了动态 NFS 卷已安装且可访问。</p>
+<p>最后删除容器荚和 PVC，查看 PV 是否自动删除。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>kubectl<span class="w"> </span>delete<span class="w"> </span>-f<span class="w"> </span>test-pod.yml
+$<span class="w"> </span>kubectl<span class="w"> </span>delete<span class="w"> </span>-f<span class="w"> </span>demo-pvc.yml
+$<span class="w"> </span>kubectl<span class="w"> </span>get<span class="w"> </span>pv,pvc<span class="w"> </span>-n<span class="w">  </span>nfs-provisioning
+</code></pre></div>
+
+<p><img alt="Delete-Pod-PVC-Dynamic-NFS" src="/data/attachment/album/202307/28/223303b51o55ou5oxo1xwl.jpg"></p>
+<p>这就是这篇文章的全部内容，希望对你有所帮助。请随时在下面的评论部分发表你的疑问和反馈。</p>
+<p><em>（题图：MJ/75dae36f-ff68-4c63-81e8-281e2c239356）</em></p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

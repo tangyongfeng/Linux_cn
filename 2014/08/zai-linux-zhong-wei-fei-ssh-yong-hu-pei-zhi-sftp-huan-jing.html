@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在 Linux 中为非 SSH 用户配置 SFTP 环境</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Pradeep Kumar 在某些环境中，系统管理员想要允许极少数用户在可以传输文件到Linux机器中，但是不允许使用 SSH。要实现这一目的，我们可 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2014/08/zai-linux-zhong-wei-fei-ssh-yong-hu-pei-zhi-sftp-huan-jing.html" rel="bookmark"
+           title="Permalink to 在 Linux 中为非 SSH 用户配置 SFTP 环境">在 Linux 中为非 SSH 用户配置 SFTP 环境</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2014-08-26T22:41:34+02:00">
+                Published: Tue 26 August 2014
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Pradeep Kumar</p>
+<p>在<strong>某些环境</strong>中，系统管理员想要允许极少数用户在可以传输文件到Linux机器中，但是不允许使用 SSH。要实现这一目的，我们可以使用<strong>SFTP</strong>，并为其构建chroot环境。</p>
+<p><img alt="" src="/data/attachment/album/201408/26/224137dqq47pnbff5tsbfb.gif"></p>
+<h3>SFTP &amp; chroot背景：</h3>
+<p><strong>SFTP</strong>是指<strong>SSH文件传输协议（SSH File Transfer protocol）或安全文件传输协议（Secure File Transfer Protocol）</strong>，它提供了可信数据流下的文件访问、文件传输以及文件管理功能。当我们为SFTP配置chroot环境后，只有被许可的用户可以访问，并被限制到他们的<strong>家目录</strong>中，换言之：被许可的用户将处于牢笼环境中，在此环境中它们甚至不能切换它们的目录。</p>
+<p>在本文中，我们将配置<strong>RHEL 6.X</strong> 和 <strong>CentOS 6.X中的SFTP Chroot环境</strong>。我们开启一个用户帐号‘<strong>Jack</strong>’，该用户将被允许在Linux机器上传输文件，但没有ssh访问权限。</p>
+<h3>步骤：1 创建组</h3>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">root@localhost ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">groupadd</span><span class="w">  </span><span class="n">sftp_users</span>
+</code></pre></div>
+
+<h3>步骤：2 分配附属组(sftp_users)给用户</h3>
+<p>如果用户在系统上不存在，使用以下命令创建（ LCTT 译注：这里给用户指定了一个不能登录的 shell，以防止通过 ssh 登录）：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">root@localhost ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">useradd</span><span class="w">  </span><span class="o">-</span><span class="n">G</span><span class="w"> </span><span class="n">sftp_users</span><span class="w">  </span><span class="o">-</span><span class="n">s</span><span class="w"> </span><span class="o">/</span><span class="n">sbin</span><span class="o">/</span><span class="n">nologin</span><span class="w">  </span><span class="n">jack</span>
+<span class="o">[</span><span class="n">root@localhost ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">passwd</span><span class="w"> </span><span class="n">jack</span>
+</code></pre></div>
+
+<p>对于<strong>已经存在的用户</strong>，使用以下usermod命令进行修改：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">root@localhost ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">usermod</span><span class="w"> </span><span class="err">–</span><span class="n">G</span><span class="w"> </span><span class="n">sftp_users</span><span class="w">  </span><span class="o">-</span><span class="n">s</span><span class="w"> </span><span class="o">/</span><span class="n">sbin</span><span class="o">/</span><span class="n">nologin</span><span class="w">  </span><span class="n">jack</span>
+</code></pre></div>
+
+<p><strong>注意</strong>：如果你想要修改用户的<strong>默认家目录</strong>，那么可以在useradd和usermod命令中使用‘<strong>-d</strong>’选项，并设置<strong>合适的权限</strong>。</p>
+<h3>步骤：3 现在编辑配置文件 “/etc/ssh/sshd_config”</h3>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> vi /etc/ssh/sshd_config
+<span class="gh">#</span>comment out the below line and add a line like below
+<span class="gh">#</span>Subsystem sftp /usr/libexec/openssh/sftp-server
+Subsystem sftp internal-sftp
+
+<span class="gh">#</span> add Below lines  at the end of file
+  Match Group sftp_users
+  X11Forwarding no
+  AllowTcpForwarding no
+  ChrootDirectory %h                      
+  ForceCommand internal-sftp
+</code></pre></div>
+
+<h4>此处：</h4>
+<ul>
+<li><strong>Match Group sftp_users</strong> – 该参数指定以下的行将仅仅匹配sftp_users组中的用户</li>
+<li><strong>ChrootDirectory %h</strong> – 该参数指定用户验证后用于chroot环境的路径（默认的用户家目录）。对于用户 Jack，该路径就是/home/jack。</li>
+<li><strong>ForceCommand internal-sftp</strong> – 该参数强制执行内部sftp，并忽略任何~/.ssh/rc文件中的命令。</li>
+</ul>
+<p>重启ssh服务</p>
+<div class="highlight"><pre><span></span><code># service sshd restart
+</code></pre></div>
+
+<h3>步骤：4 设置权限：</h3>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">root@localhost ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">chmod</span><span class="w"> </span><span class="mi">755</span><span class="w"> </span><span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">jack</span>
+<span class="o">[</span><span class="n">root@localhost ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">chown</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">jack</span>
+<span class="o">[</span><span class="n">root@localhost ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">chgrp</span><span class="w"> </span><span class="o">-</span><span class="n">R</span><span class="w"> </span><span class="n">sftp_users</span><span class="w"> </span><span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">jack</span>
+</code></pre></div>
+
+<p>如果你想要允许jack用户上传文件，那么创建一个上传文件夹，设置权限如下：</p>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">localhost</span><span class="w"> </span><span class="n">jack</span><span class="p">]</span><span class="c1"># mkdir /home/jack/upload</span>
+<span class="p">[</span><span class="n">root</span><span class="err">@</span><span class="n">localhost</span><span class="w"> </span><span class="n">jack</span><span class="p">]</span><span class="c1"># chown jack. /home/jack upload/</span>
+</code></pre></div>
+
+<h3>步骤：5 现在尝试访问系统并进行测试</h3>
+<p>尝试通过ssh访问系统</p>
+<p><img alt="" src="/data/attachment/album/201408/26/224140zr2b662wcculpr1e.png"></p>
+<p>正如下图所示，用户jack通过SFTP登录，而且因为chroot环境不能切换目录。</p>
+<p><img alt="" src="/data/attachment/album/201408/26/224142apagayh8wtlshouy.png"></p>
+<p>现在进行<strong>上传和下载</strong>测试，如下图：</p>
+<p><img alt="" src="/data/attachment/album/201408/26/224145cw4xi4tusd5adz22.png"></p>
+<p>正如上图所示，jack用户的上传下载功能都工作得很好。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

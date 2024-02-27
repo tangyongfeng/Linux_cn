@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>什么是僵尸进程，如何找到并杀掉僵尸进程？</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Linuxandubuntu 如果你经常使用 Linux，你应该遇到这个术语“ 僵尸进程 Zombie Processes ”。 那么什么是僵尸进程？ 它们是怎么产生的？ 它们是否对系统有 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/12/shi-yao-shi-jiang-shi-jin-cheng-ru-he-zhao-dao-bing-sha-diao-jiang-shi-jin-cheng.html" rel="bookmark"
+           title="Permalink to 什么是僵尸进程，如何找到并杀掉僵尸进程？">什么是僵尸进程，如何找到并杀掉僵尸进程？</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-12-14T22:30:19+01:00">
+                Published: Thu 14 December 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Linuxandubuntu</p>
+<p><img alt="" src="/data/attachment/album/201712/14/223009uhhlhmbcjhwc7umb.jpg"></p>
+<p>如果你经常使用 Linux，你应该遇到这个术语“<ruby> 僵尸进程 <rt>  Zombie Processes </rt></ruby>”。 那么什么是僵尸进程？ 它们是怎么产生的？ 它们是否对系统有害？ 我要怎样杀掉这些进程？ 下面将会回答这些问题。</p>
+<h3>什么是僵尸进程？</h3>
+<p>我们都知道进程的工作原理。我们启动一个程序，开始我们的任务，然后等任务结束了，我们就停止这个进程。 进程停止后， 该进程就会从进程表中移除。</p>
+<p>你可以通过 <code>System-Monitor</code> 查看当前进程。</p>
+<p><a href="http://www.linuxandubuntu.com/uploads/2/1/1/5/21152474/linux-check-zombie-processes_orig.jpg"><img alt="" src="/data/attachment/album/201712/14/223023j2x5q8m01m2li86s.jpg"></a></p>
+<p>但是，有时候有些程序即使执行完了也依然留在进程表中。</p>
+<p>那么，这些完成了生命周期但却依然留在进程表中的进程，我们称之为 “僵尸进程”。</p>
+<h3>它们是如何产生的？</h3>
+<p>当你运行一个程序时，它会产生一个父进程以及很多子进程。 所有这些子进程都会消耗内核分配给它们的内存和 CPU 资源。</p>
+<p>这些子进程完成执行后会发送一个 Exit 信号然后死掉。这个 Exit 信号需要被父进程所读取。父进程需要随后调用 <code>wait</code> 命令来读取子进程的退出状态，并将子进程从进程表中移除。</p>
+<p>若父进程正确第读取了子进程的 Exit 信号，则子进程会从进程表中删掉。</p>
+<p>但若父进程未能读取到子进程的 Exit 信号，则这个子进程虽然完成执行处于死亡的状态，但也不会从进程表中删掉。</p>
+<h3>僵尸进程对系统有害吗？</h3>
+<p><strong>不会</strong>。由于僵尸进程并不做任何事情， 不会使用任何资源也不会影响其它进程， 因此存在僵尸进程也没什么坏处。 不过由于进程表中的退出状态以及其它一些进程信息也是存储在内存中的，因此存在太多僵尸进程有时也会是一些问题。</p>
+<p><strong>你可以想象成这样：</strong></p>
+<p>“你是一家建筑公司的老板。你每天根据工人们的工作量来支付工资。 有一个工人每天来到施工现场，就坐在那里， 你不用付钱， 他也不做任何工作。 他只是每天都来然后呆坐在那，仅此而已！”</p>
+<p>这个工人就是僵尸进程的一个活生生的例子。<strong>但是</strong>， 如果你有很多僵尸工人， 你的建设工地就会很拥堵从而让那些正常的工人难以工作。</p>
+<h3>那么如何找出僵尸进程呢？</h3>
+<p>打开终端并输入下面命令:</p>
+<div class="highlight"><pre><span></span><code>ps aux | grep Z
+</code></pre></div>
+
+<p>会列出进程表中所有僵尸进程的详细内容。</p>
+<h3>如何杀掉僵尸进程？</h3>
+<p>正常情况下我们可以用 <code>SIGKILL</code> 信号来杀死进程，但是僵尸进程已经死了， 你不能杀死已经死掉的东西。 因此你需要输入的命令应该是</p>
+<div class="highlight"><pre><span></span><code>kill -s SIGCHLD pid
+</code></pre></div>
+
+<p>将这里的 pid 替换成父进程的进程 id，这样父进程就会删除所有以及完成并死掉的子进程了。</p>
+<p><strong>你可以把它想象成：</strong></p>
+<p>"你在道路中间发现一具尸体，于是你联系了死者的家属，随后他们就会将尸体带离道路了。"</p>
+<p>不过许多程序写的不是那么好，无法删掉这些子僵尸（否则你一开始也见不到这些僵尸了）。 因此确保删除子僵尸的唯一方法就是杀掉它们的父进程。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

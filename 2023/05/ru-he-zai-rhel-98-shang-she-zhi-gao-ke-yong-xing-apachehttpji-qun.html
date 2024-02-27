@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何在 RHEL 9/8 上设置高可用性 Apache（HTTP）集群</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Pradeep Kumar 在本文中，我们将介绍如何在 RHEL 9/8 上使用 Pacemaker 设置两节点高可用性 Apache 集群。 Pacemaker 是适用于类 Linux 操作系统的高可用性 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2023/05/ru-he-zai-rhel-98-shang-she-zhi-gao-ke-yong-xing-apachehttpji-qun.html" rel="bookmark"
+           title="Permalink to 如何在 RHEL 9/8 上设置高可用性 Apache（HTTP）集群">如何在 RHEL 9/8 上设置高可用性 Apache（HTTP）集群</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2023-05-29T17:28:00+02:00">
+                Published: Mon 29 May 2023
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Pradeep Kumar</p>
+<p><img alt="" src="/data/attachment/album/202305/29/172810i24a4jppa4744avv.jpg"></p>
+<blockquote>
+<p>在本文中，我们将介绍如何在 RHEL 9/8 上使用 Pacemaker 设置两节点高可用性 Apache 集群。</p>
+</blockquote>
+<p>Pacemaker 是适用于类 Linux 操作系统的高可用性集群软件。Pacemaker 被称为“集群资源管理器”，它通过在集群节点之间进行资源故障转移来提供集群资源的最大可用性。Pacemaker 使用 Corosync 进行集群组件之间的心跳和内部通信，Corosync 还负责集群中的投票选举（Quorum）。</p>
+<h3>先决条件</h3>
+<p>在我们开始之前，请确保你拥有以下内容：</p>
+<ul>
+<li>两台 RHEL 9/8 服务器</li>
+<li>Red Hat 订阅或本地配置的仓库</li>
+<li>通过 SSH 访问两台服务器</li>
+<li>root 或 sudo 权限</li>
+<li>互联网连接</li>
+</ul>
+<h3>实验室详情：</h3>
+<ul>
+<li>服务器 1：<a href="http://node1.example.com">node1.example.com</a>（192.168.1.6）</li>
+<li>服务器 2：<a href="http://node2.exaple.com">node2.exaple.com</a>（192.168.1.7）</li>
+<li>VIP：192.168.1.81</li>
+<li>共享磁盘：<code>/dev/sdb</code>（2GB）</li>
+</ul>
+<p>事不宜迟，让我们深入了解这些步骤。</p>
+<h3>1、更新 /etc/hosts 文件</h3>
+<p>在两个节点上的 <code>/etc/hosts</code> 文件中添加以下条目：</p>
+<div class="highlight"><pre><span></span><code><span class="mf">192.168.1.6</span><span class="w">  </span><span class="n">node1</span><span class="mf">.</span><span class="n">example</span><span class="mf">.</span><span class="n">com</span>
+<span class="mf">192.168.1.7</span><span class="w">  </span><span class="n">node2</span><span class="mf">.</span><span class="n">example</span><span class="mf">.</span><span class="n">com</span>
+</code></pre></div>
+
+<h3>2、安装高可用包 Pacemaker</h3>
+<p>Pacemaker 和其他必需的包在 RHEL 9/8 的默认包仓库中不可用。因此，我们必须启用高可用仓库。在两个节点上运行以下订阅管理器命令。</p>
+<p>对于 RHEL 9 服务器：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>subscription-manager<span class="w"> </span>repos<span class="w"> </span>--enable<span class="o">=</span>rhel-9-for-x86_64-highavailability-rpms
+</code></pre></div>
+
+<p>对于 RHEL 8 服务器：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>subscription-manager<span class="w"> </span>repos<span class="w"> </span>--enable<span class="o">=</span>rhel-8-for-x86_64-highavailability-rpms
+</code></pre></div>
+
+<p>启用仓库后，运行命令在两个节点上安装 <code>pacemaker</code> 包：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> </span>pcs<span class="w"> </span>pacemaker<span class="w"> </span>fence-agents-all<span class="w"> </span>-y
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/202305/29/173049abnmgf6zg73gbm1w.jpg"></p>
+<h3>3、在防火墙中允许高可用端口</h3>
+<p>要允许防火墙中的高可用端口，请在每个节点上运行以下命令：</p>
+<div class="highlight"><pre><span></span><code><span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">firewall</span><span class="o">-</span><span class="n">cmd</span><span class="w"> </span><span class="o">--</span><span class="n">permanent</span><span class="w"> </span><span class="o">--</span><span class="n">add</span><span class="o">-</span><span class="n">service</span><span class="o">=</span><span class="n">high</span><span class="o">-</span><span class="n">availability</span>
+<span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">firewall</span><span class="o">-</span><span class="n">cmd</span><span class="w"> </span><span class="o">--</span><span class="n">reload</span>
+</code></pre></div>
+
+<h3>4、为 hacluster 用户设置密码并启动 pcsd 服务</h3>
+<p>在两台服务器上为 <code>hacluster</code> 用户设置密码，运行以下 <code>echo</code> 命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;&lt;Enter-Password&gt;&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>sudo<span class="w"> </span>passwd<span class="w"> </span>--stdin<span class="w"> </span>hacluster
+</code></pre></div>
+
+<p>执行以下命令在两台服务器上启动并启用集群服务：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>start<span class="w"> </span>pcsd.service
+$<span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>pcsd.service
+</code></pre></div>
+
+<h3>5、创建高可用集群</h3>
+<p>使用 <code>pcs</code> 命令对两个节点进行身份验证，从任何节点运行以下命令。在我的例子中，我在 <code>node1</code> 上运行它：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>pcs<span class="w"> </span>host<span class="w"> </span>auth<span class="w"> </span>node1.example.com<span class="w"> </span>node2.example.com
+</code></pre></div>
+
+<p>使用 <code>hacluster</code> 用户进行身份验证。</p>
+<p><img alt="" src="/data/attachment/album/202305/29/173101ngnfgtqfftxgvxpy.jpg"></p>
+<p>使用下面的 <code>pcs cluster setup</code> 命令将两个节点添加到集群，这里我使用的集群名称为 <code>http_cluster</code>。仅在 <code>node1</code> 上运行命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>pcs<span class="w"> </span>cluster<span class="w"> </span>setup<span class="w"> </span>http_cluster<span class="w"> </span>--start<span class="w"> </span>node1.example.com<span class="w"> </span>node2.example.com
+$<span class="w"> </span>sudo<span class="w"> </span>pcs<span class="w"> </span>cluster<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>--all
+</code></pre></div>
+
+<p>这两个命令的输出如下所示：</p>
+<p><img alt="" src="/data/attachment/album/202305/29/173111q58q3f5gs2glz2iq.jpg"></p>
+<p>从任何节点验证初始集群状态：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>pcs<span class="w"> </span>cluster<span class="w"> </span>status
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/202305/29/173349qavgniatgnnwo6qi.jpg"></p>
+<p>注意：在我们的实验室中，我们没有任何防护设备，因此我们将其禁用。但在生产环境中，强烈建议配置防护。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>pcs<span class="w"> </span>property<span class="w"> </span><span class="nb">set</span><span class="w"> </span>stonith-enabled<span class="o">=</span><span class="nb">false</span>
+$<span class="w"> </span>sudo<span class="w"> </span>pcs<span class="w"> </span>property<span class="w"> </span><span class="nb">set</span><span class="w"> </span>no-quorum-policy<span class="o">=</span>ignore
+</code></pre></div>
+
+<h3>6、为集群配置共享卷</h3>
+<p>在服务器上，挂载了一个大小为 2GB 的共享磁盘（<code>/dev/sdb</code>）。因此，我们将其配置为 LVM 卷并将其格式化为 XFS 文件系统。</p>
+<p>在开始创建 LVM 卷之前，编辑两个节点上的 <code>/etc/lvm/lvm.conf</code> 文件。</p>
+<p>将参数 <code>#system_id_source = "none"</code> 更改为 <code>system_id_source = "uname"</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>sed<span class="w"> </span>-i<span class="w"> </span><span class="s1">&#39;s/# system_id_source = &quot;none&quot;/ system_id_source = &quot;uname&quot;/g&#39;</span><span class="w"> </span>/etc/lvm/lvm.conf
+</code></pre></div>
+
+<p>在 <code>node1</code> 上依次执行以下一组命令创建 LVM 卷：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>pvcreate<span class="w"> </span>/dev/sdb
+$<span class="w"> </span>sudo<span class="w"> </span>vgcreate<span class="w"> </span>--setautoactivation<span class="w"> </span>n<span class="w"> </span>vg01<span class="w"> </span>/dev/sdb
+$<span class="w"> </span>sudo<span class="w"> </span>lvcreate<span class="w"> </span>-L1.99G<span class="w"> </span>-n<span class="w"> </span>lv01<span class="w"> </span>vg01
+$<span class="w"> </span>sudo<span class="w"> </span>lvs<span class="w"> </span>/dev/vg01/lv01
+$<span class="w"> </span>sudo<span class="w"> </span>mkfs.xfs<span class="w"> </span>/dev/vg01/lv01
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/202305/29/173411j50z7o964b0s6s40.jpg"></p>
+<p>将共享设备添加到集群第二个节点（<code>node2.example.com</code>）上的 LVM 设备文件中，仅在 <code>node2</code> 上运行以下命令：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">sysops@node2 ~</span><span class="o">]</span><span class="err">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">lvmdevices</span><span class="w"> </span><span class="c1">--adddev /dev/sdb</span>
+</code></pre></div>
+
+<h3>7、安装和配置 Apache Web 服务器（httpd）</h3>
+<p>在两台服务器上安装 Apache web 服务器（httpd)，运行以下 <code>dnf</code> 命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>httpd<span class="w"> </span>wget
+</code></pre></div>
+
+<p>并允许防火墙中的 Apache 端口，在两台服务器上运行以下 <code>firewall-cmd</code> 命令：</p>
+<div class="highlight"><pre><span></span><code><span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">firewall</span><span class="o">-</span><span class="n">cmd</span><span class="w"> </span><span class="o">--</span><span class="n">permanent</span><span class="w"> </span><span class="o">--</span><span class="n">zone</span><span class="o">=</span><span class="n">public</span><span class="w"> </span><span class="o">--</span><span class="n">add</span><span class="o">-</span><span class="n">service</span><span class="o">=</span><span class="n">http</span>
+<span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">firewall</span><span class="o">-</span><span class="n">cmd</span><span class="w"> </span><span class="o">--</span><span class="n">permanent</span><span class="w"> </span><span class="o">--</span><span class="n">zone</span><span class="o">=</span><span class="n">public</span><span class="w"> </span><span class="o">--</span><span class="n">add</span><span class="o">-</span><span class="n">service</span><span class="o">=</span><span class="n">https</span>
+<span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">firewall</span><span class="o">-</span><span class="n">cmd</span><span class="w"> </span><span class="o">--</span><span class="n">reload</span>
+</code></pre></div>
+
+<p>在两个节点上创建 <code>status.conf</code> 文件，以便 Apache 资源代理获取 Apache 的状态：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>bash<span class="w"> </span>-c<span class="w"> </span>&#39;cat<span class="w"> </span><span class="err">&lt;</span><span class="nt">&lt;-END</span><span class="w"> </span><span class="nt">&gt;</span><span class="w"> </span>/etc/httpd/conf.d/status.conf
+<span class="nt">&lt;Location</span><span class="w"> </span><span class="err">/server-status</span><span class="nt">&gt;</span>
+<span class="w">    </span>SetHandler<span class="w"> </span>server-status
+<span class="w">    </span>Require<span class="w"> </span>local
+<span class="nt">&lt;/Location&gt;</span>
+END&#39;
+$
+</code></pre></div>
+
+<p>修改两个节点上的 <code>/etc/logrotate.d/httpd</code>：</p>
+<p>替换下面的行</p>
+<div class="highlight"><pre><span></span><code><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">systemctl</span><span class="w"> </span><span class="n">reload</span><span class="w"> </span><span class="n">httpd</span><span class="o">.</span><span class="n">service</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="nb nb-Type">null</span><span class="w"> </span><span class="mi">2</span><span class="o">&gt;/</span><span class="n">dev</span><span class="o">/</span><span class="nb nb-Type">null</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="bp">true</span>
+</code></pre></div>
+
+<p>为</p>
+<div class="highlight"><pre><span></span><code>/usr/bin/test -f /run/httpd.pid &gt;/dev/null 2&gt;/dev/null &amp;&amp;
+/usr/bin/ps -q $(/usr/bin/cat /run/httpd.pid) &gt;/dev/null 2&gt;/dev/null &amp;&amp;
+/usr/sbin/httpd -f /etc/httpd/conf/httpd.conf \
+-c &quot;PidFile /run/httpd.pid&quot; -k graceful &gt; /dev/null 2&gt;/dev/null || true
+</code></pre></div>
+
+<p>保存并退出文件。</p>
+<p><img alt="" src="/data/attachment/album/202305/29/173439emr4ui8uf8rm8wzc.jpg"></p>
+<h3>8、为 Apache 创建一个示例网页</h3>
+<p>仅在 <code>node1</code> 上执行以下命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>lvchange<span class="w"> </span>-ay<span class="w"> </span>vg01/lv01
+$<span class="w"> </span>sudo<span class="w"> </span>mount<span class="w"> </span>/dev/vg01/lv01<span class="w"> </span>/var/www/
+$<span class="w"> </span>sudo<span class="w"> </span>mkdir<span class="w"> </span>/var/www/html
+$<span class="w"> </span>sudo<span class="w"> </span>mkdir<span class="w"> </span>/var/www/cgi-bin
+$<span class="w"> </span>sudo<span class="w"> </span>mkdir<span class="w"> </span>/var/www/error
+$<span class="w"> </span>sudo<span class="w"> </span>bash<span class="w"> </span>-c<span class="w"> </span>&#39;<span class="w"> </span>cat<span class="w"> </span><span class="err">&lt;</span><span class="nt">&lt;-END</span><span class="w"> </span><span class="nt">&gt;</span>/var/www/html/index.html
+<span class="nt">&lt;html&gt;</span>
+<span class="nt">&lt;body&gt;</span>High<span class="w"> </span>Availability<span class="w"> </span>Apache<span class="w"> </span>Cluster<span class="w"> </span>-<span class="w"> </span>Test<span class="w"> </span>Page<span class="w"> </span><span class="nt">&lt;/body&gt;</span>
+<span class="nt">&lt;/html&gt;</span>
+END&#39;
+$
+$<span class="w"> </span>sudo<span class="w"> </span>umount<span class="w"> </span>/var/www
+</code></pre></div>
+
+<p>注意：如果启用了 SElinux，则在两台服务器上运行以下命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>restorecon<span class="w"> </span>-R<span class="w"> </span>/var/www
+</code></pre></div>
+
+<h3>9、创建集群资源和资源组</h3>
+<p>为集群定义资源组和集群资源。在我的例子中，我们使用 <code>webgroup</code> 作为资源组。</p>
+<ul>
+<li><code>web_lvm</code> 是共享 LVM 卷的资源名称（<code>/dev/vg01/lv01</code>）</li>
+<li><code>web_fs</code> 是将挂载在 <code>/var/www</code> 上的文件系统资源的名称</li>
+<li><code>VirtualIP</code> 是网卡 <code>enp0s3</code> 的 VIP（<code>IPadd2</code>）资源</li>
+<li><code>Website</code> 是 Apache 配置文件的资源。</li>
+</ul>
+<p>从任何节点执行以下命令集。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>pcs<span class="w"> </span>resource<span class="w"> </span>create<span class="w"> </span>web_lvm<span class="w"> </span>ocf:heartbeat:LVM-activate<span class="w"> </span><span class="nv">vgname</span><span class="o">=</span>vg01<span class="w"> </span><span class="nv">vg_access_mode</span><span class="o">=</span>system_id<span class="w"> </span>--group<span class="w"> </span>webgroup
+$<span class="w"> </span>sudo<span class="w"> </span>pcs<span class="w"> </span>resource<span class="w"> </span>create<span class="w"> </span>web_fs<span class="w"> </span>Filesystem<span class="w"> </span><span class="nv">device</span><span class="o">=</span><span class="s2">&quot;/dev/vg01/lv01&quot;</span><span class="w"> </span><span class="nv">directory</span><span class="o">=</span><span class="s2">&quot;/var/www&quot;</span><span class="w"> </span><span class="nv">fstype</span><span class="o">=</span><span class="s2">&quot;xfs&quot;</span><span class="w"> </span>--group<span class="w"> </span>webgroup
+$<span class="w"> </span>sudo<span class="w"> </span>pcs<span class="w"> </span>resource<span class="w"> </span>create<span class="w"> </span>VirtualIP<span class="w"> </span>IPaddr2<span class="w"> </span><span class="nv">ip</span><span class="o">=</span><span class="m">192</span>.168.1.81<span class="w"> </span><span class="nv">cidr_netmask</span><span class="o">=</span><span class="m">24</span><span class="w"> </span><span class="nv">nic</span><span class="o">=</span>enp0s3<span class="w"> </span>--group<span class="w"> </span>webgroup
+$<span class="w"> </span>sudo<span class="w"> </span>pcs<span class="w"> </span>resource<span class="w"> </span>create<span class="w"> </span>Website<span class="w"> </span>apache<span class="w"> </span><span class="nv">configfile</span><span class="o">=</span><span class="s2">&quot;/etc/httpd/conf/httpd.conf&quot;</span><span class="w"> </span><span class="nv">statusurl</span><span class="o">=</span><span class="s2">&quot;http://127.0.0.1/server-status&quot;</span><span class="w"> </span>--group<span class="w"> </span>webgroup
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/202305/29/173458gcpjkcz01sgpzv0c.jpg"></p>
+<p>现在验证集群资源状态，运行：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>pcs<span class="w"> </span>status
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/202305/29/173515q3kkq5295zy9kh5y.jpg"></p>
+<p>很好，上面的输出显示所有资源都在 <code>node1</code> 上启动。</p>
+<h3>10、测试 Apache 集群</h3>
+<p>尝试使用 VIP（192.168.1.81）访问网页。</p>
+<p>使用 <code>curl</code> 命令或网络浏览器访问网页：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>curl<span class="w"> </span>http://192.168.1.81
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/202305/29/173530i9dpgee7h8dpy7lg.jpg"></p>
+<p>或者</p>
+<p><img alt="" src="/data/attachment/album/202305/29/173540oe1kuy28yz1fyege.jpg"></p>
+<p>完美！以上输出确认我们能够访问我们高可用 Apache 集群的网页。</p>
+<p>让我们尝试将集群资源从 <code>node1</code> 移动到 <code>node2</code>，运行：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>pcs<span class="w"> </span>node<span class="w"> </span>standby<span class="w"> </span>node1.example.com
+$<span class="w"> </span>sudo<span class="w"> </span>pcs<span class="w"> </span>status
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/202305/29/173550mc7hkygbkdtd77th.jpg"></p>
+<p>完美，以上输出确认集群资源已从 <code>node1</code> 迁移到 <code>node2</code>。</p>
+<p>要从备用节点（<code>node1.example.com</code>）中删除节点，运行以下命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>pcs<span class="w"> </span>node<span class="w"> </span>unstandby<span class="w"> </span>node1.example.com
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/202305/29/173601nzg634au4jgd8g82.jpg"></p>
+<p>以上就是这篇文章的全部内容，我希望你发现它提供了丰富的信息，请在下面的评论部分中发表你的疑问和反馈。</p>
+<p><em>（题图：MJ/3bf8c775-72ed-4e44-a28d-c872c7c8632f）</em></p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

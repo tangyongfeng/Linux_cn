@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在 Linux 系统中手动滚动日志</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Sandra Henry-stocker 日志滚动 log rotation 在 Linux 系统上是再常见不过的一个功能了，它为系统监控和故障排查保留必要的日志内容，同时又防 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2020/03/zai-linux-xi-tong-zhong-shou-dong-gun-dong-ri-zhi.html" rel="bookmark"
+           title="Permalink to 在 Linux 系统中手动滚动日志">在 Linux 系统中手动滚动日志</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2020-03-25T22:40:13+01:00">
+                Published: Wed 25 March 2020
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Sandra Henry-stocker</p>
+<p><img alt="" src="/data/attachment/album/202003/25/223932xqibwq5fafx5ao3f.jpg"></p>
+<p><ruby> 日志滚动 <rt>  log rotation </rt></ruby>在 Linux 系统上是再常见不过的一个功能了，它为系统监控和故障排查保留必要的日志内容，同时又防止过多的日志造成单个日志文件太大。</p>
+<p>日志滚动的过程是这样的：在一组日志文件之中，编号最大的（最旧的）一个日志文件会被删除，其余的日志文件编号则依次增大并取代较旧的日志文件，而较新的文件则取代它作为当前的日志文件。这一个过程很容易就可以实现自动化，在细节上还能按需作出微调。</p>
+<p>使用 <code>logrotate</code> 命令可以手动执行日志滚动的操作。本文将要介绍的就是手动进行日志滚动的方法，以及预期产生的结果。</p>
+<p>文中出现的示例适用于 Ubuntu 等 Linux 系统，对于其它类型的系统，日志文件和配置文件可能会有所不同，但日志滚动的过程是大同小异的。</p>
+<h3>为什么需要滚动日志</h3>
+<p>一般情况下，无需手动旋转日志文件。Linux 系统会每隔一天（或间隔更长的时间）或根据日志文件的大小自动进行一次日志滚动。如果你需要滚动日志以释放存储空间，又或者将某一部分日志从当前的活动中分割出来，这很容易做到，具体要取决于文件滚动规则。</p>
+<h3>一点背景介绍</h3>
+<p>在 Linux 系统安装完成后就已经有很多日志文件被纳入到日志滚动的范围内了。另外，一些应用程序在安装时也会为自己产生的日志文件设置滚动规则。一般来说，日志滚动的配置文件会放置在 <code>/etc/logrotate.d</code>。如果你想了解日志滚动的详细实现，可以参考<a href="https://www.networkworld.com/article/3218728/how-log-rotation-works-with-logrotate.html">这篇以前的文章</a>。</p>
+<p>在日志滚动的过程中，活动日志会以一个新名称命名，例如 <code>log.1</code>，之前被命名为 <code>log.1</code> 的文件则会被重命名为 <code>log.2</code>，依此类推。在这一组文件中，最旧的日志文件（假如名为 <code>log.7</code>）会从系统中删除。日志滚动时文件的命名方式、保留日志文件的数量等参数是由 <code>/etc/logrotate.d</code> 目录中的配置文件决定的，因此你可能会看到有些日志文件只保留少数几次滚动，而有些日志文件的滚动次数会到 7 次或更多。</p>
+<p>例如 <code>syslog</code> 在经过日志滚动之后可能会如下所示（注意，行尾的注释部分只是说明滚动过程是如何对文件名产生影响的）：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ls<span class="w"> </span>-l<span class="w"> </span>/var/log/syslog*
+-rw-r-----<span class="w"> </span><span class="m">1</span><span class="w"> </span>syslog<span class="w"> </span>adm<span class="w">  </span><span class="m">128674</span><span class="w"> </span>Mar<span class="w"> </span><span class="m">10</span><span class="w"> </span><span class="m">08</span>:00<span class="w"> </span>/var/log/syslog<span class="w">      </span>&lt;<span class="o">==</span><span class="w"> </span>新文件
+-rw-r-----<span class="w"> </span><span class="m">1</span><span class="w"> </span>syslog<span class="w"> </span>adm<span class="w"> </span><span class="m">2405968</span><span class="w"> </span>Mar<span class="w">  </span><span class="m">9</span><span class="w"> </span><span class="m">16</span>:09<span class="w"> </span>/var/log/syslog.1<span class="w">    </span>&lt;<span class="o">==</span><span class="w"> </span>之前的<span class="w"> </span>syslog
+-rw-r-----<span class="w"> </span><span class="m">1</span><span class="w"> </span>syslog<span class="w"> </span>adm<span class="w">  </span><span class="m">206451</span><span class="w"> </span>Mar<span class="w">  </span><span class="m">9</span><span class="w"> </span><span class="m">00</span>:00<span class="w"> </span>/var/log/syslog.2.gz<span class="w"> </span>&lt;<span class="o">==</span><span class="w"> </span>之前的<span class="w"> </span>syslog.1
+-rw-r-----<span class="w"> </span><span class="m">1</span><span class="w"> </span>syslog<span class="w"> </span>adm<span class="w">  </span><span class="m">216852</span><span class="w"> </span>Mar<span class="w">  </span><span class="m">8</span><span class="w"> </span><span class="m">00</span>:00<span class="w"> </span>/var/log/syslog.3.gz<span class="w"> </span>&lt;<span class="o">==</span><span class="w"> </span>之前的<span class="w"> </span>syslog.2.gz
+-rw-r-----<span class="w"> </span><span class="m">1</span><span class="w"> </span>syslog<span class="w"> </span>adm<span class="w">  </span><span class="m">212889</span><span class="w"> </span>Mar<span class="w">  </span><span class="m">7</span><span class="w"> </span><span class="m">00</span>:00<span class="w"> </span>/var/log/syslog.4.gz<span class="w"> </span>&lt;<span class="o">==</span><span class="w"> </span>之前的<span class="w"> </span>syslog.3.gz
+-rw-r-----<span class="w"> </span><span class="m">1</span><span class="w"> </span>syslog<span class="w"> </span>adm<span class="w">  </span><span class="m">219106</span><span class="w"> </span>Mar<span class="w">  </span><span class="m">6</span><span class="w"> </span><span class="m">00</span>:00<span class="w"> </span>/var/log/syslog.5.gz<span class="w"> </span>&lt;<span class="o">==</span><span class="w"> </span>之前的<span class="w"> </span>syslog.4.gz
+-rw-r-----<span class="w"> </span><span class="m">1</span><span class="w"> </span>syslog<span class="w"> </span>adm<span class="w">  </span><span class="m">218596</span><span class="w"> </span>Mar<span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="m">00</span>:00<span class="w"> </span>/var/log/syslog.6.gz<span class="w"> </span>&lt;<span class="o">==</span><span class="w"> </span>之前的<span class="w"> </span>syslog.5.gz
+-rw-r-----<span class="w"> </span><span class="m">1</span><span class="w"> </span>syslog<span class="w"> </span>adm<span class="w">  </span><span class="m">211074</span><span class="w"> </span>Mar<span class="w">  </span><span class="m">4</span><span class="w"> </span><span class="m">00</span>:00<span class="w"> </span>/var/log/syslog.7.gz<span class="w"> </span>&lt;<span class="o">==</span><span class="w"> </span>之前的<span class="w"> </span>syslog.6.gz
+</code></pre></div>
+
+<p>你可能会发现，除了当前活动的日志和最新一次滚动的日志文件之外，其余的文件都已经被压缩以节省存储空间。这样设计的原因是大部分系统管理员都只需要查阅最新的日志文件，其余的日志文件压缩起来，需要的时候可以解压查阅，这是一个很好的折中方案。</p>
+<h3>手动日志滚动</h3>
+<p>你可以这样执行 <code>logrotate</code> 命令进行手动日志滚动：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>logrotate<span class="w"> </span>-f<span class="w"> </span>/etc/logrotate.d/rsyslog
+</code></pre></div>
+
+<p>值得一提的是，<code>logrotate</code> 命令使用 <code>/etc/logrotate.d/rsyslog</code> 这个配置文件，并通过了 <code>-f</code> 参数实行“强制滚动”。因此，整个过程将会是：</p>
+<ul>
+<li>删除 <code>syslog.7.gz</code>，</li>
+<li>将原来的 <code>syslog.6.gz</code> 命名为 <code>syslog.7.gz</code>，</li>
+<li>将原来的 <code>syslog.5.gz</code> 命名为 <code>syslog.6.gz</code>，</li>
+<li>将原来的 <code>syslog.4.gz</code> 命名为 <code>syslog.5.gz</code>，</li>
+<li>将原来的 <code>syslog.3.gz</code> 命名为 <code>syslog.4.gz</code>，</li>
+<li>将原来的 <code>syslog.2.gz</code> 命名为 <code>syslog.3.gz</code>，</li>
+<li>将原来的 <code>syslog.1.gz</code> 命名为 <code>syslog.2.gz</code>，</li>
+<li>但新的 <code>syslog</code> 文件不一定必须创建。</li>
+</ul>
+<p>你可以按照下面的几条命令执行操作，以确保文件的属主和权限正确：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>touch<span class="w"> </span>/var/log/syslog
+$<span class="w"> </span>sudo<span class="w"> </span>chown<span class="w"> </span>syslog:adm<span class="w"> </span>/var/log/syslog
+$<span class="w"> </span>sudo<span class="w"> </span>chmod<span class="w"> </span><span class="m">640</span><span class="w"> </span>/var/log/syslog
+</code></pre></div>
+
+<p>你也可以把以下这一行内容添加到 <code>/etc/logrotate.d/rsyslog</code> 当中，由 <code>logrotate</code> 来帮你完成上面三条命令的操作：</p>
+<div class="highlight"><pre><span></span><code>create 0640 syslog adm
+</code></pre></div>
+
+<p>整个配置文件的内容是这样的：</p>
+<div class="highlight"><pre><span></span><code><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="n">syslog</span>
+<span class="p">{</span>
+<span class="n">rotate</span><span class="w"> </span><span class="mi">7</span>
+<span class="n">daily</span>
+<span class="n">missingok</span>
+<span class="n">notifempty</span>
+<span class="n">create</span><span class="w"> </span><span class="mi">0640</span><span class="w"> </span><span class="n">syslog</span><span class="w"> </span><span class="n">adm</span><span class="w">           </span><span class="o">&lt;==</span>
+<span class="n">delaycompress</span>
+<span class="n">compress</span>
+<span class="n">postrotate</span>
+<span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">rsyslog</span><span class="o">/</span><span class="n">rsyslog</span><span class="o">-</span><span class="n">rotate</span>
+<span class="n">endscript</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>下面是手动滚动记录用户登录信息的 <code>wtmp</code> 日志的示例。由于 <code>/etc/logrotate.d/wtmp</code> 中有 <code>rotate 2</code> 的配置，因此系统中只保留了两份 <code>wtmp</code> 日志文件。</p>
+<p>滚动前：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ls<span class="w"> </span>-l<span class="w"> </span>wtmp*
+-rw-r-----<span class="w"> </span><span class="m">1</span><span class="w"> </span>root<span class="w"> </span>utmp<span class="w">  </span><span class="m">1152</span><span class="w"> </span>Mar<span class="w"> </span><span class="m">12</span><span class="w"> </span><span class="m">11</span>:49<span class="w"> </span>wtmp
+-rw-r-----<span class="w"> </span><span class="m">1</span><span class="w"> </span>root<span class="w"> </span>utmp<span class="w">   </span><span class="m">768</span><span class="w"> </span>Mar<span class="w"> </span><span class="m">11</span><span class="w"> </span><span class="m">17</span>:04<span class="w"> </span>wtmp.1
+</code></pre></div>
+
+<p>执行滚动命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>logrotate<span class="w"> </span>-f<span class="w"> </span>/etc/logrotate.d/wtmp
+</code></pre></div>
+
+<p>滚动后：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ls<span class="w"> </span>-l<span class="w"> </span>/var/log/wtmp*
+-rw-r-----<span class="w"> </span><span class="m">1</span><span class="w"> </span>root<span class="w"> </span>utmp<span class="w">     </span><span class="m">0</span><span class="w"> </span>Mar<span class="w"> </span><span class="m">12</span><span class="w"> </span><span class="m">11</span>:52<span class="w"> </span>/var/log/wtmp
+-rw-r-----<span class="w"> </span><span class="m">1</span><span class="w"> </span>root<span class="w"> </span>utmp<span class="w">  </span><span class="m">1152</span><span class="w"> </span>Mar<span class="w"> </span><span class="m">12</span><span class="w"> </span><span class="m">11</span>:49<span class="w"> </span>/var/log/wtmp.1
+-rw-r-----<span class="w"> </span><span class="m">1</span><span class="w"> </span>root<span class="w"> </span>adm<span class="w">  </span><span class="m">99726</span><span class="w"> </span>Feb<span class="w"> </span><span class="m">21</span><span class="w"> </span><span class="m">07</span>:46<span class="w"> </span>/var/log/wtmp.report
+</code></pre></div>
+
+<p>需要知道的是，无论发生的日志滚动是自动滚动还是手动滚动，最近一次的滚动时间都会记录在 <code>logrorate</code> 的状态文件中。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>grep<span class="w"> </span>wtmp<span class="w"> </span>/var/lib/logrotate/status
+<span class="s2">&quot;/var/log/wtmp&quot;</span><span class="w"> </span><span class="m">2020</span>-3-12-11:52:57
+</code></pre></div>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

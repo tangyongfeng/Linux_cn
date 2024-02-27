@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何使用 VTY Shell 配置路由器</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: M Umer FRR（free range routing）给了你实现多种协议的选择。本指南将帮助你入门。 最近，我写了一篇文章，解释了如何使用 Quagga 路由套件实 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2020/05/ru-he-shi-yong-vty-shell-pei-zhi-lu-you-qi.html" rel="bookmark"
+           title="Permalink to 如何使用 VTY Shell 配置路由器">如何使用 VTY Shell 配置路由器</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2020-05-31T12:24:26+02:00">
+                Published: Sun 31 May 2020
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: M Umer</p>
+<blockquote>
+<p>FRR（free range routing）给了你实现多种协议的选择。本指南将帮助你入门。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/202005/31/122310xi9aag5iqihqgcxl.jpg"></p>
+<p>最近，我写了一篇文章，解释了如何使用 <a href="/article-12199-1.html">Quagga</a> 路由套件实现<ruby> 开放式最短路径优先 <rt>  Open Shortest Path First </rt></ruby>（OSPF）。可以使用多个软件套件代替 Quagga 来实现不同的路由协议。其中一种是 FRR（free range routing）。</p>
+<h3>FRR</h3>
+<p><a href="https://en.wikipedia.org/wiki/FRRouting">FRR</a> 是一个路由软件套件，它衍生自 Quagga，并在 GNU GPL2 许可下分发。与 Quagga 一样，它为类 Unix 平台提供了所有主要路由协议的实现，例如 OSPF、<ruby> 路由信息协议 <rt>  Routing Information Protocol </rt></ruby>（RIP）、<ruby> 边界网关协议 <rt>  Border Gateway Protocol </rt></ruby>（BGP） 和<ruby> 中间系统到中间系统 <rt>  Intermediate system-to-intermediate system </rt></ruby> （IS-IS）。</p>
+<p>开发了 Quagga 的一些公司，例如 Big Switch Networks、Cumulus、Open Source Routing 和 6wind，创建了 FRR 以在 Quagga 的良好基础上进行改善。</p>
+<h4>体系结构</h4>
+<p>FRR 是一组守护进程，它们可以共同构建路由表。每个主协议都在其自己的守护进程中实现，并且这些守护进程与独立于协议的核心守护进程 Zebra 通信，后者提供内核路由表更新、接口查找以及不同路由协议之间路由的重新分配。每个特定协议的守护进程负责运行相关协议并根据交换的信息构建路由表。</p>
+<p><img alt="FRR architecture" src="/data/attachment/album/202005/31/122431zzgjfaulaggspiej.png" title="FRR architecture"></p>
+<h3>VTY shell</h3>
+<p><a href="http://docs.frrouting.org/projects/dev-guide/en/latest/vtysh.html">VTYSH</a> 是 FRR 路由引擎的集成 shell。它将每个守护进程中定义的所有 CLI 命令合并，并在单个 shell 中将它们呈现给用户。它提供了类似于 Cisco 的命令行模式，并且许多命令与 Cisco IOS 命令相似。CLI 有不同的模式，某些命令仅在特定模式下可用。</p>
+<h3>设置</h3>
+<p>在本教程中，我们将使用 FRR 配置动态路由来实现路由信息协议（RIP）。我们可以通过两种方式来做到这一点：在编辑器中编辑协议守护进程配置文件或使用 VTY Shell。在此例中，我们将使用 VTY shell。我们的设置包括两个名为 Alpha 和 Beta 的 CentOS 7.7 主机。这两台主机都有两个网络接口，并共享对 192.168.122.0/24 网络的访问。我们将广播 10.12.11.0/24 和 10.10.10.0/24 网络的路由。</p>
+<p>对于主机 Alpha：</p>
+<ul>
+<li>eth0 IP：192.168.122.100/24</li>
+<li>网关：192.168.122.1</li>
+<li>eth1 IP：10.10.10.12/24</li>
+</ul>
+<p>对于主机 Beta：</p>
+<ul>
+<li>eth0 IP：192.168.122.50/24</li>
+<li>网关：192.168.122.1</li>
+<li>eth1 IP：10.12.11.12/24</li>
+</ul>
+<h4>安装软件包</h4>
+<p>首先，我们需要在两台主机上都安装 FRR 软件包。可以按照<a href="http://docs.frrouting.org/projects/dev-guide/en/latest/building-frr-for-centos7.html">官方 FRR 文档</a>中的说明进行操作。</p>
+<h4>启用 IP 转发</h4>
+<p>对于路由，我们需要在两台主机上都启用 IP 转发，因为这将由 Linux 内核执行：</p>
+<div class="highlight"><pre><span></span><code>sysctl -w net.ipv4.conf.all.forwarding = 1
+sysctl -w net.ipv6.conf.all.forwarding = 1
+sysctl -p
+</code></pre></div>
+
+<h4>启用 RIPD 守护进程</h4>
+<p>安装后，所有配置文件将保存在 <code>/etc/frr</code> 目录中。 必须通过编辑 <code>/etc/frr/daemons</code> 文件显式启用守护进程。该文件确定启动 FRR 服务时激活哪些守护进程。要启用特定的守护进程，只需将相应的 <code>no</code> 改为 <code>yes</code>。之后的服务重启将启动守护进程。</p>
+<p><img alt="FRR daemon restart" src="/data/attachment/album/202005/31/122433stthaatu8ru3nurb.png" title="FRR daemon restart"></p>
+<h4>防火墙配置</h4>
+<p>由于 RIP 协议使用 UDP 作为传输协议，并被分配了 520 端口，因此我们需要在 <code>firewalld</code> 配置中允许该端口。</p>
+<div class="highlight"><pre><span></span><code><span class="n">firewall</span><span class="o">-</span><span class="n">cmd</span><span class="w"> </span><span class="o">--</span><span class="n">add</span><span class="o">-</span><span class="n">port</span><span class="o">=</span><span class="mi">520</span><span class="o">/</span><span class="n">udp</span><span class="w"> </span><span class="err">–</span><span class="n">permanent</span>
+<span class="n">firewalld</span><span class="o">-</span><span class="n">cmd</span><span class="w"> </span><span class="o">-</span><span class="n">reload</span>
+</code></pre></div>
+
+<p>现在，我们可以使用以下命令启动 FRR 服务：</p>
+<div class="highlight"><pre><span></span><code>systemctl start frr
+</code></pre></div>
+
+<h4>使用 VTY 进行配置</h4>
+<p>现在，我们需要使用 VTY Shell 配置 RIP。</p>
+<p>在主机 Alpha 上：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">root@alpha ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">vtysh</span>
+
+<span class="n">Hello</span><span class="p">,</span><span class="w"> </span><span class="n">this</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">FRRouting</span><span class="w"> </span><span class="p">(</span><span class="n">version</span><span class="w"> </span><span class="mf">7.2</span><span class="n">RPKI</span><span class="p">).</span>
+<span class="n">Copyright</span><span class="w"> </span><span class="mi">1996</span><span class="o">-</span><span class="mi">2005</span><span class="w"> </span><span class="n">Kunihiro</span><span class="w"> </span><span class="n">Ishiguro</span><span class="p">,</span><span class="w"> </span><span class="n">et</span><span class="w"> </span><span class="n">al</span><span class="p">.</span>
+
+<span class="n">alpha</span><span class="err">#</span><span class="w"> </span><span class="n">configure</span><span class="w"> </span><span class="n">terminal</span>
+<span class="n">alpha</span><span class="p">(</span><span class="n">config</span><span class="p">)</span><span class="err">#</span><span class="w"> </span><span class="n">router</span><span class="w"> </span><span class="n">rip</span>
+<span class="n">alpha</span><span class="p">(</span><span class="n">config</span><span class="o">-</span><span class="n">router</span><span class="p">)</span><span class="err">#</span><span class="w"> </span><span class="n">network</span><span class="w"> </span><span class="mf">192.168.122.0</span><span class="o">/</span><span class="mi">24</span>
+<span class="n">alpha</span><span class="p">(</span><span class="n">config</span><span class="o">-</span><span class="n">router</span><span class="p">)</span><span class="err">#</span><span class="w"> </span><span class="n">network</span><span class="w"> </span><span class="mf">10.10.10.0</span><span class="o">/</span><span class="mi">24</span>
+<span class="n">alpha</span><span class="p">(</span><span class="n">config</span><span class="o">-</span><span class="n">router</span><span class="p">)</span><span class="err">#</span><span class="w"> </span><span class="n">route</span><span class="w"> </span><span class="mf">10.10.10.5</span><span class="o">/</span><span class="mi">24</span>
+<span class="n">alpha</span><span class="p">(</span><span class="n">config</span><span class="o">-</span><span class="n">router</span><span class="p">)</span><span class="err">#</span><span class="w"> </span><span class="n">do</span><span class="w"> </span><span class="k">write</span>
+<span class="nl">Note</span><span class="p">:</span><span class="w"> </span><span class="n">this</span><span class="w"> </span><span class="n">version</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="n">vtysh</span><span class="w"> </span><span class="n">never</span><span class="w"> </span><span class="n">writes</span><span class="w"> </span><span class="n">vtysh</span><span class="p">.</span><span class="n">conf</span>
+<span class="n">Building</span><span class="w"> </span><span class="n">Configuration</span><span class="p">...</span>
+<span class="n">Configuration</span><span class="w"> </span><span class="n">saved</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">frr</span><span class="o">/</span><span class="n">ripd</span><span class="p">.</span><span class="n">conf</span>
+<span class="n">Configuration</span><span class="w"> </span><span class="n">saved</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">frr</span><span class="o">/</span><span class="n">staticd</span><span class="p">.</span><span class="n">conf</span>
+<span class="n">alpha</span><span class="p">(</span><span class="n">config</span><span class="o">-</span><span class="n">router</span><span class="p">)</span><span class="err">#</span><span class="w"> </span><span class="n">do</span><span class="w"> </span><span class="k">write</span><span class="w"> </span><span class="n">memory</span>
+<span class="nl">Note</span><span class="p">:</span><span class="w"> </span><span class="n">this</span><span class="w"> </span><span class="n">version</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="n">vtysh</span><span class="w"> </span><span class="n">never</span><span class="w"> </span><span class="n">writes</span><span class="w"> </span><span class="n">vtysh</span><span class="p">.</span><span class="n">conf</span>
+<span class="n">Building</span><span class="w"> </span><span class="n">Configuration</span><span class="p">...</span>
+<span class="n">Configuration</span><span class="w"> </span><span class="n">saved</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">frr</span><span class="o">/</span><span class="n">ripd</span><span class="p">.</span><span class="n">conf</span>
+<span class="n">Configuration</span><span class="w"> </span><span class="n">saved</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">frr</span><span class="o">/</span><span class="n">staticd</span><span class="p">.</span><span class="n">conf</span>
+<span class="n">alpha</span><span class="p">(</span><span class="n">config</span><span class="o">-</span><span class="n">router</span><span class="p">)</span><span class="err">#</span><span class="w"> </span><span class="k">exit</span>
+</code></pre></div>
+
+<p>类似地，在主机 Beta 上：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">root@beta ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">vtysh</span>
+
+<span class="n">Hello</span><span class="p">,</span><span class="w"> </span><span class="n">this</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">FRRouting</span><span class="w"> </span><span class="p">(</span><span class="n">version</span><span class="w"> </span><span class="mf">7.2</span><span class="n">RPKI</span><span class="p">).</span>
+<span class="n">Copyright</span><span class="w"> </span><span class="mi">1996</span><span class="o">-</span><span class="mi">2005</span><span class="w"> </span><span class="n">Kunihiro</span><span class="w"> </span><span class="n">Ishiguro</span><span class="p">,</span><span class="w"> </span><span class="n">et</span><span class="w"> </span><span class="n">al</span><span class="p">.</span>
+
+<span class="n">beta</span><span class="err">#</span><span class="w"> </span><span class="n">configure</span><span class="w"> </span><span class="n">terminal</span>
+<span class="n">beta</span><span class="p">(</span><span class="n">config</span><span class="p">)</span><span class="err">#</span><span class="w"> </span><span class="n">router</span><span class="w"> </span><span class="n">rip</span>
+<span class="n">beta</span><span class="p">(</span><span class="n">config</span><span class="o">-</span><span class="n">router</span><span class="p">)</span><span class="err">#</span><span class="w"> </span><span class="n">network</span><span class="w"> </span><span class="mf">192.168.122.0</span><span class="o">/</span><span class="mi">24</span>
+<span class="n">beta</span><span class="p">(</span><span class="n">config</span><span class="o">-</span><span class="n">router</span><span class="p">)</span><span class="err">#</span><span class="w"> </span><span class="n">network</span><span class="w"> </span><span class="mf">10.12.11.0</span><span class="o">/</span><span class="mi">24</span>
+<span class="n">beta</span><span class="p">(</span><span class="n">config</span><span class="o">-</span><span class="n">router</span><span class="p">)</span><span class="err">#</span><span class="w"> </span><span class="n">do</span><span class="w"> </span><span class="k">write</span>
+<span class="nl">Note</span><span class="p">:</span><span class="w"> </span><span class="n">this</span><span class="w"> </span><span class="n">version</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="n">vtysh</span><span class="w"> </span><span class="n">never</span><span class="w"> </span><span class="n">writes</span><span class="w"> </span><span class="n">vtysh</span><span class="p">.</span><span class="n">conf</span>
+<span class="n">Building</span><span class="w"> </span><span class="n">Configuration</span><span class="p">...</span>
+<span class="n">Configuration</span><span class="w"> </span><span class="n">saved</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">frr</span><span class="o">/</span><span class="n">zebra</span><span class="p">.</span><span class="n">conf</span>
+<span class="n">Configuration</span><span class="w"> </span><span class="n">saved</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">frr</span><span class="o">/</span><span class="n">ripd</span><span class="p">.</span><span class="n">conf</span>
+<span class="n">Configuration</span><span class="w"> </span><span class="n">saved</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">frr</span><span class="o">/</span><span class="n">staticd</span><span class="p">.</span><span class="n">conf</span>
+<span class="n">beta</span><span class="p">(</span><span class="n">config</span><span class="o">-</span><span class="n">router</span><span class="p">)</span><span class="err">#</span><span class="w"> </span><span class="n">do</span><span class="w"> </span><span class="k">write</span><span class="w"> </span><span class="n">memory</span>
+<span class="nl">Note</span><span class="p">:</span><span class="w"> </span><span class="n">this</span><span class="w"> </span><span class="n">version</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="n">vtysh</span><span class="w"> </span><span class="n">never</span><span class="w"> </span><span class="n">writes</span><span class="w"> </span><span class="n">vtysh</span><span class="p">.</span><span class="n">conf</span>
+<span class="n">Building</span><span class="w"> </span><span class="n">Configuration</span><span class="p">...</span>
+<span class="n">Configuration</span><span class="w"> </span><span class="n">saved</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">frr</span><span class="o">/</span><span class="n">zebra</span><span class="p">.</span><span class="n">conf</span>
+<span class="n">Configuration</span><span class="w"> </span><span class="n">saved</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">frr</span><span class="o">/</span><span class="n">ripd</span><span class="p">.</span><span class="n">conf</span>
+<span class="n">Configuration</span><span class="w"> </span><span class="n">saved</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">frr</span><span class="o">/</span><span class="n">staticd</span><span class="p">.</span><span class="n">conf</span>
+<span class="n">beta</span><span class="p">(</span><span class="n">config</span><span class="o">-</span><span class="n">router</span><span class="p">)</span><span class="err">#</span><span class="w"> </span><span class="k">exit</span>
+</code></pre></div>
+
+<p>完成后，像下面这样检查两台主机路由：</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">root@alpha ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">ip</span><span class="w"> </span><span class="n">route</span><span class="w"> </span><span class="n">show</span>
+<span class="k">default</span><span class="w"> </span><span class="n">via</span><span class="w"> </span><span class="mf">192.168.122.1</span><span class="w"> </span><span class="n">dev</span><span class="w"> </span><span class="n">eth0</span><span class="w"> </span><span class="n">proto</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">metric</span><span class="w"> </span><span class="mi">100</span>
+<span class="mf">10.10.10.0</span><span class="o">/</span><span class="mi">24</span><span class="w"> </span><span class="n">dev</span><span class="w"> </span><span class="n">eth1</span><span class="w"> </span><span class="n">proto</span><span class="w"> </span><span class="n">kernel</span><span class="w"> </span><span class="k">scope</span><span class="w"> </span><span class="n">link</span><span class="w"> </span><span class="n">src</span><span class="w"> </span><span class="mf">10.10.10.12</span><span class="w"> </span><span class="n">metric</span><span class="w"> </span><span class="mi">101</span>
+<span class="mf">10.12.11.0</span><span class="o">/</span><span class="mi">24</span><span class="w"> </span><span class="n">via</span><span class="w"> </span><span class="mf">192.168.122.50</span><span class="w"> </span><span class="n">dev</span><span class="w"> </span><span class="n">eth0</span><span class="w"> </span><span class="n">proto</span><span class="w"> </span><span class="mi">189</span><span class="w"> </span><span class="n">metric</span><span class="w"> </span><span class="mi">20</span>
+<span class="mf">192.168.122.0</span><span class="o">/</span><span class="mi">24</span><span class="w"> </span><span class="n">dev</span><span class="w"> </span><span class="n">eth0</span><span class="w"> </span><span class="n">proto</span><span class="w"> </span><span class="n">kernel</span><span class="w"> </span><span class="k">scope</span><span class="w"> </span><span class="n">link</span><span class="w"> </span><span class="n">src</span><span class="w"> </span><span class="mf">192.168.122.100</span><span class="w"> </span><span class="n">metric</span><span class="w"> </span><span class="mi">100</span>
+</code></pre></div>
+
+<p>我们可以看到 Alpha 上的路由表通过 <code>192.168.122.50</code> 包含了 <code>10.12.11.0/24</code> 的条目，它是通过 RIP 提供的。</p>
+<p>类似地，在 Beta 上，该表通过 <code>192.168.122.100</code> 包含了 <code>10.10.10.0/24</code> 的条目。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">root@beta ~</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">ip</span><span class="w"> </span><span class="n">route</span><span class="w"> </span><span class="n">show</span>
+<span class="k">default</span><span class="w"> </span><span class="n">via</span><span class="w"> </span><span class="mf">192.168.122.1</span><span class="w"> </span><span class="n">dev</span><span class="w"> </span><span class="n">eth0</span><span class="w"> </span><span class="n">proto</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">metric</span><span class="w"> </span><span class="mi">100</span>
+<span class="mf">10.10.10.0</span><span class="o">/</span><span class="mi">24</span><span class="w"> </span><span class="n">via</span><span class="w"> </span><span class="mf">192.168.122.100</span><span class="w"> </span><span class="n">dev</span><span class="w"> </span><span class="n">eth0</span><span class="w"> </span><span class="n">proto</span><span class="w"> </span><span class="mi">189</span><span class="w"> </span><span class="n">metric</span><span class="w"> </span><span class="mi">20</span>
+<span class="mf">10.12.11.0</span><span class="o">/</span><span class="mi">24</span><span class="w"> </span><span class="n">dev</span><span class="w"> </span><span class="n">eth1</span><span class="w"> </span><span class="n">proto</span><span class="w"> </span><span class="n">kernel</span><span class="w"> </span><span class="k">scope</span><span class="w"> </span><span class="n">link</span><span class="w"> </span><span class="n">src</span><span class="w"> </span><span class="mf">10.12.11.12</span><span class="w"> </span><span class="n">metric</span><span class="w"> </span><span class="mi">101</span>
+<span class="mf">192.168.122.0</span><span class="o">/</span><span class="mi">24</span><span class="w"> </span><span class="n">dev</span><span class="w"> </span><span class="n">eth0</span><span class="w"> </span><span class="n">proto</span><span class="w"> </span><span class="n">kernel</span><span class="w"> </span><span class="k">scope</span><span class="w"> </span><span class="n">link</span><span class="w"> </span><span class="n">src</span><span class="w"> </span><span class="mf">192.168.122.50</span><span class="w"> </span><span class="n">metric</span><span class="w"> </span><span class="mi">100</span>
+</code></pre></div>
+
+<h3>总结</h3>
+<p>如你所见，设置和配置相对简单。要增加复杂性，我们可以向路由器添加更多的网络接口，以为更多的网络提供路由。可以在编辑器中编辑配置文件来进行配置，但是使用 VTY Shell 在单个组合会话中为我们提供了所有 FRR 守护进程的前端。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

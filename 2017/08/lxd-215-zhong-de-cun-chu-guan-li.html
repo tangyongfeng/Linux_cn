@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>LXD 2.15 中的存储管理</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Christian Brauner 长久以来 LXD 已经支持多种存储驱动。用户可以在 zfs、btrfs、lvm 或纯目录存储池之间进行选择，但他们只能使用单个存储 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/08/lxd-215-zhong-de-cun-chu-guan-li.html" rel="bookmark"
+           title="Permalink to LXD 2.15 中的存储管理">LXD 2.15 中的存储管理</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-08-03T18:37:38+02:00">
+                Published: Thu 03 August 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Christian Brauner</p>
+<p><img alt="" src="/data/attachment/album/201708/03/183727syjxl7jwmy3myzfy.jpg"></p>
+<p>长久以来 LXD 已经支持多种存储驱动。用户可以在 zfs、btrfs、lvm 或纯目录存储池之间进行选择，但他们只能使用单个存储池。一个被频繁被提到的需求是不仅支持单个存储池，还支持多个存储池。这样，用户可以维护一个由 SSD 支持的 zfs 存储池用于 I/O 密集型容器，另一个简单的基于目录的存储池用于其他容器。幸运的是，现在这是可能的，因为 LXD 在几个版本后有了自己的存储管理 API。</p>
+<h3>创建存储池</h3>
+<p>新安装 LXD 没有定义任何存储池。如果你运行 <code>lxd init</code> ，LXD 将提供为你创建一个存储池。由 <code>lxd init</code> 创建的存储池将是创建容器的默认存储池。</p>
+<p><img alt="asciicast" src="/data/attachment/album/201708/03/183742znbdqms55exehmax.png"></p>
+<h3>创建更多的存储池</h3>
+<p>我们的客户端工具使得创建额外的存储池变得非常简单。为了创建和管理新的存储池，你可以使用 <code>lxc storage</code> 命令。所以如果你想在块设备 <code>/dev/sdb</code> 上创建一个额外的 btrfs 存储池，你只需使用 <code>lxc storage create my-btrfs btrfs source=/dev/sdb</code>。让我们来看看：</p>
+<p><img alt="asciicast" src="/data/attachment/album/201708/03/183745leleohwutuu97qtq.png"></p>
+<h3>在默认存储池上创建容器</h3>
+<p>如果你从全新安装的 LXD 开始，并通过 <code>lxd init</code> 创建了一个存储池，LXD 将使用此池作为默认存储池。这意味着如果你执行 <code>lxc launch images:ubuntu/xenial xen1</code>，LXD 将为此存储池上的容器的根文件系统创建一个存储卷。在示例中，我们使用 <code>my-first-zfs-pool</code> 作为默认存储池。</p>
+<p><img alt="asciicast" src="/data/attachment/album/201708/03/183748w445y36fffe5ov3x.png"></p>
+<h3>在特定存储池上创建容器</h3>
+<p>但是你也可以通过传递 <code>-s</code> 参数来告诉 <code>lxc launch</code> 和 <code>lxc init</code> 在特定存储池上创建一个容器。例如，如果要在 <code>my-btrfs</code> 存储池上创建一个新的容器，你可以执行 <code>lxc launch images:ubuntu/xenial xen-on-my-btrfs -s my-btrfs</code>：</p>
+<p><img alt="asciicast" src="/data/attachment/album/201708/03/183752f6br797bu4r7579g.png"></p>
+<h3>创建自定义存储卷</h3>
+<p>如果你其中一个容器需要额外的空间存储额外的数据，那么新的存储 API 将允许你创建可以连接到容器的存储卷。只需要 <code>lxc storage volume create my-btrfs my-custom-volume</code>：</p>
+<p><img alt="asciicast" src="/data/attachment/album/201708/03/183755ef4pvhcrag6z4gwp.png"></p>
+<h3>连接自定义卷到容器中</h3>
+<p>当然，这个功能是有用的，因为存储 API 让你把这些存储卷连接到容器。要将存储卷连接到容器，可以使用 <code>lxc storage volume attach my-btrfs my-custom-volume xen1 data /opt/my/data</code>：</p>
+<p><img alt="asciicast" src="/data/attachment/album/201708/03/183757uk2z86ykrb7bu8er.png"></p>
+<h3>在容器之间共享自定义存储卷</h3>
+<p>默认情况下，LXD 将使连接的存储卷由其所连接的容器写入。这意味着它会将存储卷的所有权更改为容器的 id 映射。但存储卷也可以同时连接到多个容器。这对于在多个容器之间共享数据是非常好的。但是，这有一些限制。为了将存储卷连接到多个容器，它们必须共享相同的 id 映射。让我们创建一个额外的具有一个隔离的 id 映射的容器 <code>xen-isolated</code>。这意味着它的 id 映射在这个 LXD 实例中将是唯一的，因此没有其他容器具有相同的id映射。将相同的存储卷 <code>my-custom-volume</code> 连接到此容器现在将会失败：</p>
+<p><img alt="asciicast" src="/data/attachment/album/201708/03/183800okv60676c0zc99xd.png"></p>
+<p>但是我们让 <code>xen-isolated</code> 与 <code>xen1</code> 有相同的映射，并把它重命名为 <code>xen2</code> 来反映这个变化。现在我们可以将 <code>my-custom-volume</code> 连接到 <code>xen1</code> 和 <code>xen2</code> 而不会有问题：</p>
+<p><img alt="asciicast" src="/data/attachment/album/201708/03/183803tuv0ty10i9z2v9v2.png"></p>
+<h3>总结</h3>
+<p>存储 API 是 LXD 非常强大的补充。它提供了一组基本功能，有助于在大规模使用容器时处理各种问题。这个简短的介绍希望给你一个印象，你可以做什么。将来会有更多介绍。</p>
+<p>本篇文章最初在 <a href="https://cbrauner.wordpress.com/">Brauner 的博客</a>中发布。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

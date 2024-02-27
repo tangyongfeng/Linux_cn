@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 gosec 检查 Go 代码中的安全问题</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Gaurav Kamathe 来学习下 Go 语言的安全检查工具 gosec。 Go 语言写的代码越来越常见，尤其是在容器、Kubernetes 或云生态相关的开发中。Docker 是最 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2020/10/shi-yong-gosec-jian-cha-go-dai-ma-zhong-de-an-quan-wen-ti.html" rel="bookmark"
+           title="Permalink to 使用 gosec 检查 Go 代码中的安全问题">使用 gosec 检查 Go 代码中的安全问题</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2020-10-04T12:51:53+02:00">
+                Published: Sun 04 October 2020
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Gaurav Kamathe</p>
+<blockquote>
+<p>来学习下 Go 语言的安全检查工具 gosec。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/202010/04/125129bh4qxxsyqpvqjtx4.jpg"></p>
+<p><a href="https://golang.org/">Go 语言</a>写的代码越来越常见，尤其是在容器、Kubernetes 或云生态相关的开发中。Docker 是最早采用 Golang 的项目之一，随后是 Kubernetes，之后大量的新项目在众多编程语言中选择了 Go。</p>
+<p>像其他语言一样，Go 也有它的长处和短处（如安全缺陷）。这些缺陷可能会因为语言本身的缺陷加上程序员编码不当而产生，例如，C 代码中的内存安全问题。</p>
+<p>无论它们出现的原因是什么，安全问题都应该在开发过程的早期修复，以免在封装好的软件中出现。幸运的是，静态分析工具可以帮你以更可重复的方式处理这些问题。静态分析工具通过解析用某种编程语言写的代码来找到问题。</p>
+<p>这类工具中很多被称为 linter。传统意义上，linter 更注重的是检查代码中编码问题、bug、代码风格之类的问题，它们可能不会发现代码中的安全问题。例如，<a href="https://www.synopsys.com/software-integrity/security-testing/static-analysis-sast.html">Coverity</a> 是一个很流行的工具，它可以帮助寻找 C/C++ 代码中的问题。然而，也有一些工具专门用来检查源码中的安全问题。例如，<a href="https://pypi.org/project/bandit/">Bandit</a> 可以检查 Python 代码中的安全缺陷。而 <a href="https://github.com/securego/gosec">gosec</a> 则用来搜寻 Go 源码中的安全缺陷。<code>gosec</code> 通过扫描 Go 的 AST（<ruby> 抽象语法树 <rt>  abstract syntax tree </rt></ruby>）来检查源码中的安全问题。</p>
+<h3>开始使用 gosec</h3>
+<p>在开始学习和使用 <code>gosec</code> 之前，你需要准备一个 Go 语言写的项目。有这么多开源软件，我相信这不是问题。你可以在 GitHub 的 <a href="https://github.com/trending/go">热门 Golang 仓库</a>中找一个。</p>
+<p>本文中，我随机选了 <a href="https://github.com/docker/docker-ce">Docker CE</a> 项目，但你可以选择任意的 Go 项目。</p>
+<h4>安装 Go 和 gosec</h4>
+<p>如果你还没安装 Go，你可以先从仓库中拉取下来。如果你用的是 Fedora 或其他基于 RPM 的 Linux 发行版本：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> </span>golang.x86_64
+</code></pre></div>
+
+<p>如果你用的是其他操作系统，请参照 <a href="https://golang.org/doc/install">Golang 安装</a>页面。</p>
+<p>使用 <code>version</code> 参数来验证 Go 是否安装成功：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>go<span class="w"> </span>version
+go<span class="w"> </span>version<span class="w"> </span>go1.14.6<span class="w"> </span>linux/amd64
+</code></pre></div>
+
+<p>运行 <code>go get</code> 命令就可以轻松地安装 <code>gosec</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>go<span class="w"> </span>get<span class="w"> </span>github.com/securego/gosec/cmd/gosec
+</code></pre></div>
+
+<p>上面这行命令会从 GitHub 下载 <code>gosec</code> 的源码，编译并安装到指定位置。在仓库的 <code>README</code> 中你还可以看到<a href="https://github.com/securego/gosec#install">安装该工具的其他方法</a>。</p>
+<p><code>gosec</code> 的源码会被下载到 <code>$GOPATH</code> 的位置，编译出的二进制文件会被安装到你系统上设置的 <code>bin</code> 目录下。你可以运行下面的命令来查看 <code>$GOPATH</code> 和 <code>$GOBIN</code> 目录：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>go<span class="w"> </span>env<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>GOBIN
+<span class="nv">GOBIN</span><span class="o">=</span><span class="s2">&quot;/root/go/gobin&quot;</span>
+$<span class="w"> </span>go<span class="w"> </span>env<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>GOPATH
+<span class="nv">GOPATH</span><span class="o">=</span><span class="s2">&quot;/root/go&quot;</span>
+</code></pre></div>
+
+<p>如果 <code>go get</code> 命令执行成功，那么 <code>gosec</code> 二进制应该就可以使用了：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ls<span class="w"> </span>-l<span class="w"> </span>~/go/bin/
+total<span class="w"> </span><span class="m">9260</span>
+-rwxr-xr-x.<span class="w"> </span><span class="m">1</span><span class="w"> </span>root<span class="w"> </span>root<span class="w"> </span><span class="m">9482175</span><span class="w"> </span>Aug<span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="m">04</span>:17<span class="w"> </span>gosec
+</code></pre></div>
+
+<p>你可以把 <code>$GOPATH</code> 下的 <code>bin</code> 目录添加到 <code>$PATH</code> 中。这样你就可以像使用系统上的其他命令一样来使用 <code>gosec</code> 命令行工具（CLI）了。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>which<span class="w"> </span>gosec
+/root/go/bin/gosec
+$
+</code></pre></div>
+
+<p>使用 <code>gosec</code> 命令行工具的 <code>-help</code> 选项来看看运行是否符合预期：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>gosec<span class="w"> </span>-help
+
+gosec<span class="w"> </span>-<span class="w"> </span>Golang<span class="w"> </span>security<span class="w"> </span>checker
+
+gosec<span class="w"> </span>analyzes<span class="w"> </span>Go<span class="w"> </span><span class="nb">source</span><span class="w"> </span>code<span class="w"> </span>to<span class="w"> </span>look<span class="w"> </span><span class="k">for</span><span class="w"> </span>common<span class="w"> </span>programming<span class="w"> </span>mistakes<span class="w"> </span>that
+can<span class="w"> </span>lead<span class="w"> </span>to<span class="w"> </span>security<span class="w"> </span>problems.
+
+VERSION:<span class="w"> </span>dev
+GIT<span class="w"> </span>TAG:
+BUILD<span class="w"> </span>DATE:
+
+USAGE:
+</code></pre></div>
+
+<p>之后，创建一个目录，把源码下载到这个目录作为实例项目（本例中，我用的是 Docker CE）：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>mkdir<span class="w"> </span>gosec-demo
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>gosec-demo/
+$<span class="w"> </span><span class="nb">pwd</span>
+/root/gosec-demo
+$<span class="w"> </span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/docker/docker-ce.git
+Cloning<span class="w"> </span>into<span class="w"> </span><span class="s1">&#39;docker-ce&#39;</span>...
+remote:<span class="w"> </span>Enumerating<span class="w"> </span>objects:<span class="w"> </span><span class="m">1271</span>,<span class="w"> </span><span class="k">done</span>.
+remote:<span class="w"> </span>Counting<span class="w"> </span>objects:<span class="w"> </span><span class="m">100</span>%<span class="w"> </span><span class="o">(</span><span class="m">1271</span>/1271<span class="o">)</span>,<span class="w"> </span><span class="k">done</span>.
+remote:<span class="w"> </span>Compressing<span class="w"> </span>objects:<span class="w"> </span><span class="m">100</span>%<span class="w"> </span><span class="o">(</span><span class="m">722</span>/722<span class="o">)</span>,<span class="w"> </span><span class="k">done</span>.
+remote:<span class="w"> </span>Total<span class="w"> </span><span class="m">431003</span><span class="w"> </span><span class="o">(</span>delta<span class="w"> </span><span class="m">384</span><span class="o">)</span>,<span class="w"> </span>reused<span class="w"> </span><span class="m">981</span><span class="w"> </span><span class="o">(</span>delta<span class="w"> </span><span class="m">318</span><span class="o">)</span>,<span class="w"> </span>pack-reused<span class="w"> </span><span class="m">429732</span>
+Receiving<span class="w"> </span>objects:<span class="w"> </span><span class="m">100</span>%<span class="w"> </span><span class="o">(</span><span class="m">431003</span>/431003<span class="o">)</span>,<span class="w"> </span><span class="m">166</span>.84<span class="w"> </span>MiB<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">28</span>.94<span class="w"> </span>MiB/s,<span class="w"> </span><span class="k">done</span>.
+Resolving<span class="w"> </span>deltas:<span class="w"> </span><span class="m">100</span>%<span class="w"> </span><span class="o">(</span><span class="m">221338</span>/221338<span class="o">)</span>,<span class="w"> </span><span class="k">done</span>.
+Updating<span class="w"> </span>files:<span class="w"> </span><span class="m">100</span>%<span class="w"> </span><span class="o">(</span><span class="m">10861</span>/10861<span class="o">)</span>,<span class="w"> </span><span class="k">done</span>.
+</code></pre></div>
+
+<p>代码统计工具（本例中用的是 <code>cloc</code>）显示这个项目大部分是用 Go 写的，恰好迎合了 <code>gosec</code> 的功能。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>./cloc<span class="w"> </span>/root/gosec-demo/docker-ce/
+<span class="w">   </span><span class="m">10771</span><span class="w"> </span>text<span class="w"> </span>files.
+<span class="w">    </span><span class="m">8724</span><span class="w"> </span>unique<span class="w"> </span>files.<span class="w">                                          </span>
+<span class="w">    </span><span class="m">2560</span><span class="w"> </span>files<span class="w"> </span>ignored.
+
+
+-----------------------------------------------------------------------------------
+Language<span class="w">                         </span>files<span class="w">          </span>blank<span class="w">        </span>comment<span class="w">           </span>code
+-----------------------------------------------------------------------------------
+Go<span class="w">                                </span><span class="m">7222</span><span class="w">         </span><span class="m">190785</span><span class="w">         </span><span class="m">230478</span><span class="w">        </span><span class="m">1574580</span>
+YAML<span class="w">                                </span><span class="m">37</span><span class="w">           </span><span class="m">4831</span><span class="w">            </span><span class="m">817</span><span class="w">         </span><span class="m">156762</span>
+Markdown<span class="w">                           </span><span class="m">529</span><span class="w">          </span><span class="m">21422</span><span class="w">              </span><span class="m">0</span><span class="w">          </span><span class="m">67893</span>
+Protocol<span class="w"> </span>Buffers<span class="w">                   </span><span class="m">149</span><span class="w">           </span><span class="m">5014</span><span class="w">          </span><span class="m">16562</span><span class="w">          </span><span class="m">10071</span>
+</code></pre></div>
+
+<h3>使用默认选项运行 gosec</h3>
+<p>在 Docker CE 项目中使用默认选项运行 <code>gosec</code>，执行 <code>gosec ./...</code> 命令。屏幕上会有很多输出内容。在末尾你会看到一个简短的 “Summary”，列出了浏览的文件数、所有文件的总行数，以及源码中发现的问题数。</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">pwd</span>
+<span class="o">/</span><span class="n">root</span><span class="o">/</span><span class="n">gosec</span><span class="o">-</span><span class="n">demo</span><span class="o">/</span><span class="n">docker</span><span class="o">-</span><span class="n">ce</span>
+<span class="err">$</span><span class="w"> </span><span class="nc">time</span><span class="w"> </span><span class="n">gosec</span><span class="w"> </span><span class="p">.</span><span class="o">/</span><span class="p">...</span>
+<span class="o">[</span><span class="n">gosec</span><span class="o">]</span><span class="w"> </span><span class="mi">2020</span><span class="o">/</span><span class="mi">08</span><span class="o">/</span><span class="mi">20</span><span class="w"> </span><span class="mi">04</span><span class="err">:</span><span class="mi">44</span><span class="err">:</span><span class="mi">15</span><span class="w"> </span><span class="n">Including</span><span class="w"> </span><span class="nl">rules</span><span class="p">:</span><span class="w"> </span><span class="k">default</span>
+<span class="o">[</span><span class="n">gosec</span><span class="o">]</span><span class="w"> </span><span class="mi">2020</span><span class="o">/</span><span class="mi">08</span><span class="o">/</span><span class="mi">20</span><span class="w"> </span><span class="mi">04</span><span class="err">:</span><span class="mi">44</span><span class="err">:</span><span class="mi">15</span><span class="w"> </span><span class="n">Excluding</span><span class="w"> </span><span class="nl">rules</span><span class="p">:</span><span class="w"> </span><span class="k">default</span>
+<span class="o">[</span><span class="n">gosec</span><span class="o">]</span><span class="w"> </span><span class="mi">2020</span><span class="o">/</span><span class="mi">08</span><span class="o">/</span><span class="mi">20</span><span class="w"> </span><span class="mi">04</span><span class="err">:</span><span class="mi">44</span><span class="err">:</span><span class="mi">15</span><span class="w"> </span><span class="n">Import</span><span class="w"> </span><span class="nl">directory</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="n">root</span><span class="o">/</span><span class="n">gosec</span><span class="o">-</span><span class="n">demo</span><span class="o">/</span><span class="n">docker</span><span class="o">-</span><span class="n">ce</span><span class="o">/</span><span class="n">components</span><span class="o">/</span><span class="n">engine</span><span class="o">/</span><span class="n">opts</span>
+<span class="o">[</span><span class="n">gosec</span><span class="o">]</span><span class="w"> </span><span class="mi">2020</span><span class="o">/</span><span class="mi">08</span><span class="o">/</span><span class="mi">20</span><span class="w"> </span><span class="mi">04</span><span class="err">:</span><span class="mi">44</span><span class="err">:</span><span class="mi">17</span><span class="w"> </span><span class="n">Checking</span><span class="w"> </span><span class="nl">package</span><span class="p">:</span><span class="w"> </span><span class="n">opts</span>
+<span class="o">[</span><span class="n">gosec</span><span class="o">]</span><span class="w"> </span><span class="mi">2020</span><span class="o">/</span><span class="mi">08</span><span class="o">/</span><span class="mi">20</span><span class="w"> </span><span class="mi">04</span><span class="err">:</span><span class="mi">44</span><span class="err">:</span><span class="mi">17</span><span class="w"> </span><span class="n">Checking</span><span class="w"> </span><span class="k">file</span><span class="err">:</span><span class="w"> </span><span class="o">/</span><span class="n">root</span><span class="o">/</span><span class="n">gosec</span><span class="o">-</span><span class="n">demo</span><span class="o">/</span><span class="n">docker</span><span class="o">-</span><span class="n">ce</span><span class="o">/</span><span class="n">components</span><span class="o">/</span><span class="n">engine</span><span class="o">/</span><span class="n">opts</span><span class="o">/</span><span class="n">address_pools</span><span class="p">.</span><span class="k">go</span>
+<span class="o">[</span><span class="n">gosec</span><span class="o">]</span><span class="w"> </span><span class="mi">2020</span><span class="o">/</span><span class="mi">08</span><span class="o">/</span><span class="mi">20</span><span class="w"> </span><span class="mi">04</span><span class="err">:</span><span class="mi">44</span><span class="err">:</span><span class="mi">17</span><span class="w"> </span><span class="n">Checking</span><span class="w"> </span><span class="k">file</span><span class="err">:</span><span class="w"> </span><span class="o">/</span><span class="n">root</span><span class="o">/</span><span class="n">gosec</span><span class="o">-</span><span class="n">demo</span><span class="o">/</span><span class="n">docker</span><span class="o">-</span><span class="n">ce</span><span class="o">/</span><span class="n">components</span><span class="o">/</span><span class="n">engine</span><span class="o">/</span><span class="n">opts</span><span class="o">/</span><span class="n">env</span><span class="p">.</span><span class="k">go</span>
+<span class="o">[</span><span class="n">gosec</span><span class="o">]</span><span class="w"> </span><span class="mi">2020</span><span class="o">/</span><span class="mi">08</span><span class="o">/</span><span class="mi">20</span><span class="w"> </span><span class="mi">04</span><span class="err">:</span><span class="mi">44</span><span class="err">:</span><span class="mi">17</span><span class="w"> </span><span class="n">Checking</span><span class="w"> </span><span class="k">file</span><span class="err">:</span><span class="w"> </span><span class="o">/</span><span class="n">root</span><span class="o">/</span><span class="n">gosec</span><span class="o">-</span><span class="n">demo</span><span class="o">/</span><span class="n">docker</span><span class="o">-</span><span class="n">ce</span><span class="o">/</span><span class="n">components</span><span class="o">/</span><span class="n">engine</span><span class="o">/</span><span class="n">opts</span><span class="o">/</span><span class="n">hosts</span><span class="p">.</span><span class="k">go</span>
+
+<span class="err">#</span><span class="w"> </span><span class="k">End</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="n">gosec</span><span class="w"> </span><span class="n">run</span>
+
+<span class="nl">Summary</span><span class="p">:</span>
+<span class="w">   </span><span class="nl">Files</span><span class="p">:</span><span class="w"> </span><span class="mi">1278</span>
+<span class="w">   </span><span class="nl">Lines</span><span class="p">:</span><span class="w"> </span><span class="mi">173979</span>
+<span class="w">   </span><span class="nl">Nosec</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span>
+<span class="w">  </span><span class="nl">Issues</span><span class="p">:</span><span class="w"> </span><span class="mi">644</span>
+
+<span class="nc">real</span><span class="w">    </span><span class="mi">0</span><span class="n">m52</span><span class="mf">.019</span><span class="n">s</span>
+<span class="k">user</span><span class="w">    </span><span class="mi">0</span><span class="n">m37</span><span class="mf">.284</span><span class="n">s</span>
+<span class="n">sys</span><span class="w">     </span><span class="mi">0</span><span class="n">m12</span><span class="mf">.734</span><span class="n">s</span>
+<span class="err">$</span>
+</code></pre></div>
+
+<p>滚动屏幕你会看到不同颜色高亮的行：红色表示需要尽快查看的高优先级问题，黄色表示中优先级的问题。</p>
+<h4>关于误判</h4>
+<p>在开始检查代码之前，我想先分享几条基本原则。默认情况下，静态检查工具会基于一系列的规则对测试代码进行分析，并报告出它们发现的<em>所有</em>问题。这是否意味着工具报出来的每一个问题都需要修复？非也。这个问题最好的解答者是设计和开发这个软件的人。他们最熟悉代码，更重要的是，他们了解软件会在什么环境下部署以及会被怎样使用。</p>
+<p>这个知识点对于判定工具标记出来的某段代码到底是不是安全缺陷至关重要。随着工作时间和经验的积累，你会慢慢学会怎样让静态分析工具忽略非安全缺陷，使报告内容的可执行性更高。因此，要判定 <code>gosec</code> 报出来的某个问题是否需要修复，让一名有经验的开发者对源码做人工审计会是比较好的办法。</p>
+<h4>高优先级问题</h4>
+<p>从输出内容看，<code>gosec</code> 发现了 Docker CE 的一个高优先级问题，它使用的是低版本的 TLS（<ruby> 传输层安全 <rt>  Transport Layer Security </rt> <rt> </rt></ruby>）。无论什么时候，使用软件和库的最新版本都是确保它更新及时、没有安全问题的最好的方法。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">/root/gosec-demo/docker-ce/components/engine/daemon/logger/splunk/splunk.go:173</span><span class="o">]</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">G402</span><span class="w"> </span><span class="p">(</span><span class="n">CWE</span><span class="o">-</span><span class="mi">295</span><span class="p">)</span><span class="err">:</span><span class="w"> </span><span class="n">TLS</span><span class="w"> </span><span class="n">MinVersion</span><span class="w"> </span><span class="n">too</span><span class="w"> </span><span class="n">low</span><span class="p">.</span><span class="w"> </span><span class="p">(</span><span class="nl">Confidence</span><span class="p">:</span><span class="w"> </span><span class="n">HIGH</span><span class="p">,</span><span class="w"> </span><span class="nl">Severity</span><span class="p">:</span><span class="w"> </span><span class="n">HIGH</span><span class="p">)</span>
+<span class="w">    </span><span class="mi">172</span><span class="err">:</span>
+<span class="w">  </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">173</span><span class="err">:</span><span class="w">        </span><span class="n">tlsConfig</span><span class="w"> </span><span class="err">:</span><span class="o">=</span><span class="w"> </span><span class="o">&amp;</span><span class="n">tls</span><span class="p">.</span><span class="n">Config</span><span class="err">{}</span>
+<span class="w">    </span><span class="mi">174</span><span class="err">:</span>
+</code></pre></div>
+
+<p>它还发现了一个弱随机数生成器。它是不是一个安全缺陷，取决于生成的随机数的使用方式。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">/root/gosec-demo/docker-ce/components/engine/pkg/namesgenerator/names-generator.go:843</span><span class="o">]</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">G404</span><span class="w"> </span><span class="p">(</span><span class="n">CWE</span><span class="o">-</span><span class="mi">338</span><span class="p">)</span><span class="err">:</span><span class="w"> </span><span class="k">Use</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="n">weak</span><span class="w"> </span><span class="n">random</span><span class="w"> </span><span class="n">number</span><span class="w"> </span><span class="n">generator</span><span class="w"> </span><span class="p">(</span><span class="n">math</span><span class="o">/</span><span class="nf">rand</span><span class="w"> </span><span class="n">instead</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="n">crypto</span><span class="o">/</span><span class="nf">rand</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nl">Confidence</span><span class="p">:</span><span class="w"> </span><span class="n">MEDIUM</span><span class="p">,</span><span class="w"> </span><span class="nl">Severity</span><span class="p">:</span><span class="w"> </span><span class="n">HIGH</span><span class="p">)</span>
+<span class="w">    </span><span class="mi">842</span><span class="err">:</span><span class="w"> </span><span class="k">begin</span><span class="err">:</span>
+<span class="w">  </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">843</span><span class="err">:</span><span class="w">        </span><span class="n">name</span><span class="w"> </span><span class="err">:</span><span class="o">=</span><span class="w"> </span><span class="n">fmt</span><span class="p">.</span><span class="n">Sprintf</span><span class="p">(</span><span class="ss">&quot;%s_%s&quot;</span><span class="p">,</span><span class="w"> </span><span class="nf">left</span><span class="o">[</span><span class="n">rand.Intn(len(left))</span><span class="o">]</span><span class="p">,</span><span class="w"> </span><span class="nf">right</span><span class="o">[</span><span class="n">rand.Intn(len(right))</span><span class="o">]</span><span class="p">)</span>
+<span class="w">    </span><span class="mi">844</span><span class="err">:</span><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="n">name</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="ss">&quot;boring_wozniak&quot;</span><span class="w"> </span><span class="cm">/* Steve Wozniak is not boring */</span><span class="w"> </span><span class="err">{</span>
+</code></pre></div>
+
+<h4>中优先级问题</h4>
+<p>这个工具还发现了一些中优先级问题。它标记了一个通过与 <code>tar</code> 相关的解压炸弹这种方式实现的潜在的 DoS 威胁，这种方式可能会被恶意的攻击者利用。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">/root/gosec-demo/docker-ce/components/engine/pkg/archive/copy.go:357</span><span class="o">]</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">G110</span><span class="w"> </span><span class="p">(</span><span class="n">CWE</span><span class="o">-</span><span class="mi">409</span><span class="p">)</span><span class="err">:</span><span class="w"> </span><span class="n">Potential</span><span class="w"> </span><span class="n">DoS</span><span class="w"> </span><span class="n">vulnerability</span><span class="w"> </span><span class="n">via</span><span class="w"> </span><span class="n">decompression</span><span class="w"> </span><span class="n">bomb</span><span class="w"> </span><span class="p">(</span><span class="nl">Confidence</span><span class="p">:</span><span class="w"> </span><span class="n">MEDIUM</span><span class="p">,</span><span class="w"> </span><span class="nl">Severity</span><span class="p">:</span><span class="w"> </span><span class="n">MEDIUM</span><span class="p">)</span>
+<span class="w">    </span><span class="mi">356</span><span class="err">:</span>
+<span class="w">  </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">357</span><span class="err">:</span><span class="w">                        </span><span class="k">if</span><span class="w"> </span><span class="n">_</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">io</span><span class="p">.</span><span class="n">Copy</span><span class="p">(</span><span class="n">rebasedTar</span><span class="p">,</span><span class="w"> </span><span class="n">srcTar</span><span class="p">);</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="mi">358</span><span class="err">:</span><span class="w">                                </span><span class="n">w</span><span class="p">.</span><span class="n">CloseWithError</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+</code></pre></div>
+
+<p>它还发现了一个通过变量访问文件的问题。如果恶意使用者能访问这个变量，那么他们就可以改变变量的值去读其他文件。</p>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="o">/</span><span class="n">root</span><span class="o">/</span><span class="n">gosec</span><span class="o">-</span><span class="n">demo</span><span class="o">/</span><span class="n">docker</span><span class="o">-</span><span class="n">ce</span><span class="o">/</span><span class="n">components</span><span class="o">/</span><span class="n">cli</span><span class="o">/</span><span class="n">cli</span><span class="o">/</span><span class="n">context</span><span class="o">/</span><span class="n">tlsdata</span><span class="o">.</span><span class="n">go</span><span class="p">:</span><span class="mi">80</span><span class="p">]</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">G304</span><span class="w"> </span><span class="p">(</span><span class="n">CWE</span><span class="o">-</span><span class="mi">22</span><span class="p">):</span><span class="w"> </span><span class="n">Potential</span><span class="w"> </span><span class="n">file</span><span class="w"> </span><span class="n">inclusion</span><span class="w"> </span><span class="n">via</span><span class="w"> </span><span class="n">variable</span><span class="w"> </span><span class="p">(</span><span class="n">Confidence</span><span class="p">:</span><span class="w"> </span><span class="n">HIGH</span><span class="p">,</span><span class="w"> </span><span class="n">Severity</span><span class="p">:</span><span class="w"> </span><span class="n">MEDIUM</span><span class="p">)</span>
+<span class="w">    </span><span class="mi">79</span><span class="p">:</span><span class="w">         </span><span class="k">if</span><span class="w"> </span><span class="n">caPath</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">80</span><span class="p">:</span><span class="w">                 </span><span class="k">if</span><span class="w"> </span><span class="n">ca</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ioutil</span><span class="o">.</span><span class="n">ReadFile</span><span class="p">(</span><span class="n">caPath</span><span class="p">);</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="mi">81</span><span class="p">:</span><span class="w">                         </span><span class="k">return</span><span class="w"> </span><span class="n">nil</span><span class="p">,</span><span class="w"> </span><span class="n">err</span>
+</code></pre></div>
+
+<p>文件和目录通常是操作系统安全的最基础的元素。这里，<code>gosec</code> 报出了一个可能需要你检查目录的权限是否安全的问题。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">/root/gosec-demo/docker-ce/components/engine/contrib/apparmor/main.go:41</span><span class="o">]</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">G301</span><span class="w"> </span><span class="p">(</span><span class="n">CWE</span><span class="o">-</span><span class="mi">276</span><span class="p">)</span><span class="err">:</span><span class="w"> </span><span class="n">Expect</span><span class="w"> </span><span class="n">directory</span><span class="w"> </span><span class="nf">permissions</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="mi">0750</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="k">less</span><span class="w"> </span><span class="p">(</span><span class="nl">Confidence</span><span class="p">:</span><span class="w"> </span><span class="n">HIGH</span><span class="p">,</span><span class="w"> </span><span class="nl">Severity</span><span class="p">:</span><span class="w"> </span><span class="n">MEDIUM</span><span class="p">)</span>
+<span class="w">    </span><span class="mi">40</span><span class="err">:</span><span class="w">         </span><span class="o">//</span><span class="w"> </span><span class="n">make</span><span class="w"> </span><span class="n">sure</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">apparmor</span><span class="p">.</span><span class="n">d</span><span class="w"> </span><span class="ow">exists</span>
+<span class="w">  </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">41</span><span class="err">:</span><span class="w">         </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="err">:</span><span class="o">=</span><span class="w"> </span><span class="n">os</span><span class="p">.</span><span class="n">MkdirAll</span><span class="p">(</span><span class="k">path</span><span class="p">.</span><span class="n">Dir</span><span class="p">(</span><span class="n">apparmorProfilePath</span><span class="p">),</span><span class="w"> </span><span class="mi">0755</span><span class="p">);</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="mi">42</span><span class="err">:</span><span class="w">                 </span><span class="nf">log</span><span class="p">.</span><span class="n">Fatal</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+</code></pre></div>
+
+<p>你经常需要在源码中启动命令行工具。Go 使用内建的 exec 库来实现。仔细地分析用来调用这些工具的变量，就能发现安全缺陷。</p>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="o">/</span><span class="n">root</span><span class="o">/</span><span class="n">gosec</span><span class="o">-</span><span class="n">demo</span><span class="o">/</span><span class="n">docker</span><span class="o">-</span><span class="n">ce</span><span class="o">/</span><span class="n">components</span><span class="o">/</span><span class="n">engine</span><span class="o">/</span><span class="n">testutil</span><span class="o">/</span><span class="n">fakestorage</span><span class="o">/</span><span class="n">fixtures</span><span class="o">.</span><span class="n">go</span><span class="p">:</span><span class="mi">59</span><span class="p">]</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">G204</span><span class="w"> </span><span class="p">(</span><span class="n">CWE</span><span class="o">-</span><span class="mi">78</span><span class="p">):</span><span class="w"> </span><span class="n">Subprocess</span><span class="w"> </span><span class="n">launched</span><span class="w"> </span><span class="n">with</span><span class="w"> </span><span class="n">variable</span><span class="w"> </span><span class="p">(</span><span class="n">Confidence</span><span class="p">:</span><span class="w"> </span><span class="n">HIGH</span><span class="p">,</span><span class="w"> </span><span class="n">Severity</span><span class="p">:</span><span class="w"> </span><span class="n">MEDIUM</span><span class="p">)</span>
+<span class="w">    </span><span class="mi">58</span><span class="p">:</span>
+<span class="w">  </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">59</span><span class="p">:</span><span class="w">              </span><span class="n">cmd</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">exec</span><span class="o">.</span><span class="n">Command</span><span class="p">(</span><span class="n">goCmd</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;build&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;-o&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">filepath</span><span class="o">.</span><span class="n">Join</span><span class="p">(</span><span class="n">tmp</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;httpserver&quot;</span><span class="p">),</span><span class="w"> </span><span class="s2">&quot;github.com/docker/docker/contrib/httpserver&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="mi">60</span><span class="p">:</span><span class="w">                 </span><span class="n">cmd</span><span class="o">.</span><span class="n">Env</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">append</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">Environ</span><span class="p">(),</span><span class="w"> </span><span class="p">[]</span><span class="n">string</span><span class="p">{</span>
+</code></pre></div>
+
+<h4>低优先级问题</h4>
+<p>在这个输出中，gosec 报出了一个 <code>unsafe</code> 调用相关的低优先级问题，这个调用会绕开 Go 提供的内存保护。再仔细分析下你调用 <code>unsafe</code> 的方式，看看是否有被别人利用的可能性。</p>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="o">/</span><span class="n">root</span><span class="o">/</span><span class="n">gosec</span><span class="o">-</span><span class="n">demo</span><span class="o">/</span><span class="n">docker</span><span class="o">-</span><span class="n">ce</span><span class="o">/</span><span class="n">components</span><span class="o">/</span><span class="n">engine</span><span class="o">/</span><span class="n">pkg</span><span class="o">/</span><span class="n">archive</span><span class="o">/</span><span class="n">changes_linux</span><span class="o">.</span><span class="n">go</span><span class="p">:</span><span class="mi">264</span><span class="p">]</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">G103</span><span class="w"> </span><span class="p">(</span><span class="n">CWE</span><span class="o">-</span><span class="mi">242</span><span class="p">):</span><span class="w"> </span><span class="n">Use</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="n">unsafe</span><span class="w"> </span><span class="n">calls</span><span class="w"> </span><span class="n">should</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">audited</span><span class="w"> </span><span class="p">(</span><span class="n">Confidence</span><span class="p">:</span><span class="w"> </span><span class="n">HIGH</span><span class="p">,</span><span class="w"> </span><span class="n">Severity</span><span class="p">:</span><span class="w"> </span><span class="n">LOW</span><span class="p">)</span>
+<span class="w">    </span><span class="mi">263</span><span class="p">:</span><span class="w">        </span><span class="k">for</span><span class="w"> </span><span class="n">len</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">264</span><span class="p">:</span><span class="w">                </span><span class="n">dirent</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="n">unix</span><span class="o">.</span><span class="n">Dirent</span><span class="p">)(</span><span class="n">unsafe</span><span class="o">.</span><span class="n">Pointer</span><span class="p">(</span><span class="o">&amp;</span><span class="n">buf</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
+<span class="w">    </span><span class="mi">265</span><span class="p">:</span><span class="w">                </span><span class="n">buf</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">buf</span><span class="p">[</span><span class="n">dirent</span><span class="o">.</span><span class="n">Reclen</span><span class="p">:]</span>
+
+
+
+<span class="p">[</span><span class="o">/</span><span class="n">root</span><span class="o">/</span><span class="n">gosec</span><span class="o">-</span><span class="n">demo</span><span class="o">/</span><span class="n">docker</span><span class="o">-</span><span class="n">ce</span><span class="o">/</span><span class="n">components</span><span class="o">/</span><span class="n">engine</span><span class="o">/</span><span class="n">pkg</span><span class="o">/</span><span class="n">devicemapper</span><span class="o">/</span><span class="n">devmapper_wrapper</span><span class="o">.</span><span class="n">go</span><span class="p">:</span><span class="mi">88</span><span class="p">]</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">G103</span><span class="w"> </span><span class="p">(</span><span class="n">CWE</span><span class="o">-</span><span class="mi">242</span><span class="p">):</span><span class="w"> </span><span class="n">Use</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="n">unsafe</span><span class="w"> </span><span class="n">calls</span><span class="w"> </span><span class="n">should</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">audited</span><span class="w"> </span><span class="p">(</span><span class="n">Confidence</span><span class="p">:</span><span class="w"> </span><span class="n">HIGH</span><span class="p">,</span><span class="w"> </span><span class="n">Severity</span><span class="p">:</span><span class="w"> </span><span class="n">LOW</span><span class="p">)</span>
+<span class="w">    </span><span class="mi">87</span><span class="p">:</span><span class="w"> </span><span class="k">func</span><span class="w"> </span><span class="n">free</span><span class="p">(</span><span class="n">p</span><span class="w"> </span><span class="o">*</span><span class="n">C</span><span class="o">.</span><span class="n">char</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">88</span><span class="p">:</span><span class="w">         </span><span class="n">C</span><span class="o">.</span><span class="n">free</span><span class="p">(</span><span class="n">unsafe</span><span class="o">.</span><span class="n">Pointer</span><span class="p">(</span><span class="n">p</span><span class="p">))</span>
+<span class="w">    </span><span class="mi">89</span><span class="p">:</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+
+<p>它还标记了源码中未处理的错误。源码中出现的错误你都应该处理。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">/root/gosec-demo/docker-ce/components/cli/cli/command/image/build/context.go:172</span><span class="o">]</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">G104</span><span class="w"> </span><span class="p">(</span><span class="n">CWE</span><span class="o">-</span><span class="mi">703</span><span class="p">)</span><span class="err">:</span><span class="w"> </span><span class="n">Errors</span><span class="w"> </span><span class="n">unhandled</span><span class="p">.</span><span class="w"> </span><span class="p">(</span><span class="nl">Confidence</span><span class="p">:</span><span class="w"> </span><span class="n">HIGH</span><span class="p">,</span><span class="w"> </span><span class="nl">Severity</span><span class="p">:</span><span class="w"> </span><span class="n">LOW</span><span class="p">)</span>
+<span class="w">    </span><span class="mi">171</span><span class="err">:</span><span class="w">                </span><span class="n">err</span><span class="w"> </span><span class="err">:</span><span class="o">=</span><span class="w"> </span><span class="n">tar</span><span class="p">.</span><span class="k">Close</span><span class="p">()</span>
+<span class="w">  </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">172</span><span class="err">:</span><span class="w">                </span><span class="n">os</span><span class="p">.</span><span class="n">RemoveAll</span><span class="p">(</span><span class="n">dockerfileDir</span><span class="p">)</span>
+<span class="w">    </span><span class="mi">173</span><span class="err">:</span><span class="w">                </span><span class="k">return</span><span class="w"> </span><span class="n">err</span>
+</code></pre></div>
+
+<h3>自定义 gosec 扫描</h3>
+<p>使用 <code>gosec</code> 的默认选项会带来很多的问题。然而，经过人工审计，随着时间推移你会掌握哪些问题是不需要标记的。你可以自己指定排除和包含哪些测试。</p>
+<p>我上面提到过，<code>gosec</code> 是基于一系列的规则从 Go 源码中查找问题的。下面是它使用的完整的<a href="https://github.com/securego/gosec#available-rules">规则</a>列表：</p>
+<ul>
+<li>G101：查找硬编码凭证</li>
+<li>G102：绑定到所有接口</li>
+<li>G103：审计 <code>unsafe</code> 块的使用</li>
+<li>G104：审计未检查的错误</li>
+<li>G106：审计 <code>ssh.InsecureIgnoreHostKey</code> 的使用</li>
+<li>G107: 提供给 HTTP 请求的 url 作为污点输入</li>
+<li>G108: <code>/debug/pprof</code> 上自动暴露的剖析端点</li>
+<li>G109: <code>strconv.Atoi</code> 转换到 int16 或 int32 时潜在的整数溢出</li>
+<li>G110: 潜在的通过解压炸弹实现的 DoS</li>
+<li>G201：SQL 查询构造使用格式字符串</li>
+<li>G202：SQL 查询构造使用字符串连接</li>
+<li>G203：在 HTML 模板中使用未转义的数据</li>
+<li>G204：审计命令执行情况</li>
+<li>G301：创建目录时文件权限分配不合理</li>
+<li>G302：使用 <code>chmod</code> 时文件权限分配不合理</li>
+<li>G303：使用可预测的路径创建临时文件</li>
+<li>G304：通过污点输入提供的文件路径</li>
+<li>G305：提取 zip/tar 文档时遍历文件</li>
+<li>G306: 写到新文件时文件权限分配不合理</li>
+<li>G307: 把返回错误的函数放到 <code>defer</code> 内</li>
+<li>G401：检测 DES、RC4、MD5 或 SHA1 的使用</li>
+<li>G402：查找错误的 TLS 连接设置</li>
+<li>G403：确保最小 RSA 密钥长度为 2048 位</li>
+<li>G404：不安全的随机数源（<code>rand</code>）</li>
+<li>G501：导入黑名单列表：crypto/md5</li>
+<li>G502：导入黑名单列表：crypto/des</li>
+<li>G503：导入黑名单列表：crypto/rc4</li>
+<li>G504：导入黑名单列表：net/http/cgi</li>
+<li>G505：导入黑名单列表：crypto/sha1</li>
+<li>G601: 在 <code>range</code> 语句中使用隐式的元素别名</li>
+</ul>
+<h4>排除指定的测试</h4>
+<p>你可以自定义 <code>gosec</code> 来避免对已知为安全的问题进行扫描和报告。你可以使用 <code>-exclude</code> 选项和上面的规则编号来忽略指定的问题。</p>
+<p>例如，如果你不想让 <code>gosec</code> 检查源码中硬编码凭证相关的未处理的错误，那么你可以运行下面的命令来忽略这些错误：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>gosec<span class="w"> </span>-exclude<span class="o">=</span>G104<span class="w"> </span>./...
+$<span class="w"> </span>gosec<span class="w"> </span>-exclude<span class="o">=</span>G104,G101<span class="w"> </span>./...
+</code></pre></div>
+
+<p>有时候你知道某段代码是安全的，但是 <code>gosec</code> 还是会报出问题。然而，你又不想完全排除掉整个检查，因为你想让 <code>gosec</code> 检查新增的代码。通过在你已知为安全的代码块添加 <code>#nosec</code> 标记可以避免 <code>gosec</code> 扫描。这样 <code>gosec</code> 会继续扫描新增代码，而忽略掉 <code>#nosec</code> 标记的代码块。</p>
+<h4>运行指定的检查</h4>
+<p>另一方面，如果你只想检查指定的问题，你可以通过 <code>-include</code> 选项和规则编号来告诉 <code>gosec</code> 运行哪些检查：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>gosec<span class="w"> </span>-include<span class="o">=</span>G201,G202<span class="w"> </span>./...
+</code></pre></div>
+
+<h4>扫描测试文件</h4>
+<p>Go 语言自带对测试的支持，通过单元测试来检验一个元素是否符合预期。在默认模式下，<code>gosec</code> 会忽略测试文件，你可以使用 <code>-tests</code> 选项把它们包含进来：</p>
+<div class="highlight"><pre><span></span><code>gosec -tests ./...
+</code></pre></div>
+
+<h4>修改输出的格式</h4>
+<p>找出问题只是它的一半功能；另一半功能是把它检查到的问题以用户友好同时又方便工具处理的方式报告出来。幸运的是，<code>gosec</code> 可以用不同的方式输出。例如，如果你想看 JSON 格式的报告，那么就使用 <code>-fmt</code> 选项指定 JSON 格式并把结果保存到 <code>results.json</code> 文件中：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>gosec<span class="w"> </span>-fmt<span class="o">=</span>json<span class="w"> </span>-out<span class="o">=</span>results.json<span class="w"> </span>./...
+
+$<span class="w"> </span>ls<span class="w"> </span>-l<span class="w"> </span>results.json
+-rw-r--r--.<span class="w"> </span><span class="m">1</span><span class="w"> </span>root<span class="w"> </span>root<span class="w"> </span><span class="m">748098</span><span class="w"> </span>Aug<span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="m">05</span>:06<span class="w"> </span>results.json
+$
+
+<span class="w">         </span><span class="o">{</span>
+<span class="w">             </span><span class="s2">&quot;severity&quot;</span>:<span class="w"> </span><span class="s2">&quot;LOW&quot;</span>,
+<span class="w">             </span><span class="s2">&quot;confidence&quot;</span>:<span class="w"> </span><span class="s2">&quot;HIGH&quot;</span>,
+<span class="w">             </span><span class="s2">&quot;cwe&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">                 </span><span class="s2">&quot;ID&quot;</span>:<span class="w"> </span><span class="s2">&quot;242&quot;</span>,
+<span class="w">                 </span><span class="s2">&quot;URL&quot;</span>:<span class="w"> </span><span class="s2">&quot;https://cwe.mitre.org/data/definitions/242.html&quot;</span>
+<span class="w">             </span><span class="o">}</span>,
+<span class="w">             </span><span class="s2">&quot;rule_id&quot;</span>:<span class="w"> </span><span class="s2">&quot;G103&quot;</span>,
+<span class="w">             </span><span class="s2">&quot;details&quot;</span>:<span class="w"> </span><span class="s2">&quot;Use of unsafe calls should be audited&quot;</span>,
+<span class="w">             </span><span class="s2">&quot;file&quot;</span>:<span class="w"> </span><span class="s2">&quot;/root/gosec-demo/docker-ce/components/engine/daemon/graphdriver/graphtest/graphtest_unix.go&quot;</span>,
+<span class="w">             </span><span class="s2">&quot;code&quot;</span>:<span class="w"> </span><span class="s2">&quot;304: \t// Cast to []byte\n305: \theader := *(*reflect.SliceHeader)(unsafe.Pointer(\u0026buf))\n306: \theader.      Len *= 8\n&quot;</span>,
+<span class="w">             </span><span class="s2">&quot;line&quot;</span>:<span class="w"> </span><span class="s2">&quot;305&quot;</span>,
+<span class="w">             </span><span class="s2">&quot;column&quot;</span>:<span class="w"> </span><span class="s2">&quot;36&quot;</span>
+<span class="w">         </span><span class="o">}</span>,
+</code></pre></div>
+
+<h3>用 gosec 检查容易被发现的问题</h3>
+<p>静态检查工具不能完全代替人工代码审计。然而，当代码量变大、有众多开发者时，这样的工具往往有助于以可重复的方式找出容易被发现的问题。它对于帮助新开发者识别和在编码时避免引入这些安全缺陷很有用。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

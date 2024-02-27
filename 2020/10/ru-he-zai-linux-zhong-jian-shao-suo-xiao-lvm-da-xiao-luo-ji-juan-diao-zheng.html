@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何在 Linux 中减少/缩小 LVM 大小（逻辑卷调整）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Magesh Maruthamuthu 减少/缩小逻辑卷是数据损坏的最高风险。 所以，如果可能的话，尽量避免这种情况，但如果没有其他选择的话，那就继 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2020/10/ru-he-zai-linux-zhong-jian-shao-suo-xiao-lvm-da-xiao-luo-ji-juan-diao-zheng.html" rel="bookmark"
+           title="Permalink to 如何在 Linux 中减少/缩小 LVM 大小（逻辑卷调整）">如何在 Linux 中减少/缩小 LVM 大小（逻辑卷调整）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2020-10-21T21:07:00+02:00">
+                Published: Wed 21 October 2020
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Magesh Maruthamuthu</p>
+<p><img alt="" src="/data/attachment/album/202010/21/210459ydp5an23nfzgglyy.jpg"></p>
+<p>减少/缩小逻辑卷是数据损坏的最高风险。</p>
+<p>所以，如果可能的话，尽量避免这种情况，但如果没有其他选择的话，那就继续。</p>
+<p>缩减 LVM 之前，建议先做一个备份。</p>
+<p>当你在 LVM 中的磁盘空间耗尽时，你可以通过缩小现有的没有使用全部空间的 LVM，而不是增加一个新的物理磁盘，在卷组上腾出一些空闲空间。</p>
+<p><strong>需要注意的是：</strong> 在 GFS2 或者 XFS 文件系统上不支持缩小。</p>
+<p>如果你是逻辑卷管理 （LVM） 的新手，我建议你从我们之前的文章开始学习。</p>
+<ul>
+<li><strong>第一部分：<a href="/article-12670-1.html">如何在 Linux 中创建/配置 LVM（逻辑卷管理）</a></strong></li>
+<li><strong>第二部分：<a href="/article-12673-1.html">如何在 Linux 中扩展/增加 LVM（逻辑卷调整）</a></strong></li>
+</ul>
+<p><img alt="" src="/data/attachment/album/202010/21/210610kikq1xynfje7hjaa.jpeg"></p>
+<p>减少逻辑卷涉及以下步骤：</p>
+<ul>
+<li>卸载文件系统</li>
+<li>检查文件系统是否有任何错误</li>
+<li>缩小文件系统的大小</li>
+<li>缩小逻辑卷的大小</li>
+<li>重新检查文件系统是否存在错误（可选）</li>
+<li>挂载文件系统</li>
+<li>检查减少后的文件系统大小</li>
+</ul>
+<p><strong>比如：</strong> 你有一个 <strong>100GB</strong> 的没有使用全部空间的 LVM，你想把它减少到 <strong>80GB</strong>，这样 <strong>20GB</strong> 可以用于其他用途。</p>
+<div class="highlight"><pre><span></span><code># df -h /testlvm1
+
+Filesystem              Size Used Avail Use% Mounted on
+/dev/mapper/vg01-lv002  100G 15G  85G   12%  /testlvm1
+</code></pre></div>
+
+<h3>卸载文件系统</h3>
+<p>使用 <code>umount</code> 命令卸载文件系统：</p>
+<div class="highlight"><pre><span></span><code># umount /testlvm1
+</code></pre></div>
+
+<h3>检查文件系统是否有任何错误</h3>
+<p>使用 <code>e2fsck</code> 命令检查文件系统是否有错误：</p>
+<div class="highlight"><pre><span></span><code># e2fsck -f /dev/mapper/vg01-lv002
+
+e2fsck 1.42.9 (28-Dec-2013)
+Pass 1: Checking inodes, blocks, and sizes
+Pass 2: Checking directory structure
+Pass 3: Checking directory connectivity
+Pass 4: Checking reference counts
+Pass 5: Checking group summary information
+/dev/mapper/vg01-lv002: 13/6553600 files (0.0% non-contiguous), 12231854/26212352 blocks
+</code></pre></div>
+
+<h3>缩小文件系统</h3>
+<p>下面的命令将把 <code>testlvm1</code> 文件系统从 <strong>100GB</strong> 缩小到 <strong>80GB</strong>。</p>
+<p><strong>文件系统大小调整的常用语法（<code>resize2fs</code>）</strong>：</p>
+<div class="highlight"><pre><span></span><code>resize2fs [现有逻辑卷名] [新的文件系统大小]
+</code></pre></div>
+
+<p>实际命令如下：</p>
+<div class="highlight"><pre><span></span><code># resize2fs /dev/mapper/vg01-lv002 80G
+
+resize2fs 1.42.9 (28-Dec-2013)
+Resizing the filesystem on /dev/mapper/vg01-lv002 to 28321400 (4k) blocks.
+The filesystem on /dev/mapper/vg01-lv002 is now 28321400 blocks long.
+</code></pre></div>
+
+<h3>减少逻辑卷 （LVM） 容量</h3>
+<p>现在使用 <code>lvreduce</code> 命令缩小逻辑卷（LVM） 的大小。通过下面的命令， <code>/dev/mapper/vg01-lv002</code> 将把逻辑卷 （LVM） 从 100GB 缩小到 80GB。</p>
+<p><strong>LVM 缩减 （<code>lvreduce</code>） 的常用语法</strong>：</p>
+<div class="highlight"><pre><span></span><code>lvreduce [新的 LVM 大小] [现有逻辑卷名称]
+</code></pre></div>
+
+<p>实际命令如下：</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span><span class="nv">lvreduce</span><span class="w"> </span><span class="o">-</span><span class="nv">L</span><span class="w"> </span><span class="mi">80</span><span class="nv">G</span><span class="w"> </span><span class="o">/</span><span class="nv">dev</span><span class="o">/</span><span class="nv">mapper</span><span class="o">/</span><span class="nv">vg01</span><span class="o">-</span><span class="nv">lv002</span>
+
+<span class="nv">WARNING</span>:<span class="w"> </span><span class="nv">Reducing</span><span class="w"> </span><span class="nv">active</span><span class="w"> </span><span class="nv">logical</span><span class="w"> </span><span class="nv">volume</span><span class="w"> </span><span class="nv">to</span><span class="w"> </span><span class="mi">80</span>.<span class="mi">00</span><span class="w"> </span><span class="nv">GiB</span>
+<span class="nv">THIS</span><span class="w"> </span><span class="nv">MAY</span><span class="w"> </span><span class="nv">DESTROY</span><span class="w"> </span><span class="nv">YOUR</span><span class="w"> </span><span class="nv">DATA</span><span class="w"> </span><span class="ss">(</span><span class="nv">filesystem</span><span class="w"> </span><span class="nv">etc</span>.<span class="ss">)</span>
+<span class="k">Do</span><span class="w"> </span><span class="nv">you</span><span class="w"> </span><span class="nv">really</span><span class="w"> </span><span class="nv">want</span><span class="w"> </span><span class="nv">to</span><span class="w"> </span><span class="nv">reduce</span><span class="w"> </span><span class="nv">lv002</span>?<span class="w"> </span>[<span class="nv">y</span><span class="o">/</span><span class="nv">n</span>]:<span class="w"> </span><span class="nv">y</span>
+<span class="nv">Reducing</span><span class="w"> </span><span class="nv">logical</span><span class="w"> </span><span class="nv">volume</span><span class="w"> </span><span class="nv">lv002</span><span class="w"> </span><span class="nv">to</span><span class="w"> </span><span class="mi">80</span>.<span class="mi">00</span><span class="w"> </span><span class="nv">GiB</span>
+<span class="nv">Logical</span><span class="w"> </span><span class="nv">volume</span><span class="w"> </span><span class="nv">lv002</span><span class="w"> </span><span class="nv">successfully</span><span class="w"> </span><span class="nv">resized</span>
+</code></pre></div>
+
+<h3>可选：检查文件系统是否有错误</h3>
+<p>缩减 LVM 后再次检查文件系统是否有错误：</p>
+<div class="highlight"><pre><span></span><code># e2fsck -f /dev/mapper/vg01-lv002
+
+e2fsck 1.42.9 (28-Dec-2013)
+Pass 1: Checking inodes, blocks, and sizes
+Pass 2: Checking directory structure
+Pass 3: Checking directory connectivity
+Pass 4: Checking reference counts
+Pass 5: Checking group summary information
+/dev/mapper/vg01-lv002: 13/4853600 files (0.0% non-contiguous), 1023185/2021235 blocks
+</code></pre></div>
+
+<h3>挂载文件系统并检查缩小后的大小</h3>
+<p>最后挂载文件系统，并检查缩小后的文件系统大小。</p>
+<p>使用 <code>mount</code> 命令<a href="https://www.2daygeek.com/mount-unmount-file-system-partition-in-linux/">挂载逻辑卷</a>：</p>
+<div class="highlight"><pre><span></span><code># mount /testlvm1
+</code></pre></div>
+
+<p>使用 <a href="https://www.2daygeek.com/linux-check-disk-space-usage-df-command/">df 命令</a>检查挂载的卷。</p>
+<div class="highlight"><pre><span></span><code># df -h /testlvm1
+
+Filesystem              Size Used Avail Use% Mounted on
+/dev/mapper/vg01-lv002  80G  15G  65G   18%  /testlvm1
+</code></pre></div>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

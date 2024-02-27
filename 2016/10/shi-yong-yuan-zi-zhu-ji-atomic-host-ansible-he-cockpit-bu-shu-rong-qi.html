@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用原子主机（Atomic Host）、Ansible 和 Cockpit 部署容器</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: trishnag 我在红帽工作的期间，每天在 Fedora Atomic host 上使用 Docker 容器。 来自 原子项目 （ Project Atomic ） 的 原子主机 （ Atomic Host ） 是一个轻量级容器操作系统 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2016/10/shi-yong-yuan-zi-zhu-ji-atomic-host-ansible-he-cockpit-bu-shu-rong-qi.html" rel="bookmark"
+           title="Permalink to 使用原子主机（Atomic Host）、Ansible 和 Cockpit 部署容器">使用原子主机（Atomic Host）、Ansible 和 Cockpit 部署容器</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2016-10-14T07:24:00+02:00">
+                Published: Fri 14 October 2016
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: trishnag</p>
+<p><img alt="" src="/data/attachment/album/201610/13/232927uyijz5xg4gx5hlf0.jpg"></p>
+<p>我在<a href="https://www.redhat.com/">红帽</a>工作的期间，每天在 <a href="https://getfedora.org/en/cloud/download/atomic.html">Fedora Atomic host</a> 上使用 <a href="https://www.docker.com/">Docker</a> 容器。 来自<ruby> <a href="http://www.projectatomic.io/">  原子项目 </a> <rp>  （ </rp> <rt>  Project Atomic </rt> <rp>  ） </rp></ruby>的<ruby> 原子主机 <rp>  （ </rp> <rt>  Atomic Host </rt> <rp>  ） </rp></ruby>是一个轻量级容器操作系统，可以以 Docker 格式运行 Linux 容器。它专门为提高效率而定制，使其成为用于云环境的 Docker 运行时系统的理想选择。</p>
+<p>幸运的是，我发现一个很好的方式来管理在主机上运行的容器：<a href="http://cockpit-project.org/">Cockpit</a>。 它是一个具有漂亮的 Web 界面的 GNU/Linux 服务器远程管理工具。它可以帮我管理在主机上运行的服务器和容器。你可以在从之前发布在这里的<a href="https://fedoramagazine.org/cockpit-overview/">这篇概述</a>中了解 Cockpit 的更多信息。不过，我也希望在主机上可以自动运行容器，我可以使用 <a href="https://www.ansible.com/">Ansible</a> 来完成这个工作。</p>
+<p>请注意，我们不能在原子主机上使用 dnf 命令。原子主机并没有设计为通用操作系统，而是更适合容器和其他用途。但在原子主机上设置应用程序和服务仍然非常容易。这篇文章向您展示了如何自动化和简化这个过程。</p>
+<h3>设置组件</h3>
+<p>开始之前，请确保你的系统上安装了 Ansible。</p>
+<div class="highlight"><pre><span></span><code>sudo dnf -y install ansible
+</code></pre></div>
+
+<p>首先，我们需要在原子主机上运行 cockpit 容器。在你的机器上从 <a href="https://github.com/trishnaguha/fedora-cloud-ansible">https://github.com/trishnaguha/fedora-cloud-ansible</a> 下载它的源代码。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/trishnaguha/fedora-cloud-ansible.git
+</code></pre></div>
+
+<p>现在切换到 <code>cockpit</code> 的目录，并如下编辑 <code>inventory</code> 文件：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>fedora-cloud-ansible
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>cockpit
+$<span class="w"> </span>vim<span class="w"> </span>inventory
+</code></pre></div>
+
+<p>完成如下修改：</p>
+<ol>
+<li>使用你的原子主机的 IP 替换掉 <code>IP_ADDRESS_OF_HOST</code>。</li>
+<li>用您的 SSH 私钥文件的路径替换 <code>ansible_ssh_private_key_file ='PRIVATE_KEY_FILE'</code> 行中的<code>PRIVATE_KEY_FILE</code>。</li>
+</ol>
+<p>然后保存并退出 <code>inventory</code> 文件编辑。</p>
+<p>接下来，编辑 ansible 配置文件：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>vim<span class="w"> </span>ansible.cfg
+</code></pre></div>
+
+<p>替换 <code>remote_user=User</code> 中 <code>User</code> 为你的原子主机上的远程用户名。然后保存并退出文件编辑。</p>
+<h3>结合起来</h3>
+<p>现在是运行 Ansible 的 PlayBook 的时候了。此命令开始运行原子主机上的 Cockpit 容器：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ansible-playbook<span class="w"> </span>cockpit.yml
+</code></pre></div>
+
+<p>Cockpit 现在运行在原子主机上了。使用浏览器去访问你的实例的公网 IP 的 9090 端口——这是 Cockpit 的默认端口。举个例子，如果该实例的 IP 地址是 192.168.1.4，就去访问 192.168.1.4:9090，你将会看到如下的 Web 界面：</p>
+<p><img alt="" src="/data/attachment/album/201610/13/232955lo6melo1mp9kmpkk.jpg"></p>
+<h3>管理你的容器</h3>
+<p>使用原子主机的登录信息或以 root 用户身份登录。然后访问 Cockpit 管理器上的 Containers 部分来查看原子主机上运行的容器。在下面的示例中，您会看到我还设置了其他容器，如 <a href="https://github.com/trishnaguha/fedora-cloud-ansible/tree/master/httpd">httpd</a> 和 <a href="https://github.com/trishnaguha/fedora-cloud-ansible/tree/master/redis">redis</a>：</p>
+<p><img alt="" src="/data/attachment/album/201610/13/233023xcrcsj5gso5kkgpc.jpg"></p>
+<p>注意，该界面允许您直接在 Cockpit 管理器中使用 Run 和 Stop 按钮启动和停止容器。您还可以使用 Cockpit 管理器管理您的原子主机。转到 Tools -&gt; Terminals，在这里里你可以使用原子主机的终端：</p>
+<p><img alt="" src="/data/attachment/album/201610/13/233036g7hqvrg0386qr3qo.jpg"></p>
+<p>如果您打算在原子主机上部署容器化的应用程序，则可以简单地为其编写一个 PlayBook。然后，您可以使用 <code>ansible-playbook</code> 命令进行部署，并使用 Cockpit 来管理容器。</p>
+<p><img alt="" src="/data/attachment/album/201610/13/233046racagpaabh7np8ap.jpg"></p>
+<p>欢迎你对这个<a href="https://github.com/trishnaguha/fedora-cloud-ansible">仓库</a>进行分支或添加容器的 PlayBook。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

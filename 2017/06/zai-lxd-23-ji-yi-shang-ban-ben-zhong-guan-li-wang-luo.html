@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在 LXD 2.3 及以上版本中管理网络</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Stéphane Graber 介绍 当 LXD 2.0 随着 Ubuntu 16.04 一起发布时，LXD 联网就简单了。要么你可以使用 lxd init 来配置，为你的容器自己提供一个 “lxdbr0 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/06/zai-lxd-23-ji-yi-shang-ban-ben-zhong-guan-li-wang-luo.html" rel="bookmark"
+           title="Permalink to 在 LXD 2.3 及以上版本中管理网络">在 LXD 2.3 及以上版本中管理网络</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-06-18T11:37:00+02:00">
+                Published: Sun 18 June 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Stéphane Graber</p>
+<p><img alt="" src="/data/attachment/album/201706/18/074013zftpxooxnyh3h1yc.jpg"></p>
+<h3>介绍</h3>
+<p>当 LXD 2.0 随着 Ubuntu 16.04 一起发布时，LXD 联网就简单了。要么你可以使用 <code>lxd init</code> 来配置，为你的容器自己提供一个 “lxdbr0” 网桥，要么使用一个已存在的物理接口。</p>
+<p>虽然这确实有效，但是有点混乱，因为大部分的桥接配置发生在 Ubuntu 打包的 LXD 之外。那些脚本只能支持一个桥接，并且没有通过 API 暴露，这使得远程配置有点痛苦。</p>
+<p>直到 LXD 2.3，LXD 终于发展了自己的网络管理 API ，并有相应的命令行工具。这篇文章试图来简述这些新的功能。</p>
+<h3>基础联网</h3>
+<p>在初始情况下，LXD 2.3 没有定义任何网络。<code>lxd init</code> 会为你设置一个，并且默认情况下将所有新的容器连接到它，但是让我们亲手尝试看下究竟发生了些什么。</p>
+<p>要创建一个新的带有随机 IPv4 和 IP6 子网，并启用 NAT 的网络，只需要运行：</p>
+<div class="highlight"><pre><span></span><code><span class="n">stgraber</span><span class="nv">@castiana</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">network</span><span class="w"> </span><span class="k">create</span><span class="w"> </span><span class="n">testbr0</span>
+<span class="n">Network</span><span class="w"> </span><span class="n">testbr0</span><span class="w"> </span><span class="n">created</span>
+</code></pre></div>
+
+<p>你可以如下查看它的配置：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">stgraber</span><span class="err">@</span><span class="nx">castiana</span><span class="p">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="nx">lxc</span><span class="w"> </span><span class="nx">network</span><span class="w"> </span><span class="nx">show</span><span class="w"> </span><span class="nx">testbr0</span>
+<span class="nx">name</span><span class="p">:</span><span class="w"> </span><span class="nx">testbr0</span>
+<span class="nx">config</span><span class="p">:</span>
+<span class="w"> </span><span class="nx">ipv4</span><span class="p">.</span><span class="nx">address</span><span class="p">:</span><span class="w"> </span><span class="m m-Double">10.150.19.1</span><span class="o">/</span><span class="mi">24</span>
+<span class="w"> </span><span class="nx">ipv4</span><span class="p">.</span><span class="nx">nat</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;true&quot;</span>
+<span class="w"> </span><span class="nx">ipv6</span><span class="p">.</span><span class="nx">address</span><span class="p">:</span><span class="w"> </span><span class="nx">fd42</span><span class="p">:</span><span class="mi">474</span><span class="nx">b</span><span class="p">:</span><span class="mi">622</span><span class="nx">d</span><span class="p">:</span><span class="mi">259</span><span class="nx">d</span><span class="o">::</span><span class="mi">1</span><span class="o">/</span><span class="mi">64</span>
+<span class="w"> </span><span class="nx">ipv6</span><span class="p">.</span><span class="nx">nat</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;true&quot;</span>
+<span class="nx">managed</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="k">type</span><span class="p">:</span><span class="w"> </span><span class="nx">bridge</span>
+<span class="nx">usedby</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
+</code></pre></div>
+
+<p>如果你不想要那些自动配置的子网，你可以这么做：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">stgraber</span><span class="err">@</span><span class="nx">castiana</span><span class="p">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="nx">lxc</span><span class="w"> </span><span class="nx">network</span><span class="w"> </span><span class="nx">create</span><span class="w"> </span><span class="nx">testbr0</span><span class="w"> </span><span class="nx">ipv6</span><span class="p">.</span><span class="nx">address</span><span class="p">=</span><span class="nx">none</span><span class="w"> </span><span class="nx">ipv4</span><span class="p">.</span><span class="nx">address</span><span class="p">=</span><span class="m m-Double">10.0.3.1</span><span class="o">/</span><span class="mi">24</span><span class="w"> </span><span class="nx">ipv4</span><span class="p">.</span><span class="nx">nat</span><span class="p">=</span><span class="kc">true</span>
+<span class="nx">Network</span><span class="w"> </span><span class="nx">testbr0</span><span class="w"> </span><span class="nx">created</span>
+</code></pre></div>
+
+<p>那就会这样：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">stgraber</span><span class="err">@</span><span class="nx">castiana</span><span class="p">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="nx">lxc</span><span class="w"> </span><span class="nx">network</span><span class="w"> </span><span class="nx">show</span><span class="w"> </span><span class="nx">testbr0</span>
+<span class="nx">name</span><span class="p">:</span><span class="w"> </span><span class="nx">testbr0</span>
+<span class="nx">config</span><span class="p">:</span>
+<span class="w"> </span><span class="nx">ipv4</span><span class="p">.</span><span class="nx">address</span><span class="p">:</span><span class="w"> </span><span class="m m-Double">10.0.3.1</span><span class="o">/</span><span class="mi">24</span>
+<span class="w"> </span><span class="nx">ipv4</span><span class="p">.</span><span class="nx">nat</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;true&quot;</span>
+<span class="w"> </span><span class="nx">ipv6</span><span class="p">.</span><span class="nx">address</span><span class="p">:</span><span class="w"> </span><span class="nx">none</span>
+<span class="nx">managed</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="k">type</span><span class="p">:</span><span class="w"> </span><span class="nx">bridge</span>
+<span class="nx">usedby</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
+</code></pre></div>
+
+<p>如果你的容器没有使用它，那么创建的网络对你也没什么用。要将你新创建的网络连接到所有容器，你可以这么做：</p>
+<div class="highlight"><pre><span></span><code><span class="n">stgraber</span><span class="nv">@castiana</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">network</span><span class="w"> </span><span class="n">attach</span><span class="o">-</span><span class="n">profile</span><span class="w"> </span><span class="n">testbr0</span><span class="w"> </span><span class="k">default</span><span class="w"> </span><span class="n">eth0</span>
+</code></pre></div>
+
+<p>要将一个网络连接到一个已存在的容器中，你可以这么做：</p>
+<div class="highlight"><pre><span></span><code><span class="n">stgraber</span><span class="nv">@castiana</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">network</span><span class="w"> </span><span class="n">attach</span><span class="w"> </span><span class="n">my</span><span class="o">-</span><span class="n">container</span><span class="w"> </span><span class="k">default</span><span class="w"> </span><span class="n">eth0</span>
+</code></pre></div>
+
+<p>现在，假设你已经在机器中安装了 openvswitch，并且要将这个网桥转换成 OVS 网桥，只需更改为正确的驱动：</p>
+<div class="highlight"><pre><span></span><code><span class="n">stgraber</span><span class="nv">@castiana</span><span class="err">:</span><span class="o">~</span><span class="err">$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">network</span><span class="w"> </span><span class="k">set</span><span class="w"> </span><span class="n">testbr0</span><span class="w"> </span><span class="n">bridge</span><span class="p">.</span><span class="n">driver</span><span class="w"> </span><span class="n">openvswitch</span>
+</code></pre></div>
+
+<p>如果你想要一次性做一系列修改。<code>lxc network edit</code> 可以让你在编辑器中交互编辑网络配置。</p>
+<h3>静态租约及端口安全</h3>
+<p>使用 LXD 管理 DHCP 服务器的一个好处是可以使得管理 DHCP 租约很简单。你所需要的是一个容器特定的网卡设备以及正确的属性设置。</p>
+<div class="highlight"><pre><span></span><code><span class="c">root@yak:~# lxc init ubuntu:16</span><span class="nt">.</span><span class="c">04 c1</span>
+<span class="c">Creating c1</span>
+<span class="c">root@yak:~# lxc network attach testbr0 c1 eth0</span>
+<span class="c">root@yak:~# lxc config device set c1 eth0 ipv4</span><span class="nt">.</span><span class="c">address 10</span><span class="nt">.</span><span class="c">0</span><span class="nt">.</span><span class="c">3</span><span class="nt">.</span><span class="c">123</span>
+<span class="c">root@yak:~# lxc start c1</span>
+<span class="c">root@yak:~# lxc list c1</span>
+<span class="nb">+------+---------+-------------------+------+------------+-----------+</span>
+<span class="c">| NAME |  STATE  |        IPV4       | IPV6 |    TYPE    | SNAPSHOTS |</span>
+<span class="nb">+------+---------+-------------------+------+------------+-----------+</span>
+<span class="c">|  c1  | RUNNING | 10</span><span class="nt">.</span><span class="c">0</span><span class="nt">.</span><span class="c">3</span><span class="nt">.</span><span class="c">123 (eth0) |      | PERSISTENT | 0         |</span>
+<span class="nb">+------+---------+-------------------+------+------------+-----------+</span>
+</code></pre></div>
+
+<p>IPv6 也是相同的方法，但是换成 <code>ipv6.address</code> 属性。</p>
+<p>相似地，如果你想要阻止你的容器更改它的 MAC 地址或者为其他 MAC 地址转发流量（比如嵌套），你可以用下面的命令启用端口安全：</p>
+<div class="highlight"><pre><span></span><code><span class="n">root</span><span class="nv">@yak</span><span class="err">:</span><span class="o">~</span><span class="err">#</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="n">device</span><span class="w"> </span><span class="k">set</span><span class="w"> </span><span class="n">c1</span><span class="w"> </span><span class="n">eth0</span><span class="w"> </span><span class="n">security</span><span class="p">.</span><span class="n">mac_filtering</span><span class="w"> </span><span class="k">true</span>
+</code></pre></div>
+
+<h3>DNS</h3>
+<p>LXD 在网桥上运行 DNS 服务器。除了设置网桥的 DNS 域（ <code>dns.domain</code> 网络属性）之外，还支持 3 种不同的操作模式（<code>dns.mode</code>）：</p>
+<ul>
+<li><code>managed</code> ：每个容器都会有一条 DNS 记录，匹配它的名字以及已知的 IP 地址。容器无法通过 DHCP 改变这条记录。</li>
+<li><code>dynamic</code> ：允许容器通过 DHCP 在 DNS 中自行注册。因此，在 DHCP 协商期间容器发送的任何主机名最终都出现在 DNS 中。</li>
+<li><code>none</code> ： 针对那些没有任何本地 DNS 记录的递归 DNS 服务器。</li>
+</ul>
+<p>默认的模式是 <code>managed</code>，并且典型的是最安全以及最方便的，因为它为容器提供了 DNS 记录，但是不允许它们通过 DHCP 发送虚假主机名嗅探其他的记录。</p>
+<h3>使用隧道</h3>
+<p>除了这些，LXD 还支持使用 GRE 或者 VXLAN 隧道连接到其他主机。</p>
+<p>LXD 网络可以连接任何数量的隧道，从而轻松地创建跨多个主机的网络。这对于开发、测试和演示非常有用，生产环境通常更喜欢使用 VLAN 进行分割。</p>
+<p>所以说，你想在主机 “edfu” 上有一个运行 IPv4 和 IPv6 的基础 “testbr0” 网络，并希望在主机 “djanet” 上使用它来生成容器。最简单的方法是使用组播 VXLAN 隧道。这种类型的隧道仅在两个主机位于同一物理段上时才起作用。</p>
+<div class="highlight"><pre><span></span><code><span class="n">root</span><span class="nv">@edfu</span><span class="err">:</span><span class="o">~</span><span class="err">#</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">network</span><span class="w"> </span><span class="k">create</span><span class="w"> </span><span class="n">testbr0</span><span class="w"> </span><span class="n">tunnel</span><span class="p">.</span><span class="n">lan</span><span class="p">.</span><span class="n">protocol</span><span class="o">=</span><span class="n">vxlan</span>
+<span class="n">Network</span><span class="w"> </span><span class="n">testbr0</span><span class="w"> </span><span class="n">created</span>
+<span class="n">root</span><span class="nv">@edfu</span><span class="err">:</span><span class="o">~</span><span class="err">#</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">network</span><span class="w"> </span><span class="n">attach</span><span class="o">-</span><span class="n">profile</span><span class="w"> </span><span class="n">testbr0</span><span class="w"> </span><span class="k">default</span><span class="w"> </span><span class="n">eth0</span>
+</code></pre></div>
+
+<p>它在主机 “edfu” 上定义了一个 “testbr0” 桥接，并为其他主机能加入它设置了一个组播 VXLAN。在这个设置中，“edfu” 为这个网络扮演了一个路由器角色，提供 DHCP、DNS 等等，其他主机只是通过隧道转发流量。</p>
+<div class="highlight"><pre><span></span><code><span class="nx">root</span><span class="err">@</span><span class="nx">djanet</span><span class="p">:</span><span class="o">~</span><span class="err">#</span><span class="w"> </span><span class="nx">lxc</span><span class="w"> </span><span class="nx">network</span><span class="w"> </span><span class="nx">create</span><span class="w"> </span><span class="nx">testbr0</span><span class="w"> </span><span class="nx">ipv4</span><span class="p">.</span><span class="nx">address</span><span class="p">=</span><span class="nx">none</span><span class="w"> </span><span class="nx">ipv6</span><span class="p">.</span><span class="nx">address</span><span class="p">=</span><span class="nx">none</span><span class="w"> </span><span class="nx">tunnel</span><span class="p">.</span><span class="nx">lan</span><span class="p">.</span><span class="nx">protocol</span><span class="p">=</span><span class="nx">vxlan</span>
+<span class="nx">Network</span><span class="w"> </span><span class="nx">testbr0</span><span class="w"> </span><span class="nx">created</span>
+<span class="nx">root</span><span class="err">@</span><span class="nx">djanet</span><span class="p">:</span><span class="o">~</span><span class="err">#</span><span class="w"> </span><span class="nx">lxc</span><span class="w"> </span><span class="nx">network</span><span class="w"> </span><span class="nx">attach</span><span class="o">-</span><span class="nx">profile</span><span class="w"> </span><span class="nx">testbr0</span><span class="w"> </span><span class="k">default</span><span class="w"> </span><span class="nx">eth0</span>
+</code></pre></div>
+
+<p>现在你可以在任何一台主机上启动容器，并看到它们从同一个地址池中获取 IP，通过隧道直接互相通讯。</p>
+<p>如先前所述，这个使用了组播，它通常在跨越路由器时无法很好工作。在这些情况下，你可以用单播模式使用 VXLAN 或者 GRE 隧道。</p>
+<p>要使用 GRE 加入另一台主机，首先配置服务主机：</p>
+<div class="highlight"><pre><span></span><code><span class="n">root</span><span class="nv">@edfu</span><span class="err">:</span><span class="o">~</span><span class="err">#</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">network</span><span class="w"> </span><span class="k">set</span><span class="w"> </span><span class="n">testbr0</span><span class="w"> </span><span class="n">tunnel</span><span class="p">.</span><span class="n">nuturo</span><span class="p">.</span><span class="n">protocol</span><span class="w"> </span><span class="n">gre</span>
+<span class="n">root</span><span class="nv">@edfu</span><span class="err">:</span><span class="o">~</span><span class="err">#</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">network</span><span class="w"> </span><span class="k">set</span><span class="w"> </span><span class="n">testbr0</span><span class="w"> </span><span class="n">tunnel</span><span class="p">.</span><span class="n">nuturo</span><span class="p">.</span><span class="k">local</span><span class="w"> </span><span class="mf">172.17.16.2</span>
+<span class="n">root</span><span class="nv">@edfu</span><span class="err">:</span><span class="o">~</span><span class="err">#</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">network</span><span class="w"> </span><span class="k">set</span><span class="w"> </span><span class="n">testbr0</span><span class="w"> </span><span class="n">tunnel</span><span class="p">.</span><span class="n">nuturo</span><span class="p">.</span><span class="n">remote</span><span class="w"> </span><span class="mf">172.17.16.9</span>
+</code></pre></div>
+
+<p>接着是“客户端”主机：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">root</span><span class="err">@</span><span class="nx">nuturo</span><span class="p">:</span><span class="o">~</span><span class="err">#</span><span class="w"> </span><span class="nx">lxc</span><span class="w"> </span><span class="nx">network</span><span class="w"> </span><span class="nx">create</span><span class="w"> </span><span class="nx">testbr0</span><span class="w"> </span><span class="nx">ipv4</span><span class="p">.</span><span class="nx">address</span><span class="p">=</span><span class="nx">none</span><span class="w"> </span><span class="nx">ipv6</span><span class="p">.</span><span class="nx">address</span><span class="p">=</span><span class="nx">none</span><span class="w"> </span><span class="nx">tunnel</span><span class="p">.</span><span class="nx">edfu</span><span class="p">.</span><span class="nx">protocol</span><span class="p">=</span><span class="nx">gre</span><span class="w"> </span><span class="nx">tunnel</span><span class="p">.</span><span class="nx">edfu</span><span class="p">.</span><span class="nx">local</span><span class="p">=</span><span class="m m-Double">172.17.16.9</span><span class="w"> </span><span class="nx">tunnel</span><span class="p">.</span><span class="nx">edfu</span><span class="p">.</span><span class="nx">remote</span><span class="p">=</span><span class="m m-Double">172.17.16.2</span>
+<span class="nx">Network</span><span class="w"> </span><span class="nx">testbr0</span><span class="w"> </span><span class="nx">created</span>
+<span class="nx">root</span><span class="err">@</span><span class="nx">nuturo</span><span class="p">:</span><span class="o">~</span><span class="err">#</span><span class="w"> </span><span class="nx">lxc</span><span class="w"> </span><span class="nx">network</span><span class="w"> </span><span class="nx">attach</span><span class="o">-</span><span class="nx">profile</span><span class="w"> </span><span class="nx">testbr0</span><span class="w"> </span><span class="k">default</span><span class="w"> </span><span class="nx">eth0</span>
+</code></pre></div>
+
+<p>如果你像使用 VXLAN，只要这么做：</p>
+<div class="highlight"><pre><span></span><code><span class="n">root</span><span class="nv">@edfu</span><span class="err">:</span><span class="o">~</span><span class="err">#</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">network</span><span class="w"> </span><span class="k">set</span><span class="w"> </span><span class="n">testbr0</span><span class="w"> </span><span class="n">tunnel</span><span class="p">.</span><span class="n">edfu</span><span class="p">.</span><span class="n">id</span><span class="w"> </span><span class="mi">10</span>
+<span class="n">root</span><span class="nv">@edfu</span><span class="err">:</span><span class="o">~</span><span class="err">#</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">network</span><span class="w"> </span><span class="k">set</span><span class="w"> </span><span class="n">testbr0</span><span class="w"> </span><span class="n">tunnel</span><span class="p">.</span><span class="n">edfu</span><span class="p">.</span><span class="n">protocol</span><span class="w"> </span><span class="n">vxlan</span>
+</code></pre></div>
+
+<p>还有：</p>
+<div class="highlight"><pre><span></span><code><span class="n">root</span><span class="nv">@nuturo</span><span class="err">:</span><span class="o">~</span><span class="err">#</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">network</span><span class="w"> </span><span class="k">set</span><span class="w"> </span><span class="n">testbr0</span><span class="w"> </span><span class="n">tunnel</span><span class="p">.</span><span class="n">edfu</span><span class="p">.</span><span class="n">id</span><span class="w"> </span><span class="mi">10</span>
+<span class="n">root</span><span class="nv">@nuturo</span><span class="err">:</span><span class="o">~</span><span class="err">#</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">network</span><span class="w"> </span><span class="k">set</span><span class="w"> </span><span class="n">testbr0</span><span class="w"> </span><span class="n">tunnel</span><span class="p">.</span><span class="n">edfu</span><span class="p">.</span><span class="n">protocol</span><span class="w"> </span><span class="n">vxlan</span>
+</code></pre></div>
+
+<p>这里需要隧道 id 以防与已经配置的多播 VXLAN 隧道冲突。</p>
+<p>这就是如何使用最近的 LXD 简化跨主机联网了！</p>
+<h3>总结</h3>
+<p>LXD 使得从简单的单主机网络到数千个容器的非常复杂的跨主机网络的定义变得更加容易。它也使为一些容器定义一个新网络或者给容器添加第二个设备，并连接到隔离的私有网络变得很简单。</p>
+<p>虽然这篇文章介绍了支持的大部分功能，但仍有一些可以微调 LXD 网络体验的窍门。可以在这里找到完整的列表：<a href="https://github.com/lxc/lxd/blob/master/doc/configuration.md#network-configuration">https://github.com/lxc/lxd/blob/master/doc/configuration.md</a> 。</p>
+<h3>额外信息</h3>
+<ul>
+<li>LXD 主站：<a href="https://linuxcontainers.org/lxd">https://linuxcontainers.org/lxd</a></li>
+<li>Github 地址： <a href="https://github.com/lxc/lxd">https://github.com/lxc/lxd</a></li>
+<li>邮件列表支持：<a href="https://lists.linuxcontainers.org/">https://lists.linuxcontainers.org</a></li>
+<li>IRC 频道：#lxcontainers on irc.freenode.net</li>
+<li>在线尝试 LXD：<a href="https://linuxcontainers.org/lxd/try-it">https://linuxcontainers.org/lxd/try-it</a></li>
+</ul>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

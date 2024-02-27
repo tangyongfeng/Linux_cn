@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>RHCE 系列（五）：如何在 RHEL 7 中管理系统日志（配置、轮换以及导入到数据库）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Gabriel Cánepa 为了确保你的 RHEL 7 系统安全，你需要通过查看日志文件来监控系统中发生的所有活动。这样，你就可以检测到任何 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/11/rhce-xi-lie-wu-ru-he-zai-rhel-7-zhong-guan-li-xi-tong-ri-zhi-pei-zhi-lun-huan-yi-ji-dao-ru-dao-shu-ju-ku.html" rel="bookmark"
+           title="Permalink to RHCE 系列（五）：如何在 RHEL 7 中管理系统日志（配置、轮换以及导入到数据库）">RHCE 系列（五）：如何在 RHEL 7 中管理系统日志（配置、轮换以及导入到数据库）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-11-06T09:53:00+01:00">
+                Published: Fri 06 November 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Gabriel Cánepa</p>
+<p>为了确保你的 RHEL 7 系统安全，你需要通过查看日志文件来监控系统中发生的所有活动。这样，你就可以检测到任何不正常或有潜在破坏的活动并进行系统故障排除或者其它恰当的操作。</p>
+<p><img alt="Linux 中使用 Rsyslog 和 Logrotate 轮换日志文件" src="/data/attachment/album/201511/05/125611y2uyy9mmozzuyv7m.jpg"></p>
+<p><em>RHCE 考试 - 第五部分：使用 Rsyslog 和 Logrotate 管理系统日志</em></p>
+<p>在 RHEL 7 中，<a href="http://www.tecmint.com/wp-content/pdf/rsyslogd.pdf">rsyslogd</a> 守护进程负责系统日志，它从 /etc/rsyslog.conf（该文件指定所有系统日志的默认路径）和 /etc/rsyslog.d 中的所有文件（如果有的话）读取配置信息。</p>
+<h3>Rsyslogd 配置</h3>
+<p>快速浏览一下 <a href="http://www.tecmint.com/wp-content/pdf/rsyslog.conf.pdf">rsyslog.conf</a> 会是一个好的开端。该文件分为 3 个主要部分：模块（rsyslong 按照模块化设计），全局指令（用于设置 rsyslogd 守护进程的全局属性），以及规则。正如你可能猜想的，最后一个部分指示记录或显示什么以及在哪里保存（也称为<ruby> 选择子 <rp>  （ </rp> <rt>  selector </rt> <rp>  ） </rp></ruby>），这也是这篇文章关注的重点。</p>
+<p>rsyslog.conf 中典型的一行如下所示：</p>
+<p><img alt="Rsyslogd 配置" src="/data/attachment/album/201511/05/125612ccuxx237l1lbmaxj.png"></p>
+<p><em>Rsyslogd 配置</em></p>
+<p>在上面的图片中，我们可以看到一个选择子包括了一个或多个用分号分隔的<ruby> “设备:优先级” <rp>  （ </rp> <rt>  Facility:Priority </rt> <rp>  ） </rp></ruby>对，其中设备描述了消息类型（参考 <a href="https://tools.ietf.org/html/rfc3164#section-4.1.1">RFC 3164 4.1.1 章节</a>，查看 rsyslog 可用的完整设备列表），优先级指示它的严重性，这可能是以下几种之一：</p>
+<ul>
+<li>debug</li>
+<li>info</li>
+<li>notice</li>
+<li>warning</li>
+<li>err</li>
+<li>crit</li>
+<li>alert</li>
+<li>emerg</li>
+</ul>
+<p>尽管 none 并不是一个优先级，不过它意味着指定设备没有任何优先级。</p>
+<p><strong>注意</strong>：给定一个优先级表示该优先级以及之上的消息都应该记录到日志中。因此，上面例子中的行指示 rsyslogd 守护进程记录所有优先级为 info 以及以上（不管是什么设备）的除了属于 mail、authpriv、以及 cron 服务（不考虑来自这些设备的消息）的消息到 /var/log/messages。</p>
+<p>你也可以使用逗号将多个设备分为一组，对同组中的设备使用相同的优先级。例如下面这行：</p>
+<div class="highlight"><pre><span></span><code><span class="o">*.</span><span class="n">info</span><span class="p">;</span><span class="n">mail</span><span class="o">.</span><span class="n">none</span><span class="p">;</span><span class="n">authpriv</span><span class="o">.</span><span class="n">none</span><span class="p">;</span><span class="n">cron</span><span class="o">.</span><span class="n">none</span><span class="w">                </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="n">messages</span>
+</code></pre></div>
+
+<p>也可以这样写：</p>
+<div class="highlight"><pre><span></span><code><span class="o">*.</span><span class="n">info</span><span class="p">;</span><span class="n">mail</span><span class="p">,</span><span class="n">authpriv</span><span class="p">,</span><span class="n">cron</span><span class="o">.</span><span class="n">none</span><span class="w">                </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="n">messages</span>
+</code></pre></div>
+
+<p>换句话说，mail、authpriv 以及 cron 被分为一组，并使用关键字 none。</p>
+<h4>创建自定义日志文件</h4>
+<p>要把所有的守护进程消息记录到 /var/log/tecmint.log，我们需要在 rsyslog.conf 或者 /etc/rsyslog.d 目录中的单独文件（这样易于管理）添加下面一行：</p>
+<div class="highlight"><pre><span></span><code><span class="n">daemon</span><span class="o">.*</span><span class="w">    </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="n">tecmint</span><span class="o">.</span><span class="n">log</span>
+</code></pre></div>
+
+<p>然后重启守护进程（注意服务名称不以 d 结尾）：</p>
+<div class="highlight"><pre><span></span><code># systemctl restart rsyslog
+</code></pre></div>
+
+<p>在随便重启两个守护进程之前和之后查看下自定义日志的内容：</p>
+<p><img alt="Linux 创建自定义日志文件" src="/data/attachment/album/201511/05/125616hozb920700x1wbou.png"></p>
+<p><em>创建自定义日志文件</em></p>
+<p>作为一个自学练习，我建议你重点关注设备和优先级，添加额外的消息到已有的日志文件或者像上面那样创建一个新的日志文件。</p>
+<h3>使用 Logrotate 轮换日志</h3>
+<p>为了防止日志文件无限制增长，logrotate 工具用于轮换、压缩、移除或者通过电子邮件发送日志，从而减轻管理会产生大量日志文件系统的困难。（译者注：<a href="https://en.wikipedia.org/wiki/Log_rotation">日志轮换</a>（rotate）是系统管理中归档每天产生的日志文件的自动化过程）</p>
+<p>Logrotate 作为一个 cron 任务（/etc/cron.daily/logrotate）每天运行，并从 /etc/logrotate.conf 和 /etc/logrotate.d 中的文件（如果有的话）读取配置信息。</p>
+<p>对于 rsyslog，即使你可以在主文件中为指定服务包含设置，为每个服务创建单独的配置文件能帮助你更好地组织设置。</p>
+<p>让我们来看一个典型的 logrotate.conf：</p>
+<p><img alt="Logrotate 配置" src="/data/attachment/album/201511/05/125622lti103gx7kk33pgi.png"></p>
+<p><em>Logrotate 配置</em></p>
+<p>在上面的例子中，logrotate 会为 /var/log/wtmp 进行以下操作：尝试每个月轮换一次，但至少文件要大于 1MB，然后用 0664 权限、用户 root、组 utmp 创建一个新的日志文件。下一步只保存一个归档日志，正如轮换指令指定的：</p>
+<p><img alt="每月 Logrotate 日志" src="/data/attachment/album/201511/05/125623lraxnglzd2d32d62.png"></p>
+<p><em>每月 Logrotate 日志</em></p>
+<p>让我们再来看看 /etc/logrotate.d/httpd 中的另一个例子：</p>
+<p><img alt="轮换 Apache 日志文件" src="/data/attachment/album/201511/05/125627v2ghs5p1pppp1pi1.png"></p>
+<p><em>轮换 Apache 日志文件</em></p>
+<p>你可以在 logrotate 的 man 手册（<a href="http://www.tecmint.com/wp-content/pdf/logrotate.pdf">man logrotate</a> 和 <a href="http://www.tecmint.com/wp-content/pdf/logrotate.conf.pdf">man logrotate.conf</a>）中阅读更多有关它的设置。为了方便你的阅读，本文还提供了两篇文章的 PDF 格式。</p>
+<p>作为一个系统工程师，很可能由你决定多久按照什么格式保存一次日志，这取决于你是否有一个单独的分区/逻辑卷给 <code>/var</code>。否则，你真的要考虑删除旧日志以节省存储空间。另一方面，根据你公司和客户内部的政策，为了以后的安全审核，你可能必须要保留多个日志。</p>
+<h4>保存日志到数据库</h4>
+<p>当然检查日志可能是一个很繁琐的工作（即使有类似 grep 工具和正则表达式的帮助）。因为这个原因，rsyslog 允许我们把它们导出到数据库（OTB 支持的关系数据库管理系统包括 MySQL、MariaDB、PostgreSQL 和 Oracle 等）。</p>
+<p>指南的这部分假设你已经在要管理日志的 RHEL 7 上安装了 MariaDB 服务器和客户端：</p>
+<div class="highlight"><pre><span></span><code># yum update &amp;&amp; yum install mariadb mariadb-server mariadb-client rsyslog-mysql
+# systemctl enable mariadb &amp;&amp; systemctl start mariadb
+</code></pre></div>
+
+<p>然后使用 <code>mysql_secure_installation</code> 工具为 root 用户设置密码以及其它安全考量：</p>
+<p><img alt="保证 MySQL 数据库安全" src="/data/attachment/album/201511/05/125629xsi14yo1k12y4mi5.png"></p>
+<p><em>保证 MySQL 数据库安全</em></p>
+<p>注意：如果你不想用 MariaDB root 用户插入日志消息到数据库，你也可以配置用另一个用户账户。如何实现的介绍已经超出了本文的范围，但在 <a href="https://mariadb.com/kb/en/mariadb/create-user/">MariaDB 知识</a> 中有详细解析。为了简单在这篇指南中我们会使用 root 账户。</p>
+<p>下一步，从 <a href="https://github.com/sematext/rsyslog/blob/master/plugins/ommysql/createDB.sql">GitHub</a> 下载 createDB.sql 脚本并导入到你的数据库服务器：</p>
+<div class="highlight"><pre><span></span><code># mysql -u root -p &lt; createDB.sql
+</code></pre></div>
+
+<p><img alt="保存服务器日志到数据库" src="/data/attachment/album/201511/05/125633a2ad02ldaab2hppp.png"></p>
+<p><em>保存服务器日志到数据库</em></p>
+<p>最后，添加下面的行到 /etc/rsyslog.conf：</p>
+<div class="highlight"><pre><span></span><code>$ModLoad ommysql
+$ActionOmmysqlServerPort 3306
+<span class="gs">*.*</span> :ommysql:localhost,Syslog,root,YourPasswordHere
+</code></pre></div>
+
+<p>重启 rsyslog 和数据库服务器：</p>
+<div class="highlight"><pre><span></span><code># systemctl restart rsyslog 
+# systemctl restart mariadb
+</code></pre></div>
+
+<h4>使用 SQL 语法查询日志</h4>
+<p>现在执行一些会改变日志的操作（例如停止和启动服务），然后登录到你的数据库服务器并使用标准的 SQL 命令显示和查询日志：</p>
+<div class="highlight"><pre><span></span><code>USE Syslog;
+SELECT ReceivedAt, Message FROM SystemEvents;
+</code></pre></div>
+
+<p><img alt="在数据库中查询日志" src="/data/attachment/album/201511/05/125637h5dmcmpi5aomeum4.png"></p>
+<p><em>在数据库中查询日志</em></p>
+<h3>总结</h3>
+<p>在这篇文章中我们介绍了如何设置系统日志，如果轮换日志以及为了简化查询如何重定向消息到数据库。我们希望这些技巧能对你准备 <a href="/article-6451-1.html">RHCE 考试</a> 和日常工作有所帮助。</p>
+<p>正如往常，非常欢迎你的反馈。用下面的表单和我们联系吧。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

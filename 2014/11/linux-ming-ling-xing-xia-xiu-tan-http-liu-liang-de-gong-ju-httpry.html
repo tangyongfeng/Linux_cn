@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Linux 命令行下嗅探 HTTP 流量的工具：httpry</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Dan Nanni 假设由于某种原因，你需要嗅探HTTP站点的流量（如HTTP请求与响应）。举个例子，你可能在测试一个web服务器的实验性功能，或者你在为某个web应用或RESTful服务排错，又或者你正在为PAC(proxy auto …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2014/11/linux-ming-ling-xing-xia-xiu-tan-http-liu-liang-de-gong-ju-httpry.html" rel="bookmark"
+           title="Permalink to Linux 命令行下嗅探 HTTP 流量的工具：httpry">Linux 命令行下嗅探 HTTP 流量的工具：httpry</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2014-11-02T18:04:00+01:00">
+                Published: Sun 02 November 2014
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Dan Nanni</p>
+<p>假设由于某种原因，你需要嗅探HTTP站点的流量（如HTTP请求与响应）。举个例子，你可能在测试一个web服务器的实验性功能，或者你在为某个web应用或RESTful服务排错，又或者你正在为PAC(proxy auto config)排错或寻找某个站点下载的恶意软件。不论什么原因，在这些情况下，进行HTTP流量嗅探对于系统管理、开发者、甚至最终用户来说都是很有帮助的。</p>
+<p>数据包嗅工具tcpdump被广泛用于实时数据包的导出，但是你需要设置过滤规则来捕获HTTP流量，甚至它的原始输出通常不能方便的停在HTTP协议层。实时web服务器日志解析器如<a href="http://xmodulo.com/2014/06/monitor-nginx-web-server-command-line-real-time.html">ngxtop</a>可以提供可读的实时web流量跟踪痕迹，但这仅适用于可完全访问live web服务器日志的情况。</p>
+<p><img alt="" src="/data/attachment/album/201411/02/151450bs326ss33uffiizu.jpg"></p>
+<p>要是有一个仅用于抓取HTTP流量的类似tcpdump的数据包嗅探工具就非常好了。事实上，<a href="http://dumpsterventures.com/jason/httpry/">httpry</a>就是:<strong>HTTP包嗅探工具</strong>。httpry捕获HTTP数据包，并且将HTTP协议层的数据内容以可读形式列举出来。通过这篇指文章，让我们了解如何使用httpry工具嗅探HTTP流量。</p>
+<h3>在Linux上安装httpry</h3>
+<p>基于Debian系统（Ubuntu 或 LinuxMint），基础仓库中没有httpry安装包(译者注：本人ubuntu14.04,仓库中已有包，可直接安装)。所以我们需要通过源码安装:</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>gcc<span class="w"> </span>make<span class="w"> </span>git<span class="w"> </span>libpcap0.8-dev
+$<span class="w"> </span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/jbittel/httpry.git
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>httpry
+$<span class="w"> </span>make
+$<span class="w"> </span>sudo<span class="w"> </span>make<span class="w"> </span>install
+</code></pre></div>
+
+<p>在Fedora，CentOS 或 RHEL系统，可以使用如下yum命令安装httpry。在CentOS/RHEL系统上，运行yum之前使其能够访问<a href="http://xmodulo.com/2013/03/how-to-set-up-epel-repository-on-centos.html">EPEL repo</a>。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>httpry<span class="w"> </span>
+</code></pre></div>
+
+<p>如果你仍想通过基于RPM系统的源码来安装httpry的话，你可以通过这几个步骤实现：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>gcc<span class="w"> </span>make<span class="w"> </span>git<span class="w"> </span>libpcap-devel
+$<span class="w"> </span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/jbittel/httpry.git
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>httpry
+$<span class="w"> </span>make
+$<span class="w"> </span>sudo<span class="w"> </span>make<span class="w"> </span>install<span class="w"> </span>
+</code></pre></div>
+
+<h3>httpry的基本用法</h3>
+<p>以下是httpry的基本用法</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>httpry<span class="w"> </span>-i<span class="w"> </span>&lt;network-interface&gt;<span class="w"> </span>
+</code></pre></div>
+
+<p>httpry就会监听指定的网络接口，并且实时的显示捕获到的HTTP请求/相应。</p>
+<p><img alt="" src="/data/attachment/album/201411/02/151454niytkk0bgtektxxh.jpg"></p>
+<p>在大多数情况下，由于发送与接到的数据包过多导致刷屏很快，难以分析。这时候你肯定想将捕获到的数据包保存下来以便离线分析。可以使用'b'或'-o'选项保存数据包。'-b'选项将数据包以二进制文件的形式保存下来，这样可以使用httpry软件打开文件以浏览。另一方面，'-o'选项将数据以可读的字符文件形式保存下来。</p>
+<p>以二进制形式保存文件：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>httpry<span class="w"> </span>-i<span class="w"> </span>eth0<span class="w"> </span>-b<span class="w"> </span>output.dump
+</code></pre></div>
+
+<p>浏览所保存的HTTP数据包文件：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>httpry<span class="w"> </span>-r<span class="w"> </span>output.dump
+</code></pre></div>
+
+<p>注意，不需要根用户权限就可以使用'-r'选项读取数据文件。</p>
+<p>将httpry数据以字符文件保存：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>httpry<span class="w"> </span>-i<span class="w"> </span>eth0<span class="w"> </span>-o<span class="w"> </span>output.txt
+</code></pre></div>
+
+<h3>httpry 的高级应用</h3>
+<p>如果你想监视指定的HTTP方法（如：GET，POST，PUT，HEAD，CONNECT等），使用'-m'选项：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>httpry<span class="w"> </span>-i<span class="w"> </span>eth0<span class="w"> </span>-m<span class="w"> </span>get,head
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/201411/02/151458sddro3tqu3r8rrqq.jpg"></p>
+<p>如果你下载了httpry的源码，你会发现源码下有一些Perl脚本，这些脚本用于分析httpry输出。脚本位于目录httpry/scripts/plugins。如果你想写一个定制的httpry输出分析器，则这些脚可以作为很好的例子。其中一些有如下的功能：</p>
+<ul>
+<li><strong>hostnames</strong>: 显示唯一主机名列表。</li>
+<li><strong>find_proxies</strong>: 探测web代理。</li>
+<li><strong>search_terms</strong>: 查找及统计在搜索服务里面的搜索词。</li>
+<li><strong>content_analysis</strong>: 查找含有指定关键的URL。</li>
+<li><strong>xml_output</strong>: 将输出转换为XML形式。</li>
+<li><strong>log_summary</strong>: 生成日志汇总。</li>
+<li><strong>db_dump</strong>: 将日志文件数据保存数据库。</li>
+</ul>
+<p>在使用这些脚本之前，首先使用'-o'选项运行httpry。当获取到输出文件后，立即使用如下命令执行脚本：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>httpry/scripts
+$<span class="w"> </span>perl<span class="w"> </span>parse_log.pl<span class="w"> </span>-d<span class="w"> </span>./plugins<span class="w"> </span>&lt;httpry-output-file&gt;
+</code></pre></div>
+
+<p>你可能在使用插件的时候遇到警告。比如，如果你没有安装带有DBI接口的MySQL数据库，那么使用db_dump插件时可能会失败。如果一个插件初始化失败的话，那么只是这个插件不能使用，所以你可以忽略那些警告。</p>
+<p>当parse_log.pl完成后，你将在httpry/scripts 目录下看到数个分析结果。例如，log_summary.txt 与如下内容类似。</p>
+<p><img alt="" src="/data/attachment/album/201411/02/151500xfbl5yz6ifyfi6nu.jpg"></p>
+<p>总的来说，当你要分析HTTP数据包的时候，httpry非常有用。它可能并不被大多Linux使用者所熟知，但会用总是有好处的。你觉得这个工具怎么样呢？</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

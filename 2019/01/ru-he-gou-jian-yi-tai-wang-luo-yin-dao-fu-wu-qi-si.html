@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何构建一台网络引导服务器（四）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Gregory Bartholomew 在本系列教程中所构建的网络引导服务器有一个很重要的限制，那就是所提供的操作系统镜像是只读的。一些使 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/01/ru-he-gou-jian-yi-tai-wang-luo-yin-dao-fu-wu-qi-si.html" rel="bookmark"
+           title="Permalink to 如何构建一台网络引导服务器（四）">如何构建一台网络引导服务器（四）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-01-23T22:26:12+01:00">
+                Published: Wed 23 January 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Gregory Bartholomew</p>
+<p><img alt="" src="/data/attachment/album/201901/23/222618djzymxhxdrwjrqrd.jpg"></p>
+<p>在本系列教程中所构建的网络引导服务器有一个很重要的限制，那就是所提供的操作系统镜像是只读的。一些使用场景或许要求终端用户能够修改操作系统镜像。例如，一些教师或许希望学生能够安装和配置一些像 MariaDB 和 Node.js 这样的包来做为他们课程练习的一部分。</p>
+<p>可写镜像的另外的好处是，终端用户“私人定制”的操作系统，在下次不同的工作站上使用时能够“跟着”他们。</p>
+<h3>修改 Bootmenu 应用程序以使用 HTTPS</h3>
+<p>为 bootmenu 应用程序创建一个自签名的证书：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>-i
+<span class="c1"># MY_NAME=$(&lt;/etc/hostname)</span>
+<span class="c1"># MY_TLSD=/opt/bootmenu/tls</span>
+<span class="c1"># mkdir $MY_TLSD</span>
+<span class="c1"># openssl req -newkey rsa:2048 -nodes -keyout $MY_TLSD/$MY_NAME.key -x509 -days 3650 -out $MY_TLSD/$MY_NAME.pem</span>
+</code></pre></div>
+
+<p>验证你的证书的值。确保 <code>Subject</code> 行中 <code>CN</code> 的值与你的 iPXE 客户端连接你的网络引导服务器所使用的 DNS 名字是相匹配的：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> openssl x509 -text -noout -in $MY_TLSD/$MY_NAME.pem
+</code></pre></div>
+
+<p>接下来，更新 bootmenu 应用程序去监听 HTTPS 端口和新创建的证书及密钥：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> sed -i &quot;s#listen =&gt; .*#listen =&gt; [&#39;https://$MY_NAME:443?cert=$MY_TLSD/$MY_NAME.pem\&amp;key=$MY_TLSD/$MY_NAME.key\&amp;ciphers=AES256-SHA256:AES128-SHA256:AES256-SHA:AES128-SHA&#39;],#&quot; /opt/bootmenu/bootmenu.conf
+</code></pre></div>
+
+<p>注意 <a href="http://ipxe.org/crypto">iPXE 当前支持的</a> 加密算法是有限制的。</p>
+<p>GnuTLS 要求 “CAPDACREAD_SEARCH” 能力，因此将它添加到 bootmenu 应用程序的 systemd 服务：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># sed -i &#39;/^AmbientCapabilities=/ s/$/ CAP_DAC_READ_SEARCH/&#39; /etc/systemd/system/bootmenu.service</span>
+<span class="c1"># sed -i &#39;s/Serves iPXE Menus over HTTP/Serves iPXE Menus over HTTPS/&#39; /etc/systemd/system/bootmenu.service</span>
+<span class="c1"># systemctl daemon-reload</span>
+</code></pre></div>
+
+<p>现在，在防火墙中为 bootmenu 服务添加一个例外规则并重启动该服务：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="nx">MY_SUBNET</span><span class="p">=</span><span class="m m-Double">192.0.2.0</span>
+<span class="err">#</span><span class="w"> </span><span class="nx">MY_PREFIX</span><span class="p">=</span><span class="mi">24</span>
+<span class="err">#</span><span class="w"> </span><span class="nx">firewall</span><span class="o">-</span><span class="nx">cmd</span><span class="w"> </span><span class="o">--</span><span class="nx">add</span><span class="o">-</span><span class="nx">rich</span><span class="o">-</span><span class="nx">rule</span><span class="p">=</span><span class="s">&quot;rule family=&#39;ipv4&#39; source address=&#39;$MY_SUBNET/$MY_PREFIX&#39; service name=&#39;https&#39; accept&quot;</span>
+<span class="err">#</span><span class="w"> </span><span class="nx">firewall</span><span class="o">-</span><span class="nx">cmd</span><span class="w"> </span><span class="o">--</span><span class="nx">runtime</span><span class="o">-</span><span class="nx">to</span><span class="o">-</span><span class="nx">permanent</span>
+<span class="err">#</span><span class="w"> </span><span class="nx">systemctl</span><span class="w"> </span><span class="nx">restart</span><span class="w"> </span><span class="nx">bootmenu</span><span class="p">.</span><span class="nx">service</span>
+</code></pre></div>
+
+<p>使用 <code>wget</code> 去验证是否工作正常：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nv">MY_NAME</span><span class="o">=</span>server-01.example.edu
+$<span class="w"> </span><span class="nv">MY_TLSD</span><span class="o">=</span>/opt/bootmenu/tls
+$<span class="w"> </span>wget<span class="w"> </span>-q<span class="w"> </span>--ca-certificate<span class="o">=</span><span class="nv">$MY_TLSD</span>/<span class="nv">$MY_NAME</span>.pem<span class="w"> </span>-O<span class="w"> </span>-<span class="w"> </span>https://<span class="nv">$MY_NAME</span>/menu
+</code></pre></div>
+
+<h3>添加 HTTPS 到 iPXE</h3>
+<p>更新 <code>init.ipxe</code> 去使用 HTTPS。接着使用选项重新编译 ipxe 引导加载器，以便它包含和信任你为 bootmenu 应用程序创建的自签名证书：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;#define DOWNLOAD_PROTO_HTTPS&#39;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span><span class="nv">$HOME</span>/ipxe/src/config/local/general.h
+$<span class="w"> </span>sed<span class="w"> </span>-i<span class="w"> </span><span class="s1">&#39;s/^chain http:/chain https:/&#39;</span><span class="w"> </span><span class="nv">$HOME</span>/ipxe/init.ipxe
+$<span class="w"> </span>cp<span class="w"> </span><span class="nv">$MY_TLSD</span>/<span class="nv">$MY_NAME</span>.pem<span class="w"> </span><span class="nv">$HOME</span>/ipxe
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span><span class="nv">$HOME</span>/ipxe/src
+$<span class="w"> </span>make<span class="w"> </span>clean
+$<span class="w"> </span>make<span class="w"> </span>bin-x86_64-efi/ipxe.efi<span class="w"> </span><span class="nv">EMBED</span><span class="o">=</span>../init.ipxe<span class="w"> </span><span class="nv">CERT</span><span class="o">=</span><span class="s2">&quot;../</span><span class="nv">$MY_NAME</span><span class="s2">.pem&quot;</span><span class="w"> </span><span class="nv">TRUST</span><span class="o">=</span><span class="s2">&quot;../</span><span class="nv">$MY_NAME</span><span class="s2">.pem&quot;</span>
+</code></pre></div>
+
+<p>你现在可以将启用了 HTTPS 的 iPXE 引导加载器复制到你的客户端上，并测试它能否正常工作：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cp<span class="w"> </span><span class="nv">$HOME</span>/ipxe/src/bin-x86_64-efi/ipxe.efi<span class="w"> </span><span class="nv">$HOME</span>/esp/efi/boot/bootx64.efi
+</code></pre></div>
+
+<h3>添加用户验证到 Mojolicious 中</h3>
+<p>为 bootmenu 应用程序创建一个 PAM 服务定义：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> dnf install -y pam_krb5
+<span class="gh">#</span> echo &#39;auth required pam_krb5.so&#39; &gt; /etc/pam.d/bootmenu
+</code></pre></div>
+
+<p>添加一个库到 bootmenu 应用程序中，它使用 Authen-PAM 的 Perl 模块去执行用户验证：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># dnf install -y perl-Authen-PAM;</span>
+<span class="c1"># MY_MOJO=/opt/bootmenu</span>
+<span class="c1"># mkdir $MY_MOJO/lib</span>
+<span class="c1"># cat &lt;&lt; &#39;END&#39; &gt; $MY_MOJO/lib/PAM.pm</span>
+<span class="k">package</span><span class="w"> </span><span class="nn">PAM</span><span class="p">;</span>
+
+<span class="k">use</span><span class="w"> </span><span class="nn">Authen::PAM</span><span class="p">;</span>
+
+<span class="k">sub</span><span class="w"> </span><span class="nf">auth</span><span class="w"> </span><span class="p">{</span>
+<span class="w">   </span><span class="k">my</span><span class="w"> </span><span class="nv">$success</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+
+<span class="w">   </span><span class="k">my</span><span class="w"> </span><span class="nv">$username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">shift</span><span class="p">;</span>
+<span class="w">   </span><span class="k">my</span><span class="w"> </span><span class="nv">$password</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">shift</span><span class="p">;</span>
+
+<span class="w">   </span><span class="k">my</span><span class="w"> </span><span class="nv">$callback</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">sub</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="k">my</span><span class="w"> </span><span class="nv">@res</span><span class="p">;</span>
+<span class="w">      </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="nv">@_</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="k">my</span><span class="w"> </span><span class="nv">$code</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">shift</span><span class="p">;</span>
+<span class="w">         </span><span class="k">my</span><span class="w"> </span><span class="nv">$msg</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">shift</span><span class="p">;</span>
+<span class="w">         </span><span class="k">my</span><span class="w"> </span><span class="nv">$ans</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;&quot;</span><span class="p">;</span>
+
+<span class="w">         </span><span class="nv">$ans</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">$username</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nv">$code</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">PAM_PROMPT_ECHO_ON</span><span class="p">());</span>
+<span class="w">         </span><span class="nv">$ans</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">$password</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nv">$code</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">PAM_PROMPT_ECHO_OFF</span><span class="p">());</span>
+
+<span class="w">         </span><span class="nb">push</span><span class="w"> </span><span class="nv">@res</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="n">PAM_SUCCESS</span><span class="p">(),</span><span class="w"> </span><span class="nv">$ans</span><span class="p">);</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">      </span><span class="nb">push</span><span class="w"> </span><span class="nv">@res</span><span class="p">,</span><span class="w"> </span><span class="n">PAM_SUCCESS</span><span class="p">();</span>
+
+<span class="w">      </span><span class="k">return</span><span class="w"> </span><span class="nv">@res</span><span class="p">;</span>
+<span class="w">   </span><span class="p">};</span>
+
+<span class="w">   </span><span class="k">my</span><span class="w"> </span><span class="nv">$pamh</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="nn">Authen::</span><span class="n">PAM</span><span class="p">(</span><span class="s">&#39;bootmenu&#39;</span><span class="p">,</span><span class="w"> </span><span class="nv">$username</span><span class="p">,</span><span class="w"> </span><span class="nv">$callback</span><span class="p">);</span>
+
+<span class="w">   </span><span class="p">{</span>
+<span class="w">      </span><span class="k">last</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nb">ref</span><span class="w"> </span><span class="nv">$pamh</span><span class="p">;</span>
+<span class="w">      </span><span class="k">last</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nv">$pamh</span><span class="o">-&gt;</span><span class="n">pam_authenticate</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">PAM_SUCCESS</span><span class="p">;</span>
+<span class="w">      </span><span class="nv">$success</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<span class="w">   </span><span class="p">}</span>
+
+<span class="w">   </span><span class="k">return</span><span class="w"> </span><span class="nv">$success</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="k">return</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<span class="k">END</span>
+</code></pre></div>
+
+<p>以上的代码是一字不差是从 Authen::PAM::FAQ 的 man 页面中复制来的。</p>
+<p>重定义 bootmenu 应用程序，以使它仅当提供了有效的用户名和密码之后返回一个网络引导模板：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># cat &lt;&lt; &#39;END&#39; &gt; $MY_MOJO/bootmenu.pl</span>
+<span class="c1">#!/usr/bin/env perl</span>
+
+<span class="k">use</span><span class="w"> </span><span class="nn">lib</span><span class="w"> </span><span class="s">&#39;lib&#39;</span><span class="p">;</span>
+
+<span class="k">use</span><span class="w"> </span><span class="nn">PAM</span><span class="p">;</span>
+<span class="k">use</span><span class="w"> </span><span class="nn">Mojolicious::Lite</span><span class="p">;</span>
+<span class="k">use</span><span class="w"> </span><span class="nn">Mojolicious::Plugins</span><span class="p">;</span>
+<span class="k">use</span><span class="w"> </span><span class="nn">Mojo::Util</span><span class="w"> </span><span class="p">(</span><span class="s">&#39;url_unescape&#39;</span><span class="p">);</span>
+
+<span class="n">plugin</span><span class="w"> </span><span class="s">&#39;Config&#39;</span><span class="p">;</span>
+
+<span class="n">get</span><span class="w"> </span><span class="s">&#39;/menu&#39;</span><span class="p">;</span>
+<span class="n">get</span><span class="w"> </span><span class="s">&#39;/boot&#39;</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="k">sub</span><span class="w"> </span><span class="p">{</span>
+<span class="w">   </span><span class="k">my</span><span class="w"> </span><span class="nv">$c</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">shift</span><span class="p">;</span>
+
+<span class="w">   </span><span class="k">my</span><span class="w"> </span><span class="nv">$instance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">$c</span><span class="o">-&gt;</span><span class="n">param</span><span class="p">(</span><span class="s">&#39;instance&#39;</span><span class="p">);</span>
+<span class="w">   </span><span class="k">my</span><span class="w"> </span><span class="nv">$username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">$c</span><span class="o">-&gt;</span><span class="n">param</span><span class="p">(</span><span class="s">&#39;username&#39;</span><span class="p">);</span>
+<span class="w">   </span><span class="k">my</span><span class="w"> </span><span class="nv">$password</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">$c</span><span class="o">-&gt;</span><span class="n">param</span><span class="p">(</span><span class="s">&#39;password&#39;</span><span class="p">);</span>
+
+<span class="w">   </span><span class="k">my</span><span class="w"> </span><span class="nv">$template</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;menu&#39;</span><span class="p">;</span>
+
+<span class="w">   </span><span class="p">{</span>
+<span class="w">      </span><span class="k">last</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nv">$instance</span><span class="w"> </span><span class="o">=~</span><span class="sr"> /^fc[[:digit:]]{2}$/</span><span class="p">;</span>
+<span class="w">      </span><span class="k">last</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nv">$username</span><span class="w"> </span><span class="o">=~</span><span class="sr"> /^[[:alnum:]]+$/</span><span class="p">;</span>
+<span class="w">      </span><span class="k">last</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nn">PAM::</span><span class="n">auth</span><span class="p">(</span><span class="nv">$username</span><span class="p">,</span><span class="w"> </span><span class="n">url_unescape</span><span class="p">(</span><span class="nv">$password</span><span class="p">));</span>
+<span class="w">      </span><span class="nv">$template</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">$instance</span><span class="p">;</span>
+<span class="w">   </span><span class="p">}</span>
+
+<span class="w">   </span><span class="k">return</span><span class="w"> </span><span class="nv">$c</span><span class="o">-&gt;</span><span class="n">render</span><span class="p">(</span><span class="n">template</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="nv">$template</span><span class="p">);</span>
+<span class="p">};</span>
+
+<span class="nn">app</span><span class="o">-&gt;</span><span class="n">start</span><span class="p">;</span>
+<span class="k">END</span>
+</code></pre></div>
+
+<p>bootmenu 应用程序现在查找 <code>lib</code> 命令去找到相应的 <code>WorkingDirectory</code>。但是，默认情况下，对于 systemd 单元它的工作目录设置为服务器的 root 目录。因此，你必须更新 systemd 单元去设置 <code>WorkingDirectory</code> 为 bootmenu 应用程序的根目录：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># sed -i &quot;/^RuntimeDirectory=/ a WorkingDirectory=$MY_MOJO&quot; /etc/systemd/system/bootmenu.service</span>
+<span class="c1"># systemctl daemon-reload</span>
+</code></pre></div>
+
+<p>更新模块去使用重定义后的 bootmenu 应用程序：</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span>cd<span class="w"> </span><span class="nv">$MY_MOJO</span>/templates
+#<span class="w"> </span>MY_BOOTMENU_SERVER=$(<span class="err">&lt;</span>/etc/hostname)
+#<span class="w"> </span>MY_FEDORA_RELEASES=&quot;28<span class="w"> </span>29&quot;
+#<span class="w"> </span>for<span class="w"> </span>i<span class="w"> </span>in<span class="w"> </span><span class="nv">$MY_FEDORA_RELEASES</span>;<span class="w"> </span>do<span class="w"> </span>echo<span class="w"> </span>&#39;#!ipxe&#39;<span class="w"> </span>&gt;<span class="w"> </span>fc<span class="nv">$i.html.ep</span>;<span class="w"> </span>grep<span class="w"> </span>&quot;^kernel\|initrd&quot;<span class="w"> </span>menu.html.ep<span class="w"> </span>|<span class="w"> </span>grep<span class="w"> </span>&quot;fc<span class="nv">$i</span>&quot;<span class="w"> </span>&gt;&gt;<span class="w"> </span>fc<span class="nv">$i.html.ep</span>;<span class="w"> </span>echo<span class="w"> </span>&quot;boot<span class="w"> </span>||<span class="w"> </span>chain<span class="w"> </span>https://<span class="nv">$MY_BOOTMENU_SERVER</span>/menu&quot;<span class="w"> </span>&gt;&gt;<span class="w"> </span>fc<span class="nv">$i.html.ep</span>;<span class="w"> </span>sed<span class="w"> </span>-i<span class="w"> </span>&quot;/^:f<span class="nv">$i</span>$/,/^boot<span class="w"> </span>/c<span class="w"> </span>:f<span class="nv">$i</span>\nlogin\nchain<span class="w"> </span>https://<span class="nv">$MY_BOOTMENU_SERVER</span>/boot?instance=fc<span class="nv">$i</span>\<span class="err">&amp;</span>username=\<span class="cp">${</span><span class="n">username</span><span class="cp">}</span>\<span class="err">&amp;</span>password=\<span class="cp">${</span><span class="n">password</span><span class="p">:</span><span class="n">uristring</span><span class="cp">}</span><span class="w"> </span>||<span class="w"> </span>goto<span class="w"> </span>failed&quot;<span class="w"> </span>menu.html.ep;<span class="w"> </span>done
+</code></pre></div>
+
+<p>上面的最后的命令将生成类似下面的三个文件：</p>
+<p><code>menu.html.ep</code>：</p>
+<div class="highlight"><pre><span></span><code>#!ipxe
+
+set<span class="w"> </span>timeout<span class="w"> </span>5000
+
+:menu
+menu<span class="w"> </span>iPXE<span class="w"> </span>Boot<span class="w"> </span>Menu
+item<span class="w"> </span>--key<span class="w"> </span>1<span class="w"> </span>lcl<span class="w"> </span>1.<span class="w"> </span>Microsoft<span class="w"> </span>Windows<span class="w"> </span>10
+item<span class="w"> </span>--key<span class="w"> </span>2<span class="w"> </span>f29<span class="w"> </span>2.<span class="w"> </span>RedHat<span class="w"> </span>Fedora<span class="w"> </span>29
+item<span class="w"> </span>--key<span class="w"> </span>3<span class="w"> </span>f28<span class="w"> </span>3.<span class="w"> </span>RedHat<span class="w"> </span>Fedora<span class="w"> </span>28
+choose<span class="w"> </span>--timeout<span class="w"> </span><span class="cp">${</span><span class="n">timeout</span><span class="cp">}</span><span class="w"> </span>--default<span class="w"> </span>lcl<span class="w"> </span>selected<span class="w"> </span>||<span class="w"> </span>goto<span class="w"> </span>shell
+set<span class="w"> </span>timeout<span class="w"> </span>0
+goto<span class="w"> </span><span class="cp">${</span><span class="n">selected</span><span class="cp">}</span>
+
+:failed
+echo<span class="w"> </span>boot<span class="w"> </span>failed,<span class="w"> </span>dropping<span class="w"> </span>to<span class="w"> </span>shell...
+goto<span class="w"> </span>shell
+
+:shell
+echo<span class="w"> </span>type<span class="w"> </span>&#39;exit&#39;<span class="w"> </span>to<span class="w"> </span>get<span class="w"> </span>the<span class="w"> </span>back<span class="w"> </span>to<span class="w"> </span>the<span class="w"> </span>menu
+set<span class="w"> </span>timeout<span class="w"> </span>0
+shell
+goto<span class="w"> </span>menu
+
+:lcl
+exit
+
+:f29
+login
+chain<span class="w"> </span>https://server-01.example.edu/boot?instance=fc29<span class="err">&amp;</span>username=<span class="cp">${</span><span class="n">username</span><span class="cp">}</span><span class="err">&amp;</span>password=<span class="cp">${</span><span class="n">password</span><span class="p">:</span><span class="n">uristring</span><span class="cp">}</span><span class="w"> </span>||<span class="w"> </span>goto<span class="w"> </span>failed
+
+:f28
+login
+chain<span class="w"> </span>https://server-01.example.edu/boot?instance=fc28<span class="err">&amp;</span>username=<span class="cp">${</span><span class="n">username</span><span class="cp">}</span><span class="err">&amp;</span>password=<span class="cp">${</span><span class="n">password</span><span class="p">:</span><span class="n">uristring</span><span class="cp">}</span><span class="w"> </span>||<span class="w"> </span>goto<span class="w"> </span>failed
+</code></pre></div>
+
+<p><code>fc29.html.ep</code>：</p>
+<div class="highlight"><pre><span></span><code>#!ipxe
+kernel<span class="w"> </span>--name<span class="w"> </span>kernel.efi<span class="w"> </span><span class="cp">${</span><span class="n">prefix</span><span class="cp">}</span>/vmlinuz-4.19.5-300.fc29.x86_64<span class="w"> </span>initrd=initrd.img<span class="w"> </span>ro<span class="w"> </span>ip=dhcp<span class="w"> </span>rd.peerdns=0<span class="w"> </span>nameserver=192.0.2.91<span class="w"> </span>nameserver=192.0.2.92<span class="w"> </span>root=/dev/disk/by-path/ip-192.0.2.158:3260-iscsi-iqn.edu.example.server-01:fc29-lun-1<span class="w"> </span>netroot=iscsi:192.0.2.158::::iqn.edu.example.server-01:fc29<span class="w"> </span>console=tty0<span class="w"> </span>console=ttyS0,115200n8<span class="w"> </span>audit=0<span class="w"> </span>selinux=0<span class="w"> </span>quiet
+initrd<span class="w"> </span>--name<span class="w"> </span>initrd.img<span class="w"> </span><span class="cp">${</span><span class="n">prefix</span><span class="cp">}</span>/initramfs-4.19.5-300.fc29.x86_64.img
+boot<span class="w"> </span>||<span class="w"> </span>chain<span class="w"> </span>https://server-01.example.edu/menu
+</code></pre></div>
+
+<p><code>fc28.html.ep</code>：</p>
+<div class="highlight"><pre><span></span><code>#!ipxe
+kernel<span class="w"> </span>--name<span class="w"> </span>kernel.efi<span class="w"> </span><span class="cp">${</span><span class="n">prefix</span><span class="cp">}</span>/vmlinuz-4.19.3-200.fc28.x86_64<span class="w"> </span>initrd=initrd.img<span class="w"> </span>ro<span class="w"> </span>ip=dhcp<span class="w"> </span>rd.peerdns=0<span class="w"> </span>nameserver=192.0.2.91<span class="w"> </span>nameserver=192.0.2.92<span class="w"> </span>root=/dev/disk/by-path/ip-192.0.2.158:3260-iscsi-iqn.edu.example.server-01:fc28-lun-1<span class="w"> </span>netroot=iscsi:192.0.2.158::::iqn.edu.example.server-01:fc28<span class="w"> </span>console=tty0<span class="w"> </span>console=ttyS0,115200n8<span class="w"> </span>audit=0<span class="w"> </span>selinux=0<span class="w"> </span>quiet
+initrd<span class="w"> </span>--name<span class="w"> </span>initrd.img<span class="w"> </span><span class="cp">${</span><span class="n">prefix</span><span class="cp">}</span>/initramfs-4.19.3-200.fc28.x86_64.img
+boot<span class="w"> </span>||<span class="w"> </span>chain<span class="w"> </span>https://server-01.example.edu/menu
+</code></pre></div>
+
+<p>现在，重启动 bootmenu 应用程序，并验证用户认证是否正常工作：</p>
+<div class="highlight"><pre><span></span><code># systemctl restart bootmenu.service
+</code></pre></div>
+
+<h3>使得 iSCSI Target 可写</h3>
+<p>现在，用户验证通过 iPXE 可以正常工作，在用户连接时，你可以按需在只读镜像的上面创建每用户可写的<ruby> overlay <rt>  叠加层 </rt></ruby>。使用一个 <a href="https://en.wikipedia.org/wiki/Copy-on-write">写时复制</a> 的叠加层与简单地为每个用户复制原始镜像相比有三个好处：</p>
+<ol>
+<li>副本创建非常快。这样就可以按需创建。</li>
+<li>副本并不增加服务器上的磁盘使用。除了原始镜像之外，仅存储用户写入个人镜像的内容。</li>
+<li>由于每个副本的扇区大多都是服务器的存储器上的相同扇区，在随后的用户访问这些操作系统的副本时，它们可能已经加载到内存中，这样就提升了服务器的性能，因为对内存的访问速度要比磁盘 I/O 快得多。</li>
+</ol>
+<p>使用写时复制的一个潜在隐患是，一旦叠加层创建后，叠加层之下的镜像就不能再改变。如果它们改变，所有它们之上的叠加层将出错。因此，叠加层必须被删除并用新的、空白的进行替换。即便只是简单地以读写模式加载的镜像，也可能因为某些文件系统更新导致叠加层出错。</p>
+<p>由于这个隐患，如果原始镜像被修改将导致叠加层出错，因此运行下列的命令，将原始镜像标记为不可改变：</p>
+<div class="highlight"><pre><span></span><code># chattr +i &lt;/path/to/file&gt;
+</code></pre></div>
+
+<p>你可以使用 <code>lsattr &lt;/path/to/file&gt;</code> 去查看不可改变标志，并可以使用 <code>chattr -i &lt;/path/to/file&gt;</code> 取消设置不可改变标志。在设置了不可改变标志之后，即便是 root 用户或以 root 运行的系统进程也不修改或删除这个文件。</p>
+<p>停止 tgtd.service 之后，你就可以改变镜像文件：</p>
+<div class="highlight"><pre><span></span><code># systemctl stop tgtd.service
+</code></pre></div>
+
+<p>当仍有连接打开的时候，运行这个命令一般需要一分钟或更长的时间。</p>
+<p>现在，移除只读的 iSCSI 出口。然后更新模板中的 <code>readonly-root</code> 配置文件，以使镜像不再是只读的：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> MY_FC=fc29
+<span class="gh">#</span> rm -f /etc/tgt/conf.d/$MY_FC.conf
+<span class="gh">#</span> TEMP_MNT=$(mktemp -d)
+<span class="gh">#</span> mount /$MY_FC.img $TEMP_MNT
+<span class="gh">#</span> sed -i &#39;s/^READONLY=yes$/READONLY=no/&#39; $TEMP_MNT/etc/sysconfig/readonly-root
+<span class="gh">#</span> sed -i &#39;s/^Storage=volatile$/#Storage=auto/&#39; $TEMP_MNT/etc/systemd/journald.conf
+<span class="gh">#</span> umount $TEMP_MNT
+</code></pre></div>
+
+<p>将 journald 日志从发送到内存修改回缺省值（如果 <code>/var/log/journal</code> 存在的话记录到磁盘），因为一个用户报告说，他的客户端由于应用程序生成了大量的系统日志而产生内存溢出错误，导致它的客户端被卡住。而将日志记录到磁盘的负面影响是客户端产生了额外的写入流量，这将在你的网络引导服务器上可能增加一些没有必要的 I/O。你应该去决定到底使用哪个选择 —— 记录到内存还是记录到硬盘 —— 哪个更合适取决于你的环境。</p>
+<p>因为你的模板镜像在以后不能做任何的更改，因此在它上面设置不可更改标志，然后重启动 tgtd.service：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> chattr +i /$MY_FC.img
+<span class="gh">#</span> systemctl start tgtd.service
+</code></pre></div>
+
+<p>现在，更新 bootmenu 应用程序：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># cat &lt;&lt; &#39;END&#39; &gt; $MY_MOJO/bootmenu.pl</span>
+<span class="c1">#!/usr/bin/env perl</span>
+
+<span class="k">use</span><span class="w"> </span><span class="nn">lib</span><span class="w"> </span><span class="s">&#39;lib&#39;</span><span class="p">;</span>
+
+<span class="k">use</span><span class="w"> </span><span class="nn">PAM</span><span class="p">;</span>
+<span class="k">use</span><span class="w"> </span><span class="nn">Mojolicious::Lite</span><span class="p">;</span>
+<span class="k">use</span><span class="w"> </span><span class="nn">Mojolicious::Plugins</span><span class="p">;</span>
+<span class="k">use</span><span class="w"> </span><span class="nn">Mojo::Util</span><span class="w"> </span><span class="p">(</span><span class="s">&#39;url_unescape&#39;</span><span class="p">);</span>
+
+<span class="n">plugin</span><span class="w"> </span><span class="s">&#39;Config&#39;</span><span class="p">;</span>
+
+<span class="n">get</span><span class="w"> </span><span class="s">&#39;/menu&#39;</span><span class="p">;</span>
+<span class="n">get</span><span class="w"> </span><span class="s">&#39;/boot&#39;</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="k">sub</span><span class="w"> </span><span class="p">{</span>
+<span class="w">   </span><span class="k">my</span><span class="w"> </span><span class="nv">$c</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">shift</span><span class="p">;</span>
+
+<span class="w">   </span><span class="k">my</span><span class="w"> </span><span class="nv">$instance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">$c</span><span class="o">-&gt;</span><span class="n">param</span><span class="p">(</span><span class="s">&#39;instance&#39;</span><span class="p">);</span>
+<span class="w">   </span><span class="k">my</span><span class="w"> </span><span class="nv">$username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">$c</span><span class="o">-&gt;</span><span class="n">param</span><span class="p">(</span><span class="s">&#39;username&#39;</span><span class="p">);</span>
+<span class="w">   </span><span class="k">my</span><span class="w"> </span><span class="nv">$password</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">$c</span><span class="o">-&gt;</span><span class="n">param</span><span class="p">(</span><span class="s">&#39;password&#39;</span><span class="p">);</span>
+
+<span class="w">   </span><span class="k">my</span><span class="w"> </span><span class="nv">$chapscrt</span><span class="p">;</span>
+<span class="w">   </span><span class="k">my</span><span class="w"> </span><span class="nv">$template</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;menu&#39;</span><span class="p">;</span>
+
+<span class="w">   </span><span class="p">{</span>
+<span class="w">      </span><span class="k">last</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nv">$instance</span><span class="w"> </span><span class="o">=~</span><span class="sr"> /^fc[[:digit:]]{2}$/</span><span class="p">;</span>
+<span class="w">      </span><span class="k">last</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nv">$username</span><span class="w"> </span><span class="o">=~</span><span class="sr"> /^[[:alnum:]]+$/</span><span class="p">;</span>
+<span class="w">      </span><span class="k">last</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nn">PAM::</span><span class="n">auth</span><span class="p">(</span><span class="nv">$username</span><span class="p">,</span><span class="w"> </span><span class="n">url_unescape</span><span class="p">(</span><span class="nv">$password</span><span class="p">));</span>
+<span class="w">      </span><span class="k">last</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nv">$chapscrt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sb">`sudo scripts/mktgt $instance $username`</span><span class="p">;</span>
+<span class="w">      </span><span class="nv">$template</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">$instance</span><span class="p">;</span>
+<span class="w">   </span><span class="p">}</span>
+
+<span class="w">   </span><span class="k">return</span><span class="w"> </span><span class="nv">$c</span><span class="o">-&gt;</span><span class="n">render</span><span class="p">(</span><span class="n">template</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="nv">$template</span><span class="p">,</span><span class="w"> </span><span class="n">username</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="nv">$username</span><span class="p">,</span><span class="w"> </span><span class="n">chapscrt</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="nv">$chapscrt</span><span class="p">);</span>
+<span class="p">};</span>
+
+<span class="nn">app</span><span class="o">-&gt;</span><span class="n">start</span><span class="p">;</span>
+<span class="k">END</span>
+</code></pre></div>
+
+<p>新版本的 bootmenu 应用程序调用一个定制的 <code>mktgt</code> 脚本，如果成功，它将为每个它自己创建的新的 iSCSI 目标返回一个随机的 <a href="https://en.wikipedia.org/wiki/Challenge-Handshake_Authentication_Protocol">CHAP</a> 密码。这个 CHAP 密码可以防止其它用户的 iSCSI 目标以间接方式挂载这个用户的目标。这个应用程序只有在用户密码认证成功之后才返回一个正确的 iSCSI 目标密码。</p>
+<p><code>mktgt</code> 脚本要加 <code>sudo</code> 前缀来运行，因为它需要 root 权限去创建目标。</p>
+<p><code>$username</code> 和 <code>$chapscrt</code> 变量也传递给 <code>render</code> 命令，因此在需要的时候，它们也能够被纳入到模板中返回给用户。</p>
+<p>接下来，更新我们的引导模板，以便于它们能够读取用户名和 <code>chapscrt</code> 变量，并传递它们到所属的终端用户。也要更新模板以 rw（读写）模式加载根文件系统：</p>
+<div class="highlight"><pre><span></span><code><span class="x"># cd $MY_MOJO/templates</span>
+<span class="x"># sed -i &quot;s/:$MY_FC/:$MY_FC-</span><span class="cp">&lt;%=</span><span class="w"> </span><span class="p">\</span><span class="vg">$username</span><span class="w"> </span><span class="cp">%&gt;</span><span class="x">/g&quot; $MY_FC.html.ep</span>
+<span class="x"># sed -i &quot;s/ netroot=iscsi:/ netroot=iscsi:</span><span class="cp">&lt;%=</span><span class="w"> </span><span class="p">\</span><span class="vg">$username</span><span class="w"> </span><span class="cp">%&gt;</span><span class="x">:</span><span class="cp">&lt;%=</span><span class="w"> </span><span class="p">\</span><span class="vg">$chapscrt</span><span class="w"> </span><span class="cp">%&gt;</span><span class="x">@/&quot; $MY_FC.html.ep</span>
+<span class="x"># sed -i &quot;s/ ro / rw /&quot; $MY_FC.html.ep</span>
+</code></pre></div>
+
+<p>运行上面的命令后，你应该会看到如下的引导模板：</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#!ipxe</span>
+<span class="n">kernel</span><span class="w"> </span><span class="o">--</span><span class="n">name</span><span class="w"> </span><span class="n">kernel</span><span class="p">.</span><span class="n">efi</span><span class="w"> </span><span class="n">$</span><span class="p">{</span><span class="n">prefix</span><span class="p">}</span><span class="o">/</span><span class="n">vmlinuz</span><span class="mf">-4.19.5-300.f</span><span class="n">c29</span><span class="p">.</span><span class="n">x86_64</span><span class="w"> </span><span class="n">initrd</span><span class="o">=</span><span class="n">initrd</span><span class="p">.</span><span class="n">img</span><span class="w"> </span><span class="n">rw</span><span class="w"> </span><span class="n">ip</span><span class="o">=</span><span class="n">dhcp</span><span class="w"> </span><span class="n">rd</span><span class="p">.</span><span class="n">peerdns</span><span class="o">=</span><span class="mi">0</span><span class="w"> </span><span class="n">nameserver</span><span class="o">=</span><span class="mf">192.0.2.91</span><span class="w"> </span><span class="n">nameserver</span><span class="o">=</span><span class="mf">192.0.2.92</span><span class="w"> </span><span class="n">root</span><span class="o">=/</span><span class="n">dev</span><span class="o">/</span><span class="n">disk</span><span class="o">/</span><span class="n">by</span><span class="o">-</span><span class="n">path</span><span class="o">/</span><span class="n">ip</span><span class="mf">-192.0.2.158</span><span class="o">:</span><span class="mi">3260</span><span class="o">-</span><span class="n">iscsi</span><span class="o">-</span><span class="n">iqn</span><span class="p">.</span><span class="n">edu</span><span class="p">.</span><span class="n">example</span><span class="p">.</span><span class="n">server</span><span class="mo">-01</span><span class="o">:</span><span class="n">fc29</span><span class="o">-&lt;%=</span><span class="w"> </span><span class="n">$username</span><span class="w"> </span><span class="o">%&gt;-</span><span class="n">lun</span><span class="mi">-1</span><span class="w"> </span><span class="n">netroot</span><span class="o">=</span><span class="n">iscsi</span><span class="o">:&lt;%=</span><span class="w"> </span><span class="n">$username</span><span class="w"> </span><span class="o">%&gt;:&lt;%=</span><span class="w"> </span><span class="n">$chapscrt</span><span class="w"> </span><span class="o">%&gt;</span><span class="mf">@192.0.2.158</span><span class="o">::::</span><span class="n">iqn</span><span class="p">.</span><span class="n">edu</span><span class="p">.</span><span class="n">example</span><span class="p">.</span><span class="n">server</span><span class="mo">-01</span><span class="o">:</span><span class="n">fc29</span><span class="o">-&lt;%=</span><span class="w"> </span><span class="n">$username</span><span class="w"> </span><span class="o">%&gt;</span><span class="w"> </span><span class="n">console</span><span class="o">=</span><span class="n">tty0</span><span class="w"> </span><span class="n">console</span><span class="o">=</span><span class="n">ttyS0</span><span class="p">,</span><span class="mi">115200</span><span class="n">n8</span><span class="w"> </span><span class="n">audit</span><span class="o">=</span><span class="mi">0</span><span class="w"> </span><span class="n">selinux</span><span class="o">=</span><span class="mi">0</span><span class="w"> </span><span class="n">quiet</span>
+<span class="n">initrd</span><span class="w"> </span><span class="o">--</span><span class="n">name</span><span class="w"> </span><span class="n">initrd</span><span class="p">.</span><span class="n">img</span><span class="w"> </span><span class="n">$</span><span class="p">{</span><span class="n">prefix</span><span class="p">}</span><span class="o">/</span><span class="n">initramfs</span><span class="mf">-4.19.5-300.f</span><span class="n">c29</span><span class="p">.</span><span class="n">x86_64</span><span class="p">.</span><span class="n">img</span>
+<span class="n">boot</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">chain</span><span class="w"> </span><span class="n">https</span><span class="o">:</span><span class="c1">//server-01.example.edu/menu</span>
+</code></pre></div>
+
+<p>注意：如果在 <a href="https://en.wikipedia.org/wiki/String_interpolation">插入</a> 变量后需要查看引导模板，你可以在 <code>boot</code> 命令之前，在它自己的行中插入 <code>shell</code> 命令。然后在你网络引导你的客户端时，iPXE 将在那里给你提供一个用于交互的 shell，你可以在 shell 中输入 <code>imgstat</code> 去查看传递到内核的参数。如果一切正确，你可以输入 <code>exit</code> 去退出 shell 并继续引导过程。</p>
+<p>现在，通过 <code>sudo</code> 允许 bootmenu 用户以 root 权限去运行 <code>mktgt</code> 脚本（仅这个脚本）：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> echo &quot;bootmenu ALL = NOPASSWD: $MY_MOJO/scripts/mktgt *&quot; &gt; /etc/sudoers.d/bootmenu
+</code></pre></div>
+
+<p>bootmenu 用户不应该写访问 <code>mktgt</code> 脚本或在它的家目录下的任何其它文件。在 <code>/opt/bootmenu</code> 目录下的所有文件的属主应该是 root，并且不应该被其它任何 root 以外的用户可写。</p>
+<p><code>sudo</code> 在使用 systemd 的 <code>DynamicUser</code> 选项下不能正常工作，因此创建一个普通用户帐户，并设置 systemd 服务以那个用户运行：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># useradd -r -c &#39;iPXE Boot Menu Service&#39; -d /opt/bootmenu -s /sbin/nologin bootmenu</span>
+<span class="c1"># sed -i &#39;s/^DynamicUser=true$/User=bootmenu/&#39; /etc/systemd/system/bootmenu.service</span>
+<span class="c1"># systemctl daemon-reload</span>
+</code></pre></div>
+
+<p>最后，为写时复制覆盖创建一个目录，并创建管理 iSCSI 目标的 <code>mktgt</code> 脚本和它们的覆盖支持存储：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># mkdir /$MY_FC.cow</span>
+<span class="c1"># mkdir $MY_MOJO/scripts</span>
+<span class="c1"># cat &lt;&lt; &#39;END&#39; &gt; $MY_MOJO/scripts/mktgt</span>
+<span class="c1">#!/usr/bin/env perl</span>
+
+<span class="c1"># if another instance of this script is running, wait for it to finish</span>
+<span class="s">&quot;$ENV{FLOCKER}&quot;</span><span class="w"> </span><span class="ow">eq</span><span class="w"> </span><span class="s">&#39;MKTGT&#39;</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="nb">exec</span><span class="w"> </span><span class="s">&quot;env FLOCKER=MKTGT flock /tmp $0 @ARGV&quot;</span><span class="p">;</span>
+
+<span class="c1"># use &quot;RETURN&quot; to print to STDOUT; everything else goes to STDERR by default</span>
+<span class="nb">open</span><span class="p">(</span><span class="n">RETURN</span><span class="p">,</span><span class="w"> </span><span class="s">&#39;&gt;&amp;&#39;</span><span class="p">,</span><span class="w"> </span><span class="bp">STDOUT</span><span class="p">);</span>
+<span class="nb">open</span><span class="p">(</span><span class="bp">STDOUT</span><span class="p">,</span><span class="w"> </span><span class="s">&#39;&gt;&amp;&#39;</span><span class="p">,</span><span class="w"> </span><span class="bp">STDERR</span><span class="p">);</span>
+
+<span class="k">my</span><span class="w"> </span><span class="nv">$instance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">shift</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="nb">die</span><span class="w"> </span><span class="s">&quot;instance not provided&quot;</span><span class="p">;</span>
+<span class="k">my</span><span class="w"> </span><span class="nv">$username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">shift</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="nb">die</span><span class="w"> </span><span class="s">&quot;username not provided&quot;</span><span class="p">;</span>
+
+<span class="k">my</span><span class="w"> </span><span class="nv">$img</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;/$instance.img&quot;</span><span class="p">;</span>
+<span class="k">my</span><span class="w"> </span><span class="nv">$dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;/$instance.cow&quot;</span><span class="p">;</span>
+<span class="k">my</span><span class="w"> </span><span class="nv">$top</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;$dir/$username&quot;</span><span class="p">;</span>
+
+<span class="o">-</span><span class="n">f</span><span class="w"> </span><span class="s">&quot;$img&quot;</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="nb">die</span><span class="w"> </span><span class="s">&quot;&#39;$img&#39; is not a file&quot;</span><span class="p">;</span><span class="w"> </span>
+<span class="o">-</span><span class="n">d</span><span class="w"> </span><span class="s">&quot;$dir&quot;</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="nb">die</span><span class="w"> </span><span class="s">&quot;&#39;$dir&#39; is not a directory&quot;</span><span class="p">;</span>
+
+<span class="k">my</span><span class="w"> </span><span class="nv">$base</span><span class="p">;</span>
+<span class="nb">die</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nv">$base</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sb">`losetup --show --read-only --nooverlap --find $img`</span><span class="p">;</span>
+<span class="nb">chomp</span><span class="w"> </span><span class="nv">$base</span><span class="p">;</span>
+
+<span class="k">my</span><span class="w"> </span><span class="nv">$size</span><span class="p">;</span>
+<span class="nb">die</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nv">$size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sb">`blockdev --getsz $base`</span><span class="p">;</span>
+<span class="nb">chomp</span><span class="w"> </span><span class="nv">$size</span><span class="p">;</span>
+
+<span class="c1"># create the per-user sparse file if it does not exist</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="w"> </span><span class="o">-</span><span class="n">e</span><span class="w"> </span><span class="s">&quot;$top&quot;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">   </span><span class="nb">die</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nb">system</span><span class="p">(</span><span class="s">&quot;dd if=/dev/zero of=$top status=none bs=512 count=0 seek=$size&quot;</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="c1"># create the copy-on-write overlay if it does not exist</span>
+<span class="k">my</span><span class="w"> </span><span class="nv">$cow</span><span class="o">=</span><span class="s">&quot;$instance-$username&quot;</span><span class="p">;</span>
+<span class="k">my</span><span class="w"> </span><span class="nv">$dev</span><span class="o">=</span><span class="s">&quot;/dev/mapper/$cow&quot;</span><span class="p">;</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="w"> </span><span class="o">-</span><span class="n">e</span><span class="w"> </span><span class="s">&quot;$dev&quot;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">   </span><span class="k">my</span><span class="w"> </span><span class="nv">$over</span><span class="p">;</span>
+<span class="w">   </span><span class="nb">die</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nv">$over</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sb">`losetup --show --nooverlap --find $top`</span><span class="p">;</span>
+<span class="w">   </span><span class="nb">chomp</span><span class="w"> </span><span class="nv">$over</span><span class="p">;</span>
+<span class="w">   </span><span class="nb">die</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nb">system</span><span class="p">(</span><span class="s">&quot;echo 0 $size snapshot $base $over p 8 | dmsetup create $cow&quot;</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="k">my</span><span class="w"> </span><span class="nv">$tgtadm</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;/usr/sbin/tgtadm --lld iscsi&#39;</span><span class="p">;</span>
+
+<span class="c1"># get textual representations of the iscsi targets</span>
+<span class="k">my</span><span class="w"> </span><span class="nv">$text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sb">`$tgtadm --op show --mode target`</span><span class="p">;</span>
+<span class="k">my</span><span class="w"> </span><span class="nv">@targets</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">$text</span><span class="w"> </span><span class="o">=~</span><span class="sr"> /(?:^T.*\n)(?:^ .*\n)*/mg</span><span class="p">;</span>
+
+<span class="c1"># convert the textual representations into a hash table</span>
+<span class="k">my</span><span class="w"> </span><span class="nv">$targets</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{};</span>
+<span class="k">foreach</span><span class="w"> </span><span class="p">(</span><span class="nv">@targets</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">   </span><span class="k">my</span><span class="w"> </span><span class="nv">$tgt</span><span class="p">;</span>
+<span class="w">   </span><span class="k">my</span><span class="w"> </span><span class="nv">$sid</span><span class="p">;</span>
+
+<span class="w">   </span><span class="k">foreach</span><span class="w"> </span><span class="p">(</span><span class="nb">split</span><span class="w"> </span><span class="sr">/\n/</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="sr">/^Target (\d+)(?{ $tgt = $targets-&gt;{$^N} = [] })/</span><span class="p">;</span>
+<span class="w">      </span><span class="sr">/I_T nexus: (\d+)(?{ $sid = $^N })/</span><span class="p">;</span>
+<span class="w">      </span><span class="sr">/Connection: (\d+)(?{ push @{$tgt}, [ $sid, $^N ] })/</span><span class="p">;</span>
+<span class="w">   </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="k">my</span><span class="w"> </span><span class="nv">$hostname</span><span class="p">;</span>
+<span class="nb">die</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nv">$hostname</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sb">`hostname`</span><span class="p">;</span>
+<span class="nb">chomp</span><span class="w"> </span><span class="nv">$hostname</span><span class="p">;</span>
+
+<span class="k">my</span><span class="w"> </span><span class="nv">$target</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;iqn.&#39;</span><span class="w"> </span><span class="o">.</span><span class="w"> </span><span class="nb">join</span><span class="p">(</span><span class="s">&#39;.&#39;</span><span class="p">,</span><span class="w"> </span><span class="nb">reverse</span><span class="w"> </span><span class="nb">split</span><span class="p">(</span><span class="s">&#39;\.&#39;</span><span class="p">,</span><span class="w"> </span><span class="nv">$hostname</span><span class="p">))</span><span class="w"> </span><span class="o">.</span><span class="w"> </span><span class="s">&quot;:$cow&quot;</span><span class="p">;</span>
+
+<span class="c1"># find the target id corresponding to the provided target name and</span>
+<span class="c1"># close any existing connections to it</span>
+<span class="k">my</span><span class="w"> </span><span class="nv">$tid</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="k">foreach</span><span class="w"> </span><span class="p">(</span><span class="nv">@targets</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">   </span><span class="k">next</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="sr">/^Target (\d+)(?{ $tid = $^N }): $target$/m</span><span class="p">;</span>
+<span class="w">   </span><span class="k">foreach</span><span class="w"> </span><span class="p">(</span><span class="nv">@</span><span class="p">{</span><span class="nv">$targets</span><span class="o">-&gt;</span><span class="p">{</span><span class="nv">$tid</span><span class="p">}})</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nb">die</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nb">system</span><span class="p">(</span><span class="s">&quot;$tgtadm --op delete --mode conn --tid $tid --sid $_-&gt;[0] --cid $_-&gt;[1]&quot;</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">   </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="c1"># create a new target if an existing one was not found</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nv">$tid</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">   </span><span class="c1"># find an available target id</span>
+<span class="w">   </span><span class="k">my</span><span class="w"> </span><span class="nv">@ids</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nb">sort</span><span class="w"> </span><span class="nb">keys</span><span class="w"> </span><span class="nv">%</span><span class="p">{</span><span class="nv">$targets</span><span class="p">});</span>
+<span class="w">   </span><span class="nv">$tid</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w"> </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="nv">$ids</span><span class="p">[</span><span class="nv">$tid</span><span class="p">]</span><span class="o">==</span><span class="nv">$tid</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nv">$tid</span><span class="o">++</span><span class="w"> </span><span class="p">}</span>
+
+<span class="w">   </span><span class="c1"># create the target</span>
+<span class="w">   </span><span class="nb">die</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="o">-</span><span class="n">e</span><span class="w"> </span><span class="s">&quot;$dev&quot;</span><span class="p">;</span>
+<span class="w">   </span><span class="nb">die</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nb">system</span><span class="p">(</span><span class="s">&quot;$tgtadm --op new --mode target --tid $tid --targetname $target&quot;</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">   </span><span class="nb">die</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nb">system</span><span class="p">(</span><span class="s">&quot;$tgtadm --op new --mode logicalunit --tid $tid --lun 1 --backing-store $dev&quot;</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">   </span><span class="nb">die</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nb">system</span><span class="p">(</span><span class="s">&quot;$tgtadm --op bind --mode target --tid $tid --initiator-address ALL&quot;</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="c1"># (re)set the provided target&#39;s chap password</span>
+<span class="k">my</span><span class="w"> </span><span class="nv">$password</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">join</span><span class="p">(</span><span class="s">&#39;&#39;</span><span class="p">,</span><span class="w"> </span><span class="nb">map</span><span class="p">(</span><span class="nb">chr</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="nb">rand</span><span class="p">(</span><span class="mi">26</span><span class="p">))</span><span class="o">+</span><span class="mi">65</span><span class="p">),</span><span class="w"> </span><span class="mi">1</span><span class="o">..</span><span class="mi">8</span><span class="p">));</span>
+<span class="k">my</span><span class="w"> </span><span class="nv">$accounts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sb">`$tgtadm --op show --mode account`</span><span class="p">;</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nv">$accounts</span><span class="w"> </span><span class="o">=~</span><span class="sr"> / $username$/m</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">   </span><span class="nb">die</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nb">system</span><span class="p">(</span><span class="s">&quot;$tgtadm --op delete --mode account --user $username&quot;</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="nb">die</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nb">system</span><span class="p">(</span><span class="s">&quot;$tgtadm --op new --mode account --user $username --password $password&quot;</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="nb">die</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nb">system</span><span class="p">(</span><span class="s">&quot;$tgtadm --op bind --mode account --tid $tid --user $username&quot;</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+
+<span class="c1"># return the new password to the iscsi target on stdout</span>
+<span class="k">print</span><span class="w"> </span><span class="n">RETURN</span><span class="w"> </span><span class="nv">$password</span><span class="p">;</span>
+<span class="k">END</span>
+<span class="c1"># chmod +x $MY_MOJO/scripts/mktgt</span>
+</code></pre></div>
+
+<p>上面的脚本将做以下五件事情：</p>
+<ol>
+<li>创建 <code>/&lt;instance&gt;.cow/&lt;username&gt;</code> 稀疏文件（如果不存在的话）。</li>
+<li>创建 <code>/dev/mapper/&lt;instance&gt;-&lt;username&gt;</code> 设备节点作为 iSCSI 目标的写时复制支持存储（如果不存在的话）。</li>
+<li>创建 <code>iqn.&lt;reverse-hostname&gt;:&lt;instance&gt;-&lt;username&gt;</code> iSCSI 目标（如果不存在的话）。或者，如果已存在了，它将关闭任何已存在的连接，因为在任何时刻，镜像只能以只读模式从一个地方打开。</li>
+<li>它在 <code>iqn.&lt;reverse-hostname&gt;:&lt;instance&gt;-&lt;username&gt;</code> iSCSI 目标上（重新）设置 chap 密码为一个新的随机值。</li>
+<li>（如果前面的所有任务都成功的话）它在 <a href="https://en.wikipedia.org/wiki/Standard_streams">标准输出</a> 上显示新的 chap 密码。</li>
+</ol>
+<p>你应该可以在命令行上通过使用有效的测试参数来运行它，以测试 <code>mktgt</code> 脚本能否正常工作。例如：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> echo `$MY_MOJO/scripts/mktgt fc29 jsmith`
+</code></pre></div>
+
+<p>当你从命令行上运行时，<code>mktgt</code> 脚本应该会输出 iSCSI 目标的一个随意的八字符随机密码（如果成功的话）或者是出错位置的行号（如果失败的话）。</p>
+<p>有时候，你可能需要在不停止整个服务的情况下删除一个 iSCSI 目标。例如，一个用户可能无意中损坏了他的个人镜像，在那种情况下，你可能需要按步骤撤销上面的 <code>mktgt</code> 脚本所做的事情，以便于他下次登入时他将得到一个原始镜像。</p>
+<p>下面是用于撤销的 <code>rmtgt</code> 脚本，它以相反的顺序做了上面 <code>mktgt</code> 脚本所做的事情：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># mkdir $HOME/bin</span>
+<span class="c1"># cat &lt;&lt; &#39;END&#39; &gt; $HOME/bin/rmtgt</span>
+<span class="c1">#!/usr/bin/env perl</span>
+
+<span class="nv">@ARGV</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="nb">die</span><span class="w"> </span><span class="s">&quot;usage: $0 &lt;instance&gt; &lt;username&gt; [+d|+f]\n&quot;</span><span class="p">;</span>
+
+<span class="k">my</span><span class="w"> </span><span class="nv">$instance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">shift</span><span class="p">;</span>
+<span class="k">my</span><span class="w"> </span><span class="nv">$username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">shift</span><span class="p">;</span>
+
+<span class="k">my</span><span class="w"> </span><span class="nv">$rmd</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nv">$ARGV</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="ow">eq</span><span class="w"> </span><span class="s">&#39;+d&#39;</span><span class="p">);</span><span class="w"> </span><span class="c1">#remove device node if +d flag is set</span>
+<span class="k">my</span><span class="w"> </span><span class="nv">$rmf</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nv">$ARGV</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="ow">eq</span><span class="w"> </span><span class="s">&#39;+f&#39;</span><span class="p">);</span><span class="w"> </span><span class="c1">#remove sparse file if +f flag is set</span>
+<span class="k">my</span><span class="w"> </span><span class="nv">$cow</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;$instance-$username&quot;</span><span class="p">;</span>
+
+<span class="k">my</span><span class="w"> </span><span class="nv">$hostname</span><span class="p">;</span>
+<span class="nb">die</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nv">$hostname</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sb">`hostname`</span><span class="p">;</span>
+<span class="nb">chomp</span><span class="w"> </span><span class="nv">$hostname</span><span class="p">;</span>
+
+<span class="k">my</span><span class="w"> </span><span class="nv">$tgtadm</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;/usr/sbin/tgtadm&#39;</span><span class="p">;</span>
+<span class="k">my</span><span class="w"> </span><span class="nv">$target</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;iqn.&#39;</span><span class="w"> </span><span class="o">.</span><span class="w"> </span><span class="nb">join</span><span class="p">(</span><span class="s">&#39;.&#39;</span><span class="p">,</span><span class="w"> </span><span class="nb">reverse</span><span class="w"> </span><span class="nb">split</span><span class="p">(</span><span class="s">&#39;\.&#39;</span><span class="p">,</span><span class="w"> </span><span class="nv">$hostname</span><span class="p">))</span><span class="w"> </span><span class="o">.</span><span class="w"> </span><span class="s">&quot;:$cow&quot;</span><span class="p">;</span>
+
+<span class="k">my</span><span class="w"> </span><span class="nv">$text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sb">`$tgtadm --op show --mode target`</span><span class="p">;</span>
+<span class="k">my</span><span class="w"> </span><span class="nv">@targets</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">$text</span><span class="w"> </span><span class="o">=~</span><span class="sr"> /(?:^T.*\n)(?:^ .*\n)*/mg</span><span class="p">;</span>
+
+<span class="k">my</span><span class="w"> </span><span class="nv">$targets</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{};</span>
+<span class="k">foreach</span><span class="w"> </span><span class="p">(</span><span class="nv">@targets</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">   </span><span class="k">my</span><span class="w"> </span><span class="nv">$tgt</span><span class="p">;</span>
+<span class="w">   </span><span class="k">my</span><span class="w"> </span><span class="nv">$sid</span><span class="p">;</span>
+
+<span class="w">   </span><span class="k">foreach</span><span class="w"> </span><span class="p">(</span><span class="nb">split</span><span class="w"> </span><span class="sr">/\n/</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="sr">/^Target (\d+)(?{ $tgt = $targets-&gt;{$^N} = [] })/</span><span class="p">;</span>
+<span class="w">      </span><span class="sr">/I_T nexus: (\d+)(?{ $sid = $^N })/</span><span class="p">;</span>
+<span class="w">      </span><span class="sr">/Connection: (\d+)(?{ push @{$tgt}, [ $sid, $^N ] })/</span><span class="p">;</span>
+<span class="w">   </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="k">my</span><span class="w"> </span><span class="nv">$tid</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="k">foreach</span><span class="w"> </span><span class="p">(</span><span class="nv">@targets</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">   </span><span class="k">next</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="sr">/^Target (\d+)(?{ $tid = $^N }): $target$/m</span><span class="p">;</span>
+<span class="w">   </span><span class="k">foreach</span><span class="w"> </span><span class="p">(</span><span class="nv">@</span><span class="p">{</span><span class="nv">$targets</span><span class="o">-&gt;</span><span class="p">{</span><span class="nv">$tid</span><span class="p">}})</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nb">die</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nb">system</span><span class="p">(</span><span class="s">&quot;$tgtadm --op delete --mode conn --tid $tid --sid $_-&gt;[0] --cid $_-&gt;[1]&quot;</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">   </span><span class="p">}</span>
+<span class="w">   </span><span class="nb">die</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nb">system</span><span class="p">(</span><span class="s">&quot;$tgtadm --op delete --mode target --tid $tid&quot;</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">   </span><span class="k">print</span><span class="w"> </span><span class="s">&quot;target $tid deleted\n&quot;</span><span class="p">;</span>
+<span class="w">   </span><span class="nb">sleep</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="k">my</span><span class="w"> </span><span class="nv">$dev</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;/dev/mapper/$cow&quot;</span><span class="p">;</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nv">$rmd</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="p">(</span><span class="nv">$rmf</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="o">-</span><span class="n">e</span><span class="w"> </span><span class="nv">$dev</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">   </span><span class="nb">die</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nb">system</span><span class="p">(</span><span class="s">&quot;dmsetup remove $cow&quot;</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">   </span><span class="k">print</span><span class="w"> </span><span class="s">&quot;device node $dev deleted\n&quot;</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nv">$rmf</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">   </span><span class="k">my</span><span class="w"> </span><span class="nv">$sf</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;/$instance.cow/$username&quot;</span><span class="p">;</span>
+<span class="w">   </span><span class="nb">die</span><span class="w"> </span><span class="s">&quot;sparse file $sf not found&quot;</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="o">-</span><span class="n">e</span><span class="w"> </span><span class="s">&quot;$sf&quot;</span><span class="p">;</span>
+<span class="w">   </span><span class="nb">die</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="nb">system</span><span class="p">(</span><span class="s">&quot;rm -f $sf&quot;</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">   </span><span class="nb">die</span><span class="w"> </span><span class="k">unless</span><span class="w"> </span><span class="ow">not</span><span class="w"> </span><span class="o">-</span><span class="n">e</span><span class="w"> </span><span class="s">&quot;$sf&quot;</span><span class="p">;</span>
+<span class="w">   </span><span class="k">print</span><span class="w"> </span><span class="s">&quot;sparse file $sf deleted\n&quot;</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="k">END</span>
+<span class="c1"># chmod +x $HOME/bin/rmtgt</span>
+</code></pre></div>
+
+<p>例如，使用上面的脚本去完全删除 fc29-jsmith 目标，包含它的支持存储设备节点和稀疏文件，可以按下列方式运行命令：</p>
+<div class="highlight"><pre><span></span><code># rmtgt fc29 jsmith +f
+</code></pre></div>
+
+<p>一旦你验证 <code>mktgt</code> 脚本工作正常，你可以重启动 bootmenu 服务。下次有人从网络引导时，他们应该能够接收到一个他们可以写入的、可”私人定制“的网络引导镜像的副本：</p>
+<div class="highlight"><pre><span></span><code># systemctl restart bootmenu.service
+</code></pre></div>
+
+<p>现在，就像下面的截屏示范的那样，用户应该可以修改根文件系统了：</p>
+<p><img alt="" src="/data/attachment/album/201901/23/222603oisydwtyqyguajdi.jpg"></p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

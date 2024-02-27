@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>scp 用户的 rsync 迁移指南</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Chasinglogic 在 SSH 8.0 预发布公告中，OpenSSH 项目表示，他们认为 scp 协议已经过时，不灵活，而且不容易修复，然后他们继而推荐使用 sftp 或 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2020/09/scp-yong-hu-de-rsync-qian-yi-zhi-nan.html" rel="bookmark"
+           title="Permalink to scp 用户的 rsync 迁移指南">scp 用户的 rsync 迁移指南</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2020-09-03T10:30:08+02:00">
+                Published: Thu 03 September 2020
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Chasinglogic</p>
+<p><img alt="" src="/data/attachment/album/202009/03/102942u7rxf79a7rsr9txz.jpg"></p>
+<p>在 <a href="https://lists.mindrot.org/pipermail/openssh-unix-dev/2019-March/037672.html">SSH 8.0 预发布公告</a>中，OpenSSH 项目表示，他们认为 scp 协议已经过时，不灵活，而且不容易修复，然后他们继而推荐使用 <code>sftp</code> 或 <code>rsync</code> 来进行文件传输。</p>
+<p>然而，很多用户都是从小用着 <code>scp</code> 命令长大的，所以对 <code>rsync</code> 并不熟悉。此外，<code>rsync</code> 可以做的事情也远不止复制文件，这可能会给菜鸟们留下复杂和难以掌握的印象。尤其是，<code>scp</code> 命令的标志大体上可以直接对应到 <code>cp</code> 命令的标志，而 <code>rsync</code> 命令的标志却和它大相径庭。</p>
+<p>本文将为熟悉 <code>scp</code> 的人提供一个介绍和过渡的指南。让我们跳进最常见的场景：复制文件和复制目录。</p>
+<h3>复制文件</h3>
+<p>对于复制单个文件而言，<code>scp</code> 和 <code>rsync</code> 命令实际上是等价的。比方说，你需要把 <code>foo.txt</code> 传到你在名为 <code>server</code> 的服务器上的主目录下：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>scp<span class="w"> </span>foo.txt<span class="w"> </span>me@server:/home/me/
+</code></pre></div>
+
+<p>相应的 <code>rsync</code> 命令只需要输入 <code>rsync</code> 取代 <code>scp</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>rsync<span class="w"> </span>foo.txt<span class="w"> </span>me@server:/home/me/
+</code></pre></div>
+
+<h3>复制目录</h3>
+<p>对于复制目录，就有了很大的分歧，这也解释了为什么 <code>rsync</code> 会被认为比 <code>scp</code> 更复杂。如果你想把 <code>bar</code> 目录复制到 <code>server</code> 服务器上，除了指定 <code>ssh</code> 信息外，相应的 <code>scp</code> 命令和 <code>cp</code> 命令一模一样。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>scp<span class="w"> </span>-r<span class="w"> </span>bar/<span class="w"> </span>me@server:/home/me/
+</code></pre></div>
+
+<p>对于 <code>rsync</code>，考虑的因素比较多，因为它是一个比较强大的工具。首先，我们来看一下最简单的形式：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>rsync<span class="w"> </span>-r<span class="w"> </span>bar/<span class="w"> </span>me@server:/home/me/
+</code></pre></div>
+
+<p>看起来很简单吧？对于只包含目录和普通文件的简单情况，这就可以了。然而，<code>rsync</code> 更在意发送与主机系统中一模一样的文件。让我们来创建一个稍微复杂一些，但并不罕见的例子：</p>
+<div class="highlight"><pre><span></span><code># 创建多级目录结构
+$ mkdir -p bar/baz
+# 在其根目录下创建文件
+$ touch bar/foo.txt
+# 现在创建一个符号链接指回到该文件
+$ cd bar/baz
+$ ln -s ../foo.txt link.txt
+# 返回原位置
+$ cd -
+</code></pre></div>
+
+<p>现在我们有了一个如下的目录树：</p>
+<div class="highlight"><pre><span></span><code><span class="n">bar</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">baz</span>
+<span class="err">│</span><span class="w">   </span><span class="err">└──</span><span class="w"> </span><span class="n">link</span><span class="p">.</span><span class="n">txt</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="p">..</span><span class="o">/</span><span class="n">foo</span><span class="p">.</span><span class="n">txt</span>
+<span class="err">└──</span><span class="w"> </span><span class="n">foo</span><span class="p">.</span><span class="n">txt</span>
+
+<span class="mi">1</span><span class="w"> </span><span class="n">directory</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="n">files</span>
+</code></pre></div>
+
+<p>如果我们尝试上面的命令来复制 <code>bar</code>，我们会注意到非常不同的（并令人惊讶的）结果。首先，我们来试试 <code>scp</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>scp<span class="w"> </span>-r<span class="w"> </span>bar/<span class="w"> </span>me@server:/home/me/
+</code></pre></div>
+
+<p>如果你 <code>ssh</code> 进入你的服务器，看看 <code>bar</code> 的目录树，你会发现它和你的主机系统有一个重要而微妙的区别：</p>
+<div class="highlight"><pre><span></span><code>bar
+├── baz
+│   └── link.txt
+└── foo.txt
+
+1 directory, 2 files
+</code></pre></div>
+
+<p>请注意，<code>link.txt</code> 不再是一个符号链接，它现在是一个 <code>foo.txt</code> 的完整副本。如果你习惯于使用 <code>cp</code>，这可能会是令人惊讶的行为。如果你尝试使用 <code>cp -r</code> 复制 <code>bar</code> 目录，你会得到一个新的目录，里面的符号链接和 <code>bar</code> 的一样。现在如果我们尝试使用之前的 <code>rsync</code> 命令，我们会得到一个警告：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>rsync<span class="w"> </span>-r<span class="w"> </span>bar/<span class="w"> </span>me@server:/home/me/
+skipping<span class="w"> </span>non-regular<span class="w"> </span>file<span class="w"> </span><span class="s2">&quot;bar/baz/link.txt&quot;</span>
+</code></pre></div>
+
+<p><code>rsync</code> 警告我们它发现了一个非常规文件，并正在跳过它。因为你没有告诉它可以复制符号链接，所以它忽略了它们。<code>rsync</code> 在手册中有一节“符号链接”，解释了所有可能的行为选项。在我们的例子中，我们需要添加 <code>-links</code> 标志：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>rsync<span class="w"> </span>-r<span class="w"> </span>--links<span class="w"> </span>bar/<span class="w"> </span>me@server:/home/me/
+</code></pre></div>
+
+<p>在远程服务器上，我们看到这个符号链接是作为一个符号链接复制过来的。请注意，这与 <code>scp</code> 复制符号链接的方式不同。</p>
+<div class="highlight"><pre><span></span><code><span class="n">bar</span><span class="o">/</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">baz</span>
+<span class="err">│</span><span class="w">   </span><span class="err">└──</span><span class="w"> </span><span class="n">link</span><span class="p">.</span><span class="n">txt</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="p">..</span><span class="o">/</span><span class="n">foo</span><span class="p">.</span><span class="n">txt</span>
+<span class="err">└──</span><span class="w"> </span><span class="n">foo</span><span class="p">.</span><span class="n">txt</span>
+
+<span class="mi">1</span><span class="w"> </span><span class="n">directory</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="n">files</span>
+</code></pre></div>
+
+<p>为了省去一些打字工作，并利用更多的文件保护选项，在复制目录时可以使用归档标志 <code>-archive</code>（简称 <code>-a</code>）。该归档标志将做大多数人所期望的事情，因为它可以实现递归复制、符号链接复制和许多其他选项。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>rsync<span class="w"> </span>-a<span class="w"> </span>bar/<span class="w"> </span>me@server:/home/me/
+</code></pre></div>
+
+<p>如果你感兴趣的话，<code>rsync</code> 手册页有关于存档标志的深入解释。</p>
+<h3>注意事项</h3>
+<p>不过，使用 <code>rsync</code> 有一个注意事项。使用 <code>scp</code> 比使用 <code>rsync</code> 更容易指定一个非标准的 ssh 端口。例如，如果 <code>server</code> 使用 8022 端口的 SSH 连接，那么这些命令就会像这样：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>scp<span class="w"> </span>-P<span class="w"> </span><span class="m">8022</span><span class="w"> </span>foo.txt<span class="w"> </span>me@server:/home/me/
+</code></pre></div>
+
+<p>而在使用 <code>rsync</code> 时，你必须指定要使用的“远程 shell”命令，默认是 <code>ssh</code>。你可以使用 <code>-e</code> 标志来指定。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>rsync<span class="w"> </span>-e<span class="w"> </span><span class="s1">&#39;ssh -p 8022&#39;</span><span class="w"> </span>foo.txt<span class="w"> </span>me@server:/home/me/
+</code></pre></div>
+
+<p><code>rsync</code> 会使用你的 <code>ssh</code> 配置；但是，如果你经常连接到这个服务器，你可以在你的 <code>~/.ssh/config</code> 文件中添加以下代码。这样你就不需要再为 <code>rsync</code> 或 <code>ssh</code> 命令指定端口了！</p>
+<div class="highlight"><pre><span></span><code>Host server
+    Port 8022
+</code></pre></div>
+
+<p>另外，如果你连接的每一台服务器都在同一个非标准端口上运行，你还可以配置 <code>RSYNC_RSH</code> 环境变量。</p>
+<h3>为什么你还是应该切换到 rsync？</h3>
+<p>现在我们已经介绍了从 <code>scp</code> 切换到 <code>rsync</code> 的日常使用案例和注意事项，让我们花一些时间来探讨一下为什么你可能想要使用 <code>rsync</code> 的优点。很多人在很久以前就已经开始使用 <code>rsync</code> 了，就是因为这些优点。</p>
+<h4>即时压缩</h4>
+<p>如果你和服务器之间的网络连接速度较慢或有限，<code>rsync</code> 可以花费更多的 CPU 处理能力来节省网络带宽。它通过在发送数据之前对数据进行即时压缩来实现。压缩可以用 <code>-z</code> 标志来启用。</p>
+<h4>差量传输</h4>
+<p><code>rsync</code> 也只在目标文件与源文件不同的情况下复制文件。这可以在目录中递归地工作。例如，如果你拿我们上面的最后一个 <code>bar</code> 的例子，并多次重新运行那个 <code>rsync</code> 命令，那么在最初的传输之后就不会有任何传输。如果你知道你会重复使用这些命令，例如备份到 U 盘，那么使用 <code>rsync</code> 即使是进行本地复制也是值得的，因为这个功能可以节省处理大型数据集的大量的时间。</p>
+<h4>同步</h4>
+<p>顾名思义，<code>rsync</code> 可以做的不仅仅是复制数据。到目前为止，我们只演示了如何使用 <code>rsync</code> 复制文件。如果你想让 <code>rsync</code> 把目标目录变成源目录的样子，你可以在 <code>rsync</code> 中添加删除标志 <code>-delete</code>。这个删除标志使得 <code>rsync</code> 将从源目录中复制不存在于目标目录中的文件，然后它将删除目标目录中不存在于源目录中的文件。结果就是目标目录和源目录完全一样。相比之下，<code>scp</code> 只会在目标目录下添加文件。</p>
+<h3>结论</h3>
+<p>对于简单的使用情况，<code>rsync</code> 并不比老牌的 <code>scp</code> 工具复杂多少。唯一显著的区别是在递归复制目录时使用 <code>-a</code> 而不是 <code>-r</code>。然而，正如我们看到的，<code>rsync</code> 的 <code>-a</code> 标志比 <code>scp</code> 的 <code>-r</code> 标志更像 <code>cp</code> 的 <code>-r</code> 标志。</p>
+<p>希望通过这些新命令，你可以加快你的文件传输工作流程。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

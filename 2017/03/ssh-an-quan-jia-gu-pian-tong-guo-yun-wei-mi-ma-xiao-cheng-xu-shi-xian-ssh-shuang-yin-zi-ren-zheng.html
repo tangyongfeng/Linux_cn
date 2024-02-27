@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>SSH 安全加固篇：通过“运维密码”小程序实现 SSH 双因子认证</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Netb2c 本文讲述了如何通过 Linux中国 所开发的微信小程序“运维密码”实现在 Linux 系统上 OpenSSH 双因子认证，从而对 SSH 进行安全加固。 背景 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/03/ssh-an-quan-jia-gu-pian-tong-guo-yun-wei-mi-ma-xiao-cheng-xu-shi-xian-ssh-shuang-yin-zi-ren-zheng.html" rel="bookmark"
+           title="Permalink to SSH 安全加固篇：通过“运维密码”小程序实现 SSH 双因子认证">SSH 安全加固篇：通过“运维密码”小程序实现 SSH 双因子认证</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-03-30T08:30:00+02:00">
+                Published: Thu 30 March 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Netb2c</p>
+<blockquote>
+<p>本文讲述了如何通过 <a href="https://linux.cn/">Linux中国</a> 所开发的微信小程序“<a href="/article-8317-1.html">运维密码</a>”实现在 Linux 系统上 OpenSSH 双因子认证，从而对 SSH 进行安全加固。</p>
+</blockquote>
+<h3>背景</h3>
+<p><img alt="" src="/data/attachment/album/201703/29/234422h4bvvp9d9olvfzp0.png"></p>
+<p>近来很多知名企业都出现了密码泄露，通过单一的密码对敏感和重要信息进行保护已经面临越来越多的挑战，因此业内对多重认证的呼声也越来越高，而其中的双因子认证得到了业界的普遍认可。</p>
+<h4>什么是双因子认证</h4>
+<p><ruby> 双因子认证 <rp>  （ </rp> <rt>  Two-factor authentication </rt> <rp>  ） </rp></ruby>（即 2FA），是一种通过组合两种不同的验证方式进行用户身份验证的机制。</p>
+<p>在这种多重认证的系统中，用户需要通过两种不同的认证程序：</p>
+<ul>
+<li>提供他们知道的信息（如用户名/密码）</li>
+<li>再借助其他工具提供用户所不知道的信息（如用手机生成的一次性密码）</li>
+</ul>
+<h3>SSH 双因子认证实现思路</h3>
+<p>在 SSH 服务器端安装 Google 身份验证器服务器端组件，这样，在使用密码或密钥登录 SSH 服务器时，同时通过与 Google 身份验证器相匹配的客户端所提供的验证信息来确认登录者的身份和权限。这里的客户端可以使用<ruby> <a href="https://github.com/google/google-authenticator">  Google 身份验证器 </a> <rp>  （ </rp> <rt>  Google Authenticator </rt> <rp>  ） </rp></ruby>应用，也可以使用我们开发的、采用同一个 RFC 规范的“运维密码”微信小程序。</p>
+<p>Google 身份验证器所采用的算法规范基于 <a href="http://tools.ietf.org/id/draft-mraihi-totp-timebased-06.html">TOTP RFC 草案</a>。</p>
+<p>（题外话，RSA 硬件令牌，也是采用了类似的机制，只不过客户端是硬件的；而最近 Apple 公司的一些服务所需要的双因子认证也是一样的，但是其用于呈现验证信息的是手机或平板上的 iOS 内部组件，非独立应用。）</p>
+<h4>关于Google 身份验证器</h4>
+<p>为了鼓励广泛采用双因子认证的方式，Google 公司发布了<ruby> <a href="https://github.com/google/google-authenticator">  Google 身份验证器 </a> <rp>  （ </rp> <rt>  Google Authenticator </rt> <rp>  ） </rp></ruby>，这是一款开源的、可基于开放规则（如 HMAP/ 基于时间）生成一次性密码的软件。它是一款跨平台软件，可运行在 Linux、Android、iOS 上。Google 公司同时也支持<ruby> 插件式鉴别模块 <rp>  （ </rp> <rt>  pluggable authentication module </rt> <rp>  ） </rp></ruby> PAM ，使其能和其它适用于 PAM 进行验证的工具（如 OpenSSH）协同工作。</p>
+<p>Google 身份验证器分为两个部分，分别是<a href="https://github.com/google/google-authenticator-libpam">服务器端组件</a>和客户端应用，都称之为“Google 身份验证器”，这里，我们为了澄清起见，会在说明时指明。</p>
+<h4>关于运维密码</h4>
+<p>Google 公司所开发的身份验证器以简洁著称，但也因此缺乏一些必要的特性，比如备份功能——这使得使用该身份验证器的人时时处于手机丢失的恐慌之中。（虽然 Google 提供的服务器端和自身的服务也提供了紧急验证码，以用于这种情况下的自救，但是很多采用 Google 身份验证器的服务并不支持和提供紧急验证码）</p>
+<p>作为一家紧密关注于运维安全、积极倡导信息安全的技术社区，Linux 中国 久已有开发一个新的替代品的想法。恰逢微信推出小程序平台，我们感觉到这正是一个良机，可以充分利用到微信和小程序的便利之处，又适合小程序的使用情境。因此，由 Linux 中国旗下的 LCTT 技术组的白宦成同学独立开发了一款旨在移动互联网场景中提供更好的多因子认证体验的小程序：<a href="/article-8317-1.html">运维密码</a>。</p>
+<p>顺便说一句，在产品初步成熟之后，我们已经将该小程序开源给社区，代码托管于 GitHub：<a href="https://github.com/LCTT/WeApp-Password">https://github.com/LCTT/WeApp-Password</a> ，希望更多的人能够受益和共同完善它，有什么功能需求、错误反馈请到 GitHub 上提出 issue，也欢迎发送拉取请求给我们。</p>
+<p>此外，大家在使用过程中，发现什么问题或需要帮助，也可以加入微信体验群：</p>
+<p><img alt="" src="/data/attachment/album/201704/02/183245nlijim1huakgc4ul.jpeg"></p>
+<p>扫描识别添加上面的好友，验证信息：“运维密码”，可获得入群邀请。</p>
+<p>言归正传，我们来看看如何使用“运维密码”来为你的 SSH 服务提供双因子认证支持。</p>
+<h3>如何开始</h3>
+<p>首先我们需要一些准备工作：</p>
+<ul>
+<li>一台运行着 OpenSSH 服务（版本大于 6.2）的 Linux 主机</li>
+<li>一台能运行微信的智能手机</li>
+<li>一台支持 SSH 登录的终端</li>
+</ul>
+<h3>在 Linux 系统中安装 Google 身份验证器服务器端组件</h3>
+<p>第一步需要在运行着 OpenSSH 服务的 Linux 主机上安装 Google 身份验证器服务器端组件。按照如下步骤安装 Google 身份验证器及其 PAM 模块。</p>
+<h4>用安装包安装 Google 身份验证器服务器端组件</h4>
+<p>如果你不想自己构建 Google 身份验证器服务器端组件，在几个主流 Linux 发行版上有已经编译好的安装包。安装包里面包含 Google 身份验证器服务器端组件的二进制程序和 PAM 模块。</p>
+<p>在 Ubuntu 上安装 Google 身份验证器服务器端组件：</p>
+<div class="highlight"><pre><span></span><code>sudo apt-get install libpam-google-authenticator
+</code></pre></div>
+
+<p>在 Fedora 上安装 Google 身份验证器服务器端组件：</p>
+<div class="highlight"><pre><span></span><code>sudo dnf install google-authenticator
+</code></pre></div>
+
+<p>在 CentOS 上安装 Google 身份验证器服务器端组件，需要首先<a href="/article-2324-1.html">启用 EPEL 软件库</a>，然后运行如下命令：</p>
+<div class="highlight"><pre><span></span><code>sudo yum install google-authenticator
+</code></pre></div>
+
+<h4>编译安装 Google 身份验证器服务器端组件</h4>
+<p>提示：编译安装建议对 Linux、pam 等熟悉的同学采用。</p>
+<p>首先，安装构建 Google 身份验证器所需的软件包。</p>
+<p>在 Debian、 Ubuntu 或 Linux Mint 上：</p>
+<div class="highlight"><pre><span></span><code>sudo apt-get install wget make gcc libpam0g-dev
+</code></pre></div>
+
+<p>在 CentOS、 Fedora 或 RHEL 上：</p>
+<div class="highlight"><pre><span></span><code>sudo yum install wget make gcc pam-devel
+</code></pre></div>
+
+<p>然后下载 Google 身份验证器服务器端组件的源代码：</p>
+<div class="highlight"><pre><span></span><code>git clone https://github.com/google/google-authenticator-libpam.git
+</code></pre></div>
+
+<p>编译安装 Google 身份验证器服务器端组件：</p>
+<div class="highlight"><pre><span></span><code>cd google-authenticator-libpam
+
+./bootstrap.sh
+./configure
+
+make
+</code></pre></div>
+
+<p>如果构建成功，你会在目录中看到 <code>pam_google_authenticator.so</code> 和 <code>google-authenticator</code> 两个二进制文件。</p>
+<p>最后，将 Google 身份验证器的服务器端组件安装到合适位置。其默认会安装到 <code>/usr/local/lib/security</code> 下，根据你的系统不同，你可能需要将其符号链接到 pam 库的位置（比如 CentOS 7 会在 <code>/usr/lib64/security</code>）。如下图所示：</p>
+<p><img alt="" src="/data/attachment/album/201703/29/223623g70fvkkshvkwtfzv.png"></p>
+<div class="highlight"><pre><span></span><code>sudo make install
+</code></pre></div>
+
+<p>至此，Google 身份验证器服务器端组件安装完成。</p>
+<h3>配置 Google 身份验证器服务器端组件及“运维密码”小程序</h3>
+<p>完成 Google 身份验证器服务器端组件的安装我们仅仅完成了第一步，接着需要对 Google 身份验证器服务器端组件、“运维密码”、OpenSSH 进行配置才能达到我们预期的效果。</p>
+<h4>配置 google-authenticator 及生成验证密钥</h4>
+<p>使用以下命令生成验证密钥：</p>
+<div class="highlight"><pre><span></span><code>./google-authenticator 
+</code></pre></div>
+
+<p>生成验证密钥的时候，会再次确认信息。</p>
+<div class="highlight"><pre><span></span><code><span class="k">Do</span><span class="w"> </span><span class="nv">you</span><span class="w"> </span><span class="nv">want</span><span class="w"> </span><span class="nv">authentication</span><span class="w"> </span><span class="nv">tokens</span><span class="w"> </span><span class="nv">to</span><span class="w"> </span><span class="nv">be</span><span class="w"> </span><span class="nv">time</span><span class="o">-</span><span class="nv">based</span><span class="w"> </span><span class="ss">(</span><span class="nv">y</span><span class="o">/</span><span class="nv">n</span><span class="ss">)</span>
+</code></pre></div>
+
+<p>意思是：你想要生成基于时间生成验证码吗？这里需要需要输入 <code>y</code>。</p>
+<p>输入 <code>y</code>之后你将看到一个代表着该“场景”密钥的二维码和密钥字符串，它使用如下二维码图形格式表示我们数字形态的密钥（这里也提供了一个用于在浏览器中再次显示该二维码的 URL，但是需要翻墙）。接着我们要用到它在“运维密码”上完成配置。（安装 google-authenticator 过程中若出现二维码无法显示的问题，请检查系统中是否安装了二维码生成器：<code>rpm - q qrencode</code>，若未安装，请运行命令 <code>yum install qrencode -y</code> 安装后重试。）</p>
+<p><img alt="" src="/data/attachment/album/201703/29/223836dy0wpp1ct0phy5g1.png"></p>
+<p>在二维码和密钥字符串后面，接着显示了一个当前的校验码和几个紧急密钥。紧急密钥你可以另行保存的一个安全的地方，以防你在无法使用 Google 身份验证器应用或“运维密码”时使用（紧急密钥是 8 位的，不同于普通的 6 位密钥，也是一次性使用的）。</p>
+<p><img alt="" src="/data/attachment/album/201703/29/223951fn5r958jililyz0k.jpg"></p>
+<p>保存 Google 服务器端组件的配置文件，Google 身份验证器虽然运行了，但是相关设置还没有保存，接下来会提示保存：</p>
+<div class="highlight"><pre><span></span><code>Do you want me to update your &quot;/root/.google_authenticator&quot; file? (y/n) 
+</code></pre></div>
+
+<p>意思是：你想将配置文件更新到 <code>/root/.google_authenticator</code> 保存吗？</p>
+<p>输入 <code>y</code> 回车。</p>
+<p><strong>禁止同一令牌多次登录</strong></p>
+<div class="highlight"><pre><span></span><code><span class="k">Do</span><span class="w"> </span><span class="nv">you</span><span class="w"> </span><span class="nv">want</span><span class="w"> </span><span class="nv">to</span><span class="w"> </span><span class="nv">disallow</span><span class="w"> </span><span class="nv">multiple</span><span class="w"> </span><span class="nv">uses</span><span class="w"> </span><span class="nv">of</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="nv">same</span><span class="w"> </span><span class="nv">authentication</span>
+<span class="nv">token</span>?<span class="w"> </span><span class="nv">This</span><span class="w"> </span><span class="nv">restricts</span><span class="w"> </span><span class="nv">you</span><span class="w"> </span><span class="nv">to</span><span class="w"> </span><span class="nv">one</span><span class="w"> </span><span class="nv">login</span><span class="w"> </span><span class="nv">about</span><span class="w"> </span><span class="nv">every</span><span class="w"> </span><span class="mi">30</span><span class="nv">s</span>,<span class="w"> </span><span class="nv">but</span><span class="w"> </span><span class="nv">it</span><span class="w"> </span><span class="nv">increases</span>
+<span class="nv">your</span><span class="w"> </span><span class="nv">chances</span><span class="w"> </span><span class="nv">to</span><span class="w"> </span><span class="nv">notice</span><span class="w"> </span><span class="nv">or</span><span class="w"> </span><span class="nv">even</span><span class="w"> </span><span class="nv">prevent</span><span class="w"> </span><span class="nv">man</span><span class="o">-</span><span class="nv">in</span><span class="o">-</span><span class="nv">the</span><span class="o">-</span><span class="nv">middle</span><span class="w"> </span><span class="nv">attacks</span><span class="w"> </span><span class="ss">(</span><span class="nv">y</span><span class="o">/</span><span class="nv">n</span><span class="ss">)</span>
+</code></pre></div>
+
+<p>意思是：你是否要禁用同一密钥多次登录，这将限制你每 30 秒只能使用该密钥登录一次，但这能够让你可以更多地被提醒受到了中间人攻击，甚至能够防止这种攻击。</p>
+<p>输入 <code>y</code> 回车。</p>
+<p><strong>时间容错设置</strong></p>
+<div class="highlight"><pre><span></span><code><span class="nv">By</span><span class="w"> </span><span class="nv">default</span>,<span class="w"> </span><span class="nv">tokens</span><span class="w"> </span><span class="nv">are</span><span class="w"> </span><span class="nv">good</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="mi">30</span><span class="w"> </span><span class="nv">seconds</span>.<span class="w"> </span><span class="nv">In</span><span class="w"> </span><span class="nv">order</span><span class="w"> </span><span class="nv">to</span><span class="w"> </span><span class="nv">compensate</span><span class="w"> </span><span class="k">for</span>
+<span class="nv">possible</span><span class="w"> </span><span class="nv">time</span><span class="o">-</span><span class="nv">skew</span><span class="w"> </span><span class="nv">between</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="nv">client</span><span class="w"> </span><span class="nv">and</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="nv">server</span>,<span class="w"> </span><span class="nv">we</span><span class="w"> </span><span class="nv">allow</span><span class="w"> </span><span class="nv">an</span><span class="w"> </span><span class="nv">extra</span>
+<span class="nv">token</span><span class="w"> </span><span class="nv">before</span><span class="w"> </span><span class="nv">and</span><span class="w"> </span><span class="nv">after</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="nv">current</span><span class="w"> </span><span class="nv">time</span>.<span class="w"> </span><span class="k">If</span><span class="w"> </span><span class="nv">you</span><span class="w"> </span><span class="nv">experience</span><span class="w"> </span><span class="nv">problems</span><span class="w"> </span><span class="nv">with</span>
+<span class="nv">poor</span><span class="w"> </span><span class="nv">time</span><span class="w"> </span><span class="nv">synchronization</span>,<span class="w"> </span><span class="nv">you</span><span class="w"> </span><span class="nv">can</span><span class="w"> </span><span class="nv">increase</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="nv">window</span><span class="w"> </span><span class="nv">from</span><span class="w"> </span><span class="nv">its</span><span class="w"> </span><span class="nv">default</span>
+<span class="nv">size</span><span class="w"> </span><span class="nv">of</span><span class="w"> </span><span class="o">+-</span><span class="mi">1</span><span class="nv">min</span><span class="w"> </span><span class="ss">(</span><span class="nv">window</span><span class="w"> </span><span class="nv">size</span><span class="w"> </span><span class="nv">of</span><span class="w"> </span><span class="mi">3</span><span class="ss">)</span><span class="w"> </span><span class="nv">to</span><span class="w"> </span><span class="nv">about</span><span class="w"> </span><span class="o">+-</span><span class="mi">4</span><span class="nv">min</span><span class="w"> </span><span class="ss">(</span><span class="nv">window</span><span class="w"> </span><span class="nv">size</span><span class="w"> </span><span class="nv">of</span>
+<span class="mi">17</span><span class="w"> </span><span class="nv">acceptable</span><span class="w"> </span><span class="nv">tokens</span><span class="ss">)</span>.
+
+<span class="k">Do</span><span class="w"> </span><span class="nv">you</span><span class="w"> </span><span class="nv">want</span><span class="w"> </span><span class="nv">to</span><span class="w"> </span><span class="k">do</span><span class="w"> </span><span class="nv">so</span>?<span class="w"> </span><span class="ss">(</span><span class="nv">y</span><span class="o">/</span><span class="nv">n</span><span class="ss">)</span><span class="w"> </span>
+</code></pre></div>
+
+<p>意思是：默认情况下，密钥在 30 秒内有效，为了防止由于客户端与服务器时间偏移（时间相差太大）导致认证失败，google 身份验证器设计了时间容错措施。可以让你使用与当前时间偏移 1 到 4 分钟的密钥。</p>
+<p>这个可根据实际情况进行配置，一般一分钟就足够了。</p>
+<p>输入 <code>y</code>回车。</p>
+<p><strong>暴力破解防护</strong></p>
+<div class="highlight"><pre><span></span><code><span class="k">If</span><span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="nv">computer</span><span class="w"> </span><span class="nv">that</span><span class="w"> </span><span class="nv">you</span><span class="w"> </span><span class="nv">are</span><span class="w"> </span><span class="nv">logging</span><span class="w"> </span><span class="nv">into</span><span class="w"> </span><span class="nv">isn</span><span class="err">&#39;t hardened against brute-force</span>
+<span class="err">login attempts, you can enable rate-limiting for the authentication module.</span>
+<span class="err">By default, this limits attackers to no more than 3 login attempts every 30s.</span>
+
+<span class="err">Do you want to enable rate-limiting (y/n) </span>
+</code></pre></div>
+
+<p>意思是：为了避免暴力破解，可以启用速率限制，默认情况下，每 30 秒只能尝试 3 次。</p>
+<p>输入 <code>y</code>回车。</p>
+<p><strong>配置完成</strong></p>
+<p>配置完成后会在home目录下生成一个权限为 400 的隐藏文件，如下图所示：</p>
+<p><img alt="" src="/data/attachment/album/201703/29/224056m505osu5rj77yr5n.jpg"></p>
+<h4>配置运维密码</h4>
+<p><strong>打开微信小程序</strong></p>
+<p>打开微信，依次点击“发现”，“小程序”，输入“运维密码”并搜索。或长按识别下列二维码：</p>
+<p><img alt="" src="/data/attachment/album/201704/18/231139di7prrdkpi7o45rd.jpg"></p>
+<p>点击“运维密码”进入应用，然后点击列表下方的“添加场景”：</p>
+<p><img alt="场景列表" src="/data/attachment/album/201704/14/083650lp2xivllix52x5p3.jpg" title="场景列表"></p>
+<p>这会调起“扫一扫”功能，请扫描配置 google-authenticator 时所生成的二维码，然后会识别出该场景信息，你可以根据需要修改场景信息，点击确定添加场景。</p>
+<p>这样 Google 身份验证器就和“运维密码”匹配上了。下面我们要使 SSH 服务可以支持该验证。</p>
+<h3>配置 SSH 服务</h3>
+<p><strong>添加认证模块</strong></p>
+<p>使用如下命令在 <code>/etc/pam.d/sshd</code> 文件添加认证模块：</p>
+<div class="highlight"><pre><span></span><code>echo &quot;auth required pam_google_authenticator.so&quot; &gt;&gt;/etc/pam.d/sshd
+</code></pre></div>
+
+<p>在 Centos 6.6 或更低的版本中如果遇到无法进行 google-authenticator 验证的情况，请将 <code>auth required pam_google_authenticator.so</code>放在 <code>/etc/pam.d/sshd</code> 文件的最顶端进行测试一下。</p>
+<p>配置挑战式密码认证：</p>
+<div class="highlight"><pre><span></span><code>sed -i &#39;s/ChallengeResponseAuthentication no/ChallengeResponseAuthentication yes/g&#39; /etc/ssh/sshd_config
+</code></pre></div>
+
+<p>重启 sshd 服务：</p>
+<div class="highlight"><pre><span></span><code>systemctl restart sshd.service
+</code></pre></div>
+
+<p><strong>切记，如果你是远程登录到服务器上配置，切勿退出当前的 SSH 会话，而应该另外开一个会话去测试 SSH 登录。重启不会中断当前的 SSH 会话。</strong></p>
+<h3>测试登录</h3>
+<p>以上配置完成基本上就搞定了，下面我们进行测试。</p>
+<h4>密码登录测试</h4>
+<p>另外开一个终端窗口进行连接，不要关闭当前的 SSH 连接。</p>
+<p>输入命令登录主机：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ssh</span><span class="w"> </span><span class="n">root</span><span class="mf">@10.112.2.3</span>
+</code></pre></div>
+
+<p>首先输入服务器的密码，接着会让输入“运维密码”生成的 6 位数字密钥。</p>
+<p><img alt="场景详情" src="/data/attachment/album/201704/14/083653nelhc0w7pwme1cl0.jpg" title="场景详情"></p>
+<p>如下图：</p>
+<p><img alt="" src="/data/attachment/album/201703/29/225450t8tretbcyn5ierkc.jpg"></p>
+<p>我们可以看到，在登录的时候，需要配合“运维密码”才能登录服务器。</p>
+<h4>公钥登录测试</h4>
+<p>如果使用公钥登录呢？以上配置是不是也是需要配合“运维密码”才能登录的，我们进行验证一下：</p>
+<p>首先，我们将本机的公钥复制到远程机器的 <code>authorized_keys</code> 文件中。</p>
+<div class="highlight"><pre><span></span><code><span class="n">ssh</span><span class="o">-</span><span class="k">copy</span><span class="o">-</span><span class="kt">id</span><span class="w"> </span><span class="n">root</span><span class="mf">@10.112.2.3</span>
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/201703/29/225550s5at35jpqppi5ppa.jpg"></p>
+<p>登录测试：</p>
+<p><img alt="" src="/data/attachment/album/201703/29/230656kzuywsks3yqqyb38.jpg"></p>
+<p>我们可以看到，不需要输入任何密码和一次性密钥，直接登录到了系统。</p>
+<h4>结合运维密码配置增强型SSH安全选项</h4>
+<p>针对上面公钥登录的测试，如果认为还不是很安全，我们可以设定如下登录场景：公钥 + 密码 + 运维密码，我们需要如何做呢？</p>
+<p>配置 SSH 公钥双因子</p>
+<p>修改 <code>/etc/ssh/sshd_config</code> 配置文件：</p>
+<div class="highlight"><pre><span></span><code>echo &quot;AuthenticationMethods publickey,keyboard-interactive:pam&quot; &gt;&gt;/etc/ssh/sshd_config
+</code></pre></div>
+
+<p>重启 SSH 服务：</p>
+<div class="highlight"><pre><span></span><code>systemctl restart sshd.service
+</code></pre></div>
+
+<p>登录测试（同样，请新开窗口）：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ssh</span><span class="w"> </span><span class="n">root</span><span class="mf">@10.112.2.3</span>
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/201703/29/230833bwbvtrjnvrb9j9ys.jpg"></p>
+<p>可以看到，登录的时候是需要验证公钥、密码，及输入“运维密码”生成的密钥才能登录到系统。</p>
+<p>没有密钥的情况下尝试登录测试，如下图：</p>
+<p><img alt="" src="/data/attachment/album/201703/29/230911xg58rugdnuw81z54.jpg"></p>
+<h3>总结</h3>
+<p>至此，本文结束，更多的使用细节可以参照小程序内的帮助，或<a href="/article-8317-1.html">此文</a>。</p>
+<p>如有错误及不足欢迎指正。也欢迎大家加入到这个小程序的开发当中，将这个小程序应用到你的应用场景中。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

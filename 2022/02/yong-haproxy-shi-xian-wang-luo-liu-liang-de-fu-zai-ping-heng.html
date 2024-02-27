@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>用 HAProxy 实现网络流量的负载平衡</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Jim O'connell 安装、配置和运行 HAProxy，在几个网络或应用服务器之间分配网络流量。 不是只有在一个大型公司工作才需要使用负载 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2022/02/yong-haproxy-shi-xian-wang-luo-liu-liang-de-fu-zai-ping-heng.html" rel="bookmark"
+           title="Permalink to 用 HAProxy 实现网络流量的负载平衡">用 HAProxy 实现网络流量的负载平衡</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2022-02-06T11:40:10+01:00">
+                Published: Sun 06 February 2022
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Jim O'connell</p>
+<blockquote>
+<p>安装、配置和运行 HAProxy，在几个网络或应用服务器之间分配网络流量。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/202202/06/114005n44h5xx934549133.jpg" title="eight stones balancing"></p>
+<p>不是只有在一个大型公司工作才需要使用负载平衡器。你可能是一个业余爱好者，用几台树莓派电脑自我托管一个网站。也许你是一个小企业的服务器管理员；也许你确实在一家大公司工作。无论你的情况如何，你都可以使用 <a href="https://www.haproxy.org/">HAProxy</a> 负载平衡器来管理你的流量。</p>
+<p>HAProxy 被称为“世界上最快和使用最广泛的软件负载平衡器”。它包含了许多可以使你的应用程序更加安全可靠的功能，包括内置的速率限制、异常检测、连接排队、健康检查以及详细的日志和指标。学习本教程中所涉及的基本技能和概念，将有助于你使用 HAProxy 建立一个更强大的、远为强大的基础设施。</p>
+<h3>为什么需要一个负载平衡器？</h3>
+<p>负载平衡器是一种在几个网络或应用服务器之间轻松分配连接的方法。事实上，HAProxy 可以平衡任何类型的传输控制协议（<a href="https://en.wikipedia.org/wiki/Transmission_Control_Protocol">TCP</a>）流量，包括 RDP、FTP、WebSockets 或数据库连接。分散负载的能力意味着你不需要因为你的网站流量比谷歌大就购买一个拥有几十万 G 内存的大型网络服务器。</p>
+<p>负载平衡器还为你提供了灵活性。也许你现有的网络服务器不够强大，无法满足一年中繁忙时期的峰值需求，你想增加一个，但只是暂时的。也许你想增加一些冗余，以防一个服务器出现故障。有了 HAProxy，你可以在需要时向后端池添加更多的服务器，在不需要时删除它们。</p>
+<p>你还可以根据情况将请求路由到不同的服务器。例如，你可能想用几个缓存服务器（如 <a href="https://varnish-cache.org/">Varnish</a>）来处理你的静态内容，但把任何需要动态内容的东西，如 API 端点，路由到一个更强大的机器。</p>
+<p>在这篇文章中，我将通过设置一个非常基本的 HAProxy 环境，使用 HTTPS 来监听安全端口 443，并利用几个后端 Web 服务器。它甚至会将所有进入预定义 URL（如 <code>/api/</code>）的流量发送到不同的服务器或服务器池。</p>
+<h3>安装 HAProxy</h3>
+<p>要开始安装，请启动一个新的 CentOS 8 服务器或实例，并使系统达到最新状态：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>yum<span class="w"> </span>update<span class="w"> </span>-y
+</code></pre></div>
+
+<p>这通常会持续一段时间。在等待的时候给自己拿杯咖啡。</p>
+<p>这个安装有两部分：第一部分是安装 yum 版本的 HAProxy，第二部分是编译和安装你的二进制文件，用最新的版本覆盖以前的 HAProxy。用 yum 安装，在生成 systemd 启动脚本等方面做了很多繁重的工作，所以运行 <code>yum install</code>，然后从源代码编译，用最新的版本覆盖 HAProxy 二进制：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>haproxy
+</code></pre></div>
+
+<p>启用 HAProxy 服务：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>haproxy
+</code></pre></div>
+
+<p>要升级到最新版本（<a href="https://www.haproxy.com/blog/announcing-haproxy-2-2/">版本 2.2</a>，截至本文写作为止），请编译源代码。许多人认为从源代码编译和安装一个程序需要很高的技术能力，但这是一个相当简单的过程。首先，使用 <code>yum</code> 安装一些提供编译代码工具的软件包：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>dnf-plugins-core
+$<span class="w"> </span>sudo<span class="w"> </span>yum<span class="w"> </span>config-manager<span class="w"> </span>--set-enabled<span class="w"> </span>PowerTools
+$<span class="w"> </span>sudo<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>git<span class="w"> </span>ca-certificates<span class="w"> </span>gcc<span class="w"> </span>glibc-devel<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>lua-devel<span class="w"> </span>pcre-devel<span class="w"> </span>openssl-devel<span class="w"> </span>systemd-devel<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>make<span class="w"> </span>curl<span class="w"> </span>zlib-devel<span class="w"> </span>
+</code></pre></div>
+
+<p>使用 <code>git</code> 获得最新的源代码，并改变到 <code>haproxy</code> 目录：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>git<span class="w"> </span>clone<span class="w"> </span>http://git.haproxy.org/git/<span class="w"> </span>haproxy
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>haproxy
+</code></pre></div>
+
+<p>运行以下三个命令来构建和安装具有集成了 Prometheus 支持的 HAProxy：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>make<span class="w"> </span><span class="nv">TARGET</span><span class="o">=</span>linux-glibc<span class="w"> </span><span class="nv">USE_LUA</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="nv">USE_OPENSSL</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="nv">USE_PCRE</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="nv">PCREDIR</span><span class="o">=</span><span class="w"> </span><span class="nv">USE_ZLIB</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="nv">USE_SYSTEMD</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="nv">EXTRA_OBJS</span><span class="o">=</span><span class="s2">&quot;contrib/prometheus-exporter/service-prometheus.o&quot;</span>
+
+$<span class="w"> </span>sudo<span class="w"> </span>make<span class="w"> </span><span class="nv">PREFIX</span><span class="o">=</span>/usr<span class="w"> </span>install<span class="w"> </span><span class="c1"># 安装到 /usr/sbin/haproxy</span>
+</code></pre></div>
+
+<p>通过查询版本来测试它：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>haproxy<span class="w"> </span>-v
+</code></pre></div>
+
+<p>你应该看到以下输出：</p>
+<div class="highlight"><pre><span></span><code>HA-Proxy version 2.2.4-b16390-23 2020/10/09 - https://haproxy.org/
+</code></pre></div>
+
+<h3>创建后端服务器</h3>
+<p>HAProxy 并不直接提供任何流量，这是后端服务器的工作，它们通常是网络或应用服务器。在这个练习中，我使用一个叫做 <a href="https://nmap.org/ncat">Ncat</a> 的工具，它是网络领域的“瑞士军刀”，用来创建一些极其简单的服务器。安装它：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>nc<span class="w"> </span>-y
+</code></pre></div>
+
+<p>如果你的系统启用了 <a href="https://www.redhat.com/en/topics/linux/what-is-selinux">SELinux</a>，你需要启用端口 8404，这是用于访问 HAProxy 统计页面的端口（下面有解释），以及你的后端服务器的端口：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> </span>policycoreutils-python-utils
+$<span class="w"> </span>sudo<span class="w"> </span>semanage<span class="w"> </span>port<span class="w"> </span>-a<span class="w"> </span>-t<span class="w"> </span>http_port_t<span class="w">  </span>-p<span class="w"> </span>tcp<span class="w"> </span><span class="m">8404</span>
+$<span class="w"> </span>sudo<span class="w"> </span>semanage<span class="w"> </span>port<span class="w"> </span>-a<span class="w"> </span>-t<span class="w"> </span>http_port_t<span class="w">  </span>-p<span class="w"> </span>tcp<span class="w"> </span><span class="m">10080</span>
+$<span class="w"> </span>sudo<span class="w"> </span>semanage<span class="w"> </span>port<span class="w"> </span>-a<span class="w"> </span>-t<span class="w"> </span>http_port_t<span class="w">  </span>-p<span class="w"> </span>tcp<span class="w"> </span><span class="m">10081</span>
+$<span class="w"> </span>sudo<span class="w"> </span>semanage<span class="w"> </span>port<span class="w"> </span>-a<span class="w"> </span>-t<span class="w"> </span>http_port_t<span class="w">  </span>-p<span class="w"> </span>tcp<span class="w"> </span><span class="m">10082</span>
+</code></pre></div>
+
+<p>创建两个 Ncat 网络服务器和一个 API 服务器：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="k">while</span><span class="w"> </span><span class="nb">true</span><span class="w"> </span><span class="p">;</span>
+<span class="k">do</span>
+nc<span class="w"> </span>-l<span class="w"> </span>-p<span class="w"> </span><span class="m">10080</span><span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;echo -e &quot;HTTP/1.1 200 OK\n\n This is Server ONE&quot;&#39;</span><span class="w"> </span><span class="p">;</span>
+<span class="k">done</span><span class="w"> </span><span class="p">&amp;</span>
+
+$<span class="w"> </span><span class="k">while</span><span class="w"> </span><span class="nb">true</span><span class="w"> </span><span class="p">;</span>
+<span class="k">do</span>
+nc<span class="w"> </span>-l<span class="w"> </span>-p<span class="w"> </span><span class="m">10081</span><span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;echo -e &quot;HTTP/1.1 200 OK\n\n This is Server TWO&quot;&#39;</span><span class="w"> </span><span class="p">;</span>
+<span class="k">done</span><span class="w"> </span><span class="p">&amp;</span>
+
+$<span class="w"> </span><span class="k">while</span><span class="w"> </span><span class="nb">true</span><span class="w"> </span><span class="p">;</span>
+<span class="k">do</span>
+nc<span class="w"> </span>-l<span class="w"> </span>-p<span class="w"> </span><span class="m">10082</span><span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;echo -e &quot;HTTP/1.1 200 OK\nContent-Type: application/json\n\n { \&quot;Message\&quot; :\&quot;Hello, World!\&quot; }&quot;&#39;</span><span class="w"> </span><span class="p">;</span>
+<span class="k">done</span><span class="w"> </span><span class="p">&amp;</span>
+</code></pre></div>
+
+<p>这些简单的服务器打印出一条信息（如“This is Server ONE”），并运行到服务器停止为止。在现实环境中，你会使用实际的网络和应用程序服务器。</p>
+<h3>修改 HAProxy 的配置文件</h3>
+<p>HAProxy 的配置文件是 <code>/etc/haproxy/haproxy.cfg</code>。你在这里进行修改以定义你的负载平衡器。这个 <a href="https://gist.github.com/haproxytechblog/38ef4b7d42f16cfe5c30f28ee3304dce">基本配置</a> 将让你从一个工作的服务器开始：</p>
+<div class="highlight"><pre><span></span><code><span class="n">global</span>
+<span class="w">    </span><span class="nb">log</span><span class="w">         </span><span class="mf">127.0</span><span class="o">.</span><span class="mf">0.1</span><span class="w"> </span><span class="n">local2</span>
+<span class="w">    </span><span class="n">user</span><span class="w">        </span><span class="n">haproxy</span>
+<span class="w">    </span><span class="n">group</span><span class="w">       </span><span class="n">haproxy</span>
+
+<span class="n">defaults</span><span class="w"> </span>
+<span class="w">    </span><span class="n">mode</span><span class="w">                    </span><span class="n">http</span>
+<span class="w">    </span><span class="nb">log</span><span class="w">                     </span><span class="n">global</span>
+<span class="w">    </span><span class="n">option</span><span class="w">                  </span><span class="n">httplog</span>
+
+<span class="n">frontend</span><span class="w"> </span><span class="n">main</span>
+<span class="w">    </span><span class="n">bind</span><span class="w"> </span><span class="o">*</span><span class="p">:</span><span class="mi">80</span>
+
+<span class="w">    </span><span class="n">default_backend</span><span class="w"> </span><span class="n">web</span>
+<span class="w">    </span><span class="n">use_backend</span><span class="w"> </span><span class="n">api</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">path_beg</span><span class="w"> </span><span class="o">-</span><span class="n">i</span><span class="w"> </span><span class="o">/</span><span class="n">api</span><span class="o">/</span><span class="w"> </span><span class="p">}</span>
+
+<span class="w">    </span><span class="c1">#-------------------------</span>
+<span class="w">    </span><span class="c1"># SSL termination - HAProxy handles the encryption.</span>
+<span class="w">    </span><span class="c1">#    To use it, put your PEM file in /etc/haproxy/certs  </span>
+<span class="w">    </span><span class="c1">#    then edit and uncomment the bind line (75)</span>
+<span class="w">    </span><span class="c1">#-------------------------</span>
+<span class="w">    </span><span class="c1"># bind *:443 ssl crt /etc/haproxy/certs/haproxy.pem ssl-min-ver TLSv1.2</span>
+<span class="w">    </span><span class="c1"># redirect scheme https if !{ ssl_fc }</span>
+
+<span class="c1">#-----------------------------</span>
+<span class="c1"># Enable stats at http://test.local:8404/stats</span>
+<span class="c1">#-----------------------------</span>
+
+<span class="n">frontend</span><span class="w"> </span><span class="n">stats</span>
+<span class="w">    </span><span class="n">bind</span><span class="w"> </span><span class="o">*</span><span class="p">:</span><span class="mi">8404</span>
+<span class="w">    </span><span class="n">stats</span><span class="w"> </span><span class="n">enable</span>
+<span class="w">    </span><span class="n">stats</span><span class="w"> </span><span class="n">uri</span><span class="w"> </span><span class="o">/</span><span class="n">stats</span>
+<span class="c1">#-----------------------------</span>
+<span class="c1"># round robin balancing between the various backends</span>
+<span class="c1">#-----------------------------</span>
+
+<span class="n">backend</span><span class="w"> </span><span class="n">web</span>
+<span class="w">    </span><span class="n">server</span><span class="w"> </span><span class="n">web1</span><span class="w"> </span><span class="mf">127.0</span><span class="o">.</span><span class="mf">0.1</span><span class="p">:</span><span class="mi">10080</span><span class="w"> </span><span class="n">check</span>
+<span class="w">    </span><span class="n">server</span><span class="w"> </span><span class="n">web2</span><span class="w"> </span><span class="mf">127.0</span><span class="o">.</span><span class="mf">0.1</span><span class="p">:</span><span class="mi">10081</span><span class="w"> </span><span class="n">check</span>
+
+<span class="c1">#-----------------------------</span>
+
+<span class="c1"># API backend for serving up API content</span>
+<span class="c1">#-----------------------------</span>
+<span class="n">backend</span><span class="w"> </span><span class="n">api</span>
+<span class="w">    </span><span class="n">server</span><span class="w"> </span><span class="n">api1</span><span class="w"> </span><span class="mf">127.0</span><span class="o">.</span><span class="mf">0.1</span><span class="p">:</span><span class="mi">10082</span><span class="w"> </span><span class="n">check</span>
+</code></pre></div>
+
+<h3>重启并重新加载 HAProxy</h3>
+<p>HAProxy 可能还没有运行，所以发出命令 <code>sudo systemctl restart haproxy</code> 来启动（或重新启动）它。“重启” 的方法在非生产情况下是很好的，但是一旦你开始运行，你要养成使用 <code>sudo systemctl reload haproxy</code> 的习惯，以避免服务中断，即使你的配置中出现了错误。</p>
+<p>例如，当你对 <code>/etc/haproxy/haproxy.cfg</code> 进行修改后，你需要用 <code>sudo systemctl reload haproxy</code> 来重新加载守护进程，使修改生效。如果有错误，它会让你知道，但继续用以前的配置运行。用 <code>sudo systemctl status haproxy</code> 检查 HAProxy 的状态。</p>
+<p>如果它没有报告任何错误，你就有一个正在运行的服务器。在服务器上用 <code>curl</code> 测试，在命令行输入 <code>curl http://localhost/</code>。如果你看到 “This is Server ONE”，那就说明一切都成功了！运行 <code>curl</code> 几次，看着它在你的后端池中循环，然后看看当你输入 <code>curl http://localhost/api/</code> 时会发生什么。在 URL 的末尾添加 <code>/api/</code> 将把所有的流量发送到你池子里的第三个服务器。至此，你就有了一个正常运作的负载平衡器</p>
+<h3>检查你的统计资料</h3>
+<p>你可能已经注意到，配置中定义了一个叫做 <code>stats</code> 的前端，它的监听端口是 8404：</p>
+<div class="highlight"><pre><span></span><code>frontend stats
+    bind *:8404
+    stats uri /stats
+    stats enable
+</code></pre></div>
+
+<p>在你的浏览器中，加载 <code>http://localhost:8404/stats</code>。阅读 HAProxy 的博客 <a href="https://www.haproxy.com/blog/exploring-the-haproxy-stats-page/">学习 HAProxy 的统计页面</a>，了解你在这里可以做什么。</p>
+<h3>一个强大的负载平衡器</h3>
+<p>虽然我只介绍了 HAProxy 的几个功能，但你现在有了一个服务器，它可以监听 80 和 443 端口，将 HTTP 流量重定向到 HTTPS，在几个后端服务器之间平衡流量，甚至将匹配特定 URL 模式的流量发送到不同的后端服务器。你还解锁了非常强大的 HAProxy 统计页面，让你对你的系统有一个很好的概览。</p>
+<p>这个练习可能看起来很简单，不要搞错了，你刚刚建立和配置了一个非常强大的负载均衡器，能够处理大量的流量。</p>
+<p>为了你方便，我把本文中的所有命令放在了 <a href="https://gist.github.com/haproxytechblog/d656422754f1b5eb1f7bbeb1452d261e">GitHub Gist</a> 中。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

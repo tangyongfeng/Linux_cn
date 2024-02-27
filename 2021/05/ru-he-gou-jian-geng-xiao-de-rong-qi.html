@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何构建更小的容器</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Daniel Schier 使用容器工作是很多用户和开发者的日常任务。容器开发者经常需要频繁地（重新）构建容器镜像。如果你开发容器 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2021/05/ru-he-gou-jian-geng-xiao-de-rong-qi.html" rel="bookmark"
+           title="Permalink to 如何构建更小的容器">如何构建更小的容器</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2021-05-12T11:22:01+02:00">
+                Published: Wed 12 May 2021
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Daniel Schier</p>
+<p><img alt="" src="/data/attachment/album/202105/12/112108han4e111a6v16act.jpg"></p>
+<p>使用容器工作是很多用户和开发者的日常任务。容器开发者经常需要频繁地（重新）构建容器镜像。如果你开发容器，你有想过减小镜像的大小吗？较小的镜像有一些好处。在下载的时候所需要的带宽更少，而且在云环境中运行的时候也可以节省开销。而且在 Fedora <a href="https://fedoramagazine.org/getting-started-with-fedora-coreos/">CoreOS</a>、<a href="https://getfedora.org/en/iot/">IoT</a> 以及<a href="https://fedoramagazine.org/what-is-silverblue/">Silverblue</a> 上使用较小的容器镜像可以提升整体系统性能，因为这些操作系统严重依赖于容器工作流。这篇文章将会提供一些减小容器镜像大小的技巧。</p>
+<h3>工具</h3>
+<p>以下例子所用到的主机操作系统是 Fedora Linux 33。例子使用 <a href="https://podman.io/">Podman</a> 3.1.0 和<a href="https://buildah.io/">Buildah</a> 1.2.0。Podman 和 Buildah 已经预装在大多数 Fedora Linux 变种中。如果你没有安装 Podman 和 Buildah，可以用下边的命令安装：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>podman<span class="w"> </span>buildah
+</code></pre></div>
+
+<h3>任务</h3>
+<p>从一个基础的例子开始。构建一个满足以下需求的 web 容器：</p>
+<ul>
+<li>容器必须基于 Fedora Linux</li>
+<li>使用 Apache httpd web 服务器</li>
+<li>包含一个定制的网站</li>
+<li>容器应该比较小</li>
+</ul>
+<p>下边的步骤也适用于比较复杂的镜像。</p>
+<h3>设置</h3>
+<p>首先，创建一个工程目录。这个目录将会包含你的网站和容器文件：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>mkdir<span class="w"> </span>smallerContainer
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>smallerContainer
+$<span class="w"> </span>mkdir<span class="w"> </span>files
+$<span class="w"> </span>touch<span class="w"> </span>files/index.html
+</code></pre></div>
+
+<p>制作一个简单的登录页面。对于这个演示，你可以将下面的 HTML 复制到 <code>index.html</code> 文件中。</p>
+<div class="highlight"><pre><span></span><code><span class="cp">&lt;!doctype html&gt;</span>
+
+<span class="nt">&lt;html</span><span class="w"> </span><span class="na">lang=</span><span class="s">&quot;de&quot;</span><span class="nt">&gt;</span>
+<span class="nt">&lt;head&gt;</span>
+<span class="w">  </span><span class="nt">&lt;title&gt;</span>Container<span class="w"> </span>Page<span class="nt">&lt;/title&gt;</span>
+<span class="nt">&lt;/head&gt;</span>
+
+<span class="nt">&lt;body&gt;</span>
+<span class="w">  </span><span class="nt">&lt;header&gt;</span>
+<span class="w">    </span><span class="nt">&lt;h1&gt;</span>Container<span class="w"> </span>Page<span class="nt">&lt;/h1&gt;</span>
+<span class="w">  </span><span class="nt">&lt;/header&gt;</span>
+<span class="w">  </span><span class="nt">&lt;main&gt;</span>
+<span class="w">    </span><span class="nt">&lt;h2&gt;</span>Fedora<span class="nt">&lt;/h2&gt;</span>
+<span class="w">    </span><span class="nt">&lt;ul&gt;</span>
+<span class="w">      </span><span class="nt">&lt;li&gt;&lt;a</span><span class="w"> </span><span class="na">href=</span><span class="s">&quot;https://getfedora.org&quot;</span><span class="nt">&gt;</span>Fedora<span class="w"> </span>Project<span class="nt">&lt;/a&gt;&lt;/li&gt;</span>
+<span class="w">      </span><span class="nt">&lt;li&gt;&lt;a</span><span class="w"> </span><span class="na">href=</span><span class="s">&quot;https://docs.fedoraproject.org/&quot;</span><span class="nt">&gt;</span>Fedora<span class="w"> </span>Documentation<span class="nt">&lt;/a&gt;&lt;/li&gt;</span>
+<span class="w">      </span><span class="nt">&lt;li&gt;&lt;a</span><span class="w"> </span><span class="na">href=</span><span class="s">&quot;https://fedoramagazine.org&quot;</span><span class="nt">&gt;</span>Fedora<span class="w"> </span>Magazine<span class="nt">&lt;/a&gt;&lt;/li&gt;</span>
+<span class="w">      </span><span class="nt">&lt;li&gt;&lt;a</span><span class="w"> </span><span class="na">href=</span><span class="s">&quot;https://communityblog.fedoraproject.org/&quot;</span><span class="nt">&gt;</span>Fedora<span class="w"> </span>Community<span class="w"> </span>Blog<span class="nt">&lt;/a&gt;&lt;/li&gt;</span>
+<span class="w">    </span><span class="nt">&lt;/ul&gt;</span>
+<span class="w">    </span><span class="nt">&lt;h2&gt;</span>Podman<span class="nt">&lt;/h2&gt;</span>
+<span class="w">    </span><span class="nt">&lt;ul&gt;</span>
+<span class="w">      </span><span class="nt">&lt;li&gt;&lt;a</span><span class="w"> </span><span class="na">href=</span><span class="s">&quot;https://podman.io&quot;</span><span class="nt">&gt;</span>Podman<span class="nt">&lt;/a&gt;&lt;/li&gt;</span>
+<span class="w">      </span><span class="nt">&lt;li&gt;&lt;a</span><span class="w"> </span><span class="na">href=</span><span class="s">&quot;https://docs.podman.io/&quot;</span><span class="nt">&gt;</span>Podman<span class="w"> </span>Documentation<span class="nt">&lt;/a&gt;&lt;/li&gt;</span>
+<span class="w">      </span><span class="nt">&lt;li&gt;&lt;a</span><span class="w"> </span><span class="na">href=</span><span class="s">&quot;https://github.com/containers/podman&quot;</span><span class="nt">&gt;</span>Podman<span class="w"> </span>Code<span class="nt">&lt;/a&gt;&lt;/li&gt;</span>
+<span class="w">      </span><span class="nt">&lt;li&gt;&lt;a</span><span class="w"> </span><span class="na">href=</span><span class="s">&quot;https://podman.io/blogs/&quot;</span><span class="nt">&gt;</span>Podman<span class="w"> </span>Blog<span class="nt">&lt;/a&gt;&lt;/li&gt;</span>
+<span class="w">    </span><span class="nt">&lt;/ul&gt;</span>
+<span class="w">    </span><span class="nt">&lt;h2&gt;</span>Buildah<span class="nt">&lt;/h2&gt;</span>
+<span class="w">    </span><span class="nt">&lt;ul&gt;</span>
+<span class="w">      </span><span class="nt">&lt;li&gt;&lt;a</span><span class="w"> </span><span class="na">href=</span><span class="s">&quot;https://buildah.io&quot;</span><span class="nt">&gt;</span>Buildah<span class="nt">&lt;/a&gt;&lt;/li&gt;</span>
+<span class="w">      </span><span class="nt">&lt;li&gt;&lt;a</span><span class="w"> </span><span class="na">href=</span><span class="s">&quot;https://github.com/containers/buildah&quot;</span><span class="nt">&gt;</span>Buildah<span class="w"> </span>Code<span class="nt">&lt;/a&gt;&lt;/li&gt;</span>
+<span class="w">      </span><span class="nt">&lt;li&gt;&lt;a</span><span class="w"> </span><span class="na">href=</span><span class="s">&quot;https://buildah.io/blogs/&quot;</span><span class="nt">&gt;</span>Buildah<span class="w"> </span>Blog<span class="nt">&lt;/a&gt;&lt;/li&gt;</span>
+<span class="w">    </span><span class="nt">&lt;/ul&gt;</span>
+<span class="w">    </span><span class="nt">&lt;h2&gt;</span>Skopeo<span class="nt">&lt;/h2&gt;</span>
+<span class="w">    </span><span class="nt">&lt;ul&gt;</span>
+<span class="w">      </span><span class="nt">&lt;li&gt;&lt;a</span><span class="w"> </span><span class="na">href=</span><span class="s">&quot;https://github.com/containers/skopeo&quot;</span><span class="nt">&gt;</span>skopeo<span class="w"> </span>Code<span class="nt">&lt;/a&gt;&lt;/li&gt;</span>
+<span class="w">    </span><span class="nt">&lt;/ul&gt;</span>
+<span class="w">    </span><span class="nt">&lt;h2&gt;</span>CRI-O<span class="nt">&lt;/h2&gt;</span>
+<span class="w">    </span><span class="nt">&lt;ul&gt;</span>
+<span class="w">      </span><span class="nt">&lt;li&gt;&lt;a</span><span class="w"> </span><span class="na">href=</span><span class="s">&quot;https://cri-o.io/&quot;</span><span class="nt">&gt;</span>CRI-O<span class="nt">&lt;/a&gt;&lt;/li&gt;</span>
+<span class="w">      </span><span class="nt">&lt;li&gt;&lt;a</span><span class="w"> </span><span class="na">href=</span><span class="s">&quot;https://github.com/cri-o/cri-o&quot;</span><span class="nt">&gt;</span>CRI-O<span class="w"> </span>Code<span class="nt">&lt;/a&gt;&lt;/li&gt;</span>
+<span class="w">      </span><span class="nt">&lt;li&gt;&lt;a</span><span class="w"> </span><span class="na">href=</span><span class="s">&quot;https://medium.com/cri-o&quot;</span><span class="nt">&gt;</span>CRI-O<span class="w"> </span>Blog<span class="nt">&lt;/a&gt;&lt;/li&gt;</span>
+<span class="w">    </span><span class="nt">&lt;/ul&gt;</span>
+<span class="w">  </span><span class="nt">&lt;/main&gt;</span>
+<span class="nt">&lt;/body&gt;</span>
+
+<span class="nt">&lt;/html&gt;</span>
+</code></pre></div>
+
+<p>此时你可以选择在浏览器中测试上面的 <code>index.html</code> 文件：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>firefox<span class="w"> </span>files/index.html
+</code></pre></div>
+
+<p>最后，创建一个容器文件。这个文件可以命名为 <code>Dockerfile</code> 或者 <code>Containerfile</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>touch<span class="w"> </span>Containerfile
+</code></pre></div>
+
+<p>现在你应该有了一个工程目录，并且该目录中的文件系统布局如下：</p>
+<div class="highlight"><pre><span></span><code>smallerContainer/
+|- files/
+|    |- index.html
+|
+|- Containerfile
+</code></pre></div>
+
+<h3>构建</h3>
+<p>现在构建镜像。下边的每个阶段都会添加一层改进来帮助减小镜像的大小。你最终会得到一系列镜像，但只有一个 <code>Containerfile</code>。</p>
+<h4>阶段 0：一个基本的容器镜像</h4>
+<p>你的新镜像将会非常简单，它只包含强制性步骤。在 <code>Containerfile</code> 中添加以下内容：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 使用 Fedora 33 作为基镜像</span>
+<span class="n">FROM</span><span class="w"> </span><span class="n">registry</span><span class="o">.</span><span class="n">fedoraproject</span><span class="o">.</span><span class="n">org</span><span class="o">/</span><span class="n">fedora</span><span class="p">:</span><span class="mi">33</span>
+
+<span class="c1"># 安装 httpd</span>
+<span class="n">RUN</span><span class="w"> </span><span class="n">dnf</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="o">-</span><span class="n">y</span><span class="w"> </span><span class="n">httpd</span>
+
+<span class="c1"># 复制这个网站</span>
+<span class="n">COPY</span><span class="w"> </span><span class="n">files</span><span class="o">/*</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">www</span><span class="o">/</span><span class="n">html</span><span class="o">/</span>
+
+<span class="c1"># 设置端口为 80/tcp</span>
+<span class="n">EXPOSE</span><span class="w"> </span><span class="mi">80</span>
+
+<span class="c1"># 启动 httpd</span>
+<span class="n">CMD</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;httpd&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;-DFOREGROUND&quot;</span><span class="p">]</span>
+</code></pre></div>
+
+<p>在上边的文件中有一些注释来解释每一行内容都是在做什么。更详细的步骤：</p>
+<ol>
+<li>在 <code>FROM registry.fedoraproject.org/fedora:33</code> 的基础上创建一个构建容器</li>
+<li>运行命令： <code>dnf install -y httpd</code></li>
+<li>将与 <code>Containerfile</code> 有关的文件拷贝到容器中</li>
+<li>设置 <code>EXPOSE 80</code> 来说明哪个端口是可以自动设置的</li>
+<li>设置一个 <code>CMD</code> 指令来说明如果从这个镜像创建一个容器应该运行什么</li>
+</ol>
+<p>运行下边的命令从工程目录创建一个新的镜像：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>podman<span class="w"> </span>image<span class="w"> </span>build<span class="w"> </span>-f<span class="w"> </span>Containerfile<span class="w"> </span>-t<span class="w"> </span>localhost/web-base
+</code></pre></div>
+
+<p>使用一下命令来查看你的镜像的属性。注意你的镜像的大小（467 MB）。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>podman<span class="w"> </span>image<span class="w"> </span>ls
+REPOSITORY<span class="w">                         </span>TAG<span class="w">     </span>IMAGE<span class="w"> </span>ID<span class="w">      </span>CREATED<span class="w">        </span>SIZE
+localhost/web-base<span class="w">                 </span>latest<span class="w">  </span>ac8c5ed73bb5<span class="w">  </span><span class="m">5</span><span class="w"> </span>minutes<span class="w"> </span>ago<span class="w">  </span><span class="m">467</span><span class="w"> </span>MB
+registry.fedoraproject.org/fedora<span class="w">  </span><span class="m">33</span><span class="w">      </span>9f2a56037643<span class="w">  </span><span class="m">3</span><span class="w"> </span>months<span class="w"> </span>ago<span class="w">   </span><span class="m">182</span><span class="w"> </span>MB
+</code></pre></div>
+
+<p>以上这个例子中展示的镜像在现在占用了467 MB的空间。剩下的阶段将会显著地减小镜像的大小。但是首先要验证镜像是否能够按照预期工作。</p>
+<p>输入以下命令来启动容器：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>podman<span class="w"> </span>container<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>--name<span class="w"> </span>web-base<span class="w"> </span>-P<span class="w"> </span>localhost/web-base
+</code></pre></div>
+
+<p>输入以下命令可以列出你的容器：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>podman<span class="w"> </span>container<span class="w"> </span>ls
+CONTAINER<span class="w"> </span>ID<span class="w">  </span>IMAGE<span class="w">               </span>COMMAND<span class="w">               </span>CREATED<span class="w">        </span>STATUS<span class="w">            </span>PORTS<span class="w">                  </span>NAMES
+d24063487f9f<span class="w">  </span>localhost/web-base<span class="w">  </span>httpd<span class="w"> </span>-DFOREGROUN...<span class="w">  </span><span class="m">2</span><span class="w"> </span>seconds<span class="w"> </span>ago<span class="w">  </span>Up<span class="w"> </span><span class="m">3</span><span class="w"> </span>seconds<span class="w"> </span>ago<span class="w">  </span><span class="m">0</span>.0.0.0:46191-&gt;80/tcp<span class="w">  </span>web-base
+</code></pre></div>
+
+<p>以上展示的容器正在运行，它正在监听的端口是 <code>46191</code> 。从运行在主机操作系统上的 web 浏览器转到 <code>localhost:46191</code> 应该呈现你的 web 页面：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>firefox<span class="w"> </span>localhost:46191
+</code></pre></div>
+
+<h4>阶段 1：清除缓存并将残余的内容从容器中删除</h4>
+<p>为了优化容器镜像的大小，第一步应该总是执行“清理”。这将保证安装和打包所残余的内容都被删掉。这个过程到底需要什么取决于你的容器。对于以上的例子，只需要编辑 <code>Containerfile</code> 让它包含以下几行。</p>
+<div class="highlight"><pre><span></span><code><span class="k">[...]</span>
+<span class="c1"># Install httpd</span>
+<span class="na">RUN dnf install -y httpd &amp;&amp; \</span>
+<span class="w">    </span><span class="na">dnf clean all -y</span>
+<span class="k">[...]</span>
+</code></pre></div>
+
+<p>构建修改后的 <code>Containerfile</code> 来显著地减小镜像（这个例子中是 237 MB）。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>podman<span class="w"> </span>image<span class="w"> </span>build<span class="w"> </span>-f<span class="w"> </span>Containerfile<span class="w"> </span>-t<span class="w"> </span>localhost/web-clean
+$<span class="w"> </span>podman<span class="w"> </span>image<span class="w"> </span>ls
+REPOSITORY<span class="w">            </span>TAG<span class="w">     </span>IMAGE<span class="w"> </span>ID<span class="w">      </span>CREATED<span class="w">        </span>SIZE
+localhost/web-clean<span class="w">   </span>latest<span class="w">  </span>f0f62aece028<span class="w">  </span><span class="m">6</span><span class="w"> </span>seconds<span class="w"> </span>ago<span class="w">  </span><span class="m">237</span><span class="w"> </span>MB
+</code></pre></div>
+
+<h4>阶段 2：删除文档和不需要的依赖包</h4>
+<p>许多包在安装时会被建议拉下来，包含一些弱依赖和文档。这些在容器中通常是不需要的，可以删除。 <code>dnf</code> 命令有选项可以表明它不需要包含弱依赖或文档。</p>
+<p>再次编辑 <code>Containerfile</code> ，并在 <code>dnf install</code> 行中添加删除文档和弱依赖的选项：</p>
+<div class="highlight"><pre><span></span><code><span class="k">[...]</span>
+<span class="c1"># Install httpd</span>
+<span class="na">RUN dnf install -y httpd --nodocs --setopt install_weak_deps</span><span class="o">=</span><span class="s">False &amp;&amp; </span>\
+<span class="w">    </span><span class="s">dnf clean all -y</span>
+<span class="k">[...]</span>
+</code></pre></div>
+
+<p>构建经过以上修改后的 <code>Containerfile</code> 可以得到一个更小的镜像（231 MB）。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>podman<span class="w"> </span>image<span class="w"> </span>build<span class="w"> </span>-f<span class="w"> </span>Containerfile<span class="w"> </span>-t<span class="w"> </span>localhost/web-docs
+$<span class="w"> </span>podman<span class="w"> </span>image<span class="w"> </span>ls
+REPOSITORY<span class="w">            </span>TAG<span class="w">     </span>IMAGE<span class="w"> </span>ID<span class="w">      </span>CREATED<span class="w">        </span>SIZE
+localhost/web-docs<span class="w">    </span>latest<span class="w">  </span>8a76820cec2f<span class="w">  </span><span class="m">8</span><span class="w"> </span>seconds<span class="w"> </span>ago<span class="w">  </span><span class="m">231</span><span class="w"> </span>MB
+</code></pre></div>
+
+<h4>阶段 3：使用更小的容器基镜像</h4>
+<p>前面的阶段结合起来，使得示例镜像的大小减少了一半。但是仍然还有一些途径来进一步减小镜像的大小。这个基镜像 <code>registry.fedoraproject.org/fedora:33</code> 是通用的。它提供了一组软件包，许多人希望这些软件包预先安装在他们的 Fedora Linux 容器中。但是，通用的 Fedora Linux 基镜像中提供的包通常必须要的更多。Fedora 项目也为那些希望只从基本包开始，然后只添加所需内容来实现较小总镜像大小的用户提供了一个 <code>fedora-minimal</code> 镜像。</p>
+<p>使用 <code>podman image search</code> 来查找 <code>fedora-minimal</code> 镜像，如下所示：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>podman<span class="w"> </span>image<span class="w"> </span>search<span class="w"> </span>fedora-minimal
+INDEX<span class="w">               </span>NAME<span class="w">   </span>DESCRIPTION<span class="w">   </span>STARS<span class="w">   </span>OFFICIAL<span class="w">   </span>AUTOMATED
+fedoraproject.org<span class="w">   </span>registry.fedoraproject.org/fedora-minimal<span class="w">         </span><span class="m">0</span>
+</code></pre></div>
+
+<p><code>fedora-minimal</code> 基镜像不包含 <a href="https://github.com/rpm-software-management/dnf">DNF</a>，而是倾向于使用不需要 Python 的较小的 <a href="https://github.com/rpm-software-management/microdnf">microDNF</a>。当 <code>registry.fedoraproject.org/fedora:33</code> 被 <code>registry.fedoraproject.org/fedora-minimal:33</code> 替换后，需要用 <code>microdnf</code> 命令来替换 <code>dnf</code>。</p>
+<div class="highlight"><pre><span></span><code><span class="p">#</span><span class="w"> </span><span class="err">使用</span><span class="w"> </span><span class="n">Fedora</span><span class="w"> </span><span class="n">minimal</span><span class="w"> </span><span class="mh">33</span><span class="w"> </span><span class="err">作为基镜像</span>
+<span class="n">FROM</span><span class="w"> </span><span class="n">registry</span><span class="p">.</span><span class="n">fedoraproject</span><span class="p">.</span><span class="n">org</span><span class="o">/</span><span class="n">fedora</span><span class="o">-</span><span class="nl">minimal:</span><span class="mh">33</span>
+
+<span class="p">#</span><span class="w"> </span><span class="err">安装</span><span class="w"> </span><span class="n">httpd</span>
+<span class="n">RUN</span><span class="w"> </span><span class="n">microdnf</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="o">-</span><span class="n">y</span><span class="w"> </span><span class="n">httpd</span><span class="w"> </span><span class="o">--</span><span class="n">nodocs</span><span class="w"> </span><span class="o">--</span><span class="n">setopt</span><span class="w"> </span><span class="n">install_weak_deps</span><span class="o">=</span><span class="mh">0</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="n">microdnf</span><span class="w"> </span><span class="n">clean</span><span class="w"> </span><span class="n">all</span><span class="w"> </span><span class="o">-</span><span class="n">y</span>
+<span class="p">[...]</span>
+</code></pre></div>
+
+<p>使用 <code>fedora-minimal</code> 重新构建后的镜像大小如下所示 （169 MB）：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>podman<span class="w"> </span>image<span class="w"> </span>build<span class="w"> </span>-f<span class="w"> </span>Containerfile<span class="w"> </span>-t<span class="w"> </span>localhost/web-docs
+$<span class="w"> </span>podman<span class="w"> </span>image<span class="w"> </span>ls
+REPOSITORY<span class="w">             </span>TAG<span class="w">     </span>IMAGE<span class="w"> </span>ID<span class="w">      </span>CREATED<span class="w">        </span>SIZE
+localhost/web-minimal<span class="w">  </span>latest<span class="w">  </span>e1603bbb1097<span class="w">  </span><span class="m">7</span><span class="w"> </span>minutes<span class="w"> </span>ago<span class="w">  </span><span class="m">169</span><span class="w"> </span>MB
+</code></pre></div>
+
+<p>最开始的镜像大小是 <strong>467 MB</strong>。结合以上每个阶段所提到的方法，进行重新构建之后可以得到最终大小为 <strong>169 MB</strong> 的镜像。最终的 <em>总</em> 镜像大小比最开始的 <em>基</em> 镜像小了 182 MB！</p>
+<h3>从零开始构建容器</h3>
+<p>前边的内容使用一个容器文件和 Podman 来构建一个新的镜像。还有最后一个方法要展示——使用 Buildah 来从头构建一个容器。Podman 使用与 Buildah 相同的库来构建容器。但是 Buildah 被认为是一个纯构建工具。Podman 被设计来是为了代替 Docker 的。</p>
+<p>使用 Buildah 从头构建的容器是空的——它里边什么都 <em>没有</em> 。所有的东西都需要安装或者从容器外复制。幸运地是，使用 Buildah 相当简单。下边是一个从头开始构建镜像的小的 Bash 脚本。除了运行这个脚本，你也可以在终端逐条地运行脚本中的命令，来更好的理解每一步都是做什么的。</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env bash</span>
+<span class="nb">set</span><span class="w"> </span>-o<span class="w"> </span>errexit
+
+<span class="c1"># 创建一个容器</span>
+<span class="nv">CONTAINER</span><span class="o">=</span><span class="k">$(</span>buildah<span class="w"> </span>from<span class="w"> </span>scratch<span class="k">)</span>
+
+<span class="c1"># 挂载容器文件系统</span>
+<span class="nv">MOUNTPOINT</span><span class="o">=</span><span class="k">$(</span>buildah<span class="w"> </span>mount<span class="w"> </span><span class="nv">$CONTAINER</span><span class="k">)</span>
+
+<span class="c1"># 安装一个基本的文件系统和最小的包以及 nginx</span>
+dnf<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>--installroot<span class="w"> </span><span class="nv">$MOUNTPOINT</span><span class="w">  </span>--releasever<span class="w"> </span><span class="m">33</span><span class="w"> </span>glibc-minimal-langpack<span class="w"> </span>httpd<span class="w"> </span>--nodocs<span class="w"> </span>--setopt<span class="w"> </span><span class="nv">install_weak_deps</span><span class="o">=</span>False
+
+dnf<span class="w"> </span>clean<span class="w"> </span>all<span class="w"> </span>-y<span class="w"> </span>--installroot<span class="w"> </span><span class="nv">$MOUNTPOINT</span><span class="w"> </span>--releasever<span class="w"> </span><span class="m">33</span>
+
+<span class="c1"># 清除</span>
+buildah<span class="w"> </span>unmount<span class="w"> </span><span class="nv">$CONTAINER</span>
+
+<span class="c1"># 复制网站</span>
+buildah<span class="w"> </span>copy<span class="w"> </span><span class="nv">$CONTAINER</span><span class="w"> </span><span class="s1">&#39;files/*&#39;</span><span class="w"> </span><span class="s1">&#39;/var/www/html/&#39;</span>
+
+<span class="c1"># 设置端口为 80/tcp</span>
+buildah<span class="w"> </span>config<span class="w"> </span>--port<span class="w"> </span><span class="m">80</span><span class="w"> </span><span class="nv">$CONTAINER</span>
+
+<span class="c1"># 启动 httpd</span>
+buildah<span class="w"> </span>config<span class="w"> </span>--cmd<span class="w"> </span><span class="s2">&quot;httpd -DFOREGROUND&quot;</span><span class="w"> </span><span class="nv">$CONTAINER</span>
+
+<span class="c1"># 将容器保存为一个镜像</span>
+buildah<span class="w"> </span>commit<span class="w"> </span>--squash<span class="w"> </span><span class="nv">$CONTAINER</span><span class="w"> </span>web-scratch
+</code></pre></div>
+
+<p>或者，可以通过将上面的脚本传递给 Buildah 来构建镜像。注意不需要 root 权限。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>buildah<span class="w"> </span>unshare<span class="w"> </span>bash<span class="w"> </span>web-scratch.sh
+$<span class="w"> </span>podman<span class="w"> </span>image<span class="w"> </span>ls
+REPOSITORY<span class="w">             </span>TAG<span class="w">     </span>IMAGE<span class="w"> </span>ID<span class="w">      </span>CREATED<span class="w">        </span>SIZE
+localhost/web-scratch<span class="w">  </span>latest<span class="w">  </span>acca45fc9118<span class="w">  </span><span class="m">9</span><span class="w"> </span>seconds<span class="w"> </span>ago<span class="w">  </span><span class="m">155</span><span class="w"> </span>MB
+</code></pre></div>
+
+<p>最后的镜像只有 <strong>155 MB</strong>！而且 <a href="https://en.wikipedia.org/wiki/Attack_surface">攻击面</a> 也减少了。甚至在最后的镜像中都没有安装 DNF（或者 microDNF）。</p>
+<h3>结论</h3>
+<p>构建一个比较小的容器镜像有许多优点。减少所需要的带宽、磁盘占用以及攻击面，都会得到更好的镜像。只用很少的更改来减小镜像的大小很简单。许多更改都可以在不改变结果镜像的功能下完成。</p>
+<p>只保存所需的二进制文件和配置文件来构建非常小的镜像也是可能的。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

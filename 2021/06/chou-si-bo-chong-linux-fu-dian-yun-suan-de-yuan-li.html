@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>抽丝剥茧 Linux 浮点运算的原理</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: 李季, 李幸福 编者按：本文来自华辰连科技术团队，分享了他们在将浮点运算放到内核态时的探索。 最近我们有一个需求 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2021/06/chou-si-bo-chong-linux-fu-dian-yun-suan-de-yuan-li.html" rel="bookmark"
+           title="Permalink to 抽丝剥茧 Linux 浮点运算的原理">抽丝剥茧 Linux 浮点运算的原理</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2021-06-10T21:56:00+02:00">
+                Published: Thu 10 June 2021
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: 李季, 李幸福</p>
+<p><img alt="" src="/data/attachment/album/202106/10/215454au2bbgvqbnqceg75.jpg"></p>
+<blockquote>
+<p>编者按：本文来自华辰连科技术团队，分享了他们在将浮点运算放到内核态时的探索。</p>
+</blockquote>
+<p>最近我们有一个需求，需要把用户态的浮点数运算全部放到内核态运行，以提高运行速度，移植的过程中发现问题没有这么简单，然后我们抽丝剥茧，揭开 Linux 对浮点处理的原理。</p>
+<p>此文章的代码基于 x86 64 位 CPU，Linux 4.14 内核。 </p>
+<h3>一、 Linux 内核添加浮点运算出现的问题</h3>
+<p>我们以一个简单的浮点运算例子来说明：</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;linux/module.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;linux/kernel.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;linux/debugfs.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;asm/fpu/api.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;linux/delay.h&gt;</span>
+
+<span class="k">static</span><span class="w"> </span><span class="n">noinline</span><span class="w"> </span><span class="kt">double</span><span class="w"> </span><span class="n">float_divide</span><span class="p">(</span><span class="kt">double</span><span class="w"> </span><span class="n">float1</span><span class="p">,</span><span class="w"> </span><span class="kt">double</span><span class="w"> </span><span class="n">float2</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">float1</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">float2</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="k">static</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">__init</span><span class="w"> </span><span class="n">test_float_init</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="kt">double</span><span class="w"> </span><span class="n">result</span><span class="p">,</span><span class="w"> </span><span class="n">float1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">4.9</span><span class="p">,</span><span class="w"> </span><span class="n">float2</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.49</span><span class="p">;</span>
+<span class="err">​</span>
+<span class="w">  </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">float_divide</span><span class="p">(</span><span class="n">float1</span><span class="p">,</span><span class="w"> </span><span class="n">float2</span><span class="p">);</span>
+<span class="w">  </span><span class="n">printk</span><span class="p">(</span><span class="s">&quot;result = %d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="p">)</span><span class="n">result</span><span class="p">);</span>
+<span class="err">​</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="err">​</span>
+<span class="k">static</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">__exit</span><span class="w"> </span><span class="n">test_float_exit</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="p">;</span>
+<span class="p">}</span>
+<span class="err">​</span>
+<span class="n">module_init</span><span class="p">(</span><span class="n">test_float_init</span><span class="p">);</span>
+<span class="n">module_exit</span><span class="p">(</span><span class="n">test_float_exit</span><span class="p">);</span>
+<span class="n">MODULE_LICENSE</span><span class="p">(</span><span class="s">&quot;GPL&quot;</span><span class="p">);</span>
+</code></pre></div>
+
+<p><em>test_float.c</em></p>
+<div class="highlight"><pre><span></span><code><span class="nv">obj-m</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span>test_float.o
+<span class="nv">KDIR</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span>/lib/modules/<span class="k">$(</span>shell<span class="w"> </span>uname<span class="w"> </span>-r<span class="k">)</span>/build
+<span class="err">​</span>
+<span class="nf">all</span><span class="o">:</span>
+<span class="err">make</span><span class="w"> </span><span class="err">-C</span><span class="w"> </span><span class="k">$(</span><span class="nv">KDIR</span><span class="k">)</span><span class="w"> </span><span class="nv">M</span><span class="o">=</span><span class="k">$(</span>PWD<span class="k">)</span><span class="w"> </span>modules
+</code></pre></div>
+
+<p><em>Makefile</em></p>
+<p>这个内核模块就是计算了两个浮点数除的结果，然后将结果打印出来 。但是我们执行 <code>make</code> 编译的时候发现报错：</p>
+<p><img alt="" src="/data/attachment/album/202106/10/212535snn8q7eku7vk4q4w.png"></p>
+<p>提示 SSE 寄存器返回的报错信息为 “SSE disabled”。我们执行 <code>make V=1</code> 查看关键的编译信息：</p>
+<p><img alt="" src="/data/attachment/album/202106/10/212628agc1h95055h7i1h0.png"></p>
+<p>我们发现在 <code>gcc</code> 的参数中有 <code>-mno-sse -mno-mmx -mno-sse2</code> 选项，原来 <code>gcc</code> 默认的编译选项禁用了 sse、mmx、sse2 等浮点运算指令。</p>
+<h3>二、通过添加 gcc 编译参数和 kernel_fpu_begin/kernel_fpu_end 来解决问题</h3>
+<p>为了让内核支持浮点运算，我们在 <code>Makefile</code> 中添加支持 sse 等选项，源码中添加 <code>kernel_fpu_begin</code>/<code>kernel_fpu_end</code> 函数，修改后的源码如下所示：</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;linux/module.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;linux/kernel.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;linux/debugfs.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;asm/fpu/api.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;linux/delay.h&gt;</span>
+
+<span class="k">static</span><span class="w"> </span><span class="n">noinline</span><span class="w"> </span><span class="kt">double</span><span class="w"> </span><span class="n">float_divide</span><span class="p">(</span><span class="kt">double</span><span class="w"> </span><span class="n">float1</span><span class="p">,</span><span class="w"> </span><span class="kt">double</span><span class="w"> </span><span class="n">float2</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">float1</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">float2</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="k">static</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">__init</span><span class="w"> </span><span class="n">test_float_init</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="kt">double</span><span class="w"> </span><span class="n">result</span><span class="p">,</span><span class="w"> </span><span class="n">float1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">4.9</span><span class="p">,</span><span class="w"> </span><span class="n">float2</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.49</span><span class="p">;</span>
+<span class="err">​</span>
+<span class="w">  </span><span class="n">kernel_fpu_begin</span><span class="p">();</span>
+<span class="w">  </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">float_divide</span><span class="p">(</span><span class="n">float1</span><span class="p">,</span><span class="w"> </span><span class="n">float2</span><span class="p">);</span>
+<span class="w">  </span><span class="n">kernel_fpu_end</span><span class="p">();</span>
+<span class="w">  </span><span class="n">printk</span><span class="p">(</span><span class="s">&quot;result = %d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="p">)</span><span class="n">result</span><span class="p">);</span>
+<span class="err">​</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="err">​</span>
+<span class="k">static</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">__exit</span><span class="w"> </span><span class="n">test_float_exit</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="p">;</span>
+<span class="p">}</span>
+<span class="err">​</span>
+<span class="n">module_init</span><span class="p">(</span><span class="n">test_float_init</span><span class="p">);</span>
+<span class="n">module_exit</span><span class="p">(</span><span class="n">test_float_exit</span><span class="p">);</span>
+<span class="n">MODULE_LICENSE</span><span class="p">(</span><span class="s">&quot;GPL&quot;</span><span class="p">);</span>
+</code></pre></div>
+
+<p><em>test_float.c</em></p>
+<div class="highlight"><pre><span></span><code><span class="nv">obj-m</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span>test_float.o
+<span class="nv">KDIR</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span>/lib/modules/<span class="k">$(</span>shell<span class="w"> </span>uname<span class="w"> </span>-r<span class="k">)</span>/build
+<span class="err">​</span>
+<span class="nv">FPU_CFLAGS</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span>-mhard-float
+<span class="nv">FPU_CFLAGS</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span>-msse<span class="w"> </span>-msse2
+<span class="nv">CFLAGS_test_float.o</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="k">$(</span>FPU_CFLAGS<span class="k">)</span>
+<span class="err">​</span>
+<span class="nf">all</span><span class="o">:</span>
+<span class="err">make</span><span class="w"> </span><span class="err">-C</span><span class="w"> </span><span class="k">$(</span><span class="nv">KDIR</span><span class="k">)</span><span class="w"> </span><span class="nv">M</span><span class="o">=</span><span class="k">$(</span>PWD<span class="k">)</span><span class="w"> </span>modules
+</code></pre></div>
+
+<p><em>Makefile</em></p>
+<p>此时执行 <code>make</code>，发现编译正确通过了：</p>
+<p><img alt="" src="/data/attachment/album/202106/10/212903ut3g2tbre61e6tuk.png"></p>
+<p>然后 <code>insmod test_float.ko</code>，观察 <code>dmesg</code> 的输出：</p>
+<p><img alt="" src="/data/attachment/album/202106/10/212940pulwj8knknhwvzzh.png"></p>
+<p>从上面的例子，结合内核源码中 <code>arch/x86/Makefile</code> 中的 <code>KBUILD_CFLAGS</code>，可以看到编译内核及内核模块时，<code>gcc</code> 选项继承 Linux 中的规则，指定了 <code>-mno-sse -mno-mmx -mno-sse2</code>，也就是禁用了 FPU 。所以，要想内核模组支持浮点运算，编译选项需要显式的指定 <code>-msse -msse2</code>。</p>
+<h3>三、 Linux 内核态对浮点运算处理方式的分析</h3>
+<p>从上面可以看到，我们为了实现一个内核模块的浮点运算，添加了编译参数 <code>-mhard-float和-msse -msse2</code>，对于编译参数来说，<code>-mhard-float</code> 是告诉编译器直接生成浮点运算的指令，而 <code>-msse -msse2</code> 则是告诉编译器可以使用 sse/sse2 指令集来编译代码。</p>
+<p><code>kernel_fpu_begin</code> 和 <code>kernel_fpu_end</code> 也是必须的，因为 Linux 内核为了提高系统的运行速率，在任务上下文切换时，只会保存/恢复普通寄存器的值，并不包括 FPU 浮点寄存器的值，而调用 <code>kernel_fpu_begin</code> 主要作用是关掉系统抢占，浮点计算结束后调用 <code>kernel_fpu_end</code> 开启系统抢占，这使得代码不会被中断，从而安全的进行浮点运算，并且要求这之间的代码不能有休眠或调度操作，另外不得有嵌套的情况出现（将会覆盖原始保存的状态，然后执行 <code>kernel_fpu_end()</code> 最终将恢复错误的 FPU 状态）。</p>
+<div class="highlight"><pre><span></span><code>void kernel_fpu_begin(void)
+{
+  preempt_disable();
+  __kernel_fpu_begin();
+}
+</code></pre></div>
+
+<h3>四、三角函数在 Linux 内核态的实现</h3>
+<p>由于内核态不支持浮点运算，所以像三角函数之类浮点运算都没有实现，如果需要，可以将用户态 glibc 中相关的三角函数的实现移植到内核态。</p>
+<h3>五、 Linux 用户态对浮点运算处理方式的分析</h3>
+<p>为什么用户态浮点运算就不需要指定编译选项以及显式调用 <code>kernel_fpu_begin</code> 和 <code>kernel_fpu_end</code> 函数呢？我们在用户态下写一个简单的带浮点运算的例子：</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;stdio.h&gt;</span>
+<span class="err">​</span>
+<span class="kt">int</span><span class="w"> </span><span class="n">main</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">argc</span><span class="p">,</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">**</span><span class="n">argv</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">result</span><span class="p">,</span><span class="w"> </span><span class="n">float1</span><span class="o">=</span><span class="mf">4.9</span><span class="p">,</span><span class="w"> </span><span class="n">float2</span><span class="o">=</span><span class="mf">0.49</span><span class="p">;</span>
+<span class="err">​</span>
+<span class="w">  </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">float1</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">float2</span><span class="p">;</span>
+<span class="w">  </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;result = %d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">result</span><span class="p">);</span>
+<span class="err">​</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><em>user_float.c</em></p>
+<p>我们分别使用下面四条编译指令查看编译出来的汇编：</p>
+<ol>
+<li><code>gcc -S user_float.c</code></li>
+<li><code>gcc -S user_float.c -msoft-float</code></li>
+<li><code>gcc -S user_float.c -mhard-float</code></li>
+<li><code>gcc -S user_float.c -msoft-float -mno-sse -mno-mmx -mno-sse2</code></li>
+</ol>
+<p>前三条命令编译成功。依次查看编译生成的汇编代码，发现生成的汇编代码是完全一样的，都是用到了 sse 指令中的 mmx 寄存器，也就是使用到了 FPU。</p>
+<p>第四条命令编译失败 ，提示 <code>error: SSE register return with SSE disabled</code>。从上面的现象中我们可以得出结论，系统默认使用 <code>gcc</code> 编译用户态程序时，<code>gcc</code> 默认使用 FPU，也就是使用硬浮点来编译。</p>
+<p>经过查阅各种文档和分析代码，x86 CPU 提供如下特性：CPU 提供的 TS 寄存器的第三个位是<ruby> 任务已切换标志 <rp>  （ </rp> <rt>  Task Switched bit </rt> <rp>  ） </rp></ruby>，CPU 在每次任务切换时会设置这个位。而且 TS 的这个位被设置时，当进程使用 FPU 指令时 CPU 会产生一个 DNA（Device Not Availabel）异常。Linux 使用此特性，当用户态应用程序进行浮点运算时（SSE 等指令），触发 DNA 异常，同时使用 FPU 专用寄存器和指令来执行浮点数功能，此时 <code>TS_USEDFPU</code> 标志为 1，表示用户态进程使用了 FPU。</p>
+<div class="highlight"><pre><span></span><code><span class="k">void</span><span class="w"> </span><span class="n">fpu__restore</span><span class="p">(</span><span class="k">struct</span><span class="w"> </span><span class="n">fpu</span><span class="w"> </span><span class="o">*</span><span class="n">fpu</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="n">fpu__initialize</span><span class="p">(</span><span class="n">fpu</span><span class="p">);</span>
+
+<span class="w">  </span><span class="cm">/* Avoid __kernel_fpu_begin() right after fpregs_activate() */</span>
+<span class="w">  </span><span class="n">kernel_fpu_disable</span><span class="p">();</span>
+<span class="w">  </span><span class="n">trace_x86_fpu_before_restore</span><span class="p">(</span><span class="n">fpu</span><span class="p">);</span>
+<span class="w">  </span><span class="n">fpregs_activate</span><span class="p">(</span><span class="n">fpu</span><span class="p">);</span>
+<span class="w">  </span><span class="n">copy_kernel_to_fpregs</span><span class="p">(</span><span class="o">&amp;</span><span class="n">fpu</span><span class="o">-&gt;</span><span class="n">state</span><span class="p">);</span>
+<span class="w">  </span><span class="n">trace_x86_fpu_after_restore</span><span class="p">(</span><span class="n">fpu</span><span class="p">);</span>
+<span class="w">  </span><span class="n">kernel_fpu_enable</span><span class="p">();</span>
+<span class="p">}</span>
+<span class="n">EXPORT_SYMBOL_GPL</span><span class="p">(</span><span class="n">fpu__restore</span><span class="p">);</span>
+</code></pre></div>
+
+<p>假设用户态进程 A 使用到了 FPU 执行浮点运算，此时用户态进程 B 被调度执行，那么当进程 A 被调度出去的时候，内核设置 TS 并调用 <code>fpu__restore</code> 将 FPU 的内容保存。当进程 A 恢复浮点运算执行时，触发 DNA 异常，相应的异常处理程序会恢复 FPU 之前保存的状态。</p>
+<p>假设用户态进程 A 使用到了 FPU 执行浮点运算（<code>TS_USEDFPU</code> 标志为 1），此时内核态进程 C 调度并使用 FPU，由于内核只会保存普通的寄存器的值，并不包括 FP 等寄存器的值，所以内核会主动调用 <code>kernel_fpu_begin</code> 函数保存寄存器内容，使用完之后调用 <code>kernel_fpu_end</code>。当用户态进程 A 恢复浮点运算执行时，触发 DNA 异常，相应的异常处理程序会恢复 FPU 寄存器的内容。</p>
+<h3>六、 结论</h3>
+<ol>
+<li>Linux 中当任务切换时，缺省不保存浮点器寄存器。</li>
+<li>如果需要内核态支持浮点运算，需要增加支持浮点的编译选项和使用 <code>kernel_fpu_begin</code> 和 <code>kernel_fpu_end</code> 函数手动处理上下文。</li>
+<li>用户态缺省支持浮点运算，但是需要内核来辅助。</li>
+</ol>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

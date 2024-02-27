@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何使用 rsync 的高级用法进行大型备份</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Alan Formy-duval 基础的 rsync 命令通常足够来管理你的 Linux 备份，但是额外的选项使大型备份集更快、更强大。 很明显，备份一直是 Linux 世界 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/05/ru-he-shi-yong-rsync-de-gao-ji-yong-fa-jin-xing-da-xing-bei-fen.html" rel="bookmark"
+           title="Permalink to 如何使用 rsync 的高级用法进行大型备份">如何使用 rsync 的高级用法进行大型备份</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-05-16T23:15:33+02:00">
+                Published: Thu 16 May 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Alan Formy-duval</p>
+<blockquote>
+<p>基础的 <code>rsync</code> 命令通常足够来管理你的 Linux 备份，但是额外的选项使大型备份集更快、更强大。</p>
+</blockquote>
+<p><img alt="Filing papers and documents" src="/data/attachment/album/201905/16/231555em80ofla6fqz5qkq.png" title="Filing papers and documents"></p>
+<p>很明显，备份一直是 Linux 世界的热门话题。回到 2017，David Both 为 <a href="http://Opensource.com">Opensource.com</a> 的读者在<a href="/article-8237-1.html">使用 rsync 备份 Linux 系统</a>方面提了一些建议，在这年的更早时候，他发起了一项问卷调查询问大家，<a href="https://opensource.com/poll/19/4/backup-strategy-home-directory-linux">在 Linux 中你的 /home 目录的主要备份策略是什么</a>，在今年的另一个问卷调查中，Don Watkins 问到，<a href="https://opensource.com/article/19/2/linux-backup-solutions">你使用哪种开源备份解决方案</a>。</p>
+<p>我的回复是 <a href="https://en.wikipedia.org/wiki/Rsync">rsync</a>。我真的非常喜欢 rsync！市场上有大量大而复杂的工具，对于管理磁带机或者存储库设备，这些可能是必要的，但是可能你需要的只是一个简单的开源命令行工具。</p>
+<h3>rsync 基础</h3>
+<p>我为一个大概拥有 35,000 开发者并有着几十 TB 文件的全球性机构管理二进制仓库。我经常一次移动或者归档上百 GB 的数据。使用的是 <code>rsync</code>。这种经历使我对这个简单的工具充满信心。（所以，是的，我在家使用它来备份我的 Linux 系统）</p>
+<p>基础的 <code>rsync</code> 命令很简单。</p>
+<div class="highlight"><pre><span></span><code>rsync -av 源目录 目的地目录
+</code></pre></div>
+
+<p>实际上，在各种指南中教的 <code>rsync</code> 命令在大多数通用情况下都运行的很好。然而，假设我们需要备份大量的数据。例如包含 2,000 个子目录的目录，每个包含 50GB 到 700GB 的数据。在这个目录运行 <code>rsync</code> 可能需要大量时间，尤其是当你使用校验选项时（我倾向使用）。</p>
+<p>当我们试图同步大量数据或者通过慢的网络连接时，可能遇到性能问题。让我给你展示一些我使用的方法来确保好的性能和可靠性。</p>
+<h3>rsync 高级用法</h3>
+<p><code>rsync</code> 运行时出现的第一行是：“正在发送增量文件列表。” 如果你在网上搜索这一行，你将看到很多类似的问题：为什么它一直运行，或者为什么它似乎挂起了。</p>
+<p>这里是一个基于这个场景的例子。假设我们有一个 <code>/storage</code> 的目录，我们想要备份到一个外部 USB 磁盘，我们可以使用下面的命令：</p>
+<div class="highlight"><pre><span></span><code>rsync -cav /storage /media/WDPassport
+</code></pre></div>
+
+<p><code>-c</code> 选项告诉 <code>rsync</code> 使用文件校验和而不是时间戳来决定改变的文件，这通常消耗的时间更久。为了分解 <code>/storage</code> 目录，我通过子目录同步，使用 <code>find</code> 命令。这是一个例子：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">find</span><span class="w"> </span><span class="o">/</span><span class="nx">storage</span><span class="w"> </span><span class="o">-</span><span class="k">type</span><span class="w"> </span><span class="nx">d</span><span class="w"> </span><span class="o">-</span><span class="nx">exec</span><span class="w"> </span><span class="nx">rsync</span><span class="w"> </span><span class="o">-</span><span class="nx">cav</span><span class="w"> </span><span class="p">{}</span><span class="w"> </span><span class="o">/</span><span class="nx">media</span><span class="o">/</span><span class="nx">WDPassport</span><span class="w"> </span><span class="err">\</span><span class="p">;</span>
+</code></pre></div>
+
+<p>这看起来可以，但是如果 <code>/storage</code> 目录有任何文件，它们将被跳过。因此，我们如何同步 <code>/storage</code> 目录中的文件呢？同样有一个细微的差别是这些选项将造成 <code>rsync</code> 会同步 <code>.</code> 目录，该目录是源目录自身；这意味着它会同步子目录两次，这并不是我们想要的。</p>
+<p>长话短说，我的解决方案是一个 “双-递增”脚本。这允许我分解一个目录，例如，当你的家目录有多个大的目录，例如音乐或者家庭照片时，分解 <code>/home</code> 目录为单个的用户家目录。</p>
+<p>这是我的脚本的一个例子：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">HOMES</span><span class="p">=</span><span class="s">&quot;alan&quot;</span>
+<span class="nx">DRIVE</span><span class="p">=</span><span class="s">&quot;/media/WDPassport&quot;</span>
+
+<span class="k">for</span><span class="w"> </span><span class="nx">HOME</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="err">$</span><span class="nx">HOMES</span><span class="p">;</span><span class="w"> </span><span class="nx">do</span>
+<span class="nx">cd</span><span class="w"> </span><span class="o">/</span><span class="nx">home</span><span class="o">/</span><span class="err">$</span><span class="nx">HOME</span>
+<span class="nx">rsync</span><span class="w"> </span><span class="o">-</span><span class="nx">cdlptgov</span><span class="w"> </span><span class="o">--</span><span class="nx">delete</span><span class="w"> </span><span class="p">.</span><span class="w"> </span><span class="o">/</span><span class="err">$</span><span class="nx">DRIVE</span><span class="o">/</span><span class="err">$</span><span class="nx">HOME</span>
+<span class="nx">find</span><span class="w"> </span><span class="p">.</span><span class="w"> </span><span class="o">-</span><span class="nx">maxdepth</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="o">-</span><span class="k">type</span><span class="w"> </span><span class="nx">d</span><span class="w"> </span><span class="o">-</span><span class="k">not</span><span class="w"> </span><span class="o">-</span><span class="nx">name</span><span class="w"> </span><span class="s">&quot;.&quot;</span><span class="w"> </span><span class="o">-</span><span class="nx">exec</span><span class="w"> </span><span class="nx">rsync</span><span class="w"> </span><span class="o">-</span><span class="nx">crlptgov</span><span class="w"> </span><span class="o">--</span><span class="nx">delete</span><span class="w"> </span><span class="p">{}</span><span class="w"> </span><span class="o">/</span><span class="err">$</span><span class="nx">DRIVE</span><span class="o">/</span><span class="err">$</span><span class="nx">HOME</span><span class="w"> </span><span class="err">\</span><span class="p">;</span>
+<span class="nx">done</span>
+</code></pre></div>
+
+<p>第一个 <code>rsync</code> 命令拷贝它在源目录中发现的文件和目录。然而，它将目录留着不处理，因此我们能够通过 <code>find</code> 命令迭代它们。这通过传递 <code>-d</code> 参数来完成，它告诉 <code>rsync</code> 不要递归目录。</p>
+<div class="highlight"><pre><span></span><code>-d, --dirs 传输目录而不递归
+</code></pre></div>
+
+<p>然后 <code>find</code> 命令传递每个目录来单独运行 <code>rsync</code>。之后 <code>rsync</code> 拷贝目录的内容。这通过传递 <code>-r</code> 参数来完成，它告诉 <code>rsync</code> 要递归目录。</p>
+<div class="highlight"><pre><span></span><code>-r, --recursive 递归进入目录
+</code></pre></div>
+
+<p>这使得 <code>rsync</code> 使用的增量文件保持在一个合理的大小。</p>
+<p>大多数 <code>rsync</code> 指南为了简便使用 <code>-a</code> （或者 <code>archive</code>） 参数。这实际是一个复合参数。</p>
+<div class="highlight"><pre><span></span><code>-a, --archive 归档模式；等价于 -rlptgoD（没有 -H,-A,-X）
+</code></pre></div>
+
+<p>我传递的其他参数包含在 <code>a</code> 中；这些是 <code>-l</code>、<code>-p</code>、<code>-t</code>、<code>-g</code>和 <code>-o</code>。</p>
+<div class="highlight"><pre><span></span><code>-l, --links 复制符号链接作为符号链接
+-p, --perms 保留权限
+-t, --times 保留修改时间
+-g, --group 保留组
+-o, --owner 保留拥有者（只适用于超级管理员）
+</code></pre></div>
+
+<p><code>--delete</code> 选项告诉 <code>rsync</code> 删除目的地目录中所有在源目录不存在的任意文件。这种方式，运行的结果仅仅是复制。你同样可以排除 <code>.Trash</code> 目录或者 MacOS 创建的 <code>.DS_Store</code> 文件。</p>
+<div class="highlight"><pre><span></span><code>-not -name &quot;.Trash*&quot; -not -name &quot;.DS_Store&quot;
+</code></pre></div>
+
+<h3>注意</h3>
+<p>最后一条建议： <code>rsync</code> 可以是破坏性的命令。幸运的是，它的睿智的创造者提供了 “空运行” 的能力。如果我们加入 <code>n</code> 选项，rsync 会显示预期的输出但不写任何数据。</p>
+<div class="highlight"><pre><span></span><code>`rsync -cdlptgovn --delete . /$DRIVE/$HOME`
+</code></pre></div>
+
+<p>这个脚本适用于非常大的存储规模和高延迟或者慢链接的情况。一如既往，我确信仍有提升的空间。如果你有任何建议，请在下方评论中分享。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

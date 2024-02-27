@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在树莓派集群中部署 Ceph</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Aj Canlas 使用 ceph-ansible 安装 Ceph 存储，并将其部署在树莓派集群中。 Ceph 是一个开源软件存储平台，它在统一的存储集群中提供对象、块 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li class="active"><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2021/01/zai-shu-mei-pai-ji-qun-zhong-bu-shu-ceph.html" rel="bookmark"
+           title="Permalink to 在树莓派集群中部署 Ceph">在树莓派集群中部署 Ceph</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2021-01-16T13:55:49+01:00">
+                Published: Sat 16 January 2021
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/shu-mei-pai">树莓派</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Aj Canlas</p>
+<blockquote>
+<p>使用 ceph-ansible 安装 Ceph 存储，并将其部署在树莓派集群中。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/202101/16/135445mquduh2idu2pft22.jpg" title="Vector, generic Raspberry Pi board"></p>
+<p><a href="https://ceph.io/">Ceph</a> 是一个开源软件存储平台，它在统一的存储集群中提供对象、块和文件系统存储。我第一次使用 Ceph 是在 <a href="https://opensource.com/business/15/1/introduction-ceph-storage-openstack">OpenStack 中集成它</a>的时候。一开始，我很困惑，既然存储设备广泛存在，为什么要使用 Ceph。但在使用了三年多之后，这个平台的稳定性和完整性一再证明了它的价值。</p>
+<p>本文将告诉你如何使用 <a href="https://docs.ceph.com/projects/ceph-ansible/en/latest/index.html#">ceph-ansible</a>（Ceph 官方支持的 Ansible playbook）安装 Ceph，并将其部署在树莓派集群中。</p>
+<p><strong>材料：</strong></p>
+<ol>
+<li>树莓派 4B 4GB 型号四台。</li>
+<li>四张 32GB 的 microSD 卡（用于启动操作系统）</li>
+<li>四个树莓派外壳，带风扇和散热片（非常重要）</li>
+<li>四个树莓派充电器</li>
+<li>6 个 32GB U 盘（用于 Ceph OSD 节点）</li>
+</ol>
+<p><strong>架构：</strong></p>
+<p><img alt="Project architecture" src="/data/attachment/album/202101/16/135551r85dz81iuhx85n9h.png" title="Project architecture"></p>
+<p>关于配置：</p>
+<ul>
+<li>前端和后端网络都在同一个子网中</li>
+<li><a href="https://docs.ceph.com/en/latest/glossary/#term-Ceph-Monitor">Ceph Monitor</a> 软件使用 4GB 内存的树莓派 4B。</li>
+<li><a href="https://docs.ceph.com/en/latest/glossary/#term-OSD">Ceph OSD</a> 节点使用相同的树莓派型号，但有两个 U 盘用于 OSD 磁盘</li>
+</ul>
+<h3>使用 ceph-ansible 部署 Ceph</h3>
+<p>使用 Ceph 的 Ansible 仓库可以让部署变得顺畅简单</p>
+<h4>1、复制 ssh 密钥到所有服务器</h4>
+<p>我在所有的服务器上都有一个名为 <code>cephadmin</code> 的共同用户（在此背景下，每个树莓派都是一台服务器）。<code>cephadmin</code> 用户配置了无密码的 <code>sudo</code>，以方便工作。</p>
+<p>使用 <code>ssh-keygen</code> 生成密钥后，使用 <code>ssh-copy-id</code> 部署所有密钥。</p>
+<p>我使用了一个 Bash <code>for</code> 循环，因为我使用的是一致并递增的主机名：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="k">for</span><span class="w"> </span>i<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="o">{</span><span class="m">0</span>..3<span class="o">}</span><span class="p">;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="k">do</span><span class="w"> </span>ssh-copy-id<span class="w"> </span>cephadmin@rpi4b4-<span class="nv">$i</span><span class="p">;</span><span class="w"> </span><span class="se">\</span>
+<span class="k">done</span>
+</code></pre></div>
+
+<p>你需要每个接受并输入密码，但你可以用 <code>expect</code> 来自动完成。</p>
+<h4>2、克隆 ceph-ansible 并安装依赖</h4>
+<p>安装 Git 来克隆仓库：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>git<span class="w"> </span>-y
+</code></pre></div>
+
+<p>克隆 ceph-ansible 仓库：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/ceph/ceph-ansible.git
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>ceph-ansible/
+</code></pre></div>
+
+<p>我使用的是 CentOS 7 的 AArch64 构建，所以在继续之前，我必须安装一些所需的包。</p>
+<p>首先安装 Python <code>pip</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>python3-pip<span class="w"> </span>-y
+</code></pre></div>
+
+<p>接着是 ceph-ansible 需要的包：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>python3-devel<span class="w"> </span>libffi-devel<span class="w"> </span>openssl-devel<span class="w"> </span>-y
+</code></pre></div>
+
+<p>最后，ceph-ansible 需要的依赖：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>pip3<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt<span class="w"> </span>--user
+</code></pre></div>
+
+<p>我收到了这个错误：</p>
+<div class="highlight"><pre><span></span><code><span class="n">You</span><span class="w"> </span><span class="n">are</span><span class="w"> </span><span class="n">linking</span><span class="w"> </span><span class="n">against</span><span class="w"> </span><span class="n">OpenSSL</span><span class="w"> </span><span class="mf">1.0</span><span class="o">.</span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="n">which</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">no</span><span class="w"> </span><span class="n">longer</span><span class="w"> </span><span class="n">supported</span><span class="w"> </span><span class="n">by</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">OpenSSL</span><span class="w"> </span><span class="n">project</span><span class="o">.</span>
+<span class="n">To</span><span class="w"> </span><span class="n">use</span><span class="w"> </span><span class="n">this</span><span class="w"> </span><span class="n">version</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="n">cryptography</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="n">need</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">upgrade</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">newer</span><span class="w"> </span><span class="n">version</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="n">OpenSSL</span><span class="o">.</span><span class="w"> </span><span class="n">For</span>
+<span class="n">this</span><span class="w"> </span><span class="n">version</span><span class="w"> </span><span class="n">only</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="n">can</span><span class="w"> </span><span class="n">also</span><span class="w"> </span><span class="n">set</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">environment</span><span class="w"> </span><span class="n">variable</span>
+<span class="n">CRYPTOGRAPHY_ALLOW_OPENSSL_102</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">allow</span><span class="w"> </span><span class="n">OpenSSL</span><span class="w"> </span><span class="mf">1.0</span><span class="o">.</span><span class="mf">2.</span>
+</code></pre></div>
+
+<p>这可能与架构有关，因为我无法在 CentOS 7 虚拟机中复现该错误。</p>
+<p>部署时，将 <code>CRYPTOGRAPHY_ALLOW_OPENSSL_102</code> 导出为 <code>True</code>，这样 Ansible 就可以运行了。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">export</span><span class="w"> </span><span class="nv">CRYPTOGRAPHY_ALLOW_OPENSSL_102</span><span class="o">=</span>True
+</code></pre></div>
+
+<h4>3、配置 ceph-ansible 进行部署</h4>
+<p>现在你可以使用 ceph-ansible 部署 Ceph 了。</p>
+<p>复制 <code>site.yml.sample</code> 到 <code>site.yml</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>mv<span class="w"> </span>site.yml.sample<span class="w"> </span>site.yml
+</code></pre></div>
+
+<p>在 <code>group_vars</code> 目录下创建 <code>all.yml</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cat<span class="w"> </span><span class="s">&lt;&lt; EOF &gt;&gt; group_vars/all.yml</span>
+<span class="s">ceph_origin: repository</span>
+<span class="s">ceph_repository: community</span>
+<span class="s">ceph_repository_type: cdn</span>
+<span class="s">ceph_stable_release: nautilus</span>
+<span class="s">monitor_interface: wlan0</span>
+<span class="s">public_network: &quot;192.168.100.0/24&quot;</span>
+<span class="s">cluster_network: &quot;192.168.100.0/24&quot;</span>
+<span class="s">dashboard_enabled: false</span>
+<span class="s">configure_firewall: false</span>
+<span class="s">EOF</span>
+</code></pre></div>
+
+<p>在 <code>group_vars</code> 目录下创建 <code>osds.yml</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cat<span class="w"> </span><span class="s">&lt;&lt; EOF &gt;&gt; group_vars/all.yml</span>
+<span class="s">osd_scenario: collocated</span>
+<span class="s">devices:</span>
+<span class="s"> - /dev/sda</span>
+<span class="s"> - /dev/sdb</span>
+<span class="s">EOF</span>
+</code></pre></div>
+
+<p>创建一个 <code>inventory</code> 文件：</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">EOF</span><span class="w"> </span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">inventory</span>
+<span class="o">[</span><span class="n">mons</span><span class="o">]</span>
+<span class="n">rpi4b4</span><span class="o">-</span><span class="mi">0</span>
+
+<span class="o">[</span><span class="n">osds</span><span class="o">]</span>
+<span class="n">rpi4b4</span><span class="o">-</span><span class="mi">1</span>
+<span class="n">rpi4b4</span><span class="o">-</span><span class="mi">2</span>
+<span class="n">rpi4b4</span><span class="o">-</span><span class="mi">3</span>
+<span class="n">EOF</span>
+</code></pre></div>
+
+<p>在写这篇文章的时候，ceph-ansible 仓库里有一个 bug（根据这个 <a href="https://tracker.ceph.com/issues/43430">bug 工单</a>）。你可以通过编辑角色的第 85 行和第 86 行来减轻这个 bug。</p>
+<div class="highlight"><pre><span></span><code>    <span class="k">-</span> (wait_for_all_osds_up.stdout | from_json)[&quot;osdmap&quot;][&quot;num_osds&quot;] | int &gt; 0
+    <span class="k">-</span> (wait_for_all_osds_up.stdout | from_json)[&quot;osdmap&quot;][&quot;num_osds&quot;] == (wait_for_all_osds_up.stdout | from_json)[&quot;osdmap&quot;][&quot;num_up_osds&quot;]
+</code></pre></div>
+
+<h4>4、部署 Ceph</h4>
+<p>用你的 <code>inventory</code> 文件运行 Ansible 剧本：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ansible-playbook<span class="w"> </span>-i<span class="w"> </span>inventory<span class="w"> </span>site.yml
+</code></pre></div>
+
+<p>15-20 分钟后，你应该看到这个结果：</p>
+<p><img alt="Ceph deployment" src="/data/attachment/album/202101/16/135551sr7xjrjj7n5xyik7.png" title="Ceph deployment"></p>
+<h3>下面的步骤</h3>
+<p>之前，我在另一个树莓派集群中<a href="https://opensource.com/article/20/12/openstack-raspberry-pi">手动部署</a>了一个 OpenStack 集群。我希望能将其与这个集群整合在一起。我也在研究用 <a href="https://wiki.openstack.org/wiki/TripleO">TripleO</a> 部署。</p>
+<p>树莓派、Ansible 和 OpenStack 的可能性是无穷的。开始做你自己的实验，并在评论中告诉我结果如何。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>UNIX 的怪东西</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Dima Kogan 最近我在用我编写的各种工具做更多 UNIX 下的事情，我遇到了两个有趣的问题。这些都不是 “bug”，而是我没想到的行为 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/08/unix-de-guai-dong-xi.html" rel="bookmark"
+           title="Permalink to UNIX 的怪东西">UNIX 的怪东西</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-08-17T17:02:44+02:00">
+                Published: Fri 17 August 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Dima Kogan</p>
+<p><img alt="" src="/data/attachment/album/201808/17/170055yst2s94aslim9hbe.jpg"></p>
+<p>最近我在用我编写的各种工具做更多 UNIX 下的事情，我遇到了两个有趣的问题。这些都不是 “bug”，而是我没想到的行为。</p>
+<h3>线程安全的 printf</h3>
+<p>我有一个 C 程序从磁盘读取一些图像，进行一些处理，并将有关这些图像的输出写入 STDOUT。伪代码：</p>
+<div class="highlight"><pre><span></span><code><span class="k">for</span><span class="ss">(</span><span class="nv">imagefilename</span><span class="w"> </span><span class="nv">in</span><span class="w"> </span><span class="nv">images</span><span class="ss">)</span>
+{
+<span class="w">    </span><span class="nv">results</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">process</span><span class="ss">(</span><span class="nv">imagefilename</span><span class="ss">)</span><span class="c1">;</span>
+<span class="w">    </span><span class="nv">printf</span><span class="ss">(</span><span class="nv">results</span><span class="ss">)</span><span class="c1">;</span>
+}
+</code></pre></div>
+
+<p>对于每个图像都是独立处理的，因此我自然希望将处理任务分配在各个 CPU 之间以加快速度。我通常使用 <code>fork()</code>，所以我写了这个：</p>
+<div class="highlight"><pre><span></span><code>for(child in children)
+{
+    pipe = create_pipe();
+    worker(pipe);
+}
+
+// main parent process
+for(imagefilename in images)
+{
+    write(pipe[i_image % N_children], imagefilename)
+}
+
+worker()
+{
+    while(1)
+    {
+        imagefilename = read(pipe);
+        results = process(imagefilename);
+        printf(results);
+    }
+}
+</code></pre></div>
+
+<p>这是正常的做法：我为 IPC 创建管道，并通过这些管道给子进程 worker 发送图像名。每个 worker <em>能够</em>通过另一组管道将其结果写回主进程，但这很痛苦，所以每个 worker 都直接写入共享 STDOUT。这工作正常，但正如人们所预料的那样，对 STDOUT 的写入发生冲突，因此各种图像的结果最终会混杂在一起。那很糟糕。我不想自己设置个锁，但幸运的是 GNU libc 为它提供了函数：<a href="https://www.gnu.org/software/libc/manual/html_node/Streams-and-Threads.html">flockfile()</a>。我把它们放进去了……但是没有用！为什么？因为 <code>flockfile()</code> 最终因为 <code>fork()</code> 的写时复制行为而被限制在单个子进程中。即 <code>fork()</code>提供的额外安全性（与线程相比），这实际上最终破坏了锁。</p>
+<p>我没有尝试使用其他锁机制（例如 pthread 互斥锁），但我可以想象它们会遇到类似的问题。我想保持简单，所以将输出发送回父输出是不可能的：这给程序员和运行程序的计算机制造了更多的工作。</p>
+<p>解决方案：使用线程而不是 <code>fork()</code>。这有制造冗余管道的好的副作用。最终的伪代码：</p>
+<div class="highlight"><pre><span></span><code><span class="k">for</span><span class="p">(</span><span class="n">children</span><span class="p">)</span>
+<span class="err">{</span>
+<span class="w">    </span><span class="n">pthread_create</span><span class="p">(</span><span class="n">worker</span><span class="p">,</span><span class="w"> </span><span class="n">child_index</span><span class="p">);</span>
+<span class="err">}</span>
+<span class="k">for</span><span class="p">(</span><span class="n">children</span><span class="p">)</span>
+<span class="err">{</span>
+<span class="w">    </span><span class="n">pthread_join</span><span class="p">(</span><span class="n">child</span><span class="p">);</span>
+<span class="err">}</span>
+
+<span class="n">worker</span><span class="p">(</span><span class="n">child_index</span><span class="p">)</span>
+<span class="err">{</span>
+<span class="w">    </span><span class="k">for</span><span class="p">(</span><span class="n">i_image</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">child_index</span><span class="p">;</span><span class="w"> </span><span class="n">i_image</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">N_images</span><span class="p">;</span><span class="w"> </span><span class="n">i_image</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">N_children</span><span class="p">)</span>
+<span class="w">    </span><span class="err">{</span>
+<span class="w">        </span><span class="n">results</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">process</span><span class="p">(</span><span class="n">images</span><span class="o">[</span><span class="n">i_image</span><span class="o">]</span><span class="p">);</span>
+<span class="w">        </span><span class="n">flockfile</span><span class="p">(</span><span class="n">stdout</span><span class="p">);</span>
+<span class="w">        </span><span class="n">printf</span><span class="p">(</span><span class="n">results</span><span class="p">);</span>
+<span class="w">        </span><span class="n">funlockfile</span><span class="p">(</span><span class="n">stdout</span><span class="p">);</span>
+<span class="w">    </span><span class="err">}</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<p>这更简单，如预期的那样工作。我猜有时线程更好。</p>
+<h3>将部分读取的文件传递给子进程</h3>
+<p>对于各种 <a href="http://www.github.com/dkogan/vnlog">vnlog</a> 工具，我需要实现这个操作序列：</p>
+<ol>
+<li>进程打开一个关闭 <code>O_CLOEXEC</code> 标志的文件</li>
+<li>进程读取此文件的一部分（在 vnlog 的情况下直到图例的末尾）</li>
+<li>进程调用 <code>exec()</code> 以调用另一个程序来处理已经打开的文件的其余部分</li>
+</ol>
+<p>第二个程序可能需要命令行中的文件名而不是已打开的文件描述符，因为第二个程序可能自己调用 <code>​​open()</code>。如果我传递文件名，这个新程序将重新打开文件，然后从头开始读取文件，而不是从原始程序停止的位置开始读取。在我的程序上不可以这样做，因此将文件名传递给第二个程序是行不通的。</p>
+<p>所以我真的需要以某种方式传递已经打开的文件描述符。我在使用 Linux（其他操作系统可能在这里表现不同），所以我理论上可以通过传递 <code>/dev/fd/N</code> 而不是文件名来实现。但事实证明这也不起作用。在 Linux上（再说一次，也许是特定于 Linux）对于普通文件 <code>/dev/fd/N</code> 是原始文件的符号链接。所以这最终做的是与传递文件名完全相同的事情。</p>
+<p>但有一个临时方案！如果我们正在读取管道而不是文件，那么没有什么可以符号链接，并且 <code>/dev/fd/N</code> 最终将原始管道传递给第二个进程，然后程序正常工作。我可以通过将上面的 <code>open("filename")</code> 更改为 <code>popen("cat filename")</code> 之类的东西来伪装。呸！这真的是我们所能做到最好的吗？这在 BSD 上看上去会怎么样？</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

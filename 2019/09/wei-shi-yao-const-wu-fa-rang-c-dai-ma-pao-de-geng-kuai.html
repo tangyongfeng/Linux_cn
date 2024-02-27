@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>为什么 const 无法让 C 代码跑得更快？</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Simon Arneaud 在几个月前的一篇文章里，我曾说过“有个一个流行的传言，const 有助于编译器优化 C 和 C++ 代码”。我觉得我需要解释一 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2019/09/wei-shi-yao-const-wu-fa-rang-c-dai-ma-pao-de-geng-kuai.html" rel="bookmark"
+           title="Permalink to 为什么 const 无法让 C 代码跑得更快？">为什么 const 无法让 C 代码跑得更快？</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2019-09-14T18:16:34+02:00">
+                Published: Sat 14 September 2019
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Simon Arneaud</p>
+<p><img alt="" src="/data/attachment/album/201909/14/181535lsrt9t93k1c1n0mt.jpg"></p>
+<p>在几个月前的一篇文章里，我曾说过“<a href="https://theartofmachinery.com/2019/04/05/d_as_c_replacement.html#const-and-immutable">有个一个流行的传言，<code>const</code> 有助于编译器优化 C 和 C++ 代码</a>”。我觉得我需要解释一下，尤其是曾经我自己也以为这是显然对的。我将会用一些理论并构造一些例子来论证，然后在一个真实的代码库 <code>Sqlite</code> 上做一些实验和基准测试。</p>
+<h3>一个简单的测试</h3>
+<p>让我们从一个最简单、最明显的例子开始，以前认为这是一个 <code>const</code> 让 C 代码跑得更快的例子。首先，假设我们有如下两个函数声明：</p>
+<div class="highlight"><pre><span></span><code><span class="nb nb-Type">void</span><span class="w"> </span><span class="k">func</span><span class="p">(</span><span class="nb nb-Type">int</span><span class="w"> </span><span class="o">*</span><span class="n">x</span><span class="p">);</span>
+<span class="nb nb-Type">void</span><span class="w"> </span><span class="n">constFunc</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="nb nb-Type">int</span><span class="w"> </span><span class="o">*</span><span class="n">x</span><span class="p">);</span>
+</code></pre></div>
+
+<p>然后假设我们如下两份代码：</p>
+<div class="highlight"><pre><span></span><code><span class="nb nb-Type">void</span><span class="w"> </span><span class="n">byArg</span><span class="p">(</span><span class="nb nb-Type">int</span><span class="w"> </span><span class="o">*</span><span class="n">x</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="n">printf</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%d</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span><span class="w"> </span><span class="o">*</span><span class="n">x</span><span class="p">);</span>
+<span class="w">  </span><span class="k">func</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
+<span class="w">  </span><span class="n">printf</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%d</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span><span class="w"> </span><span class="o">*</span><span class="n">x</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="nb nb-Type">void</span><span class="w"> </span><span class="n">constByArg</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="nb nb-Type">int</span><span class="w"> </span><span class="o">*</span><span class="n">x</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="n">printf</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%d</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span><span class="w"> </span><span class="o">*</span><span class="n">x</span><span class="p">);</span>
+<span class="w">  </span><span class="n">constFunc</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
+<span class="w">  </span><span class="n">printf</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%d</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span><span class="w"> </span><span class="o">*</span><span class="n">x</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>调用 <code>printf()</code> 时，CPU 会通过指针从 RAM 中取得 <code>*x</code> 的值。很显然，<code>constByArg()</code> 会稍微快一点，因为编译器知道 <code>*x</code> 是常量，因此不需要在调用 <code>constFunc()</code> 之后再次获取它的值。它仅是打印相同的东西。没问题吧？让我们来看下 GCC 在如下编译选项下生成的汇编代码：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>gcc<span class="w"> </span>-S<span class="w"> </span>-Wall<span class="w"> </span>-O3<span class="w"> </span>test.c
+$<span class="w"> </span>view<span class="w"> </span>test.s
+</code></pre></div>
+
+<p>以下是函数 <code>byArg()</code> 的完整汇编代码：</p>
+<div class="highlight"><pre><span></span><code><span class="n">byArg</span><span class="p">:</span>
+<span class="o">.</span><span class="n">LFB23</span><span class="p">:</span>
+<span class="w">    </span><span class="o">.</span><span class="n">cfi_startproc</span>
+<span class="w">    </span><span class="n">pushq</span><span class="w">   </span><span class="o">%</span><span class="n">rbx</span>
+<span class="w">    </span><span class="o">.</span><span class="n">cfi_def_cfa_offset</span><span class="w"> </span><span class="mi">16</span>
+<span class="w">    </span><span class="o">.</span><span class="n">cfi_offset</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">16</span>
+<span class="w">    </span><span class="n">movl</span><span class="w">    </span><span class="p">(</span><span class="o">%</span><span class="n">rdi</span><span class="p">),</span><span class="w"> </span><span class="o">%</span><span class="n">edx</span>
+<span class="w">    </span><span class="n">movq</span><span class="w">    </span><span class="o">%</span><span class="n">rdi</span><span class="p">,</span><span class="w"> </span><span class="o">%</span><span class="n">rbx</span>
+<span class="w">    </span><span class="n">leaq</span><span class="w">    </span><span class="o">.</span><span class="n">LC0</span><span class="p">(</span><span class="o">%</span><span class="n">rip</span><span class="p">),</span><span class="w"> </span><span class="o">%</span><span class="n">rsi</span>
+<span class="w">    </span><span class="n">movl</span><span class="w">    </span><span class="o">$</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">%</span><span class="n">edi</span>
+<span class="w">    </span><span class="n">xorl</span><span class="w">    </span><span class="o">%</span><span class="n">eax</span><span class="p">,</span><span class="w"> </span><span class="o">%</span><span class="n">eax</span>
+<span class="w">    </span><span class="n">call</span><span class="w">    </span><span class="n">__printf_chk</span><span class="err">@</span><span class="n">PLT</span>
+<span class="w">    </span><span class="n">movq</span><span class="w">    </span><span class="o">%</span><span class="n">rbx</span><span class="p">,</span><span class="w"> </span><span class="o">%</span><span class="n">rdi</span>
+<span class="w">    </span><span class="n">call</span><span class="w">    </span><span class="k">func</span><span class="err">@</span><span class="n">PLT</span><span class="w">  </span><span class="c1"># constFoo 中唯一不同的指令</span>
+<span class="w">    </span><span class="n">movl</span><span class="w">    </span><span class="p">(</span><span class="o">%</span><span class="n">rbx</span><span class="p">),</span><span class="w"> </span><span class="o">%</span><span class="n">edx</span>
+<span class="w">    </span><span class="n">leaq</span><span class="w">    </span><span class="o">.</span><span class="n">LC0</span><span class="p">(</span><span class="o">%</span><span class="n">rip</span><span class="p">),</span><span class="w"> </span><span class="o">%</span><span class="n">rsi</span>
+<span class="w">    </span><span class="n">xorl</span><span class="w">    </span><span class="o">%</span><span class="n">eax</span><span class="p">,</span><span class="w"> </span><span class="o">%</span><span class="n">eax</span>
+<span class="w">    </span><span class="n">movl</span><span class="w">    </span><span class="o">$</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">%</span><span class="n">edi</span>
+<span class="w">    </span><span class="n">popq</span><span class="w">    </span><span class="o">%</span><span class="n">rbx</span>
+<span class="w">    </span><span class="o">.</span><span class="n">cfi_def_cfa_offset</span><span class="w"> </span><span class="mi">8</span>
+<span class="w">    </span><span class="n">jmp</span><span class="w"> </span><span class="n">__printf_chk</span><span class="err">@</span><span class="n">PLT</span>
+<span class="w">    </span><span class="o">.</span><span class="n">cfi_endproc</span>
+</code></pre></div>
+
+<p>函数 <code>byArg()</code> 和函数 <code>constByArg()</code> 生成的汇编代码中唯一的不同之处是 <code>constByArg()</code> 有一句汇编代码 <code>call constFunc@PLT</code>，这正是源代码中的调用。关键字 <code>const</code> 本身并没有造成任何字面上的不同。</p>
+<p>好了，这是 GCC 的结果。或许我们需要一个更聪明的编译器。Clang 会有更好的表现吗？</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>clang<span class="w"> </span>-S<span class="w"> </span>-Wall<span class="w"> </span>-O3<span class="w"> </span>-emit-llvm<span class="w"> </span>test.c
+$<span class="w"> </span>view<span class="w"> </span>test.ll
+</code></pre></div>
+
+<p>这是 <code>IR</code> 代码（LCTT 译注：LLVM 的中间语言）。它比汇编代码更加紧凑，所以我可以把两个函数都导出来，让你可以看清楚我所说的“除了调用外，没有任何字面上的不同”是什么意思：</p>
+<div class="highlight"><pre><span></span><code><span class="p">;</span><span class="w"> </span><span class="n">Function</span><span class="w"> </span><span class="n">Attrs</span><span class="p">:</span><span class="w"> </span><span class="n">nounwind</span><span class="w"> </span><span class="n">uwtable</span>
+<span class="n">define</span><span class="w"> </span><span class="n">dso_local</span><span class="w"> </span><span class="nb nb-Type">void</span><span class="w"> </span><span class="err">@</span><span class="n">byArg</span><span class="p">(</span><span class="n">i32</span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="n">local_unnamed_addr</span><span class="w"> </span><span class="c1">#0 {</span>
+<span class="w">  </span><span class="o">%</span><span class="mi">2</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">load</span><span class="w"> </span><span class="n">i32</span><span class="p">,</span><span class="w"> </span><span class="n">i32</span><span class="o">*</span><span class="w"> </span><span class="o">%</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">align</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span><span class="w"> </span><span class="o">!</span><span class="n">tbaa</span><span class="w"> </span><span class="o">!</span><span class="mi">2</span>
+<span class="w">  </span><span class="o">%</span><span class="mi">3</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tail</span><span class="w"> </span><span class="n">call</span><span class="w"> </span><span class="n">i32</span><span class="w"> </span><span class="p">(</span><span class="n">i8</span><span class="o">*</span><span class="p">,</span><span class="w"> </span><span class="o">...</span><span class="p">)</span><span class="w"> </span><span class="err">@</span><span class="n">printf</span><span class="p">(</span><span class="n">i8</span><span class="o">*</span><span class="w"> </span><span class="n">getelementptr</span><span class="w"> </span><span class="n">inbounds</span><span class="w"> </span><span class="p">([</span><span class="mi">4</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">i8</span><span class="p">],</span><span class="w"> </span><span class="p">[</span><span class="mi">4</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">i8</span><span class="p">]</span><span class="o">*</span><span class="w"> </span><span class="err">@</span><span class="o">.</span><span class="n">str</span><span class="p">,</span><span class="w"> </span><span class="n">i64</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">i64</span><span class="w"> </span><span class="mi">0</span><span class="p">),</span><span class="w"> </span><span class="n">i32</span><span class="w"> </span><span class="o">%</span><span class="mi">2</span><span class="p">)</span>
+<span class="w">  </span><span class="n">tail</span><span class="w"> </span><span class="n">call</span><span class="w"> </span><span class="nb nb-Type">void</span><span class="w"> </span><span class="err">@</span><span class="k">func</span><span class="p">(</span><span class="n">i32</span><span class="o">*</span><span class="w"> </span><span class="o">%</span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="c1">#4</span>
+<span class="w">  </span><span class="o">%</span><span class="mi">4</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">load</span><span class="w"> </span><span class="n">i32</span><span class="p">,</span><span class="w"> </span><span class="n">i32</span><span class="o">*</span><span class="w"> </span><span class="o">%</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">align</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span><span class="w"> </span><span class="o">!</span><span class="n">tbaa</span><span class="w"> </span><span class="o">!</span><span class="mi">2</span>
+<span class="w">  </span><span class="o">%</span><span class="mi">5</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tail</span><span class="w"> </span><span class="n">call</span><span class="w"> </span><span class="n">i32</span><span class="w"> </span><span class="p">(</span><span class="n">i8</span><span class="o">*</span><span class="p">,</span><span class="w"> </span><span class="o">...</span><span class="p">)</span><span class="w"> </span><span class="err">@</span><span class="n">printf</span><span class="p">(</span><span class="n">i8</span><span class="o">*</span><span class="w"> </span><span class="n">getelementptr</span><span class="w"> </span><span class="n">inbounds</span><span class="w"> </span><span class="p">([</span><span class="mi">4</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">i8</span><span class="p">],</span><span class="w"> </span><span class="p">[</span><span class="mi">4</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">i8</span><span class="p">]</span><span class="o">*</span><span class="w"> </span><span class="err">@</span><span class="o">.</span><span class="n">str</span><span class="p">,</span><span class="w"> </span><span class="n">i64</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">i64</span><span class="w"> </span><span class="mi">0</span><span class="p">),</span><span class="w"> </span><span class="n">i32</span><span class="w"> </span><span class="o">%</span><span class="mi">4</span><span class="p">)</span>
+<span class="w">  </span><span class="n">ret</span><span class="w"> </span><span class="nb nb-Type">void</span>
+<span class="p">}</span>
+
+<span class="p">;</span><span class="w"> </span><span class="n">Function</span><span class="w"> </span><span class="n">Attrs</span><span class="p">:</span><span class="w"> </span><span class="n">nounwind</span><span class="w"> </span><span class="n">uwtable</span>
+<span class="n">define</span><span class="w"> </span><span class="n">dso_local</span><span class="w"> </span><span class="nb nb-Type">void</span><span class="w"> </span><span class="err">@</span><span class="n">constByArg</span><span class="p">(</span><span class="n">i32</span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="n">local_unnamed_addr</span><span class="w"> </span><span class="c1">#0 {</span>
+<span class="w">  </span><span class="o">%</span><span class="mi">2</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">load</span><span class="w"> </span><span class="n">i32</span><span class="p">,</span><span class="w"> </span><span class="n">i32</span><span class="o">*</span><span class="w"> </span><span class="o">%</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">align</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span><span class="w"> </span><span class="o">!</span><span class="n">tbaa</span><span class="w"> </span><span class="o">!</span><span class="mi">2</span>
+<span class="w">  </span><span class="o">%</span><span class="mi">3</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tail</span><span class="w"> </span><span class="n">call</span><span class="w"> </span><span class="n">i32</span><span class="w"> </span><span class="p">(</span><span class="n">i8</span><span class="o">*</span><span class="p">,</span><span class="w"> </span><span class="o">...</span><span class="p">)</span><span class="w"> </span><span class="err">@</span><span class="n">printf</span><span class="p">(</span><span class="n">i8</span><span class="o">*</span><span class="w"> </span><span class="n">getelementptr</span><span class="w"> </span><span class="n">inbounds</span><span class="w"> </span><span class="p">([</span><span class="mi">4</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">i8</span><span class="p">],</span><span class="w"> </span><span class="p">[</span><span class="mi">4</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">i8</span><span class="p">]</span><span class="o">*</span><span class="w"> </span><span class="err">@</span><span class="o">.</span><span class="n">str</span><span class="p">,</span><span class="w"> </span><span class="n">i64</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">i64</span><span class="w"> </span><span class="mi">0</span><span class="p">),</span><span class="w"> </span><span class="n">i32</span><span class="w"> </span><span class="o">%</span><span class="mi">2</span><span class="p">)</span>
+<span class="w">  </span><span class="n">tail</span><span class="w"> </span><span class="n">call</span><span class="w"> </span><span class="nb nb-Type">void</span><span class="w"> </span><span class="err">@</span><span class="n">constFunc</span><span class="p">(</span><span class="n">i32</span><span class="o">*</span><span class="w"> </span><span class="o">%</span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="c1">#4</span>
+<span class="w">  </span><span class="o">%</span><span class="mi">4</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">load</span><span class="w"> </span><span class="n">i32</span><span class="p">,</span><span class="w"> </span><span class="n">i32</span><span class="o">*</span><span class="w"> </span><span class="o">%</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">align</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span><span class="w"> </span><span class="o">!</span><span class="n">tbaa</span><span class="w"> </span><span class="o">!</span><span class="mi">2</span>
+<span class="w">  </span><span class="o">%</span><span class="mi">5</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tail</span><span class="w"> </span><span class="n">call</span><span class="w"> </span><span class="n">i32</span><span class="w"> </span><span class="p">(</span><span class="n">i8</span><span class="o">*</span><span class="p">,</span><span class="w"> </span><span class="o">...</span><span class="p">)</span><span class="w"> </span><span class="err">@</span><span class="n">printf</span><span class="p">(</span><span class="n">i8</span><span class="o">*</span><span class="w"> </span><span class="n">getelementptr</span><span class="w"> </span><span class="n">inbounds</span><span class="w"> </span><span class="p">([</span><span class="mi">4</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">i8</span><span class="p">],</span><span class="w"> </span><span class="p">[</span><span class="mi">4</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">i8</span><span class="p">]</span><span class="o">*</span><span class="w"> </span><span class="err">@</span><span class="o">.</span><span class="n">str</span><span class="p">,</span><span class="w"> </span><span class="n">i64</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">i64</span><span class="w"> </span><span class="mi">0</span><span class="p">),</span><span class="w"> </span><span class="n">i32</span><span class="w"> </span><span class="o">%</span><span class="mi">4</span><span class="p">)</span>
+<span class="w">  </span><span class="n">ret</span><span class="w"> </span><span class="nb nb-Type">void</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3>某些有作用的东西</h3>
+<p>接下来是一组 <code>const</code> 能够真正产生作用的代码：</p>
+<div class="highlight"><pre><span></span><code><span class="nb nb-Type">void</span><span class="w"> </span><span class="n">localVar</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="nb nb-Type">int</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">42</span><span class="p">;</span>
+<span class="w">  </span><span class="n">printf</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%d</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">x</span><span class="p">);</span>
+<span class="w">  </span><span class="n">constFunc</span><span class="p">(</span><span class="o">&amp;</span><span class="n">x</span><span class="p">);</span>
+<span class="w">  </span><span class="n">printf</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%d</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">x</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="nb nb-Type">void</span><span class="w"> </span><span class="n">constLocalVar</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="nb nb-Type">int</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">42</span><span class="p">;</span><span class="w">  </span><span class="o">//</span><span class="w"> </span><span class="err">对本地变量使用</span><span class="w"> </span><span class="k">const</span>
+<span class="w">  </span><span class="n">printf</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%d</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">x</span><span class="p">);</span>
+<span class="w">  </span><span class="n">constFunc</span><span class="p">(</span><span class="o">&amp;</span><span class="n">x</span><span class="p">);</span>
+<span class="w">  </span><span class="n">printf</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%d</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">x</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>下面是 <code>localVar()</code> 的汇编代码，其中有两条指令在 <code>constLocalVar()</code> 中会被优化掉：</p>
+<div class="highlight"><pre><span></span><code><span class="n">localVar</span><span class="p">:</span>
+<span class="o">.</span><span class="n">LFB25</span><span class="p">:</span>
+<span class="w">    </span><span class="o">.</span><span class="n">cfi_startproc</span>
+<span class="w">    </span><span class="n">subq</span><span class="w">    </span><span class="o">$</span><span class="mi">24</span><span class="p">,</span><span class="w"> </span><span class="o">%</span><span class="n">rsp</span>
+<span class="w">    </span><span class="o">.</span><span class="n">cfi_def_cfa_offset</span><span class="w"> </span><span class="mi">32</span>
+<span class="w">    </span><span class="n">movl</span><span class="w">    </span><span class="o">$</span><span class="mi">42</span><span class="p">,</span><span class="w"> </span><span class="o">%</span><span class="n">edx</span>
+<span class="w">    </span><span class="n">movl</span><span class="w">    </span><span class="o">$</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">%</span><span class="n">edi</span>
+<span class="w">    </span><span class="n">movq</span><span class="w">    </span><span class="o">%</span><span class="n">fs</span><span class="p">:</span><span class="mi">40</span><span class="p">,</span><span class="w"> </span><span class="o">%</span><span class="n">rax</span>
+<span class="w">    </span><span class="n">movq</span><span class="w">    </span><span class="o">%</span><span class="n">rax</span><span class="p">,</span><span class="w"> </span><span class="mi">8</span><span class="p">(</span><span class="o">%</span><span class="n">rsp</span><span class="p">)</span>
+<span class="w">    </span><span class="n">xorl</span><span class="w">    </span><span class="o">%</span><span class="n">eax</span><span class="p">,</span><span class="w"> </span><span class="o">%</span><span class="n">eax</span>
+<span class="w">    </span><span class="n">leaq</span><span class="w">    </span><span class="o">.</span><span class="n">LC0</span><span class="p">(</span><span class="o">%</span><span class="n">rip</span><span class="p">),</span><span class="w"> </span><span class="o">%</span><span class="n">rsi</span>
+<span class="w">    </span><span class="n">movl</span><span class="w">    </span><span class="o">$</span><span class="mi">42</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="p">(</span><span class="o">%</span><span class="n">rsp</span><span class="p">)</span>
+<span class="w">    </span><span class="n">call</span><span class="w">    </span><span class="n">__printf_chk</span><span class="err">@</span><span class="n">PLT</span>
+<span class="w">    </span><span class="n">leaq</span><span class="w">    </span><span class="mi">4</span><span class="p">(</span><span class="o">%</span><span class="n">rsp</span><span class="p">),</span><span class="w"> </span><span class="o">%</span><span class="n">rdi</span>
+<span class="w">    </span><span class="n">call</span><span class="w">    </span><span class="n">constFunc</span><span class="err">@</span><span class="n">PLT</span>
+<span class="w">    </span><span class="n">movl</span><span class="w">    </span><span class="mi">4</span><span class="p">(</span><span class="o">%</span><span class="n">rsp</span><span class="p">),</span><span class="w"> </span><span class="o">%</span><span class="n">edx</span><span class="w">  </span><span class="c1"># 在 constLocalVar() 中没有</span>
+<span class="w">    </span><span class="n">xorl</span><span class="w">    </span><span class="o">%</span><span class="n">eax</span><span class="p">,</span><span class="w"> </span><span class="o">%</span><span class="n">eax</span>
+<span class="w">    </span><span class="n">movl</span><span class="w">    </span><span class="o">$</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">%</span><span class="n">edi</span>
+<span class="w">    </span><span class="n">leaq</span><span class="w">    </span><span class="o">.</span><span class="n">LC0</span><span class="p">(</span><span class="o">%</span><span class="n">rip</span><span class="p">),</span><span class="w"> </span><span class="o">%</span><span class="n">rsi</span><span class="w">  </span><span class="c1"># 在 constLocalVar() 中没有</span>
+<span class="w">    </span><span class="n">call</span><span class="w">    </span><span class="n">__printf_chk</span><span class="err">@</span><span class="n">PLT</span>
+<span class="w">    </span><span class="n">movq</span><span class="w">    </span><span class="mi">8</span><span class="p">(</span><span class="o">%</span><span class="n">rsp</span><span class="p">),</span><span class="w"> </span><span class="o">%</span><span class="n">rax</span>
+<span class="w">    </span><span class="n">xorq</span><span class="w">    </span><span class="o">%</span><span class="n">fs</span><span class="p">:</span><span class="mi">40</span><span class="p">,</span><span class="w"> </span><span class="o">%</span><span class="n">rax</span>
+<span class="w">    </span><span class="n">jne</span><span class="w"> </span><span class="o">.</span><span class="n">L9</span>
+<span class="w">    </span><span class="n">addq</span><span class="w">    </span><span class="o">$</span><span class="mi">24</span><span class="p">,</span><span class="w"> </span><span class="o">%</span><span class="n">rsp</span>
+<span class="w">    </span><span class="o">.</span><span class="n">cfi_remember_state</span>
+<span class="w">    </span><span class="o">.</span><span class="n">cfi_def_cfa_offset</span><span class="w"> </span><span class="mi">8</span>
+<span class="w">    </span><span class="n">ret</span>
+<span class="o">.</span><span class="n">L9</span><span class="p">:</span>
+<span class="w">    </span><span class="o">.</span><span class="n">cfi_restore_state</span>
+<span class="w">    </span><span class="n">call</span><span class="w">    </span><span class="n">__stack_chk_fail</span><span class="err">@</span><span class="n">PLT</span>
+<span class="w">    </span><span class="o">.</span><span class="n">cfi_endproc</span>
+</code></pre></div>
+
+<p>在 LLVM 生成的 <code>IR</code> 代码中更明显一点。在 <code>constLocalVar()</code> 中，第二次调用 <code>printf()</code> 之前的 <code>load</code> 会被优化掉：</p>
+<div class="highlight"><pre><span></span><code><span class="p">;</span><span class="w"> </span><span class="n">Function</span><span class="w"> </span><span class="n">Attrs</span><span class="p">:</span><span class="w"> </span><span class="n">nounwind</span><span class="w"> </span><span class="n">uwtable</span>
+<span class="n">define</span><span class="w"> </span><span class="n">dso_local</span><span class="w"> </span><span class="nb nb-Type">void</span><span class="w"> </span><span class="err">@</span><span class="n">localVar</span><span class="p">()</span><span class="w"> </span><span class="n">local_unnamed_addr</span><span class="w"> </span><span class="c1">#0 {</span>
+<span class="w">  </span><span class="o">%</span><span class="mi">1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">alloca</span><span class="w"> </span><span class="n">i32</span><span class="p">,</span><span class="w"> </span><span class="n">align</span><span class="w"> </span><span class="mi">4</span>
+<span class="w">  </span><span class="o">%</span><span class="mi">2</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">bitcast</span><span class="w"> </span><span class="n">i32</span><span class="o">*</span><span class="w"> </span><span class="o">%</span><span class="mi">1</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">i8</span><span class="o">*</span>
+<span class="w">  </span><span class="n">call</span><span class="w"> </span><span class="nb nb-Type">void</span><span class="w"> </span><span class="err">@</span><span class="n">llvm</span><span class="o">.</span><span class="n">lifetime</span><span class="o">.</span><span class="n">start</span><span class="o">.</span><span class="n">p0i8</span><span class="p">(</span><span class="n">i64</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span><span class="w"> </span><span class="n">i8</span><span class="o">*</span><span class="w"> </span><span class="n">nonnull</span><span class="w"> </span><span class="o">%</span><span class="mi">2</span><span class="p">)</span><span class="w"> </span><span class="c1">#4</span>
+<span class="w">  </span><span class="n">store</span><span class="w"> </span><span class="n">i32</span><span class="w"> </span><span class="mi">42</span><span class="p">,</span><span class="w"> </span><span class="n">i32</span><span class="o">*</span><span class="w"> </span><span class="o">%</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">align</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span><span class="w"> </span><span class="o">!</span><span class="n">tbaa</span><span class="w"> </span><span class="o">!</span><span class="mi">2</span>
+<span class="w">  </span><span class="o">%</span><span class="mi">3</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tail</span><span class="w"> </span><span class="n">call</span><span class="w"> </span><span class="n">i32</span><span class="w"> </span><span class="p">(</span><span class="n">i8</span><span class="o">*</span><span class="p">,</span><span class="w"> </span><span class="o">...</span><span class="p">)</span><span class="w"> </span><span class="err">@</span><span class="n">printf</span><span class="p">(</span><span class="n">i8</span><span class="o">*</span><span class="w"> </span><span class="n">getelementptr</span><span class="w"> </span><span class="n">inbounds</span><span class="w"> </span><span class="p">([</span><span class="mi">4</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">i8</span><span class="p">],</span><span class="w"> </span><span class="p">[</span><span class="mi">4</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">i8</span><span class="p">]</span><span class="o">*</span><span class="w"> </span><span class="err">@</span><span class="o">.</span><span class="n">str</span><span class="p">,</span><span class="w"> </span><span class="n">i64</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">i64</span><span class="w"> </span><span class="mi">0</span><span class="p">),</span><span class="w"> </span><span class="n">i32</span><span class="w"> </span><span class="mi">42</span><span class="p">)</span>
+<span class="w">  </span><span class="n">call</span><span class="w"> </span><span class="nb nb-Type">void</span><span class="w"> </span><span class="err">@</span><span class="n">constFunc</span><span class="p">(</span><span class="n">i32</span><span class="o">*</span><span class="w"> </span><span class="n">nonnull</span><span class="w"> </span><span class="o">%</span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="c1">#4</span>
+<span class="w">  </span><span class="o">%</span><span class="mi">4</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">load</span><span class="w"> </span><span class="n">i32</span><span class="p">,</span><span class="w"> </span><span class="n">i32</span><span class="o">*</span><span class="w"> </span><span class="o">%</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">align</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span><span class="w"> </span><span class="o">!</span><span class="n">tbaa</span><span class="w"> </span><span class="o">!</span><span class="mi">2</span>
+<span class="w">  </span><span class="o">%</span><span class="mi">5</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">call</span><span class="w"> </span><span class="n">i32</span><span class="w"> </span><span class="p">(</span><span class="n">i8</span><span class="o">*</span><span class="p">,</span><span class="w"> </span><span class="o">...</span><span class="p">)</span><span class="w"> </span><span class="err">@</span><span class="n">printf</span><span class="p">(</span><span class="n">i8</span><span class="o">*</span><span class="w"> </span><span class="n">getelementptr</span><span class="w"> </span><span class="n">inbounds</span><span class="w"> </span><span class="p">([</span><span class="mi">4</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">i8</span><span class="p">],</span><span class="w"> </span><span class="p">[</span><span class="mi">4</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">i8</span><span class="p">]</span><span class="o">*</span><span class="w"> </span><span class="err">@</span><span class="o">.</span><span class="n">str</span><span class="p">,</span><span class="w"> </span><span class="n">i64</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">i64</span><span class="w"> </span><span class="mi">0</span><span class="p">),</span><span class="w"> </span><span class="n">i32</span><span class="w"> </span><span class="o">%</span><span class="mi">4</span><span class="p">)</span>
+<span class="w">  </span><span class="n">call</span><span class="w"> </span><span class="nb nb-Type">void</span><span class="w"> </span><span class="err">@</span><span class="n">llvm</span><span class="o">.</span><span class="n">lifetime</span><span class="o">.</span><span class="n">end</span><span class="o">.</span><span class="n">p0i8</span><span class="p">(</span><span class="n">i64</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span><span class="w"> </span><span class="n">i8</span><span class="o">*</span><span class="w"> </span><span class="n">nonnull</span><span class="w"> </span><span class="o">%</span><span class="mi">2</span><span class="p">)</span><span class="w"> </span><span class="c1">#4</span>
+<span class="w">  </span><span class="n">ret</span><span class="w"> </span><span class="nb nb-Type">void</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>好吧，现在，<code>constLocalVar()</code> 成功的省略了对 <code>*x</code> 的重新读取，但是可能你已经注意到一些问题：<code>localVar()</code> 和 <code>constLocalVar()</code> 在函数体中做了同样的 <code>constFunc()</code> 调用。如果编译器能够推断出 <code>constFunc()</code> 没有修改 <code>constLocalVar()</code> 中的 <code>*x</code>，那为什么不能推断出完全一样的函数调用也没有修改 <code>localVar()</code> 中的 <code>*x</code>？</p>
+<p>这个解释更贴近于为什么 C 语言的 <code>const</code> 不能作为优化手段的核心原因。C 语言的 <code>const</code> 有两个有效的含义：它可以表示这个变量是某个可能是常数也可能不是常数的数据的一个只读别名，或者它可以表示该变量是真正的常量。如果你移除了一个指向常量的指针的 <code>const</code> 属性并写入数据，那结果将是一个未定义行为。另一方面，如果是一个指向非常量值的 <code>const</code> 指针，将就没问题。</p>
+<p>这份 <code>constFunc()</code> 的可能实现揭示了这意味着什么：</p>
+<div class="highlight"><pre><span></span><code><span class="o">//</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="err">是一个指向某个可能是常数也可能不是常数的数据的只读指针</span>
+<span class="nb nb-Type">void</span><span class="w"> </span><span class="n">constFunc</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="nb nb-Type">int</span><span class="w"> </span><span class="o">*</span><span class="n">x</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="o">//</span><span class="w"> </span><span class="n">local_var</span><span class="w"> </span><span class="err">是一个真正的常数</span>
+<span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="nb nb-Type">int</span><span class="w"> </span><span class="n">local_var</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">42</span><span class="p">;</span>
+
+<span class="w">  </span><span class="o">//</span><span class="w"> </span><span class="n">C</span><span class="w"> </span><span class="err">语言规定的未定义行为</span>
+<span class="w">  </span><span class="n">doubleIt</span><span class="p">((</span><span class="nb nb-Type">int</span><span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">local_var</span><span class="p">);</span>
+<span class="w">  </span><span class="o">//</span><span class="w"> </span><span class="err">谁知道这是不是一个未定义行为呢？</span>
+<span class="w">  </span><span class="n">doubleIt</span><span class="p">((</span><span class="nb nb-Type">int</span><span class="o">*</span><span class="p">)</span><span class="n">x</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="nb nb-Type">void</span><span class="w"> </span><span class="n">doubleIt</span><span class="p">(</span><span class="nb nb-Type">int</span><span class="w"> </span><span class="o">*</span><span class="n">x</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="o">*</span><span class="n">x</span><span class="w"> </span><span class="o">*=</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><code>localVar()</code> 传递给 <code>constFunc()</code> 一个指向非 <code>const</code> 变量的 <code>const</code> 指针。因为这个变量并非常量，<code>constFunc()</code> 可以撒个谎并强行修改它而不触发未定义行为。所以，编译器不能断定变量在调用 <code>constFunc()</code> 后仍是同样的值。在 <code>constLocalVar()</code> 中的变量是真正的常量，因此，编译器可以断定它不会改变 —— 因为在 <code>constFunc()</code> 去除变量的 <code>const</code> 属性并写入它<em>将</em>会是一个未定义行为。</p>
+<p>第一个例子中的函数 <code>byArg()</code> 和 <code>constByArg()</code> 是没有可能优化的，因为编译器没有任何方法能知道 <code>*x</code> 是否真的是 <code>const</code> 常量。</p>
+<blockquote>
+<p>补充（和题外话）：相当多的读者已经正确地指出，使用 <code>const int *x</code>，该指针本身不是限定的常量，只是该数据被加个了别名，而 <code>const int * const extra_const</code> 是一个“双向”限定为常量的指针。但是因为指针本身的常量与别名数据的常量无关，所以结果是相同的。仅在 <code>extra_const</code> 指向使用 <code>const</code> 定义的对象时，<code>*(int*const)extra_const = 0</code> 才是未定义行为。（实际上，<code>*(int*)extra_const = 0</code> 也不会更糟。）因为它们之间的区别可以一句话说明白，一个是完全的 <code>const</code> 指针，另外一个可能是也可能不是常量本身的指针，而是一个可能是也可能不是常量的对象的只读别名，我将继续不严谨地引用“常量指针”。（题外话结束）</p>
+</blockquote>
+<p>但是为什么不一致呢？如果编译器能够推断出 <code>constLocalVar()</code> 中调用的 <code>constFunc()</code> 不会修改它的参数，那么肯定也能继续在其他 <code>constFunc()</code> 的调用上实施相同的优化，是吗？并不。编译器不能假设 <code>constLocalVar()</code> 根本没有运行。如果不是这样（例如，它只是代码生成器或者宏的一些未使用的额外输出），<code>constFunc()</code> 就能偷偷地修改数据而不触发未定义行为。</p>
+<p>你可能需要重复阅读几次上述说明和示例，但不要担心，它听起来很荒谬，它确实是正确的。不幸的是，对 <code>const</code> 变量进行写入是最糟糕的未定义行为：大多数情况下，编译器无法知道它是否将会是未定义行为。所以，大多数情况下，编译器看见 <code>const</code> 时必须假设它未来可能会被移除掉，这意味着编译器不能使用它进行优化。这在实践中是正确的，因为真实的 C 代码会在“深思熟虑”后移除 <code>const</code>。</p>
+<p>简而言之，很多事情都可以阻止编译器使用 <code>const</code> 进行优化，包括使用指针从另一内存空间接受数据，或者在堆空间上分配数据。更糟糕的是，在大部分编译器能够使用 <code>const</code> 进行优化的情况，它都不是必须的。例如，任何像样的编译器都能推断出下面代码中的 <code>x</code> 是一个常量，甚至都不需要 <code>const</code>：</p>
+<div class="highlight"><pre><span></span><code>int x = 42, y = 0;
+printf(&quot;%d %d\n&quot;, x, y);
+y += x;
+printf(&quot;%d %d\n&quot;, x, y);
+</code></pre></div>
+
+<p>总结，<code>const</code> 对优化而言几乎无用，因为：</p>
+<ol>
+<li>除了特殊情况，编译器需要忽略它，因为其他代码可能合法地移除它</li>
+<li>在 #1 以外的大多数例外中，编译器无论如何都能推断出该变量是常量</li>
+</ol>
+<h3>C++</h3>
+<p>如果你在使用 C++ 那么有另外一个方法让 <code>const</code> 能够影响到代码的生成：函数重载。你可以用 <code>const</code> 和非 <code>const</code> 的参数重载同一个函数，而非 <code>const</code> 版本的代码可能可以被优化（由程序员优化而不是编译器），减少某些拷贝或者其他事情。</p>
+<div class="highlight"><pre><span></span><code><span class="nb nb-Type">void</span><span class="w"> </span><span class="n">foo</span><span class="p">(</span><span class="nb nb-Type">int</span><span class="w"> </span><span class="o">*</span><span class="n">p</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="o">//</span><span class="w"> </span><span class="err">需要做更多的数据拷贝</span>
+<span class="p">}</span>
+
+<span class="nb nb-Type">void</span><span class="w"> </span><span class="n">foo</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="nb nb-Type">int</span><span class="w"> </span><span class="o">*</span><span class="n">p</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="o">//</span><span class="w"> </span><span class="err">不需要保护性的拷贝副本</span>
+<span class="p">}</span>
+
+<span class="nb nb-Type">int</span><span class="w"> </span><span class="n">main</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="nb nb-Type">int</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">42</span><span class="p">;</span>
+<span class="w">  </span><span class="o">//</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="err">影响被调用的是哪一个版本的重载函数</span>
+<span class="w">  </span><span class="n">foo</span><span class="p">(</span><span class="o">&amp;</span><span class="n">x</span><span class="p">);</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>一方面，我不认为这会在实际的 C++ 代码中大量使用。另一方面，为了导致差异，程序员需要假设编译器无法做出，因为它们不受语言保护。</p>
+<h3>用 Sqlite3 进行实验</h3>
+<p>有了足够的理论和例子。那么 <code>const</code> 在一个真正的代码库中有多大的影响呢？我将会在代码库 <code>Sqlite</code>（版本：3.30.0）上做一个测试，因为：</p>
+<ul>
+<li>它真正地使用了 <code>const</code></li>
+<li>它不是一个简单的代码库（超过 20 万行代码）</li>
+<li>作为一个数据库，它包括了字符串处理、数学计算、日期处理等一系列内容</li>
+<li>它能够在绑定 CPU 的情况下进行负载测试</li>
+</ul>
+<p>此外，作者和贡献者们已经进行了多年的性能优化工作，因此我能确定他们没有错过任何有显著效果的优化。</p>
+<h4>配置</h4>
+<p>我做了两份<a href="https://sqlite.org/src/doc/trunk/README.md">源码</a>拷贝，并且正常编译其中一份。而对于另一份拷贝，我插入了这个特殊的预处理代码段，将 <code>const</code> 变成一个空操作：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">#define const</span>
+</code></pre></div>
+
+<p>(GNU) <code>sed</code> 可以将一些东西添加到每个文件的顶端，比如 <code>sed -i '1i#define const' *.c *.h</code>。</p>
+<p>在编译期间使用脚本生成 <code>Sqlite</code> 代码稍微有点复杂。幸运的是当 <code>const</code> 代码和非 <code>const</code> 代码混合时，编译器会产生了大量的提醒，因此很容易发现它并调整脚本来包含我的反 <code>const</code> 代码段。</p>
+<p>直接比较编译结果毫无意义，因为任意微小的改变就会影响整个内存布局，这可能会改变整个代码中的指针和函数调用。因此，我用每个指令的二进制大小和汇编代码作为识别码（<code>objdump -d libsqlite3.so.0.8.6</code>）。举个例子，这个函数：</p>
+<div class="highlight"><pre><span></span><code><span class="mi">000000000005</span><span class="n">d570</span><span class="w"> </span><span class="o">&lt;</span><span class="n">sqlite3_blob_read</span><span class="o">&gt;</span><span class="p">:</span>
+<span class="w">   </span><span class="mi">5</span><span class="n">d570</span><span class="p">:</span><span class="w">       </span><span class="mi">4</span><span class="n">c</span><span class="w"> </span><span class="mi">8</span><span class="n">d</span><span class="w"> </span><span class="mi">05</span><span class="w"> </span><span class="mi">59</span><span class="w"> </span><span class="n">a2</span><span class="w"> </span><span class="n">ff</span><span class="w"> </span><span class="n">ff</span><span class="w">    </span><span class="n">lea</span><span class="w">    </span><span class="o">-</span><span class="mh">0x5da7</span><span class="p">(</span><span class="o">%</span><span class="n">rip</span><span class="p">),</span><span class="o">%</span><span class="n">r8</span><span class="w">        </span><span class="c1"># 577d0 &lt;sqlite3BtreePayloadChecked&gt;</span>
+<span class="w">   </span><span class="mi">5</span><span class="n">d577</span><span class="p">:</span><span class="w">       </span><span class="n">e9</span><span class="w"> </span><span class="mi">04</span><span class="w"> </span><span class="n">fe</span><span class="w"> </span><span class="n">ff</span><span class="w"> </span><span class="n">ff</span><span class="w">          </span><span class="n">jmpq</span><span class="w">   </span><span class="mi">5</span><span class="n">d380</span><span class="w"> </span><span class="o">&lt;</span><span class="n">blobReadWrite</span><span class="o">&gt;</span>
+<span class="w">   </span><span class="mi">5</span><span class="n">d57c</span><span class="p">:</span><span class="w">       </span><span class="mi">0</span><span class="n">f</span><span class="w"> </span><span class="mi">1</span><span class="n">f</span><span class="w"> </span><span class="mi">40</span><span class="w"> </span><span class="mi">00</span><span class="w">             </span><span class="n">nopl</span><span class="w">   </span><span class="mh">0x0</span><span class="p">(</span><span class="o">%</span><span class="n">rax</span><span class="p">)</span>
+</code></pre></div>
+
+<p>将会变成这样：</p>
+<div class="highlight"><pre><span></span><code>sqlite3_blob_read   7lea 5jmpq 4nopl
+</code></pre></div>
+
+<p>在编译时，我保留了所有 <code>Sqlite</code> 的编译设置。</p>
+<h4>分析编译结果</h4>
+<p><code>const</code> 版本的 <code>libsqlite3.so</code> 的大小是 4,740,704 字节，大约比 4,736,712 字节的非 <code>const</code> 版本大了 0.1% 。在全部 1374 个导出函数（不包括类似 PLT 里的底层辅助函数）中，一共有 13 个函数的识别码不一致。</p>
+<p>其中的一些改变是由于插入的预处理代码。举个例子，这里有一个发生了更改的函数（已经删去一些 <code>Sqlite</code> 特有的定义）：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">#define LARGEST_INT64  (0xffffffff|(((int64_t)0x7fffffff)&lt;&lt;32))</span>
+<span class="c1">#define SMALLEST_INT64 (((int64_t)-1) - LARGEST_INT64)</span>
+
+<span class="k">static</span><span class="w"> </span><span class="n">int64_t</span><span class="w"> </span><span class="n">doubleToInt64</span><span class="p">(</span><span class="n">double</span><span class="w"> </span><span class="n">r</span><span class="p">){</span>
+<span class="w">  </span><span class="o">/*</span>
+<span class="w">  </span><span class="o">**</span><span class="w"> </span><span class="n">Many</span><span class="w"> </span><span class="n">compilers</span><span class="w"> </span><span class="n">we</span><span class="w"> </span><span class="n">encounter</span><span class="w"> </span><span class="n">do</span><span class="w"> </span><span class="ow">not</span><span class="w"> </span><span class="n">define</span><span class="w"> </span><span class="n">constants</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">the</span>
+<span class="w">  </span><span class="o">**</span><span class="w"> </span><span class="n">minimum</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="n">maximum</span><span class="w"> </span><span class="mi">64</span><span class="o">-</span><span class="n">bit</span><span class="w"> </span><span class="n">integers</span><span class="p">,</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="n">they</span><span class="w"> </span><span class="n">define</span><span class="w"> </span><span class="n">them</span>
+<span class="w">  </span><span class="o">**</span><span class="w"> </span><span class="n">inconsistently</span><span class="o">.</span><span class="w">  </span><span class="n">And</span><span class="w"> </span><span class="n">many</span><span class="w"> </span><span class="n">do</span><span class="w"> </span><span class="ow">not</span><span class="w"> </span><span class="n">understand</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="s2">&quot;LL&quot;</span><span class="w"> </span><span class="n">notation</span><span class="o">.</span>
+<span class="w">  </span><span class="o">**</span><span class="w"> </span><span class="n">So</span><span class="w"> </span><span class="n">we</span><span class="w"> </span><span class="n">define</span><span class="w"> </span><span class="n">our</span><span class="w"> </span><span class="n">own</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">constants</span><span class="w"> </span><span class="n">here</span><span class="w"> </span><span class="n">using</span><span class="w"> </span><span class="n">nothing</span>
+<span class="w">  </span><span class="o">**</span><span class="w"> </span><span class="n">larger</span><span class="w"> </span><span class="n">than</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="mi">32</span><span class="o">-</span><span class="n">bit</span><span class="w"> </span><span class="n">integer</span><span class="w"> </span><span class="n">constant</span><span class="o">.</span>
+<span class="w">  </span><span class="o">*/</span>
+<span class="w">  </span><span class="k">static</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">int64_t</span><span class="w"> </span><span class="n">maxInt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">LARGEST_INT64</span><span class="p">;</span>
+<span class="w">  </span><span class="k">static</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">int64_t</span><span class="w"> </span><span class="n">minInt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">SMALLEST_INT64</span><span class="p">;</span>
+
+<span class="w">  </span><span class="k">if</span><span class="p">(</span><span class="w"> </span><span class="n">r</span><span class="o">&lt;=</span><span class="p">(</span><span class="n">double</span><span class="p">)</span><span class="n">minInt</span><span class="w"> </span><span class="p">){</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">minInt</span><span class="p">;</span>
+<span class="w">  </span><span class="p">}</span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="p">(</span><span class="w"> </span><span class="n">r</span><span class="o">&gt;=</span><span class="p">(</span><span class="n">double</span><span class="p">)</span><span class="n">maxInt</span><span class="w"> </span><span class="p">){</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">maxInt</span><span class="p">;</span>
+<span class="w">  </span><span class="p">}</span><span class="k">else</span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="p">(</span><span class="n">int64_t</span><span class="p">)</span><span class="n">r</span><span class="p">;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>删去 <code>const</code> 使得这些常量变成了 <code>static</code> 变量。我不明白为什么会有不了解 <code>const</code> 的人让这些变量加上 <code>static</code>。同时删去 <code>static</code> 和 <code>const</code> 会让 GCC 再次认为它们是常量，而我们将得到同样的编译输出。由于类似这样的局部的 <code>static const</code> 变量，使得 13 个函数中有 3 个函数产生假的变化，但我一个都不打算修复它们。</p>
+<p><code>Sqlite</code> 使用了很多全局变量，而这正是大多数真正的 <code>const</code> 优化产生的地方。通常情况下，它们类似于将一个变量比较代替成一个常量比较，或者一个循环在部分展开的一步。（<a href="https://rada.re/r/">Radare toolkit</a> 可以很方便的找出这些优化措施。）一些变化则令人失望。<code>sqlite3ParseUri()</code> 有 487 个指令，但 <code>const</code> 产生的唯一区别是进行了这个比较：</p>
+<div class="highlight"><pre><span></span><code>test %al, %al
+je &lt;sqlite3ParseUri+0x717&gt;
+cmp $0x23, %al
+je &lt;sqlite3ParseUri+0x717&gt;
+</code></pre></div>
+
+<p>并交换了它们的顺序：</p>
+<div class="highlight"><pre><span></span><code>cmp $0x23, %al
+je &lt;sqlite3ParseUri+0x717&gt;
+test %al, %al
+je &lt;sqlite3ParseUri+0x717&gt;
+</code></pre></div>
+
+<h4>基准测试</h4>
+<p><code>Sqlite</code> 自带了一个性能回归测试，因此我尝试每个版本的代码执行一百次，仍然使用默认的 <code>Sqlite</code> 编译设置。以秒为单位的测试结果如下：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>const</th>
+<th>非 const</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>最小值</td>
+<td>10.658s</td>
+<td>10.803s</td>
+</tr>
+<tr>
+<td>中间值</td>
+<td>11.571s</td>
+<td>11.519s</td>
+</tr>
+<tr>
+<td>最大值</td>
+<td>11.832s</td>
+<td>11.658s</td>
+</tr>
+<tr>
+<td>平均值</td>
+<td>11.531s</td>
+<td>11.492s</td>
+</tr>
+</tbody>
+</table>
+<p>就我个人看来，我没有发现足够的证据来说明这个差异值得关注。我是说，我从整个程序中删去 <code>const</code>，所以如果它有明显的差别，那么我希望它是显而易见的。但也许你关心任何微小的差异，因为你正在做一些绝对性能非常重要的事。那让我们试一下统计分析。</p>
+<p>我喜欢使用类似 Mann-Whitney U 检验这样的东西。它类似于更著名的 T 检验，但对你在机器上计时时产生的复杂随机变量（由于不可预测的上下文切换、页错误等）更加健壮。以下是结果：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>const</th>
+<th>非 const</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>N</td>
+<td>100</td>
+<td>100</td>
+</tr>
+<tr>
+<td>Mean rank</td>
+<td>121.38</td>
+<td>79.62</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Mann-Whitney U</td>
+<td>2912</td>
+</tr>
+<tr>
+<td>Z</td>
+<td>-5.10</td>
+</tr>
+<tr>
+<td>2-sided p value</td>
+<td>&lt;10-6</td>
+</tr>
+<tr>
+<td>HL median difference</td>
+<td>-0.056s</td>
+</tr>
+<tr>
+<td>95% confidence interval</td>
+<td>-0.077s – -0.038s</td>
+</tr>
+</tbody>
+</table>
+<p>U 检验已经发现统计意义上具有显著的性能差异。但是，令人惊讶的是，实际上是非 <code>const</code> 版本更快——大约 60ms，0.5%。似乎 <code>const</code> 启用的少量“优化”不值得额外代码的开销。这不像是 <code>const</code> 启用了任何类似于自动矢量化的重要的优化。当然，你的结果可能因为编译器配置、编译器版本或者代码库等等而有所不同，但是我觉得这已经说明了 <code>const</code> 是否能够有效地提高 <code>C</code> 的性能，我们现在已经看到答案了。</p>
+<h3>那么，const 有什么用呢？</h3>
+<p>尽管存在缺陷，C/C++ 的 <code>const</code> 仍有助于类型安全。特别是，结合 C++ 的移动语义和 <code>std::unique_pointer</code>，<code>const</code> 可以使指针所有权显式化。在超过十万行代码的 C++ 旧代码库里，指针所有权模糊是一个大难题，我对此深有感触。</p>
+<p>但是，我以前常常使用 <code>const</code> 来实现有意义的类型安全。我曾听说过基于性能上的原因，最好是尽可能多地使用 <code>const</code>。我曾听说过当性能很重要时，重构代码并添加更多的 <code>const</code> 非常重要，即使以降低代码可读性的方式。<strong>当时觉得这没问题，但后来我才知道这并不对。</strong></p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

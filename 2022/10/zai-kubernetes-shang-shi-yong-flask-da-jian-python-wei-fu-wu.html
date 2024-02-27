@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在 Kubernetes 上使用 Flask 搭建 Python 微服务</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Krishna Mohan Koyya 微服务遵循领域驱动设计（DDD），与开发平台无关。Python 微服务也不例外。Python3 的面向对象特性使得按照 DDD 对服务进行建 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2022/10/zai-kubernetes-shang-shi-yong-flask-da-jian-python-wei-fu-wu.html" rel="bookmark"
+           title="Permalink to 在 Kubernetes 上使用 Flask 搭建 Python 微服务">在 Kubernetes 上使用 Flask 搭建 Python 微服务</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2022-10-19T12:44:58+02:00">
+                Published: Wed 19 October 2022
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Krishna Mohan Koyya</p>
+<p><img alt="" src="/data/attachment/album/202210/19/124429nmw0xmfz3x3mrrf2.jpg"></p>
+<p><em>微服务遵循领域驱动设计（DDD），与开发平台无关。Python 微服务也不例外。Python3 的面向对象特性使得按照 DDD 对服务进行建模变得更加容易。本系列的第 10 部分演示了如何将用户管理系统的查找服务作为 Python 微服务部署在 Kubernetes 上。</em></p>
+<p>微服务架构的强大之处在于它的多语言性。企业将其功能分解为一组微服务，每个团队自由选择一个平台。</p>
+<p>我们的用户管理系统已经分解为四个微服务，分别是添加、查找、搜索和日志服务。添加服务在 Java 平台上开发并部署在 Kubernetes 集群上，以实现弹性和可扩展性。这并不意味着其余的服务也要使用 Java 开发，我们可以自由选择适合个人服务的平台。</p>
+<p>让我们选择 Python 作为开发查找服务的平台。查找服务的模型已经设计好了（参考 2022 年 3 月份的文章），我们只需要将这个模型转换为代码和配置。</p>
+<h3>Pythonic 方法</h3>
+<p>Python 是一种通用编程语言，已经存在了大约 30 年。早期，它是自动化脚本的首选。然而，随着 Django 和 Flask 等框架的出现，它的受欢迎程度越来越高，现在各种领域中都在应用它，如企业应用程序开发。数据科学和机器学习进一步推动了它的发展，Python 现在是三大编程语言之一。</p>
+<p>许多人将 Python 的成功归功于它容易编码。这只是一部分原因。只要你的目标是开发小型脚本，Python 就像一个玩具，你会非常喜欢它。然而，当你进入严肃的大规模应用程序开发领域时，你将不得不处理大量的 <code>if</code> 和 <code>else</code>，Python 变得与任何其他平台一样好或一样坏。例如，采用一种面向对象的方法！许多 Python 开发人员甚至可能没意识到 Python 支持类、继承等功能。Python 确实支持成熟的面向对象开发，但是有它自己的方式 -- Pythonic！让我们探索一下！</p>
+<h3>领域模型</h3>
+<p><code>AddService</code> 通过将数据保存到一个 MySQL 数据库中来将用户添加到系统中。<code>FindService</code> 的目标是提供一个 REST API 按用户名查找用户。域模型如图 1 所示。它主要由一些值对象组成，如 <code>User</code> 实体的<code>Name</code>、<code>PhoneNumber</code> 以及 <code>UserRepository</code>。</p>
+<p><img alt="图 1: 查找服务的域模型" src="/data/attachment/album/202210/19/124459ozaec7k784oqk6c5.png"></p>
+<p>让我们从 <code>Name</code> 开始。由于它是一个值对象，因此必须在创建时进行验证，并且必须保持不可变。基本结构如所示：</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span> <span class="n">Name:</span>
+    <span class="n">value:</span> <span class="n">str</span>
+    <span class="n">def</span> <span class="n">__post_init__</span>(<span class="nb">self</span>):
+        <span class="k">if</span> <span class="nb">self</span>.<span class="nb">value</span> <span class="k">is</span> <span class="n">None</span> <span class="o">or</span> <span class="n">len</span>(<span class="nb">self</span>.<span class="nb">value</span>.<span class="n">strip</span>()) &lt; <span class="mi">8</span> <span class="o">or</span> <span class="n">len</span>(<span class="nb">self</span>.<span class="nb">value</span>.<span class="n">strip</span>()) &gt; <span class="mi">32</span>:
+            <span class="n">raise</span> <span class="n">ValueError</span>(<span class="s">&quot;Invalid Name&quot;</span>)
+</code></pre></div>
+
+<p>如你所见，<code>Name</code> 包含一个字符串类型的值。作为后期初始化的一部分，我们会验证它。</p>
+<p>Python 3.7 提供了 <code>@dataclass</code> 装饰器，它提供了许多开箱即用的数据承载类的功能，如构造函数、比较运算符等。如下是装饰后的 <code>Name</code> 类：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span>
+
+<span class="nd">@dataclass</span>
+<span class="k">class</span> <span class="nc">Name</span><span class="p">:</span>
+    <span class="n">value</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="k">def</span> <span class="nf">__post_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">value</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span> <span class="o">&lt;</span> <span class="mi">8</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">value</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span> <span class="o">&gt;</span> <span class="mi">32</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Invalid Name&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>以下代码可以创建一个 <code>Name</code> 对象：</p>
+<div class="highlight"><pre><span></span><code>name = Name(&quot;Krishna&quot;)
+</code></pre></div>
+
+<p><code>value</code> 属性可以按照如下方式读取或写入：</p>
+<div class="highlight"><pre><span></span><code>name.value = &quot;Mohan&quot;
+print(name.value)
+</code></pre></div>
+
+<p>可以很容易地与另一个 <code>Name</code> 对象比较，如下所示：</p>
+<div class="highlight"><pre><span></span><code><span class="nv">other</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">Name</span><span class="ss">(</span><span class="s2">&quot;Mohan&quot;</span><span class="ss">)</span>
+<span class="k">if</span><span class="w"> </span><span class="nv">name</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nv">other</span>:
+<span class="w">    </span><span class="nv">print</span><span class="ss">(</span><span class="s2">&quot;same&quot;</span><span class="ss">)</span>
+</code></pre></div>
+
+<p>如你所见，对象比较的是值而不是引用。这一切都是开箱即用的。我们还可以通过冻结对象使对象不可变。这是 <code>Name</code> 值对象的最终版本：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span>
+
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span> <span class="nc">Name</span><span class="p">:</span>
+    <span class="n">value</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="k">def</span> <span class="nf">__post_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">value</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span> <span class="o">&lt;</span> <span class="mi">8</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">value</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span> <span class="o">&gt;</span> <span class="mi">32</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Invalid Name&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<p><code>PhoneNumber</code> 也遵循类似的方法，因为它也是一个值对象：</p>
+<div class="highlight"><pre><span></span><code><span class="nv">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="k">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nl">PhoneNumber</span><span class="p">:</span>
+<span class="w">    </span><span class="k">value</span><span class="err">:</span><span class="w"> </span><span class="nc">int</span>
+<span class="w">    </span><span class="n">def</span><span class="w"> </span><span class="n">__post_init__</span><span class="p">(</span><span class="n">self</span><span class="p">)</span><span class="err">:</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="n">self</span><span class="p">.</span><span class="k">value</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">9000000000</span><span class="err">:</span>
+<span class="w">            </span><span class="n">raise</span><span class="w"> </span><span class="n">ValueError</span><span class="p">(</span><span class="ss">&quot;Invalid Phone Number&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<p><code>User</code> 类是一个实体，不是一个值对象。换句话说，<code>User</code> 是可变的。以下是结构：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span>
+<span class="kn">import</span> <span class="nn">datetime</span>
+
+<span class="nd">@dataclass</span>
+<span class="k">class</span> <span class="nc">User</span><span class="p">:</span>
+    <span class="n">_name</span><span class="p">:</span> <span class="n">Name</span>
+    <span class="n">_phone</span><span class="p">:</span> <span class="n">PhoneNumber</span>
+    <span class="n">_since</span><span class="p">:</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span>
+
+    <span class="k">def</span> <span class="nf">__post_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_name</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">_phone</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Invalid user&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_since</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">since</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span>
+</code></pre></div>
+
+<p>你能观察到 <code>User</code> 并没有冻结，因为我们希望它是可变的。但是，我们不希望所有属性都是可变的。标识字段如 <code>_name</code> 和 <code>_since</code> 是希望不会修改的。那么，这如何做到呢？</p>
+<p>Python3 提供了所谓的描述符协议，它会帮助我们正确定义 getter 和 setter。让我们使用 <code>@property</code> 装饰器将 getter 添加到 <code>User</code> 的所有三个字段中。</p>
+<div class="highlight"><pre><span></span><code><span class="nv">@property</span>
+<span class="n">def</span><span class="w"> </span><span class="n">name</span><span class="p">(</span><span class="n">self</span><span class="p">)</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nl">Name</span><span class="p">:</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">self</span><span class="p">.</span><span class="n">_name</span>
+
+<span class="nv">@property</span>
+<span class="n">def</span><span class="w"> </span><span class="n">phone</span><span class="p">(</span><span class="n">self</span><span class="p">)</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nl">PhoneNumber</span><span class="p">:</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">self</span><span class="p">.</span><span class="n">_phone</span>
+
+<span class="nv">@property</span>
+<span class="n">def</span><span class="w"> </span><span class="n">since</span><span class="p">(</span><span class="n">self</span><span class="p">)</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="nc">datetime</span><span class="p">.</span><span class="nc">datetime</span><span class="err">:</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">self</span><span class="p">.</span><span class="n">_since</span>
+</code></pre></div>
+
+<p><code>phone</code> 字段的 setter 可以使用 <code>@&lt;字段&gt;.setter</code> 来装饰：</p>
+<div class="highlight"><pre><span></span><code><span class="nv">@phone</span><span class="p">.</span><span class="n">setter</span>
+<span class="n">def</span><span class="w"> </span><span class="n">phone</span><span class="p">(</span><span class="n">self</span><span class="p">,</span><span class="w"> </span><span class="nl">phone</span><span class="p">:</span><span class="w"> </span><span class="n">PhoneNumber</span><span class="p">)</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="k">None</span><span class="err">:</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">phone</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="k">None</span><span class="err">:</span>
+<span class="w">        </span><span class="n">raise</span><span class="w"> </span><span class="n">ValueError</span><span class="p">(</span><span class="ss">&quot;Invalid phone&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">self</span><span class="p">.</span><span class="n">_phone</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">phone</span>
+</code></pre></div>
+
+<p>通过重写 <code>__str__()</code> 函数，也可以为 <code>User</code> 提供一个简单的打印方法：</p>
+<div class="highlight"><pre><span></span><code>def __str__(self):
+    return self.name.value + &quot; [&quot; + str(self.phone.value) + &quot;] since &quot; + str(self.since)
+</code></pre></div>
+
+<p>这样，域模型的实体和值对象就准备好了。创建异常类如下所示：</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span> <span class="n">UserNotFoundException</span>(<span class="nb">Exception</span>):
+    <span class="nb">pass</span>
+</code></pre></div>
+
+<p>域模型现在只剩下 <code>UserRepository</code> 了。Python 提供了一个名为 <code>abc</code> 的有用模块来创建抽象方法和抽象类。因为 <code>UserRepository</code> 只是一个接口，所以我们可以使用 <code>abc</code> 模块。</p>
+<p>任何继承自 <code>abc.ABC</code> 的类都将变为抽象类，任何带有 <code>@abc.abstractmethod</code> 装饰器的函数都会变为一个抽象函数。下面是 <code>UserRepository</code> 的结构：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">abc</span> <span class="kn">import</span> <span class="n">ABC</span><span class="p">,</span> <span class="n">abstractmethod</span>
+
+<span class="k">class</span> <span class="nc">UserRepository</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span> <span class="nf">fetch</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span><span class="n">Name</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">User</span><span class="p">:</span>
+        <span class="k">pass</span>
+</code></pre></div>
+
+<p><code>UserRepository</code> 遵循仓储模式。换句话说，它在 <code>User</code> 实体上提供适当的 CRUD 操作，而不会暴露底层数据存储语义。在本例中，我们只需要 <code>fetch()</code> 操作，因为 <code>FindService</code> 只查找用户。</p>
+<p>因为 <code>UserRepository</code> 是一个抽象类，我们不能从抽象类创建实例对象。创建对象必须依赖于一个具体类实现这个抽象类。数据层 <code>UserRepositoryImpl</code> 提供了 <code>UserRepository</code> 的具体实现：</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span> <span class="n">UserRepositoryImpl</span>(<span class="n">UserRepository</span>):
+    <span class="n">def</span> <span class="n">fetch</span>(<span class="nb">self</span>, <span class="n">name:Name</span>) -&gt; <span class="n">User:</span>
+        <span class="nb">pass</span>
+</code></pre></div>
+
+<p>由于 <code>AddService</code> 将用户数据存储在一个 MySQL 数据库中，因此 <code>UserRepositoryImpl</code> 也必须连接到相同的数据库去检索数据。下面是连接到数据库的代码。注意，我们正在使用 MySQL 的连接库。</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">mysql.connector</span> <span class="kn">import</span> <span class="n">connect</span><span class="p">,</span> <span class="n">Error</span>
+
+<span class="k">class</span> <span class="nc">UserRepositoryImpl</span><span class="p">(</span><span class="n">UserRepository</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">fetch</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span><span class="n">Name</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">User</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">connect</span><span class="p">(</span>
+                    <span class="n">host</span><span class="o">=</span><span class="s2">&quot;mysqldb&quot;</span><span class="p">,</span>
+                    <span class="n">user</span><span class="o">=</span><span class="s2">&quot;root&quot;</span><span class="p">,</span>
+                    <span class="n">password</span><span class="o">=</span><span class="s2">&quot;admin&quot;</span><span class="p">,</span>
+                    <span class="n">database</span><span class="o">=</span><span class="s2">&quot;glarimy&quot;</span><span class="p">,</span>
+                <span class="p">)</span> <span class="k">as</span> <span class="n">connection</span><span class="p">:</span>
+                <span class="k">with</span> <span class="n">connection</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+                    <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;SELECT * FROM ums_users where name=</span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">name</span><span class="o">.</span><span class="n">value</span><span class="p">,))</span>
+                    <span class="n">row</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+                    <span class="k">if</span> <span class="n">cursor</span><span class="o">.</span><span class="n">rowcount</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+                        <span class="k">raise</span> <span class="n">UserNotFoundException</span><span class="p">()</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="k">return</span> <span class="n">User</span><span class="p">(</span><span class="n">Name</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="n">PhoneNumber</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span> <span class="n">row</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+        <span class="k">except</span> <span class="n">Error</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">e</span>
+</code></pre></div>
+
+<p>在上面的片段中，我们使用用户 <code>root</code> / 密码 <code>admin</code> 连接到一个名为 <code>mysqldb</code> 的数据库服务器，使用名为 <code>glarimy</code> 的数据库（模式）。在演示代码中是可以包含这些信息的，但在生产中不建议这么做，因为这会暴露敏感信息。</p>
+<p><code>fetch()</code> 操作的逻辑非常直观，它对 <code>ums_users</code> 表执行 SELECT 查询。回想一下，<code>AddService</code> 正在将用户数据写入同一个表中。如果 SELECT 查询没有返回记录，<code>fetch()</code> 函数将抛出 <code>UserNotFoundException</code> 异常。否则，它会从记录中构造 <code>User</code> 实体并将其返回给调用者。这没有什么特殊的。</p>
+<h3>应用层</h3>
+<p>最终，我们需要创建应用层。此模型如图 2 所示。它只包含两个类：控制器和一个 DTO。</p>
+<p><img alt="图 2: 添加服务的应用层" src="/data/attachment/album/202210/19/124500ns7pem96lottcc0p.png"></p>
+<p>众所周知，一个 DTO 只是一个没有任何业务逻辑的数据容器。它主要用于在 <code>FindService</code> 和外部之间传输数据。我们只是提供了在 REST 层中将 <code>UserRecord</code> 转换为字典以便用于 JSON 传输：</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span> <span class="n">UserRecord:</span>
+    <span class="n">def</span> <span class="n">toJSON</span>(<span class="nb">self</span>):
+        <span class="k">return</span> {
+            <span class="s">&quot;name&quot;</span>: <span class="nb">self</span>.<span class="nb">name</span>,
+            <span class="s">&quot;phone&quot;</span>: <span class="nb">self</span>.<span class="n">phone</span>,
+            <span class="s">&quot;since&quot;</span>: <span class="nb">self</span>.<span class="n">since</span>
+        }
+</code></pre></div>
+
+<p>控制器的工作是将 DTO 转换为用于域服务的域对象，反之亦然。可以从 <code>find()</code> 操作中观察到这一点。</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span> <span class="n">UserController:</span>
+
+    <span class="n">def</span> <span class="n">__init__</span>(<span class="nb">self</span>):
+        <span class="nb">self</span>.<span class="n">_repo</span> = <span class="n">UserRepositoryImpl</span>()
+
+    <span class="n">def</span> <span class="n">find</span>(<span class="nb">self</span>, <span class="n">name:</span> <span class="n">str</span>):
+        <span class="n">try:</span>
+            <span class="n">user:</span> <span class="n">User</span> = <span class="nb">self</span>.<span class="n">_repo</span>.<span class="n">fetch</span>(<span class="n">Name</span>(<span class="nb">name</span>))
+            <span class="n">record:</span> <span class="n">UserRecord</span> = <span class="n">UserRecord</span>()
+            <span class="n">record</span>.<span class="nb">name</span> = <span class="n">user</span>.<span class="nb">name</span>.<span class="nb">value</span>
+            <span class="n">record</span>.<span class="n">phone</span> = <span class="n">user</span>.<span class="n">phone</span>.<span class="nb">value</span>
+            <span class="n">record</span>.<span class="n">since</span> = <span class="n">user</span>.<span class="n">since</span>
+            <span class="k">return</span> <span class="n">record</span>
+        <span class="n">except</span> <span class="n">UserNotFoundException</span> <span class="n">as</span> <span class="n">e:</span>
+            <span class="k">return</span> <span class="n">None</span>
+</code></pre></div>
+
+<p><code>find()</code> 操作接收一个字符串作为用户名，然后将其转换为 <code>Name</code> 对象，并调用 <code>UserRepository</code> 获取相应的 <code>User</code> 对象。如果找到了，则使用检索到的 <code>User`` 对象创建</code>UserRecord`。回想一下，将域对象转换为 DTO 是很有必要的，这样可以对外部服务隐藏域模型。</p>
+<p><code>UserController</code> 不需要有多个实例，它也可以是单例的。通过重写 <code>__new__</code>，可以将其建模为一个单例。</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span> <span class="n">UserController:</span>
+    <span class="n">def</span> <span class="n">__new__</span>(<span class="nb">self</span>):
+        <span class="k">if</span> <span class="nb">not</span> <span class="n">hasattr</span>(<span class="nb">self</span>, ‘<span class="n">instance</span>’):
+            <span class="nb">self</span>.<span class="n">instance</span> = <span class="n">super</span>().<span class="n">__new__</span>(<span class="nb">self</span>)
+        <span class="k">return</span> <span class="nb">self</span>.<span class="n">instance</span>
+
+    <span class="n">def</span> <span class="n">__init__</span>(<span class="nb">self</span>):
+        <span class="nb">self</span>.<span class="n">_repo</span> = <span class="n">UserRepositoryImpl</span>()
+
+    <span class="n">def</span> <span class="n">find</span>(<span class="nb">self</span>, <span class="n">name:</span> <span class="n">str</span>):
+        <span class="n">try:</span>
+            <span class="n">user:</span> <span class="n">User</span> = <span class="nb">self</span>.<span class="n">_repo</span>.<span class="n">fetch</span>(<span class="n">Name</span>(<span class="nb">name</span>))
+            <span class="n">record:</span> <span class="n">UserRecord</span> = <span class="n">UserRecord</span>()
+            <span class="n">record</span>.<span class="nb">name</span> = <span class="n">user</span>.<span class="nb">name</span>.<span class="n">getValue</span>()
+            <span class="n">record</span>.<span class="n">phone</span> = <span class="n">user</span>.<span class="n">phone</span>.<span class="n">getValue</span>()
+            <span class="n">record</span>.<span class="n">since</span> = <span class="n">user</span>.<span class="n">since</span>
+            <span class="k">return</span> <span class="n">record</span>
+        <span class="n">except</span> <span class="n">UserNotFoundException</span> <span class="n">as</span> <span class="n">e:</span>
+            <span class="k">return</span> <span class="n">None</span>
+</code></pre></div>
+
+<p>我们已经完全实现了 <code>FindService</code> 的模型，剩下的唯一任务是将其作为 REST 服务公开。</p>
+<h3>REST API</h3>
+<p><code>FindService</code> 只提供一个 API，那就是通过用户名查找用户。显然 URI 如下所示：</p>
+<div class="highlight"><pre><span></span><code>GET /user/{name}
+</code></pre></div>
+
+<p>此 API 希望根据提供的用户名查找用户，并以 JSON 格式返回用户的电话号码等详细信息。如果没有找到用户，API 将返回一个 404 状态码。</p>
+<p>我们可以使用 Flask 框架来构建 REST API，它最初的目的是使用 Python 开发 Web 应用程序。除了 HTML 视图，它还进一步扩展到支持 REST 视图。我们选择这个框架是因为它足够简单。 创建一个 Flask 应用程序：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">flask</span> <span class="kn">import</span> <span class="n">Flask</span>
+<span class="n">app</span> <span class="o">=</span> <span class="n">Flask</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+</code></pre></div>
+
+<p>然后为 Flask 应用程序定义路由，就像函数一样简单：</p>
+<div class="highlight"><pre><span></span><code><span class="nv">@app</span><span class="p">.</span><span class="n">route</span><span class="p">(</span><span class="s1">&#39;/user/&lt;name&gt;&#39;</span><span class="p">)</span>
+<span class="n">def</span><span class="w"> </span><span class="k">get</span><span class="p">(</span><span class="n">name</span><span class="p">)</span><span class="err">:</span>
+<span class="w">    </span><span class="n">pass</span>
+</code></pre></div>
+
+<p>注意 <code>@app.route</code> 映射到 API <code>/user/&lt;name&gt;</code>，与之对应的函数的 <code>get()</code>。</p>
+<p>如你所见，每次用户访问 API 如 <code>http://server:port/user/Krishna</code> 时，都将调用这个 <code>get()</code> 函数。Flask 足够智能，可以从 URL 中提取 <code>Krishna</code> 作为用户名，并将其传递给 <code>get()</code> 函数。</p>
+<p><code>get()</code> 函数很简单。它要求控制器找到该用户，并将其与通常的 HTTP 头一起打包为 JSON 格式后返回。如果控制器返回 <code>None</code>，则 <code>get()</code> 函数返回合适的 HTTP 状态码。</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">flask</span> <span class="kn">import</span> <span class="n">jsonify</span><span class="p">,</span> <span class="n">abort</span>
+
+<span class="n">controller</span> <span class="o">=</span> <span class="n">UserController</span><span class="p">()</span>
+<span class="n">record</span> <span class="o">=</span> <span class="n">controller</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+<span class="k">if</span> <span class="n">record</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">abort</span><span class="p">(</span><span class="mi">404</span><span class="p">)</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="n">resp</span> <span class="o">=</span> <span class="n">jsonify</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">toJSON</span><span class="p">())</span>
+    <span class="n">resp</span><span class="o">.</span><span class="n">status_code</span> <span class="o">=</span> <span class="mi">200</span>
+    <span class="k">return</span> <span class="n">resp</span>
+</code></pre></div>
+
+<p>最后，我们需要 Flask 应用程序提供服务，可以使用 <code>waitress</code> 服务：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">waitress</span> <span class="kn">import</span> <span class="n">serve</span>
+<span class="n">serve</span><span class="p">(</span><span class="n">app</span><span class="p">,</span> <span class="n">host</span><span class="o">=</span><span class="s2">&quot;0.0.0.0&quot;</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="mi">8080</span><span class="p">)</span>
+</code></pre></div>
+
+<p>在上面的片段中，应用程序在本地主机的 8080 端口上提供服务。最终代码如下所示：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">flask</span> <span class="kn">import</span> <span class="n">Flask</span><span class="p">,</span> <span class="n">jsonify</span><span class="p">,</span> <span class="n">abort</span>
+<span class="kn">from</span> <span class="nn">waitress</span> <span class="kn">import</span> <span class="n">serve</span>
+
+<span class="n">app</span> <span class="o">=</span> <span class="n">Flask</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+<span class="nd">@app</span><span class="o">.</span><span class="n">route</span><span class="p">(</span><span class="s1">&#39;/user/&lt;name&gt;&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">get</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+    <span class="n">controller</span> <span class="o">=</span> <span class="n">UserController</span><span class="p">()</span>
+    <span class="n">record</span> <span class="o">=</span> <span class="n">controller</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">record</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">abort</span><span class="p">(</span><span class="mi">404</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">resp</span> <span class="o">=</span> <span class="n">jsonify</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">toJSON</span><span class="p">())</span>
+        <span class="n">resp</span><span class="o">.</span><span class="n">status_code</span> <span class="o">=</span> <span class="mi">200</span>
+        <span class="k">return</span> <span class="n">resp</span>
+
+<span class="n">serve</span><span class="p">(</span><span class="n">app</span><span class="p">,</span> <span class="n">host</span><span class="o">=</span><span class="s2">&quot;0.0.0.0&quot;</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="mi">8080</span><span class="p">)</span>
+</code></pre></div>
+
+<h3>部署</h3>
+<p><code>FindService</code> 的代码已经准备完毕。除了 REST API 之外，它还有域模型、数据层和应用程序层。下一步是构建此服务，将其容器化，然后部署到 Kubernetes 上。此过程与部署其他服务妹有任何区别，但有一些 Python 特有的步骤。</p>
+<p>在继续前进之前，让我们来看下文件夹和文件结构：</p>
+<div class="highlight"><pre><span></span><code>+ ums-find-service
++ ums
+- domain.py
+- data.py
+- app.py
+- Dockerfile
+- requirements.txt
+- kube-find-deployment.yml
+</code></pre></div>
+
+<p>如你所见，整个工作文件夹都位于 <code>ums-find-service</code> 下，它包含了 <code>ums</code> 文件夹中的代码和一些配置文件，例如 <code>Dockerfile</code>、<code>requirements.txt</code> 和 <code>kube-find-deployment.yml</code>。</p>
+<p><code>domain.py</code> 包含域模型，<code>data.py</code> 包含 <code>UserRepositoryImpl</code>，<code>app.py</code> 包含剩余代码。我们已经阅读过代码了，现在我们来看看配置文件。</p>
+<p>第一个是 <code>requirements.txt</code>，它声明了 Python 系统需要下载和安装的外部依赖项。我们需要用查找服务中用到的每个外部 Python 模块来填充它。如你所见，我们使用了 MySQL 连接器、Flask 和 Waitress 模块。因此，下面是 <code>requirements.txt</code> 的内容。</p>
+<div class="highlight"><pre><span></span><code>Flask==2.1.1
+Flask_RESTful
+mysql-connector-python
+waitress
+</code></pre></div>
+
+<p>第二步是在 <code>Dockerfile</code> 中声明 Docker 相关的清单，如下：</p>
+<div class="highlight"><pre><span></span><code>FROM python:3.8-slim-buster
+
+WORKDIR /ums
+ADD ums /ums
+ADD requirements.txt requirements.txt
+RUN pip3 install -r requirements.txt
+
+EXPOSE 8080
+ENTRYPOINT [&quot;python&quot;]
+CMD [&quot;/ums/app.py&quot;]
+</code></pre></div>
+
+<p>总的来说，我们使用 Python 3.8 作为基线，除了移动 <code>requirements.txt</code> 之外，我们还将代码从 <code>ums</code> 文件夹移动到 Docker 容器中对应的文件夹中。然后，我们指示容器运行 <code>pip3 install</code> 命令安装对应模块。最后，我们向外暴露 8080 端口（因为 waitress 运行在此端口上）。</p>
+<p>为了运行此服务，我们指示容器使用使用以下命令：</p>
+<div class="highlight"><pre><span></span><code>python /ums/app.py
+</code></pre></div>
+
+<p>一旦 <code>Dockerfile</code> 准备完成，在 <code>ums-find-service</code> 文件夹中运行以下命令，创建 Docker 镜像：</p>
+<div class="highlight"><pre><span></span><code>docker build -t glarimy/ums-find-service
+</code></pre></div>
+
+<p>它会创建 Docker 镜像，可以使用以下命令查找镜像：</p>
+<div class="highlight"><pre><span></span><code>docker images
+</code></pre></div>
+
+<p>尝试将镜像推送到 Docker Hub，你也可以登录到 Docker。</p>
+<div class="highlight"><pre><span></span><code>docker login
+docker push glarimy/ums-find-service
+</code></pre></div>
+
+<p>最后一步是为 Kubernetes 部署构建清单。</p>
+<p>在之前的文章中，我们已经介绍了如何建立 Kubernetes 集群、部署和使用服务的方法。我假设仍然使用之前文章中的清单文件来部署添加服务、MySQL、Kafka 和 Zookeeper。我们只需要将以下内容添加到 <code>kube-find-deployment.yml</code> 文件中：</p>
+<p>```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+name: ums-find-service
+labels:
+app: ums-find-service
+spec:
+replicas: 3
+selector:
+matchLabels:
+app: ums-find-service
+template:
+metadata:
+labels:
+app: ums-find-service
+spec:
+containers:
+- name: ums-find-service
+image: glarimy/ums-find-service
+ports:
+- containerPort: 8080</p>
+<p>via: <a href="https://www.opensourceforu.com/2022/09/python-microservices-using-flask-on-kubernetes/">https://www.opensourceforu.com/2022/09/python-microservices-using-flask-on-kubernetes/</a></p>
+<p>作者：<a href="https://www.opensourceforu.com/author/krishna-mohan-koyya/">Krishna Mohan Koyya</a> 选题：<a href="https://github.com/lkxed">lkxed</a> 译者：<a href="https://github.com/MjSeven">MjSeven</a> 校对：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创编译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

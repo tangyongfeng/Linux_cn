@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>闭包、对象，以及堆“族”</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Gustavo Duarte 在上篇文章中我们提到了闭包、对象、以及栈外的其它东西。我们学习的大部分内容都是与特定编程语言无关的元 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/06/bi-bao-dui-xiang-yi-ji-dui-zu.html" rel="bookmark"
+           title="Permalink to 闭包、对象，以及堆“族”">闭包、对象，以及堆“族”</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-06-18T11:05:00+02:00">
+                Published: Mon 18 June 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Gustavo Duarte</p>
+<p><img alt="" src="/data/attachment/album/201806/18/110440nuqxqqq88r61qr8t.jpg"></p>
+<p>在上篇文章中我们提到了闭包、对象、以及栈外的其它东西。我们学习的大部分内容都是与特定编程语言无关的元素，但是，我主要还是专注于 JavaScript，以及一些 C。让我们以一个简单的 C 程序开始，它的功能是读取一首歌曲和乐队名字，然后将它们输出给用户：</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;stdio.h&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;string.h&gt;</span>
+
+<span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="nf">read</span><span class="p">()</span>
+<span class="p">{</span><span class="w">    </span>
+<span class="w">    </span><span class="kt">char</span><span class="w"> </span><span class="n">data</span><span class="p">[</span><span class="mi">64</span><span class="p">];</span>
+<span class="w">    </span><span class="n">fgets</span><span class="p">(</span><span class="n">data</span><span class="p">,</span><span class="w"> </span><span class="mi">64</span><span class="p">,</span><span class="w"> </span><span class="n">stdin</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">data</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">int</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">argc</span><span class="p">,</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">argv</span><span class="p">[])</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">song</span><span class="p">,</span><span class="w"> </span><span class="o">*</span><span class="n">band</span><span class="p">;</span>
+
+<span class="w">    </span><span class="n">puts</span><span class="p">(</span><span class="s">&quot;Enter song, then band:&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="n">song</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">read</span><span class="p">();</span>
+<span class="w">    </span><span class="n">band</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">read</span><span class="p">();</span>
+
+<span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">%sby %s&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">song</span><span class="p">,</span><span class="w"> </span><span class="n">band</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><em>stackFolly.c <a href="https://manybutfinite.com/code/x86-stack/stackFolly.c">下载</a></em></p>
+<p>如果你运行这个程序，你会得到什么？（=&gt; 表示程序输出）：</p>
+<div class="highlight"><pre><span></span><code>.<span class="o">/</span><span class="nv">stackFolly</span>
+<span class="o">=&gt;</span><span class="w"> </span><span class="nv">Enter</span><span class="w"> </span><span class="nv">song</span>,<span class="w"> </span><span class="k">then</span><span class="w"> </span><span class="nv">band</span>:
+<span class="nv">The</span><span class="w"> </span><span class="nv">Past</span><span class="w"> </span><span class="nv">is</span><span class="w"> </span><span class="nv">a</span><span class="w"> </span><span class="nv">Grotesque</span><span class="w"> </span><span class="nv">Animal</span>
+<span class="nv">of</span><span class="w"> </span><span class="nv">Montreal</span>
+
+<span class="o">=&gt;</span><span class="w"> </span>?ǿ<span class="nv">ontreal</span>
+<span class="o">=&gt;</span><span class="w"> </span><span class="nv">by</span><span class="w"> </span>?ǿ<span class="nv">ontreal</span>
+</code></pre></div>
+
+<p>（曾经的 C 新手说）发生了错误？</p>
+<p>事实证明，函数的栈变量的内容仅在栈帧活动期间才是可用的，也就是说，仅在函数返回之前。在上面的返回中，被栈帧使用过的内存 <a href="https://manybutfinite.com/post/epilogues-canaries-buffer-overflows/">被认为是可用的</a>，并且在下一个函数调用中可以被覆写。</p>
+<p>下面的图展示了这种情况下究竟发生了什么。这个图现在有一个图片映射（LCTT 译注：译文中无法包含此映射，上下两个矩形区域分别链接至输出的 <a href="https://github.com/gduarte/blog/blob/master/code/x86-stack/stackFolly-gdb-output.txt#L47">#47</a> 行和 <a href="https://github.com/gduarte/blog/blob/master/code/x86-stack/stackFolly-gdb-output.txt#L70">#70</a> 行），因此，你可以点击一个数据片断去看一下相关的 GDB 输出（GDB 命令在 <a href="https://github.com/gduarte/blog/blob/master/code/x86-stack/stackFolly-gdb-commands.txt">这里</a>）。只要 <code>read()</code> 读取了歌曲的名字，栈将是这个样子：</p>
+<p><img alt="" src="/data/attachment/album/201806/18/110504ntt1vfkddipcdid6.png"></p>
+<p>在这个时候，这个 <code>song</code> 变量立即指向到歌曲的名字。不幸的是，存储字符串的内存位置准备被下次调用的任意函数的栈帧重用。在这种情况下，<code>read()</code> 再次被调用，而且使用的是同一个位置的栈帧，因此，结果变成下图的样子（LCTT 译注：上下两个矩形映射分别链接至 <a href="https://github.com/gduarte/blog/blob/master/code/x86-stack/stackFolly-gdb-output.txt#L76">#76</a> 行和 <a href="https://github.com/gduarte/blog/blob/master/code/x86-stack/stackFolly-gdb-output.txt#L79">#79</a> 行）：</p>
+<p><img alt="" src="/data/attachment/album/201806/18/110506cokphshkmjehrhrh.png"></p>
+<p>乐队名字被读入到相同的内存位置，并且覆盖了前面存储的歌曲名字。<code>band</code> 和 <code>song</code> 最终都准确指向到相同点。最后，我们甚至都不能得到 “of Montreal”（LCTT 译注：一个欧美乐队的名字） 的正确输出。你能猜到是为什么吗？</p>
+<p>因此，即使栈很有用，但也有很重要的限制。它不能被一个函数用于去存储比该函数的运行周期还要长的数据。你必须将它交给 <a href="https://github.com/gduarte/blog/blob/master/code/x86-stack/readIntoHeap.c">堆</a>，然后与热点缓存、明确的瞬时操作、以及频繁计算的偏移等内容道别。有利的一面是，它是<a href="https://github.com/gduarte/blog/blob/master/code/x86-stack/readIntoHeap-gdb-output.txt#L47">工作</a> 的：</p>
+<p><img alt="" src="/data/attachment/album/201806/18/110507ridhzkqlq0f1pp9f.png"></p>
+<p>这个代价是你必须记得去 <code>free()</code> 内存，或者由一个垃圾回收机制花费一些性能来随机回收，垃圾回收将去找到未使用的堆对象，然后去回收它们。那就是栈和堆之间在本质上的权衡：性能 vs. 灵活性。</p>
+<p>大多数编程语言的虚拟机都有一个中间层用来做一个 C 程序员该做的一些事情。栈被用于<strong>值类型</strong>，比如，整数、浮点数、以及布尔型。这些都按特定值（像上面的 <code>argc</code> ）的字节顺序被直接保存在本地变量和对象字段中。相比之下，堆被用于<strong>引用类型</strong>，比如，字符串和 <a href="https://code.google.com/p/v8/source/browse/trunk/src/objects.h#37">对象</a>。 变量和字段包含一个引用到这个对象的内存地址，像上面的 <code>song</code> 和 <code>band</code>。</p>
+<p>参考这个 JavaScript 函数：</p>
+<div class="highlight"><pre><span></span><code><span class="k">function</span><span class="w"> </span><span class="nf">fn</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="nb">var</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mi">10</span><span class="p">;</span>
+<span class="w">    </span><span class="n">var</span><span class="w"> </span><span class="s">b</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;foo&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="w"> </span><span class="p">};</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>它可能的结果如下（LCTT 译注：图片内“object”、“string”和“a”的映射分别链接至 <a href="https://code.google.com/p/v8/source/browse/trunk/src/objects.h#1671">#1671</a> 行、 <a href="https://code.google.com/p/v8/source/browse/trunk/src/objects.h#8656">#8656</a> 行和 <a href="https://code.google.com/p/v8/source/browse/trunk/src/objects.h#1264">#1264</a> 行）：</p>
+<p><img alt="" src="/data/attachment/album/201806/18/110508k2i3h7zt2q7k6k3r.png"></p>
+<p>我之所以说“可能”的原因是，特定的行为高度依赖于实现。这篇文章使用的许多流程图形是以一个 V8 为中心的方法，这些图形都链接到相关的源代码。在 V8 中，仅 <a href="https://code.google.com/p/v8/source/browse/trunk/src/objects.h#1264">小整数</a> 是 <a href="https://code.google.com/p/v8/source/browse/trunk/src/objects.h#148">以值的方式保存</a>。因此，从现在开始，我将在对象中直接以字符串去展示，以避免引起混乱，但是，请记住，正如上图所示的那样，它们在堆中是分开保存的。</p>
+<p>现在，我们来看一下闭包，它其实很简单，但是由于我们将它宣传的过于夸张，以致于有点神化了。先看一个简单的 JS 函数：</p>
+<div class="highlight"><pre><span></span><code><span class="k">function</span><span class="w"> </span><span class="nf">add</span><span class="p">(</span>a, b<span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="nb">var</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">b</span><span class="p">;</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">c</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这个函数定义了一个<ruby> 词法域 <rt>  lexical scope </rt></ruby>，它是一个快乐的小王国，在这里它的名字 <code>a</code>、<code>b</code>、<code>c</code> 是有明确意义的。它有两个参数和由函数声明的一个本地变量。程序也可以在别的地方使用相同的名字，但是在 <code>add</code> 内部它们所引用的内容是明确的。尽管词法域是一个很好的术语，它符合我们直观上的理解：毕竟，我们从字面意义上看，我们可以像词法分析器一样，把它看作在源代码中的一个文本块。</p>
+<p>在看到栈帧的操作之后，很容易想像出这个名称的具体实现。在 <code>add</code> 内部，这些名字引用到函数的每个运行实例中私有的栈的位置。这种情况在一个虚拟机中经常发生。</p>
+<p>现在，我们来嵌套两个词法域：</p>
+<div class="highlight"><pre><span></span><code><span class="k">function</span><span class="w"> </span><span class="nf">makeGreeter</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="k">function</span><span class="w"> </span><span class="n">hi</span><span class="p">(</span><span class="n">name</span><span class="p">){</span>
+<span class="w">        </span><span class="n">console</span><span class="p">.</span><span class="n">log</span><span class="p">(</span><span class="s">&#39;hi, &#39;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">name</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="nb">var</span><span class="w"> </span><span class="n">hi</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">makeGreeter</span><span class="p">();</span>
+<span class="n">hi</span><span class="p">(</span><span class="s">&#39;dear reader&#39;</span><span class="p">);</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">prints</span><span class="w"> </span><span class="s">&quot;hi, dear reader&quot;</span>
+</code></pre></div>
+
+<p>那样更有趣。函数 <code>hi</code> 在函数 <code>makeGreeter</code> 运行的时候被构建在它内部。它有它自己的词法域，<code>name</code> 在这个地方是一个栈上的参数，但是，它似乎也可以访问父级的词法域，它可以那样做。我们来看一下那样做的好处：</p>
+<div class="highlight"><pre><span></span><code><span class="k">function</span><span class="w"> </span><span class="nf">makeGreeter</span><span class="p">(</span>greeting<span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="k">function</span><span class="w"> </span><span class="n">greet</span><span class="p">(</span><span class="n">name</span><span class="p">){</span>
+<span class="w">        </span><span class="n">console</span><span class="p">.</span><span class="n">log</span><span class="p">(</span><span class="n">greeting</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">&#39;, &#39;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">name</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="nb">var</span><span class="w"> </span><span class="n">heya</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">makeGreeter</span><span class="p">(</span><span class="s">&#39;HEYA&#39;</span><span class="p">);</span>
+<span class="n">heya</span><span class="p">(</span><span class="s">&#39;dear reader&#39;</span><span class="p">);</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">prints</span><span class="w"> </span><span class="s">&quot;HEYA, dear reader&quot;</span>
+</code></pre></div>
+
+<p>虽然有点不习惯，但是很酷。即便这样违背了我们的直觉：<code>greeting</code> 确实看起来像一个栈变量，这种类型应该在 <code>makeGreeter()</code> 返回后消失。可是因为 <code>greet()</code> 一直保持工作，出现了一些奇怪的事情。进入闭包（LCTT 译注：“Context” 和 “JSFunction” 映射分别链接至 <a href="https://code.google.com/p/v8/source/browse/trunk/src/contexts.h#188">#188</a> 行和 <a href="https://code.google.com/p/v8/source/browse/trunk/src/objects.h#7245">#7245</a> 行）：</p>
+<p><img alt="" src="/data/attachment/album/201806/18/110509gf48c5rxnhf53zaz.png"></p>
+<p>虚拟机分配一个对象去保存被里面的 <code>greet()</code> 使用的父级变量。它就好像是 <code>makeGreeter</code> 的词法作用域在那个时刻被<ruby> 关闭 <rt>  closed over </rt></ruby>了，一旦需要时被具体化到一个堆对象（在这个案例中，是指返回的函数的生命周期）。因此叫做<ruby> 闭包 <rt>  closure </rt></ruby>，当你这样去想它的时候，它的名字就有意义了。如果使用（或者捕获）了更多的父级变量，对象内容将有更多的属性，每个捕获的变量有一个。当然，发送到 <code>greet()</code> 的代码知道从对象内容中去读取问候语，而不是从栈上。</p>
+<p>这是完整的示例：</p>
+<div class="highlight"><pre><span></span><code><span class="k">function</span><span class="w"> </span><span class="nf">makeGreeter</span><span class="p">(</span>greetings<span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="nb">var</span><span class="w"> </span><span class="nb">count</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">    </span><span class="n">var</span><span class="w"> </span><span class="s">greeter</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="p">{};</span>
+
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="nb">var</span><span class="w"> </span><span class="nb">i</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="nb">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">greetings</span><span class="p">.</span><span class="n">length</span><span class="p">;</span><span class="w"> </span><span class="nb">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nb">var</span><span class="w"> </span><span class="n">greeting</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">greetings</span><span class="p">[</span><span class="nb">i</span><span class="p">];</span>
+
+<span class="w">        </span><span class="n">greeter</span><span class="p">[</span><span class="n">greeting</span><span class="p">]</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="k">function</span><span class="p">(</span><span class="n">name</span><span class="p">){</span>
+<span class="w">            </span><span class="nb">count</span><span class="o">++</span><span class="p">;</span>
+<span class="w">            </span><span class="n">console</span><span class="p">.</span><span class="n">log</span><span class="p">(</span><span class="n">greeting</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">&#39;, &#39;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">name</span><span class="p">);</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="n">greeter</span><span class="p">.</span><span class="n">count</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="k">function</span><span class="p">(){</span><span class="k">return</span><span class="w"> </span><span class="nb">count</span><span class="p">;}</span>
+
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">greeter</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="nb">var</span><span class="w"> </span><span class="n">greeter</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">makeGreeter</span><span class="p">([</span><span class="s">&quot;hi&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;hello&quot;</span><span class="p">,</span><span class="s">&quot;howdy&quot;</span><span class="p">])</span>
+<span class="n">greeter</span><span class="p">.</span><span class="n">hi</span><span class="p">(</span><span class="s">&#39;poppet&#39;</span><span class="p">);</span><span class="o">//</span><span class="n">prints</span><span class="w"> </span><span class="s">&quot;howdy, poppet&quot;</span>
+<span class="n">greeter</span><span class="p">.</span><span class="n">hello</span><span class="p">(</span><span class="s">&#39;darling&#39;</span><span class="p">);</span><span class="o">//</span><span class="w"> </span><span class="n">prints</span><span class="w"> </span><span class="s">&quot;howdy, darling&quot;</span>
+<span class="n">greeter</span><span class="p">.</span><span class="n">count</span><span class="p">();</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">returns</span><span class="w"> </span><span class="mi">2</span>
+</code></pre></div>
+
+<p>是的，<code>count()</code> 在工作，但是我们的 <code>greeter</code> 是在 <code>howdy</code> 中的栈上。你能告诉我为什么吗？我们使用 <code>count</code> 是一条线索：尽管词法域进入一个堆对象中被关闭，但是变量（或者对象属性）带的值仍然可能被改变。下图是我们拥有的内容（LCTT 译注：映射从左到右“Object”、“JSFunction”和“Context”分别链接至 <a href="https://code.google.com/p/v8/source/browse/trunk/src/objects.h#1671">#1671</a> 行、<a href="https://code.google.com/p/v8/source/browse/trunk/src/objects.h#7245">#7245</a> 行和 <a href="https://code.google.com/p/v8/source/browse/trunk/src/contexts.h#188">#188</a> 行）：</p>
+<p><img alt="" src="/data/attachment/album/201806/18/110511w6uzdegg84g8kd63.png"></p>
+<p>这是一个被所有函数共享的公共内容。那就是为什么 <code>count</code> 工作的原因。但是，<code>greeting</code> 也是被共享的，并且它被设置为迭代结束后的最后一个值，在这个案例中是 “howdy”。这是一个很常见的一般错误，避免它的简单方法是，引用一个函数调用，以闭包变量作为一个参数。在 CoffeeScript 中， <a href="http://coffeescript.org/#loops">do</a> 命令提供了一个实现这种目的的简单方式。下面是对我们的 <code>greeter</code> 的一个简单的解决方案：</p>
+<div class="highlight"><pre><span></span><code><span class="k">function</span><span class="w"> </span><span class="nf">makeGreeter</span><span class="p">(</span>greetings<span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="nb">var</span><span class="w"> </span><span class="nb">count</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">    </span><span class="n">var</span><span class="w"> </span><span class="s">greeter</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="p">{};</span>
+
+<span class="w">    </span><span class="n">greetings</span><span class="p">.</span><span class="n">forEach</span><span class="p">(</span><span class="k">function</span><span class="p">(</span><span class="n">greeting</span><span class="p">){</span>
+<span class="w">        </span><span class="n">greeter</span><span class="p">[</span><span class="n">greeting</span><span class="p">]</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="k">function</span><span class="p">(</span><span class="n">name</span><span class="p">){</span>
+<span class="w">            </span><span class="nb">count</span><span class="o">++</span><span class="p">;</span>
+<span class="w">            </span><span class="n">console</span><span class="p">.</span><span class="n">log</span><span class="p">(</span><span class="n">greeting</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">&#39;, &#39;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">name</span><span class="p">);</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">});</span>
+
+<span class="w">    </span><span class="n">greeter</span><span class="p">.</span><span class="n">count</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="k">function</span><span class="p">(){</span><span class="k">return</span><span class="w"> </span><span class="nb">count</span><span class="p">;}</span>
+
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">greeter</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="nb">var</span><span class="w"> </span><span class="n">greeter</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">makeGreeter</span><span class="p">([</span><span class="s">&quot;hi&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;hello&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;howdy&quot;</span><span class="p">])</span>
+<span class="n">greeter</span><span class="p">.</span><span class="n">hi</span><span class="p">(</span><span class="s">&#39;poppet&#39;</span><span class="p">);</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">prints</span><span class="w"> </span><span class="s">&quot;hi, poppet&quot;</span>
+<span class="n">greeter</span><span class="p">.</span><span class="n">hello</span><span class="p">(</span><span class="s">&#39;darling&#39;</span><span class="p">);</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">prints</span><span class="w"> </span><span class="s">&quot;hello, darling&quot;</span>
+<span class="n">greeter</span><span class="p">.</span><span class="n">count</span><span class="p">();</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">returns</span><span class="w"> </span><span class="mi">2</span>
+</code></pre></div>
+
+<p>它现在是工作的，并且结果将变成下图所示（LCTT 译注：映射从左到右“Object”、“JSFunction”和“Context”分别链接至 <a href="https://code.google.com/p/v8/source/browse/trunk/src/objects.h#1671">#1671</a> 行、<a href="https://code.google.com/p/v8/source/browse/trunk/src/objects.h#7245">#7245</a> 行和 <a href="https://code.google.com/p/v8/source/browse/trunk/src/contexts.h#188">#188</a> 行）：</p>
+<p><img alt="" src="/data/attachment/album/201806/18/110513waph7ocqo6ptkzcp.png"></p>
+<p>这里有许多箭头！在这里我们感兴趣的特性是：在我们的代码中，我们闭包了两个嵌套的词法内容，并且完全可以确保我们得到了两个链接到堆上的对象内容。你可以嵌套并且闭包任何词法内容，像“俄罗斯套娃”似的，并且最终从本质上说你使用的是所有那些 Context 对象的一个链表。</p>
+<p>当然，就像受信鸽携带信息启发实现了 TCP 一样，去实现这些编程语言的特性也有很多种方法。例如，ES6 规范定义了 <a href="http://people.mozilla.org/%7Ejorendorff/es6-draft.html#sec-lexical-environments">词法环境</a> 作为 <a href="http://people.mozilla.org/%7Ejorendorff/es6-draft.html#sec-environment-records">环境记录</a>( 大致相当于在一个块内的本地标识）的组成部分，加上一个链接到外部环境的记录，这样就允许我们看到的嵌套。逻辑规则是由规范（一个希望）所确定的，但是其实现取决于将它们变成比特和字节的转换。</p>
+<p>你也可以检查具体案例中由 V8 产生的汇编代码。<a href="http://mrale.ph">Vyacheslav Egorov</a> 有一篇很好的文章，它使用 V8 的 <a href="http://mrale.ph/blog/2012/09/23/grokking-v8-closures-for-fun.html">闭包内部构件</a> 详细解释了这一过程。我刚开始学习 V8，因此，欢迎指教。如果你熟悉 C#，检查闭包产生的中间代码将会很受启发 —— 你将看到显式定义的 V8 内容和实例化的模拟。</p>
+<p>闭包是个强大的“家伙”。它在被一组函数共享期间，提供了一个简单的方式去隐藏来自调用者的信息。我喜欢它们真正地隐藏你的数据：不像对象字段，调用者并不能访问或者甚至是看到闭包变量。保持接口清晰而安全。</p>
+<p>但是，它们并不是“银弹”（LCTT 译注：意指极为有效的解决方案，或者寄予厚望的新技术）。有时候一个对象的拥护者和一个闭包的狂热者会无休止地争论它们的优点。就像大多数的技术讨论一样，他们通常更关注的是自尊而不是真正的权衡。不管怎样，Anton van Straaten 的这篇 <a href="http://people.csail.mit.edu/gregs/ll1-discuss-archive-html/msg03277.html">史诗级的公案</a> 解决了这个问题：</p>
+<blockquote>
+<p>德高望重的老师 Qc Na 和它的学生 Anton 一起散步。Anton 希望将老师引入到一个讨论中，Anton 说：“老师，我听说对象是一个非常好的东西，是这样的吗？Qc Na 同情地看了一眼，责备它的学生说：“可怜的孩子 —— 对象不过是穷人的闭包而已。” Anton 待它的老师走了之后，回到他的房间，专心学习闭包。他认真地阅读了完整的 “Lambda：The Ultimate…" 系列文章和它的相关资料，并使用一个基于闭包的对象系统实现了一个小的架构解释器。他学到了很多的东西，并期待告诉老师他的进步。在又一次和 Qc Na 散步时，Anton 尝试给老师留下一个好的印象，说“老师，我仔细研究了这个问题，并且，现在理解了对象真的是穷人的闭包。”Qc Na 用它的手杖打了一下 Anton 说：“你什么时候才能明白？闭包是穷人的对象。”在那个时候，Anton 顿悟了。Anton van Straaten 说：“原来架构这么酷啊？”</p>
+</blockquote>
+<p>探秘“栈”系列文章到此结束了。后面我将计划去写一些其它的编程语言实现的主题，像对象绑定和虚表。但是，内核调用是很强大的，因此，明天将发布一篇操作系统的文章。我邀请你 <a href="https://manybutfinite.com/feed.xml">订阅</a> 并 <a href="http://twitter.com/manybutfinite">关注我</a>。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

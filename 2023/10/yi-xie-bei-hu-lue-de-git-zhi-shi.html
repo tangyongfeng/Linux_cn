@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>一些被忽略的 Git 知识</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Julia Evans 我一直在慢慢地撰写关于 Git 工作原理的文章。尽管我曾认为自己对 Git 非常了解，但像往常一样，当我尝试解释某事 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2023/10/yi-xie-bei-hu-lue-de-git-zhi-shi.html" rel="bookmark"
+           title="Permalink to 一些被忽略的 Git 知识">一些被忽略的 Git 知识</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2023-10-25T12:23:24+02:00">
+                Published: Wed 25 October 2023
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Julia Evans</p>
+<p><img alt="" src="/data/attachment/album/202310/25/122259mfu0uowyppuyfdyo.jpg"></p>
+<p>我一直在慢慢地撰写关于 Git 工作原理的文章。尽管我曾认为自己对 Git 非常了解，但像往常一样，当我尝试解释某事的时候，我又学到一些新东西。</p>
+<p>现在回想起来，这些事情都不算太令人吃惊，但我以前并没有清楚地思考过它们。</p>
+<p>事实是:</p>
+<ul>
+<li>“索引”、“暂存区” 和 <code>-cached</code> 是一回事</li>
+<li>隐匿文件就是一堆提交</li>
+<li>并非所有引用都是分支或标签</li>
+<li>合并提交不是空的</li>
+</ul>
+<p>下面我们来详细了解这些内容。</p>
+<h3>“索引”、“暂存区” 和 <code>-cached</code> 是一回事</h3>
+<p>当你运行 <code>git add file.txt</code>，然后运行 <code>git status</code>，你会看到类似以下的输出：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>git<span class="w"> </span>add<span class="w"> </span>content/post/2023-10-20-some-miscellaneous-git-facts.markdown
+$<span class="w"> </span>git<span class="w"> </span>status
+Changes<span class="w"> </span>to<span class="w"> </span>be<span class="w"> </span>committed:
+<span class="w">    </span><span class="o">(</span>use<span class="w"> </span><span class="s2">&quot;git restore --staged &lt;file&gt;...&quot;</span><span class="w"> </span>to<span class="w"> </span>unstage<span class="o">)</span>
+<span class="w">    </span>new<span class="w"> </span>file:<span class="w">   </span>content/post/2023-10-20-some-miscellaneous-git-facts.markdown
+</code></pre></div>
+
+<p>人们通常称这个过程为“暂存文件”或“将文件添加到暂存区”。</p>
+<p>当你使用 <code>git add</code> 命令来暂存文件时，Git 在后台将文件添加到其对象数据库（在 <code>.git/objects</code> 目录下），并更新一个名为 <code>.git/index</code> 的文件以引用新添加的文件。</p>
+<p>Git 中的这个“暂存区”事实上有 3 种不同的名称，但它们都指的是同一个东西（即 <code>.git/index</code> 文件）：</p>
+<ul>
+<li><code>git diff --cached</code></li>
+<li><code>git diff --staged</code></li>
+<li><code>.git/index</code> 文件</li>
+</ul>
+<p>我觉得我早该早点认识到这一点，但我之前并没有，所以在这里提醒一下。</p>
+<h3>隐匿文件就是一堆提交</h3>
+<p>当我运行 <code>git stash</code> 命令来保存更改时，我一直对这些更改究竟去了哪里感到有些困惑。事实上，当你运行 <code>git stash</code> 命令时，Git 会根据你的更改创建一些提交，并用一个名为 <code>stash</code> 的引用来标记它们（在 <code>.git/refs/stash</code> 目录下）。</p>
+<p>让我们将此博客文章隐匿起来，然后查看 <code>stash</code> 引用的日志：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>git<span class="w"> </span>log<span class="w"> </span>stash<span class="w"> </span>--oneline
+6cb983fe<span class="w"> </span><span class="o">(</span>refs/stash<span class="o">)</span><span class="w"> </span>WIP<span class="w"> </span>on<span class="w"> </span>main:<span class="w"> </span>c6ee55ed<span class="w"> </span>wip
+2ff2c273<span class="w"> </span>index<span class="w"> </span>on<span class="w"> </span>main:<span class="w"> </span>c6ee55ed<span class="w"> </span>wip
+...<span class="w"> </span>some<span class="w"> </span>more<span class="w"> </span>stuff
+</code></pre></div>
+
+<p>现在我们可以查看提交 <code>2ff2c273</code> 以查看其包含的内容：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>git<span class="w"> </span>show<span class="w"> </span>2ff2c273<span class="w">  </span>--stat
+commit<span class="w"> </span>2ff2c273357c94a0087104f776a8dd28ee467769
+Author:<span class="w"> </span>Julia<span class="w"> </span>Evans<span class="w"> </span>&lt;julia@jvns.ca&gt;
+Date:<span class="w">   </span>Fri<span class="w"> </span>Oct<span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="m">14</span>:49:20<span class="w"> </span><span class="m">2023</span><span class="w"> </span>-0400
+
+<span class="w">    </span>index<span class="w"> </span>on<span class="w"> </span>main:<span class="w"> </span>c6ee55ed<span class="w"> </span>wip
+
+<span class="w">    </span>content/post/2023-10-20-some-miscellaneous-git-facts.markdown<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">40</span><span class="w"> </span>++++++++++++++++++++++++++++++++++++++++
+</code></pre></div>
+
+<p>毫不意外，它包含了这篇博客文章。这很合理！</p>
+<p>实际上，<code>git stash</code> 会创建两个独立的提交：一个是索引提交，另一个是你尚未暂存的改动提交。这让我感到很振奋，因为我一直在开发一款工具，用于快照和恢复 Git 仓库的状态（也许永远不会发布），而我提出的设计与 Git 的隐匿实现非常相似，所以我对自己的选择感到满意。</p>
+<p>显然 <code>stash</code> 中的旧提交存储在 reflog 中。</p>
+<h3>并非所有引用都是分支或标签</h3>
+<p>Git 文档中经常泛泛地提到 “引用”，这使得我有时觉得很困惑。就个人而言，我在 Git 中处理 “引用” 的 99% 时间是指分支或 HEAD，而剩下的 1% 时间是指标签。事实上，我以前完全不知道任何不是分支、标签或 <code>HEAD</code> 的引用示例。</p>
+<p>但现在我知道了一个例子—— <code>stash</code> 是一种引用，而它既不是分支也不是标签！所以这太酷啦！</p>
+<p>以下是我博客的 Git 仓库中的所有引用（除了 <code>HEAD</code>）：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>find<span class="w"> </span>.git/refs<span class="w"> </span>-type<span class="w"> </span>f
+.git/refs/heads/main
+.git/refs/remotes/origin/HEAD
+.git/refs/remotes/origin/main
+.git/refs/stash
+</code></pre></div>
+
+<p>人们在本帖回复中提到的其他一些参考资料：</p>
+<ul>
+<li><code>refs/notes/*</code>，来自 <a href="https://tylercipriani.com/blog/2022/11/19/git-notes-gits-coolest-most-unloved-feature/"><code>git notes</code></a></li>
+<li><code>refs/pull/123/head</code> 和 <code>refs/pull/123/head`` 用于 GitHub 拉取请求（可通过</code> git fetch origin refs/pull/123/merge` 获取）</li>
+<li><code>refs/bisect/*</code>，来自 <code>git bisect</code></li>
+</ul>
+<h3>合并提交不是空的</h3>
+<p>这是一个示例 Git 仓库，其中我创建了两个分支 <code>x</code> 和 <code>y</code>，每个分支都有一个文件（<code>x.txt</code> 和 <code>y.txt</code>），然后将它们合并。让我们看看合并提交。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>git<span class="w"> </span>log<span class="w"> </span>--oneline
+96a8afb<span class="w"> </span><span class="o">(</span>HEAD<span class="w"> </span>-&gt;<span class="w"> </span>y<span class="o">)</span><span class="w"> </span>Merge<span class="w"> </span>branch<span class="w"> </span><span class="s1">&#39;x&#39;</span><span class="w"> </span>into<span class="w"> </span>y
+0931e45<span class="w"> </span>y
+1d8bd2d<span class="w"> </span><span class="o">(</span>x<span class="o">)</span><span class="w"> </span>x
+</code></pre></div>
+
+<p>如果我运行 <code>git show 96a8afb</code>，合并提交看起来是“空的”：没有差异！</p>
+<div class="highlight"><pre><span></span><code><span class="n">git</span><span class="w"> </span><span class="n">show</span><span class="w"> </span><span class="mi">96</span><span class="n">a8afb</span>
+<span class="k">commit</span><span class="w"> </span><span class="mi">96</span><span class="n">a8afbf776c2cebccf8ec0dba7c6c765ea5d987</span><span class="w"> </span><span class="p">(</span><span class="n">HEAD</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">y</span><span class="p">)</span>
+<span class="k">Merge</span><span class="err">:</span><span class="w"> </span><span class="mf">0931e45</span><span class="w"> </span><span class="mi">1</span><span class="n">d8bd2d</span>
+<span class="nl">Author</span><span class="p">:</span><span class="w"> </span><span class="n">Julia</span><span class="w"> </span><span class="n">Evans</span><span class="w"> </span><span class="o">&lt;</span><span class="n">julia</span><span class="nv">@jvns</span><span class="p">.</span><span class="n">ca</span><span class="o">&gt;</span>
+<span class="nc">Date</span><span class="err">:</span><span class="w">   </span><span class="n">Fri</span><span class="w"> </span><span class="n">Oct</span><span class="w"> </span><span class="mi">20</span><span class="w"> </span><span class="mi">14</span><span class="err">:</span><span class="mi">07</span><span class="err">:</span><span class="mi">00</span><span class="w"> </span><span class="mi">2023</span><span class="w"> </span><span class="o">-</span><span class="mi">0400</span>
+
+<span class="w">    </span><span class="k">Merge</span><span class="w"> </span><span class="n">branch</span><span class="w"> </span><span class="s1">&#39;x&#39;</span><span class="w"> </span><span class="k">into</span><span class="w"> </span><span class="n">y</span>
+</code></pre></div>
+
+<p>但是，如果我单独比较合并提交与其两个父提交之间的差异，你会发现当然<strong>有</strong>差异：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>git<span class="w"> </span>diff<span class="w"> </span>0931e45<span class="w"> </span>96a8afb<span class="w">   </span>--stat
+<span class="w">    </span>x.txt<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">1</span><span class="w"> </span>+
+<span class="w">    </span><span class="m">1</span><span class="w"> </span>file<span class="w"> </span>changed,<span class="w"> </span><span class="m">1</span><span class="w"> </span>insertion<span class="o">(</span>+<span class="o">)</span>
+$<span class="w"> </span>git<span class="w"> </span>diff<span class="w"> </span>1d8bd2d<span class="w"> </span>96a8afb<span class="w">   </span>--stat
+<span class="w">    </span>y.txt<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">1</span><span class="w"> </span>+
+<span class="w">    </span><span class="m">1</span><span class="w"> </span>file<span class="w"> </span>changed,<span class="w"> </span><span class="m">1</span><span class="w"> </span>insertion<span class="o">(</span>+<span class="o">)</span>
+</code></pre></div>
+
+<p>现在回想起来，合并提交并不是实际上“空的”（它们是仓库当前状态的快照，就像任何其他提交一样），这一点似乎很明显，只是我以前从未思考为什么它们看起来为空。</p>
+<p>显然，这些合并差异为空的原因是合并差异只显示<strong>冲突</strong> —— 如果我创建一个带有合并冲突的仓库（一个分支在同一文件中添加了 <code>x</code>，而另一个分支添加了 <code>y</code>），然后查看我解决冲突的合并提交，它看起来会像这样：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>git<span class="w"> </span>show<span class="w"> </span>HEAD
+commit<span class="w"> </span>3bfe8311afa4da867426c0bf6343420217486594
+Merge:<span class="w"> </span>782b3d5<span class="w"> </span>ac7046d
+Author:<span class="w"> </span>Julia<span class="w"> </span>Evans<span class="w"> </span>&lt;julia@jvns.ca&gt;
+Date:<span class="w">   </span>Fri<span class="w"> </span>Oct<span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="m">15</span>:29:06<span class="w"> </span><span class="m">2023</span><span class="w"> </span>-0400
+
+<span class="w">    </span>Merge<span class="w"> </span>branch<span class="w"> </span><span class="s1">&#39;x&#39;</span><span class="w"> </span>into<span class="w"> </span>y
+
+diff<span class="w"> </span>--cc<span class="w"> </span>file.txt
+index<span class="w"> </span>975fbec,587be6b..b680253
+---<span class="w"> </span>a/file.txt
++++<span class="w"> </span>b/file.txt
+@@@<span class="w"> </span>-1,1<span class="w"> </span>-1,1<span class="w"> </span>+1,1<span class="w"> </span>@@@
+-<span class="w"> </span>y
+<span class="w">    </span>-x
+++z
+</code></pre></div>
+
+<p>这似乎是在告诉我，一个分支添加了 <code>x</code>，另一个分支添加了 <code>y</code>，合并提交通过将 <code>z</code> 替代冲突解决了它。但在前面的示例中，没有冲突，所以 Git 并未显示任何差异。</p>
+<p>（感谢 Jordi 告诉我合并差异的工作原理）</p>
+<h3>先这样吧</h3>
+<p>些写到这里吧，也许我将在学到更多 Git 知识时撰写另一篇关于 Git 的知识的博客文章。</p>
+<p><em>（题图：MJ/03bfecc3-944e-47a0-a4fd-575293d2ba92）</em></p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

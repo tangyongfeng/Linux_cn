@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用 GitHub 和 Python 实现持续部署</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Clément Verna 借助 GitHub 的 网络钩子 webhook ，开发者可以创建很多有用的服务。从触发一个 Jenkins 实例上的 CI（持续集成） 任务到配置云中的机 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/04/shi-yong-github-he-python-shi-xian-chi-xu-bu-shu.html" rel="bookmark"
+           title="Permalink to 使用 GitHub 和 Python 实现持续部署">使用 GitHub 和 Python 实现持续部署</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-04-15T23:27:47+02:00">
+                Published: Sun 15 April 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Clément Verna</p>
+<p><img alt="" src="/data/attachment/album/201804/15/232751wtiet561e925o5io.jpg"></p>
+<p>借助 GitHub 的<ruby> 网络钩子 <rt>  webhook </rt></ruby>，开发者可以创建很多有用的服务。从触发一个 Jenkins 实例上的 CI（持续集成） 任务到配置云中的机器，几乎有着无限的可能性。这篇教程将展示如何使用 Python 和 Flask 框架来搭建一个简单的持续部署（CD）服务。</p>
+<p>在这个例子中的持续部署服务是一个简单的 Flask 应用，其带有接受 GitHub 的<ruby> 网络钩子 <rt>  webhook </rt></ruby>请求的 REST <ruby> 端点 <rt>  endpoint </rt></ruby>。在验证每个请求都来自正确的 GitHub 仓库后，服务器将<ruby> 拉取 <rt>  pull </rt></ruby>更改到仓库的本地副本。这样每次一个新的<ruby> 提交 <rt>  commit </rt></ruby>推送到远程 GitHub 仓库，本地仓库就会自动更新。</p>
+<h3>Flask web 服务</h3>
+<p>用 Flask 搭建一个小的 web 服务非常简单。这里可以先看看项目的结构。</p>
+<div class="highlight"><pre><span></span><code>├── app
+│   ├── __init__.py
+│   └── webhooks.py
+├── requirements.txt
+└── wsgi.py
+</code></pre></div>
+
+<p>首先，创建应用。应用代码在 <code>app</code> 目录下。</p>
+<p>两个文件（<code>__init__.py</code> 和 <code>webhooks.py</code>）构成了 Flask 应用。前者包含有创建 Flask 应用并为其添加配置的代码。后者有<ruby> 端点 <rt>  endpoint </rt></ruby>逻辑。这是该应用接收 GitHub 请求数据的地方。</p>
+<p>这里是 <code>app/__init__.py</code> 的内容：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">from</span> <span class="nn">flask</span> <span class="kn">import</span> <span class="n">Flask</span>
+
+<span class="kn">from</span> <span class="nn">.webhooks</span> <span class="kn">import</span> <span class="n">webhook</span>
+
+<span class="k">def</span> <span class="nf">create_app</span><span class="p">():</span>
+<span class="w"> </span><span class="sd">&quot;&quot;&quot; Create, configure and return the Flask application &quot;&quot;&quot;</span>
+
+  <span class="n">app</span> <span class="o">=</span> <span class="n">Flask</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+  <span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;GITHUB_SECRET&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;GITHUB_SECRET&#39;</span><span class="p">)</span>
+  <span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;REPO_PATH&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;REPO_PATH&#39;</span><span class="p">)</span>
+  <span class="n">app</span><span class="o">.</span><span class="n">register_blueprint</span><span class="p">(</span><span class="n">webhook</span><span class="p">)</span>
+
+  <span class="k">return</span><span class="p">(</span><span class="n">app</span><span class="p">)</span>
+</code></pre></div>
+
+<p>该函数创建了两个配置变量：</p>
+<ul>
+<li><code>GITHUB_SECRET</code> 保存一个密码，用来认证 GitHub 请求。</li>
+<li><code>REPO_PATH</code> 保存了自动更新的仓库路径。</li>
+</ul>
+<p>这份代码使用<ruby> <a href="http://flask.pocoo.org/docs/0.12/blueprints/">  Flask 蓝图 </a> <rt>  Flask Blueprints </rt></ruby>来组织应用的<ruby> 端点 <rt>  endpoint </rt></ruby>。使用蓝图可以对 API 进行逻辑分组，使应用程序更易于维护。通常认为这是一种好的做法。</p>
+<p>这里是 <code>app/webhooks.py</code> 的内容：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">hmac</span>
+<span class="kn">from</span> <span class="nn">flask</span> <span class="kn">import</span> <span class="n">request</span><span class="p">,</span> <span class="n">Blueprint</span><span class="p">,</span> <span class="n">jsonify</span><span class="p">,</span> <span class="n">current_app</span> 
+<span class="kn">from</span> <span class="nn">git</span> <span class="kn">import</span> <span class="n">Repo</span>
+
+<span class="n">webhook</span> <span class="o">=</span> <span class="n">Blueprint</span><span class="p">(</span><span class="s1">&#39;webhook&#39;</span><span class="p">,</span> <span class="vm">__name__</span><span class="p">,</span> <span class="n">url_prefix</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">)</span>
+
+<span class="nd">@webhook</span><span class="o">.</span><span class="n">route</span><span class="p">(</span><span class="s1">&#39;/github&#39;</span><span class="p">,</span> <span class="n">methods</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;POST&#39;</span><span class="p">])</span> 
+<span class="k">def</span> <span class="nf">handle_github_hook</span><span class="p">():</span> 
+<span class="w"> </span><span class="sd">&quot;&quot;&quot; Entry point for github webhook &quot;&quot;&quot;</span>
+
+  <span class="n">signature</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">headers</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;X-Hub-Signature&#39;</span><span class="p">)</span> 
+  <span class="n">sha</span><span class="p">,</span> <span class="n">signature</span> <span class="o">=</span> <span class="n">signature</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;=&#39;</span><span class="p">)</span>
+
+  <span class="n">secret</span> <span class="o">=</span> <span class="nb">str</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">current_app</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;GITHUB_SECRET&#39;</span><span class="p">))</span>
+
+  <span class="n">hashhex</span> <span class="o">=</span> <span class="n">hmac</span><span class="o">.</span><span class="n">new</span><span class="p">(</span><span class="n">secret</span><span class="p">,</span> <span class="n">request</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="n">digestmod</span><span class="o">=</span><span class="s1">&#39;sha1&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span>
+  <span class="k">if</span> <span class="n">hmac</span><span class="o">.</span><span class="n">compare_digest</span><span class="p">(</span><span class="n">hashhex</span><span class="p">,</span> <span class="n">signature</span><span class="p">):</span> 
+    <span class="n">repo</span> <span class="o">=</span> <span class="n">Repo</span><span class="p">(</span><span class="n">current_app</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;REPO_PATH&#39;</span><span class="p">))</span> 
+    <span class="n">origin</span> <span class="o">=</span> <span class="n">repo</span><span class="o">.</span><span class="n">remotes</span><span class="o">.</span><span class="n">origin</span> 
+    <span class="n">origin</span><span class="o">.</span><span class="n">pull</span><span class="p">(</span><span class="s1">&#39;--rebase&#39;</span><span class="p">)</span>
+
+    <span class="n">commit</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">json</span><span class="p">[</span><span class="s1">&#39;after&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">:</span><span class="mi">6</span><span class="p">]</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Repository updated with commit </span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">commit</span><span class="p">))</span>
+  <span class="k">return</span> <span class="n">jsonify</span><span class="p">({}),</span> <span class="mi">200</span>
+</code></pre></div>
+
+<p>首先代码创建了一个新的蓝图 <code>webhook</code>。然后它使用 Flask <code>route</code> 为蓝图添加了一个端点。任何请求 <code>/GitHub</code> URL 端点的 POST 请求都将调用这个路由。</p>
+<h4>验证请求</h4>
+<p>当服务在该端点上接到请求时，首先它必须验证该请求是否来自 GitHub 以及来自正确的仓库。GitHub 在请求头的 <code>X-Hub-Signature</code> 中提供了一个签名。该签名由一个密码（<code>GITHUB_SECRET</code>），请求体的 HMAC 十六进制摘要，并使用 <code>sha1</code> 哈希生成。</p>
+<p>为了验证请求，服务需要在本地计算签名并与请求头中收到的签名做比较。这可以由 <code>hmac.compare_digest</code> 函数完成。</p>
+<h4>自定义钩子逻辑</h4>
+<p>在验证请求后，现在就可以处理了。这篇教程使用 <a href="https://gitpython.readthedocs.io/en/stable/index.html">GitPython</a> 模块来与 git 仓库进行交互。GitPython 模块中的 <code>Repo</code> 对象用于访问远程仓库 <code>origin</code>。该服务在本地拉取 <code>origin</code> 仓库的最新更改，还用 <code>--rebase</code> 选项来避免合并的问题。</p>
+<p>调试打印语句显示了从请求体收到的短提交哈希。这个例子展示了如何使用请求体。更多关于请求体的可用数据的信息，请查询 <a href="https://developer.github.com/v3/activity/events/types/#webhook-payload-example-26">GitHub 文档</a>。</p>
+<p>最后该服务返回了一个空的 JSON 字符串和 200 的状态码。这用于告诉 GitHub 的网络钩子服务已经收到了请求。</p>
+<h3>部署服务</h3>
+<p>为了运行该服务，这个例子使用 <a href="http://gunicorn.org/">gunicorn</a> web 服务器。首先安装服务依赖。在支持的 Fedora 服务器上，以 <a href="https://fedoramagazine.org/howto-use-sudo/">sudo</a> 运行这条命令:</p>
+<div class="highlight"><pre><span></span><code>sudo dnf install python3-gunicorn python3-flask python3-GitPython
+</code></pre></div>
+
+<p>现在编辑 gunicorn 使用的 <code>wsgi.py</code> 文件来运行该服务：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">app</span> <span class="kn">import</span> <span class="n">create_app</span>
+<span class="n">application</span> <span class="o">=</span> <span class="n">create_app</span><span class="p">()</span>
+</code></pre></div>
+
+<p>为了部署服务，使用以下命令克隆这个 git <a href="https://github.com/cverna/github_hook_deployment.git">仓库</a>或者使用你自己的 git 仓库：</p>
+<div class="highlight"><pre><span></span><code>git clone https://github.com/cverna/github_hook_deployment.git /opt/
+</code></pre></div>
+
+<p>下一步是配置服务所需的环境变量。运行这些命令：</p>
+<div class="highlight"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="n">GITHUB_SECRET</span><span class="o">=</span><span class="n">asecretpassphraseusebygithubwebhook</span>
+<span class="k">export</span><span class="w"> </span><span class="n">REPO_PATH</span><span class="o">=/</span><span class="n">opt</span><span class="o">/</span><span class="n">github_hook_deployment</span><span class="o">/</span>
+</code></pre></div>
+
+<p>这篇教程使用网络钩子服务的 GitHub 仓库，但你可以使用你想要的不同仓库。最后，使用这些命令开启该 web 服务：</p>
+<div class="highlight"><pre><span></span><code><span class="n">cd</span><span class="w"> </span><span class="o">/</span><span class="n">opt</span><span class="o">/</span><span class="n">github_hook_deployment</span><span class="o">/</span>
+<span class="n">gunicorn</span><span class="w"> </span><span class="o">--</span><span class="n">bind</span><span class="w"> </span><span class="mf">0.0</span><span class="o">.</span><span class="mf">0.0</span><span class="w"> </span><span class="n">wsgi</span><span class="p">:</span><span class="n">application</span><span class="w"> </span><span class="o">--</span><span class="n">reload</span>
+</code></pre></div>
+
+<p>这些选项中绑定了 web 服务的 IP 地址为 <code>0.0.0.0</code>，意味着它将接收来自任何的主机的请求。选项 <code>--reload</code> 确保了当代码更改时重启 web 服务。这就是持续部署的魔力所在。每次接收到 GitHub 请求时将拉取仓库的最近更新，同时 gunicore 检测这些更改并且自动重启服务。</p>
+<p>*<em>注意： *</em>为了能接收到 GitHub 请求，web 服务必须部署到具有公有 IP 地址的服务器上。做到这点的简单方法就是使用你最喜欢的云提供商比如 DigitalOcean，AWS，Linode等。</p>
+<h3>配置 GitHub</h3>
+<p>这篇教程的最后一部分是配置 GitHub 来发送网络钩子请求到 web 服务上。这是持续部署的关键。</p>
+<p>从你的 GitHub 仓库的设置中，选择 Webhook 菜单，并且点击“Add Webhook”。输入以下信息：</p>
+<ul>
+<li>“Payload URL”： 服务的 URL，比如 <code>&lt;http://public_ip_address:8000/github&gt;</code></li>
+<li>“Content type”： 选择 “application/json”</li>
+<li>“Secret”： 前面定义的 <code>GITHUB_SECRET</code> 环境变量</li>
+</ul>
+<p>然后点击“Add Webhook” 按钮。</p>
+<p><img alt="" src="/data/attachment/album/201804/15/232752i1h2f17zo1777760.png"></p>
+<p>现在每当该仓库发生推送事件时，GitHub 将向服务发送请求。</p>
+<h3>总结</h3>
+<p>这篇教程向你展示了如何写一个基于 Flask 的用于接收 GitHub 的网络钩子请求，并实现持续集成的 web 服务。现在你应该能以本教程作为起点来搭建对自己有用的服务。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

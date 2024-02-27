@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>使用条块化I/O管理多个LVM磁盘（第五部分）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Babin Lonston 在本文中，我们将了解逻辑卷是如何通过条块化I/O来写入数据到磁盘的。逻辑卷管理的酷炫特性之一，就是它能通过条块化I/O跨多个磁盘写入数据。 LVM条块化是什么？ LVM条块化 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2014/12/shi-yong-tiao-kuai-hua-ioguan-li-duo-ge-lvmci-pan-di-wu-bu-fen.html" rel="bookmark"
+           title="Permalink to 使用条块化I/O管理多个LVM磁盘（第五部分）">使用条块化I/O管理多个LVM磁盘（第五部分）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2014-12-15T16:17:37+01:00">
+                Published: Mon 15 December 2014
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Babin Lonston</p>
+<p>在本文中，我们将了解逻辑卷是如何通过条块化I/O来写入数据到磁盘的。逻辑卷管理的酷炫特性之一，就是它能通过条块化I/O跨多个磁盘写入数据。</p>
+<p><img alt="" src="/data/attachment/album/201412/15/161740rxmkog9vxthmfpvp.jpg"></p>
+<h3>LVM条块化是什么？</h3>
+<p><strong>LVM条块化</strong>是LVM功能之一，该技术会跨多个磁盘写入数据，而不是对单一物理卷持续写入。</p>
+<p><img alt="Manage LVM Disks Using Striping I/O" src="/data/attachment/album/201412/15/161745rnhcb8ye3c8wywxl.jpeg"></p>
+<p><em>使用条块化I/O管理LVM磁盘</em></p>
+<h4>条块化特性</h4>
+<ul>
+<li>它会改善磁盘性能。</li>
+<li>避免对单一磁盘的不断的大量写入。</li>
+<li>使用对多个磁盘的条块化写入，可以减少磁盘填满的几率。</li>
+</ul>
+<p>在逻辑卷管理中，如果我们需要创建一个逻辑卷，扩展的卷会完全映射到卷组和物理卷。在此种情形中，如果其中一个<strong>PV</strong>（物理卷）被填满，我们需要从其它物理卷中添加更多扩展。这样，添加更多扩展到PV中后，我们可以指定逻辑卷使用特定的物理卷写入I/O。</p>
+<p>假设我们有<strong>四个磁盘</strong>驱动器，分别指向了四个物理卷，如果各个物理卷总计可以达到<strong>100 I/O</strong>，我们卷组就可以获得<strong>400 I/O</strong>。</p>
+<p>如果我们不使用<strong>条块化方法</strong>，文件系统将横跨基础物理卷写入。例如，写入一些数据到物理卷达到100 I/O，这些数据只会写入到第一个PV（<strong>sdb1</strong>）。如果我们在写入时使用条块化选项创建逻辑卷，它会分割100 I/O分别写入到四个驱动器中，这就是说每个驱动器中都会接收到25 I/O。</p>
+<p>这会在循环过程中完成。如果这些逻辑卷其中任何一个需要扩展，在这种情形下，我们不能添加1个或2个PV，必须添加所有4个pv来扩展逻辑卷大小。这是条块化特性的缺点之一，从中我们可以知道，在创建逻辑卷时，我们需要为所有逻辑卷分配相同的条块大小。</p>
+<p>逻辑卷管理有着这些特性，它使我们能够同时在多个pv中条块化数据。如果你对逻辑卷熟悉，你可以去设置逻辑卷条块化。反之，你则必须了解逻辑卷管理的基础知识了，请阅读更基础的文章来了解逻辑卷管理。</p>
+<h4>我的服务器设置</h4>
+<p>这里，我使用<strong>CentOS6.5</strong>用作练习。下面这些步骤也适用于RHEL、Oracle Linux以及大多数发行版。</p>
+<div class="highlight"><pre><span></span><code>操作系统：    CentOS 6.5
+IP地址：     192.168.0.222
+主机名：        tecmint.storage.com
+</code></pre></div>
+
+<h3>条块化I/O的逻辑卷管理</h3>
+<p>出于演示目的，我已经准备了4个硬盘驱动器，每个驱动器1GB大小。让我用下面的‘<strong>fdisk</strong>’命令来列给你看看吧。</p>
+<div class="highlight"><pre><span></span><code># fdisk -l | grep sd
+</code></pre></div>
+
+<p><img alt="List Hard Drives" src="/data/attachment/album/201412/15/161746uqy6y6qqam6rlaen.png"></p>
+<p><em>列出硬盘驱动器</em></p>
+<p>现在，我们必须为这4个硬盘驱动器<strong>sdb</strong>，<strong>sdc</strong>，<strong>sdd</strong>和<strong>sde</strong>创建分区，我们将用‘<strong>fdisk</strong>’命令来完成该工作。要创建分区，请遵从本文<strong><a href="http://linux.cn/article-3965-1.html">第一部分</a></strong>中<strong>步骤#4</strong>的说明，并在创建分区时确保你已将类型修改为<strong>LVM（8e）</strong>。</p>
+<div class="highlight"><pre><span></span><code># pvcreate /dev/sd[b-e]1 -v
+</code></pre></div>
+
+<p><img alt="Create Physical Volumes in LVM" src="/data/attachment/album/201412/15/161748wisvmzmspm2rvrii.png"></p>
+<p><em>在LVM中创建物理卷</em></p>
+<p>PV创建完成后，你可以使用‘<strong>pvs</strong>’命令将它们列出来。</p>
+<div class="highlight"><pre><span></span><code># pvs
+</code></pre></div>
+
+<p><img alt="Verify Physical Volumes" src="/data/attachment/album/201412/15/161749j0npmjqzvn12vplw.png"></p>
+<p><em>验证物理卷</em></p>
+<p>现在，我们需要使用这4个物理卷来定义卷组。这里，我定义了一个物理扩展大小（PE）为<strong>16MB</strong>，名为<strong>vg_strip</strong>的卷组。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> vgcreate -s 16M vg_strip /dev/sd[b-e]1 -v
+</code></pre></div>
+
+<p>上面命令中选项的说明：</p>
+<ul>
+<li><strong>[b-e]1</strong> – 定义硬盘驱动器名称，如sdb1，sdc1，sdd1，sde1。</li>
+<li><strong>-s</strong> – 定义物理扩展大小。</li>
+<li><strong>-v</strong> – 详情。</li>
+</ul>
+<p>接下来，验证新创建的卷组：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> vgs vg_strip
+</code></pre></div>
+
+<p><img alt="Verify Volume Group" src="/data/attachment/album/201412/15/161750f8ov2s4i52bb5vsz.png"></p>
+<p><em>验证卷组</em></p>
+<p>要获取VG更详细的信息，可以在<strong>vgdisplay</strong>命令中使用‘-v’选项，它将给出<strong>vg_strip</strong>卷组中所使用的全部物理卷的详细情况。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> vgdisplay vg_strip -v
+</code></pre></div>
+
+<p><img alt="Volume Group Information" src="/data/attachment/album/201412/15/161752pp5b62gfvb6z6p85.png"></p>
+<p><em>卷组信息</em></p>
+<p>回到我们的话题，现在在创建逻辑卷时，我们需要定义条块化值，就是数据需要如何使用条块化方法来写入到我们的逻辑卷中。</p>
+<p>这里，我创建了一个名为<strong>lv_tecmint-strp1</strong>，大小为<strong>900MB</strong>的逻辑卷，它需要放到<strong>vg_strip</strong>卷组中。我定义了4个条块，就是说数据在写入到我的逻辑卷时，需要条块化分散到4个PV中。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> lvcreate -L 900M -n lv_tecmint_strp1 -i4 vg_strip
+</code></pre></div>
+
+<ul>
+<li><strong>-L</strong> –逻辑卷大小</li>
+<li><strong>-n</strong> –逻辑卷名称</li>
+<li><strong>-i</strong> –条块化</li>
+</ul>
+<p><img alt="Create Logical Volumes" src="/data/attachment/album/201412/15/161754brn6irraqhqpijrr.png"></p>
+<p><em>创建逻辑卷</em></p>
+<p>在上面的图片中，我们可以看到条块尺寸的默认大小为<strong>64 KB</strong>，如果我们需要自定义条块值，我们可以使用<strong>-I</strong>（大写I）。要确认逻辑卷已经是否已经创建，请使用以下命令。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> lvdisplay vg_strip/lv_tecmint_strp1
+</code></pre></div>
+
+<p><img alt="Confirm Logical Volumes" src="/data/attachment/album/201412/15/161755kfrnxczcql66ncrn.png"></p>
+<p><em>确认逻辑卷</em></p>
+<p>现在，接下来的问题是，我们怎样才能知道条块被写入到了4个驱动器。这里，我们可以使用‘<strong>lvdisplay</strong>’和<strong>-m</strong>（显示逻辑卷映射）命令来验证。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> lvdisplay vg_strip/lv_tecmint_strp1 -m
+</code></pre></div>
+
+<p><img alt="Check Logical Volumes" src="/data/attachment/album/201412/15/161758pziip7i5ixxz5day.png"></p>
+<p><em>检查逻辑卷</em></p>
+<p>要创建自定义的条块尺寸，我们需要用我们自定义的条块大小<strong>256KB</strong>来创建一个<strong>1GB</strong>大小的逻辑卷。现在，我打算将条块分布到3个PV上。这里，我们可以定义我们想要哪些pv条块化。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> lvcreate -L 1G -i3 -I 256 -n lv_tecmint_strp2 vg_strip /dev/sdb1 /dev/sdc1 /dev/sdd1
+</code></pre></div>
+
+<p><img alt="Define Stripe Size" src="/data/attachment/album/201412/15/161800hmkwk9850ym0v9vy.png"></p>
+<p><em>定义条块大小</em></p>
+<p>接下来，检查条块大小和条块化的卷。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> lvdisplay vg_strip/lv_tecmint_strp2 -m
+</code></pre></div>
+
+<p><img alt="Check Stripe Size" src="/data/attachment/album/201412/15/161802yfebdtyfqeqfoiaj.png"></p>
+<p><em>检查条块大小</em></p>
+<p>是时候使用设备映射了，我们使用‘<strong>dmsetup</strong>’命令来完成这项工作。它是一个低级别的逻辑卷管理工具，它用于管理使用了设备映射驱动的逻辑设备。</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> dmsetup deps /dev/vg_strip/lv_tecmint_strp[1-2]
+</code></pre></div>
+
+<p><img alt="Device Mapper" src="/data/attachment/album/201412/15/161803anbdt5n5qnltdlcc.png"></p>
+<p><em>设备映射</em></p>
+<p>这里，我们可以看到strp1依赖于4个驱动器，strp2依赖于3个设备。</p>
+<p>希望你已经明白，我们怎样能让逻辑卷条块化来写入数据。对于此项设置，必须掌握逻辑卷管理基础知识。</p>
+<p>在我的下一篇文章中，我将给大家展示怎样在逻辑卷管理中迁移数据。到那时，请静候更新。同时，别忘了对本文提出有价值的建议。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

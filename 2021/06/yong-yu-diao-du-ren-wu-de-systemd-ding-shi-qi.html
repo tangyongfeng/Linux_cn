@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>用于调度任务的 systemd 定时器</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Richard England systemd 提供定时器有一段时间了，定时器替代了 cron 功能，这一特性值得看看。本文将向你介绍在系统启动后如何使用 systemd …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2021/06/yong-yu-diao-du-ren-wu-de-systemd-ding-shi-qi.html" rel="bookmark"
+           title="Permalink to 用于调度任务的 systemd 定时器">用于调度任务的 systemd 定时器</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2021-06-25T17:57:46+02:00">
+                Published: Fri 25 June 2021
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Richard England</p>
+<p><img alt="" src="/data/attachment/album/202106/25/175650j4wrdw0z884iod80.jpg"></p>
+<p>systemd 提供定时器有一段时间了，定时器替代了 cron 功能，这一特性值得看看。本文将向你介绍在系统启动后如何使用 systemd 中的定时器来运行任务，并在此后重复运行。这不是对 systemd 的全面讨论，只是对此特性的一个介绍。</p>
+<h3>快速回顾：cron、anacron 与 systemd</h3>
+<p>cron 可以以几分钟到几个月或更长时间的粒度调度运行一个任务。设置起来相对简单，它只需要一个配置文件。虽然配置过程有些深奥，但一般用户也可以使用。</p>
+<p>然而，如果你的系统在需要执行的时间没有运行，那么 cron 会失败。</p>
+<p>anacron 克服了“系统没有运行”的问题。它确保任务将在你的系统再次启动时执行。虽然它旨在给管理员使用，但有些系统允许普通用户访问 anacron。</p>
+<p>但是，anacron 的执行频率不能低于每天一次。</p>
+<p>cron 和 anacron 都存在执行上下文一致性的问题。必须注意任务运行时有效的环境与测试时使用的环境完全相同。必须提供相同的 shell、环境变量和路径。这意味着测试和调试有时会很困难。</p>
+<p>systemd 定时器提供了 cron 和 anacron 二者的优点，允许调度到分钟粒度。确保在系统再次运行时执行任务，即使在预期的执行时间内系统处于关闭状态。它对所有用户都可用。你可以在它将要运行的环境中测试和调试执行。</p>
+<p>但是，它的配置更加复杂，至少需要两个配置文件。</p>
+<p>如果你的 cron 和 anacron 配置可以很好地为你服务，那么可能没有理由改变。但是 systemd 至少值得研究，因为它可以简化任何当前的 cron/anacron 工作方式。</p>
+<h3>配置</h3>
+<p>systemd 定时器执行功能至少需要两个文件。这两个是“<ruby> 定时器单元 <rt>  timer unit </rt></ruby>”和“<ruby> 服务单元 <rt>  service unit </rt></ruby>”。（其执行的）“动作”不仅仅是简单的命令，你还需要一个“作业”文件或脚本来执行必要的功能。</p>
+<p>定时器单元文件定义调度表，而服务单元文件定义执行的任务。有关的更多详细信息请参考 <code>man systemd.timer</code> 中提供的 .timer 单元。服务单元的详细信息可在 <code>man systemd.service</code> 中找到。</p>
+<p>单元文件存放在几个位置（在手册页中有列出）。然而，对于普通用户来说，最容易找到的位置可能是 <code>~/.config/systemd/user</code>。请注意，这里的 <code>user</code> 是字符串 <code>user</code>。</p>
+<h3>示例</h3>
+<p>此示例是一个创建用户调度作业而不是（以 root 用户身份运行的）系统调度作业的简单示例。它将消息、日期和时间打印到文件中。</p>
+<p>1、首先创建一个执行任务的 shell 脚本。在你的本地 <code>bin</code> 目录中创建它，例如在 <code>~/bin/schedule-test.sh</code> 中。</p>
+<p>创建文件：</p>
+<div class="highlight"><pre><span></span><code>touch ~/bin/schedule-test.sh
+</code></pre></div>
+
+<p>然后将以下内容添加到你刚刚创建的文件中：</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/bin/sh</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;This is only a test: </span><span class="k">$(</span>date<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HOME</span><span class="s2">/schedule-test-output.txt&quot;</span>
+</code></pre></div>
+
+<p>记住赋予你的 shell 脚本执行权限。</p>
+<p>2、创建 .service 单元调用上面的脚本。在以下位置创建目录与文件：<code>~/.config/systemd/user/schedule-test.service</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="k">[Unit]</span>
+<span class="na">Description</span><span class="o">=</span><span class="s">A job to test the systemd scheduler</span>
+
+<span class="k">[Service]</span>
+<span class="na">Type</span><span class="o">=</span><span class="s">simple</span>
+<span class="na">ExecStart</span><span class="o">=</span><span class="s">/home/&lt;user&gt;/bin/schedule-test.sh</span>
+
+<span class="k">[Install]</span>
+<span class="na">WantedBy</span><span class="o">=</span><span class="s">default.target</span>
+</code></pre></div>
+
+<p>请注意 <code>&lt;user&gt;</code> 应该是你的家目录地址，但是单元文件路径名中的 <code>user</code> 实际上是字符串 <code>user</code>。</p>
+<p><code>ExecStart</code> 应该提供一个没有变量的绝对地址。例外情况是，对于用户单元文件，你可以用 <code>%h</code> 替换 <code>$HOME</code>。换句话说，你可以使用:</p>
+<div class="highlight"><pre><span></span><code>ExecStart=%h/bin/schedule-test.sh
+</code></pre></div>
+
+<p>这仅用于用户单元文件，而不适用于系统服务，因为在系统环境中运行时 <code>%h</code> 总是返回 <code>/root</code>。其他特殊符号可在 <code>man systemd.unit</code> 的 <code>SPECIFIERS</code> 中找到。因为它超出了本文的范围，所以这就是我们目前需要了解的关于特殊符号的全部内容。</p>
+<p>3、创建一个 .timer 单元文件，该文件实际上调度你创建的 .service 单元文件。在 .service 单元文件相同位置创建它：<code>~/.config/systemd/user/schedule-test.timer</code>。请注意，文件名仅在扩展名上有所不同，例如一个是 <code>.service</code>，一个是 <code>.timer</code>。</p>
+<div class="highlight"><pre><span></span><code><span class="k">[Unit]</span>
+<span class="na">Description</span><span class="o">=</span><span class="s">Schedule a message every 1 minute</span>
+<span class="na">RefuseManualStart</span><span class="o">=</span><span class="s">no  # Allow manual starts</span>
+<span class="na">RefuseManualStop</span><span class="o">=</span><span class="s">no   # Allow manual stops</span>
+
+<span class="k">[Timer]</span>
+<span class="c1">#Execute job if it missed a run due to machine being off</span>
+<span class="na">Persistent</span><span class="o">=</span><span class="s">true</span>
+<span class="c1">#Run 120 seconds after boot for the first time</span>
+<span class="na">OnBootSec</span><span class="o">=</span><span class="s">120</span>
+<span class="c1">#Run every 1 minute thereafter</span>
+<span class="na">OnUnitActiveSec</span><span class="o">=</span><span class="s">60</span>
+<span class="c1">#File describing job to execute</span>
+<span class="na">Unit</span><span class="o">=</span><span class="s">schedule-test.service</span>
+
+<span class="k">[Install]</span>
+<span class="na">WantedBy</span><span class="o">=</span><span class="s">timers.target</span>
+</code></pre></div>
+
+<p>请注意，这个 .timer 单元文件使用了 <code>OnUnitActiveSec</code> 来指定调度表。<code>OnCalendar</code> 选项更加灵活。例如:</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> run on the minute of every minute every hour of every day
+ OnCalendar=*-*-* <span class="gs">*:*</span>:00
+<span class="gh">#</span> run on the hour of every hour of every day
+ OnCalendar=*-*-* <span class="gs">*:00:00</span>
+<span class="gs"># run every day</span>
+<span class="gs"> OnCalendar=*</span>-*-* 00:00:00
+<span class="gh">#</span> run 11:12:13 of the first or fifth day of any month of the year
+<span class="gh">#</span> 2012, but only if that day is a Thursday or Friday
+ OnCalendar=Thu,Fri 2012-*-1,5 11:12:13
+</code></pre></div>
+
+<p>有关 <code>OnCalendar</code> 的更多信息参见 <a href="https://www.freedesktop.org/software/systemd/man/systemd.time.html#Calendar%20Events">这里</a>。</p>
+<p>4、所有的部件都已就位，但你应该进行测试，以确保一切正常。首先，启用该用户服务:</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>systemctl<span class="w"> </span>--user<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>schedule-test.service
+</code></pre></div>
+
+<p>这将导致类似如下的输出:</p>
+<div class="highlight"><pre><span></span><code>Created symlink /home/&lt;user&gt;/.config/systemd/user/default.target.wants/schedule-test.service → /home/&lt;user&gt;/.config/systemd/user/schedule-test.service.
+</code></pre></div>
+
+<p>现在执行测试工作：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>systemctl<span class="w"> </span>--user<span class="w"> </span>start<span class="w"> </span>schedule-test.service
+</code></pre></div>
+
+<p>检查你的输出文件（<code>$HOME/schedule-test-output.txt</code>），确保你的脚本运行正常。应该只有一个条目，因为我们还没有启动定时器。必要时进行调试。如果你需要更改 .service 单元文件，而不是更改它调用的 shell 脚本，请不要忘记再次启用该服务。</p>
+<p>5、一旦作业正常运行，通过为服务启用、启动用户定时器来实时调度作业：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>systemctl<span class="w"> </span>--user<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>schedule-test.timer
+$<span class="w"> </span>systemctl<span class="w"> </span>--user<span class="w"> </span>start<span class="w"> </span>schedule-test.timer
+</code></pre></div>
+
+<p>请注意，你已经在上面的步骤 4 中启动、启用了服务，因此只需要为它启用、启动定时器。</p>
+<p><code>enable</code> 命令会产生如下输出：</p>
+<div class="highlight"><pre><span></span><code>Created symlink /home/&lt;user&gt;/.config/systemd/user/timers.target.wants/schedule-test.timer → /home/&lt;user&gt;/.config/systemd/user/schedule-test.timer.
+</code></pre></div>
+
+<p><code>start</code> 命令将只是返回命令行界面提示符。</p>
+<h3>其他操作</h3>
+<p>你可以检查和监控服务。如果你从系统服务收到错误，下面的第一个命令特别有用：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>systemctl<span class="w"> </span>--user<span class="w"> </span>status<span class="w"> </span>schedule-test
+$<span class="w"> </span>systemctl<span class="w"> </span>--user<span class="w"> </span>list-unit-files
+</code></pre></div>
+
+<p>手动停止服务：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>systemctl<span class="w"> </span>--user<span class="w"> </span>stop<span class="w"> </span>schedule-test.service
+</code></pre></div>
+
+<p>永久停止并禁用定时器和服务，重新加载守护程序配置并重置任何失败通知：</p>
+<div class="highlight"><pre><span></span><code><span class="o">$</span><span class="w"> </span><span class="n">systemctl</span><span class="w"> </span><span class="o">--</span><span class="n">user</span><span class="w"> </span><span class="n">stop</span><span class="w"> </span><span class="n">schedule</span><span class="o">-</span><span class="n">test</span><span class="o">.</span><span class="n">timer</span>
+<span class="o">$</span><span class="w"> </span><span class="n">systemctl</span><span class="w"> </span><span class="o">--</span><span class="n">user</span><span class="w"> </span><span class="n">disable</span><span class="w"> </span><span class="n">schedule</span><span class="o">-</span><span class="n">test</span><span class="o">.</span><span class="n">timer</span>
+<span class="o">$</span><span class="w"> </span><span class="n">systemctl</span><span class="w"> </span><span class="o">--</span><span class="n">user</span><span class="w"> </span><span class="n">stop</span><span class="w"> </span><span class="n">schedule</span><span class="o">-</span><span class="n">test</span><span class="o">.</span><span class="n">service</span>
+<span class="o">$</span><span class="w"> </span><span class="n">systemctl</span><span class="w"> </span><span class="o">--</span><span class="n">user</span><span class="w"> </span><span class="n">disable</span><span class="w"> </span><span class="n">schedule</span><span class="o">-</span><span class="n">test</span><span class="o">.</span><span class="n">service</span>
+<span class="o">$</span><span class="w"> </span><span class="n">systemctl</span><span class="w"> </span><span class="o">--</span><span class="n">user</span><span class="w"> </span><span class="n">daemon</span><span class="o">-</span><span class="n">reload</span>
+<span class="o">$</span><span class="w"> </span><span class="n">systemctl</span><span class="w"> </span><span class="o">--</span><span class="n">user</span><span class="w"> </span><span class="n">reset</span><span class="o">-</span><span class="n">failed</span>
+</code></pre></div>
+
+<h3>总结</h3>
+<p>本文以 systemd 定时器为出发点，但是 systemd 的内容远不止于此。这篇文章应该为你提供一个基础。你可以从 <a href="https://fedoramagazine.org/what-is-an-init-system/">Fedora Magazine systemd 系列</a> 开始探索更多。</p>
+<h3>参考</h3>
+<p>更多阅读：</p>
+<ul>
+<li><code>man systemd.timer</code></li>
+<li><code>man systemd.service</code></li>
+<li><a href="https://opensource.com/article/20/7/systemd-timers">Use systemd timers instead of cronjobs</a></li>
+<li><a href="https://docs.fedoraproject.org/en-US/quick-docs/understanding-and-administering-systemd/">Understanding and administering systemd</a></li>
+<li><a href="https://opensource.com/">https://opensource.com/</a> 内有 systemd 速查表</li>
+</ul>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

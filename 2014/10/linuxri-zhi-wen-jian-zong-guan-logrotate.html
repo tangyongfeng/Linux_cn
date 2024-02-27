@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Linux日志文件总管——logrotate</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Sarmed Rahman 日志文件包含了关于系统中发生的事件的有用信息，在排障过程中或者系统性能分析时经常被用到。对于忙碌的 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2014/10/linuxri-zhi-wen-jian-zong-guan-logrotate.html" rel="bookmark"
+           title="Permalink to Linux日志文件总管——logrotate">Linux日志文件总管——logrotate</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2014-10-30T23:07:00+01:00">
+                Published: Thu 30 October 2014
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Sarmed Rahman</p>
+<p>日志文件包含了关于系统中发生的事件的有用信息，在排障过程中或者系统性能分析时经常被用到。对于忙碌的服务器，日志文件大小会增长极快，服务器会很快消耗磁盘空间，这成了个问题。除此之外，处理一个单个的庞大日志文件也常常是件十分棘手的事。</p>
+<p><img alt="" src="/data/attachment/album/201410/30/230942matkx93adpo3osp6.png"></p>
+<p>logrotate是个十分有用的工具，它可以自动对日志进行截断（或轮循）、压缩以及删除旧的日志文件。例如，你可以设置logrotate，让/var/log/foo日志文件每30天轮循，并删除超过6个月的日志。配置完后，logrotate的运作完全自动化，不必进行任何进一步的人为干预。另外，旧日志也可以通过电子邮件发送，不过该选项超出了本教程的讨论范围。</p>
+<p><img alt="" src="/data/attachment/album/201410/30/230727o1gy8h17xg69iya9.gif"></p>
+<p>主流Linux发行版上都默认安装有logrotate包，如果出于某种原因，logrotate没有出现在里头，你可以使用apt-get或yum命令来安装。</p>
+<p>在Debian或Ubuntu上：</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span><span class="nv">apt</span><span class="o">-</span><span class="nv">get</span><span class="w"> </span><span class="nv">install</span><span class="w"> </span><span class="k">logrotate</span><span class="w"> </span><span class="nv">cron</span><span class="w"> </span>
+</code></pre></div>
+
+<p>在Fedora，CentOS或RHEL上：</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span><span class="nv">yum</span><span class="w"> </span><span class="nv">install</span><span class="w"> </span><span class="k">logrotate</span><span class="w"> </span><span class="nv">crontabs</span><span class="w"> </span>
+</code></pre></div>
+
+<p>logrotate的配置文件是/etc/logrotate.conf，通常不需要对它进行修改。日志文件的轮循设置在独立的配置文件中，它（们）放在/etc/logrotate.d/目录下。</p>
+<h3>样例一</h3>
+<p>在第一个样例中，我们将创建一个10MB的日志文件/var/log/log-file。我们将展示怎样使用logrotate来管理该日志文件。</p>
+<p>我们从创建一个日志文件开始吧，然后在其中填入一个10MB的随机比特流数据。</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># touch /var/log/log-file</span>
+<span class="c1"># head -c 10M &lt; /dev/urandom &gt; /var/log/log-file </span>
+</code></pre></div>
+
+<p>由于现在日志文件已经准备好，我们将配置logrotate来轮循该日志文件。让我们为该文件创建一个配置文件。</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span><span class="nv">vim</span><span class="w"> </span><span class="o">/</span><span class="nv">etc</span><span class="o">/</span><span class="k">logrotate</span>.<span class="nv">d</span><span class="o">/</span><span class="nv">log</span><span class="o">-</span><span class="nv">file</span><span class="w"> </span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="nb">log</span><span class="o">-</span><span class="n">file</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">size</span><span class="o">=</span><span class="mi">50</span><span class="n">M</span>
+<span class="w">    </span><span class="n">rotate</span><span class="w"> </span><span class="mi">5</span>
+<span class="w">    </span><span class="n">create</span><span class="w"> </span><span class="mi">644</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">root</span>
+<span class="w">    </span><span class="n">postrotate</span>
+<span class="w">        </span><span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">killall</span><span class="w"> </span><span class="o">-</span><span class="n">HUP</span><span class="w"> </span><span class="n">rsyslogd</span>
+<span class="w">    </span><span class="n">endscript</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3>样例三</h3>
+<p>我们想要让旧日志文件以创建日期命名，这可以通过添加dateext常熟实现。</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span><span class="nv">vim</span><span class="w"> </span><span class="o">/</span><span class="nv">etc</span><span class="o">/</span><span class="k">logrotate</span>.<span class="nv">d</span><span class="o">/</span><span class="nv">log</span><span class="o">-</span><span class="nv">file</span><span class="w"> </span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="n">reading</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="n">file</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">logrotate</span><span class="o">.</span><span class="n">d</span><span class="o">/</span><span class="nb">log</span><span class="o">-</span><span class="n">file</span>
+<span class="n">reading</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="n">info</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="nb">log</span><span class="o">-</span><span class="n">file</span>
+
+<span class="n">Handling</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">logs</span>
+
+<span class="n">rotating</span><span class="w"> </span><span class="n">pattern</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="nb">log</span><span class="o">-</span><span class="n">file</span><span class="w">  </span><span class="n">forced</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="n">command</span><span class="w"> </span><span class="n">line</span><span class="w"> </span><span class="p">(</span><span class="mi">5</span><span class="w"> </span><span class="n">rotations</span><span class="p">)</span>
+<span class="n">empty</span><span class="w"> </span><span class="nb">log</span><span class="w"> </span><span class="n">files</span><span class="w"> </span><span class="n">are</span><span class="w"> </span><span class="n">rotated</span><span class="p">,</span><span class="w"> </span><span class="n">old</span><span class="w"> </span><span class="n">logs</span><span class="w"> </span><span class="n">are</span><span class="w"> </span><span class="n">removed</span>
+<span class="n">considering</span><span class="w"> </span><span class="nb">log</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="nb">log</span><span class="o">-</span><span class="n">file</span>
+<span class="w">  </span><span class="nb">log</span><span class="w"> </span><span class="n">needs</span><span class="w"> </span><span class="n">rotating</span>
+<span class="n">rotating</span><span class="w"> </span><span class="nb">log</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="nb">log</span><span class="o">-</span><span class="n">file</span><span class="p">,</span><span class="w"> </span><span class="nb">log</span><span class="o">-&gt;</span><span class="n">rotateCount</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="mi">5</span>
+<span class="n">dateext</span><span class="w"> </span><span class="n">suffix</span><span class="w"> </span><span class="s1">&#39;-20140916&#39;</span>
+<span class="n">glob</span><span class="w"> </span><span class="n">pattern</span><span class="w"> </span><span class="s1">&#39;-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]&#39;</span>
+<span class="n">renaming</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="nb">log</span><span class="o">-</span><span class="n">file</span><span class="o">.</span><span class="mf">5.</span><span class="n">gz</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="nb">log</span><span class="o">-</span><span class="n">file</span><span class="o">.</span><span class="mf">6.</span><span class="n">gz</span><span class="w"> </span><span class="p">(</span><span class="n">rotatecount</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span><span class="w"> </span><span class="n">logstart</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="mi">5</span><span class="p">),</span>
+<span class="n">old</span><span class="w"> </span><span class="nb">log</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="nb">log</span><span class="o">-</span><span class="n">file</span><span class="o">.</span><span class="mf">5.</span><span class="n">gz</span><span class="w"> </span><span class="n">does</span><span class="w"> </span><span class="ow">not</span><span class="w"> </span><span class="n">exist</span>
+<span class="n">renaming</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="nb">log</span><span class="o">-</span><span class="n">file</span><span class="o">.</span><span class="mf">4.</span><span class="n">gz</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="nb">log</span><span class="o">-</span><span class="n">file</span><span class="o">.</span><span class="mf">5.</span><span class="n">gz</span><span class="w"> </span><span class="p">(</span><span class="n">rotatecount</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span><span class="w"> </span><span class="n">logstart</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="mi">4</span><span class="p">),</span>
+<span class="n">old</span><span class="w"> </span><span class="nb">log</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="nb">log</span><span class="o">-</span><span class="n">file</span><span class="o">.</span><span class="mf">4.</span><span class="n">gz</span><span class="w"> </span><span class="n">does</span><span class="w"> </span><span class="ow">not</span><span class="w"> </span><span class="n">exist</span>
+<span class="o">.</span><span class="w"> </span><span class="o">.</span><span class="w"> </span><span class="o">.</span>
+<span class="n">renaming</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="nb">log</span><span class="o">-</span><span class="n">file</span><span class="o">.</span><span class="mf">0.</span><span class="n">gz</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="nb">log</span><span class="o">-</span><span class="n">file</span><span class="o">.</span><span class="mf">1.</span><span class="n">gz</span><span class="w"> </span><span class="p">(</span><span class="n">rotatecount</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span><span class="w"> </span><span class="n">logstart</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="mi">0</span><span class="p">),</span>
+<span class="n">old</span><span class="w"> </span><span class="nb">log</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="nb">log</span><span class="o">-</span><span class="n">file</span><span class="o">.</span><span class="mf">0.</span><span class="n">gz</span><span class="w"> </span><span class="n">does</span><span class="w"> </span><span class="ow">not</span><span class="w"> </span><span class="n">exist</span>
+<span class="nb">log</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="nb">log</span><span class="o">-</span><span class="n">file</span><span class="o">.</span><span class="mf">6.</span><span class="n">gz</span><span class="w"> </span><span class="n">doesn</span><span class="s1">&#39;t exist -- won&#39;</span><span class="n">t</span><span class="w"> </span><span class="n">try</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">dispose</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="n">it</span>
+<span class="n">renaming</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="nb">log</span><span class="o">-</span><span class="n">file</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="nb">log</span><span class="o">-</span><span class="n">file</span><span class="o">.</span><span class="mi">1</span>
+<span class="n">creating</span><span class="w"> </span><span class="n">new</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="nb">log</span><span class="o">-</span><span class="n">file</span><span class="w"> </span><span class="n">mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0644</span><span class="w"> </span><span class="n">uid</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="n">gid</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span>
+<span class="n">running</span><span class="w"> </span><span class="n">postrotate</span><span class="w"> </span><span class="n">script</span>
+<span class="n">compressing</span><span class="w"> </span><span class="nb">log</span><span class="w"> </span><span class="n">with</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">gzip</span>
+</code></pre></div>
+
+<h4>4. Logrotate的记录日志</h4>
+<p>logrotate自身的日志通常存放于/var/lib/logrotate/status目录。如果处于排障目的，我们想要logrotate记录到任何指定的文件，我们可以指定像下面这样从命令行指定。</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># logrotate -vf –s /var/log/logrotate-status /etc/logrotate.d/log-file</span>
+</code></pre></div>
+
+<h4>5. Logrotate定时任务</h4>
+<p>logrotate需要的<strong>cron</strong>任务应该在安装时就自动创建了，我把cron文件的内容贴出来，以供大家参考。</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span><span class="nv">cat</span><span class="w"> </span><span class="o">/</span><span class="nv">etc</span><span class="o">/</span><span class="nv">cron</span>.<span class="nv">daily</span><span class="o">/</span><span class="k">logrotate</span><span class="w"> </span>
+</code></pre></div>
+
+<p>via: <a href="http://xmodulo.com/2014/09/logrotate-manage-log-files-linux.html">http://xmodulo.com/2014/09/logrotate-manage-log-files-linux.html</a></p>
+<p>作者：<a href="http://xmodulo.com/author/sarmed">Sarmed Rahman</a> 译者：<a href="https://github.com/GOLinux">GOLinux</a> 校对：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创翻译，<a href="http://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

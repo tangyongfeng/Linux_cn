@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Red Hat 的去 Docker 化容器实践</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Anarcat 最近几年，开源项目 Docker (已更名为Moby) 在容器普及化方面建树颇多。然而，它的功能特性不断集中到一个单一、庞大的系统 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li class="active"><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/05/red-hat-de-qu-docker-hua-rong-qi-shi-jian.html" rel="bookmark"
+           title="Permalink to Red Hat 的去 Docker 化容器实践">Red Hat 的去 Docker 化容器实践</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-05-10T12:24:36+02:00">
+                Published: Thu 10 May 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/guan-dian">观点</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Anarcat</p>
+<p><img alt="" src="/data/attachment/album/201805/10/122423nn342z26ornon21o.jpg"></p>
+<p>最近几年，开源项目 Docker (已更名为<a href="https://mobyproject.org/">Moby</a>) 在容器普及化方面建树颇多。然而，它的功能特性不断集中到一个单一、庞大的系统，该系统由具有 root 权限运行的守护进程 <code>dockerd</code> 管控，这引发了人们的焦虑。对这些焦虑的阐述，具有代表性的是 Red Hat 公司的容器团队负责人 Dan Walsh 在 <a href="http://events.linuxfoundation.org/events/kubecon-and-cloudnativecon-north-america">KubeCon + CloudNativecon</a> 会议中的<a href="https://kccncna17.sched.com/event/CU8j/cri-o-hosted-by-daniel-walsh-red-hat">演讲</a>。Walsh 讲述了他的容器团队目前的工作方向，即使用一系列更小、可协同工作的组件替代 Docker。他的战斗口号是“拒绝臃肿的守护进程”，理由是与公认的 Unix 哲学相违背。</p>
+<h3>Docker 模块化实践</h3>
+<p>就像我们在<a href="https://lwn.net/Articles/741897/">早期文献</a>中看到的那样，容器的基础操作不复杂：你首先拉取一个容器镜像，利用该镜像创建一个容器，最后启动这个容器。除此之外，你要懂得如何构建镜像并推送至镜像仓库。大多数人在上述这些步骤中使用 Docker，但其实 Docker 并不是唯一的选择，目前的可替换选择是 <code>rkt</code>。rkt 引发了一系列标准的创建，包括运行时标准 CRI，镜像标准 OCI 及网络标准 CNI 等。遵守这些标准的后端，如 <a href="http://cri-o.io/">CRI-O</a> 和 Docker，可以与 <a href="https://kubernetes.io/">Kubernetes</a> 为代表的管理软件协同工作。</p>
+<p>这些标准促使 Red Hat 公司开发了一系列实现了部分标准的“核心应用”供 Kubernetes 使用，例如 CRI-O 运行时。但 Kubernetes 提供的功能不足以满足 Red Hat 公司的 <a href="https://www.openshift.com/">OpenShift</a> 项目所需。开发者可能需要构建容器并推送至镜像仓库，实现这些操作需要额外的一整套方案。</p>
+<p>事实上，目前市面上已有多种构建容器的工具。来自 Sysdig 公司的 Michael Ducy 在<a href="https://kccncna17.sched.com/event/CU6B/building-better-containers-a-survey-of-container-build-tools-i-michael-ducy-chef">分会场</a>中回顾了 Docker 本身之外的 8 种镜像构建工具，而这也很可能不是全部。Ducy 将理想的构建工具定义如下：可以用可重现的方式创建最小化镜像。最小化镜像并不包含操作系统，只包含应用本身及其依赖。Ducy 认为 <a href="https://github.com/GoogleCloudPlatform/distroless">Distroless</a>, <a href="https://github.com/oracle/smith">Smith</a> 及 <a href="https://github.com/openshift/source-to-image">Source-to-Image</a> 都是很好的工具，可用于构建最小化镜像。Ducy 将最小化镜像称为“微容器”。</p>
+<p><ruby> 可重现镜像 <rt>  reproducible container </rt></ruby>是指构建多次结果保持不变的镜像。为达到这个目标，Ducy 表示应该使用“宣告式”而不是“命令式”的方式。考虑到 Ducy 来自 Chef 配置管理工具领域，你应该能理解他的意思。Ducy 给出了符合标准的几个不错的实现，包括 <a href="https://www.ansible.com/ansible-container">Ansible 容器</a>、 <a href="https://www.habitat.sh/">Habitat</a>、 <a href="https://nixos.org/nixos/manual/#ch-containers">nixos-容器</a>和 <a href="https://github.com/oracle/smith">Simth</a> 等，但你需要了解这些项目对应的编程语言。Ducy 额外指出 Habitat 构建的容器自带管理功能，如果你已经使用了 systemd、 Docker 或 Kubernetes 等外部管理工具，Habitat 的管理功能可能是冗余的。除此之外，我们还要提到从 Docker 和 <a href="https://github.com/projectatomic/buildah">Buildah</a> 项目诞生的新项目 <a href="https://github.com/moby/buildkit">BuildKit</a>， 它是 Red Hat 公司 <a href="https://www.projectatomic.io/">Atomic 工程</a>的一个组件。</p>
+<h3>使用 Buildah 构建容器</h3>
+<p><img alt="[Buildah logo]" src="/data/attachment/album/201805/10/122437qhminlii9nhbwbbw.png" title="Buildah logo"></p>
+<p>Buildah 名称显然来自于 Walsh 风趣的 <a href="https://en.wikipedia.org/wiki/Boston_accent">波士顿口音</a>； 该工具的品牌宣传中充满了波士顿风格，例如 logo 使用了波士顿梗犬（如图所示）。该项目的实现思路与 Ducy 不同：为了构建容器，与其被迫使用宣告式配置管理的方案，不如构建一些简单工具，结合你最喜欢的配置管理工具使用。这样你可以如愿的使用命令行，例如使用 <code>cp</code> 命令代替 Docker 的自定义指令 <code>COPY</code> 。除此之外，你可以使用如下工具为容器提供内容：1) 配置管理工具，例如Ansible 或 Puppet；2) 操作系统相关或编程语言相关的安装工具，例如 APT 和 pip； 3) 其它系统。下面展示了基于通用 shell 命令的容器构建场景，其中只需要使用 <code>make</code> 命令即可为容器安装可执行文件。</p>
+<div class="highlight"><pre><span></span><code># 拉取基础镜像, 类似 Dockerfile 中的 FROM 命令
+buildah from redhat
+
+# 挂载基础镜像, 在其基础上工作
+crt=$(buildah mount)
+ap foo $crt
+make install DESTDIR=$crt
+
+# 下一步，生成快照
+buildah commit
+</code></pre></div>
+
+<p>有趣的是，基于这个思路，你可以复用主机环境中的构建工具，无需在镜像中安装这些依赖，故可以构建非常微小的镜像。通常情况下，构建容器镜像时需要在容器中安装目标应用的构建依赖。例如，从源码构建需要容器中有编译器工具链，这是因为构建并不在主机环境进行。大量的容器也包含了 <code>ps</code> 和 <code>bash</code> 这样的 Unix 命令，对微容器而言其实是多余的。开发者经常忘记或无法从构建好的容器中移除一些依赖，增加了不必要的开销和攻击面。</p>
+<p>Buildah 的模块化方案能够以非 root 方式进行部分构建；但<code>mount</code> 命令仍然需要 <code>CAP_SYS_ADMIN</code>，有一个 <a href="https://github.com/projectatomic/buildah/issues/171">工单</a> 试图解决该问题。但 Buildah 与 Docker <a href="https://github.com/projectatomic/buildah/issues/158">都有</a>同样的<a href="https://github.com/moby/moby/issues/27886#issuecomment-281278525">限制</a>，即无法在容器内构建容器。对于 Docker，你需要使用“特权”模式运行容器，一些特殊的环境很难满足这个条件，例如 <a href="https://about.gitlab.com/features/gitlab-ci-cd/">GitLab 持续集成</a>；即使满足该条件，配置也特别<a href="https://jpetazzo.github.io/2015/09/03/do-not-use-docker-in-docker-for-ci/">繁琐</a>。</p>
+<p>手动提交的步骤可以对创建容器快照的时间节点进行细粒度控制。Dockerfile 每一行都会创建一个新的快照；相比而言，Buildah 的提交检查点都是事先选择好的，这可以减少不必要的快照并节省磁盘空间。这也有利于隔离私钥或密码等敏感信息，避免其出现在公共镜像中。</p>
+<p>Docker 构建的镜像是非标准的、仅供其自身使用；相比而言，Buildah 提供<a href="https://github.com/projectatomic/buildah/blob/master/docs/buildah-push.md">多种输出格式</a>，其中包括符合 OCI 标准的镜像。为向后兼容，Buildah 提供了一个“使用 Dockerfile 构建”的命令，即 <a href="https://github.com/projectatomic/buildah/blob/master/docs/buildah-bud.md"><code>buildah bud</code></a>， 它可以解析标准的 Dockerfile。Buildah 提供 <code>enter</code> 命令直接查看镜像内部信息，<code>run</code> 命令启动一个容器。实现这些功能仅使用了 <code>runc</code> 在内的标准工具，无需在后台运行一个“臃肿的守护进程”。</p>
+<p>Ducy 对 Buildah 表示质疑，认为采用非宣告性不利于可重现性。如果允许使用 shell 命令，可能产生很多预想不到的情况；例如，一个 shell 脚本下载了任意的可执行程序，但后续无法追溯文件的来源。shell 命令的执行受环境变量影响，执行结果可能大相径庭。与基于 shell 的工具相比，Puppet 或 Chef 这样的配置管理系统在理论上更加可靠，因为它们的设计初衷就是收敛于最终配置；事实上，可以通过配置管理系统调用 shell 命令。但 Walsh 对此提出反驳，认为已有的配置管理工具可以在 Buildah 的基础上工作，用户可以选择是否使用配置管理；这样更加符合“机制与策略分离”的经典 Unix 哲学。</p>
+<p>目前 Buildah 处于测试阶段，Red Hat 公司正努力将其集成到 OpenShift。我写这篇文章时已经测试过 Buildah，它缺少一些文档，但基本可以稳定运行。尽管在错误处理方面仍有待提高，但它确实是一款值得你关注的容器工具。</p>
+<h3>替换其它 Docker 命令行</h3>
+<p>Walsh 在其演讲中还简单介绍了 Red hat 公司 正在开发的另一个暂时叫做 <a href="https://jpetazzo.github.io/2015/09/03/do-not-use-docker-in-docker-for-ci/">libpod</a> 的项目。项目名称来源于 Kubernetes 中的 “pod”， 在 Kubernetes 中 “pod” 用于分组主机内的容器，分享名字空间等。</p>
+<p>Libpod 提供 <code>kpod</code> 命令，用于直接检查和操作容器存储。Walsh 分析了该命令发挥作用的场景，例如 <code>dockerd</code> 停止响应或 Kubernetes 集群崩溃。基本上，<code>kpod</code> 独立地再次实现了 <code>docker</code> 命令行工具。<code>kpod ps</code> 返回运行中的容器列表，<code>kpod images</code> 返回镜像列表。事实上，<a href="https://github.com/projectatomic/libpod/blob/master/transfer.md#development-transfer">命令转换速查手册</a> 中给出了每一条 Docker 命令对应的 <code>kpod</code> 命令。</p>
+<p>这种模块化实现的一个好处是，当你使用 <code>kpod run</code> 运行容器时，容器直接作为当前 shell 而不是 <code>dockerd</code> 的子进程启动。理论上，可以直接使用 systemd 启动容器，这样可以消除 <code>dockerd</code> 引入的冗余。这让<a href="http://0pointer.de/blog/projects/socket-activated-containers.html">由套接字激活的容器</a>成为可能，但暂时基于 Docker 实现该特性<a href="https://legacy-developer.atlassian.com/blog/2015/03/docker-systemd-socket-activation/">并不容易</a>，<a href="https://github.com/kubernetes/kubernetes/issues/484">即使借助 Kubernetes</a> 也是如此。但我在测试过程中发现，使用 <code>kpod</code> 启动的容器有一些基础功能性缺失，具体而言是网络功能（!），相关实现在<a href="https://github.com/projectatomic/libpod/issues/129">活跃开发</a>过程中。</p>
+<p>我们最后提到的命令是 <code>push</code>。虽然上述命令已经足以满足本地使用容器的需求，但没有提到远程仓库，借助远程仓库开发者可以活跃地进行应用打包协作。仓库也是持续部署框架的核心组件。<a href="https://github.com/projectatomic/skopeo">skopeo</a> 项目用于填补这个空白，它是另一个 Atomic 成员项目，按其 <code>README</code> 文件描述，“包含容器镜像及镜像库的多种操作”。该项目的设计初衷是，在不用类似 <code>docker pull</code> 那样实际去下载可能体积庞大的镜像的前提下，检查容器镜像的内容。Docker <a href="https://github.com/moby/moby/pull/14258">拒绝加入</a> 检查功能，建议通过一个额外的工具实现该功能，这促成了 Skopeo 项目。除了 <code>pull</code>、<code>push</code>，Skopeo 现在还可以完成很多其它操作，例如在，不产生本地副本的情况下将镜像在不同的仓库中复制和转换。由于部分功能比较基础，可供其它项目使用，目前很大一部分 Skopeo 代码位于一个叫做 <a href="https://github.com/containers/image">containers/image</a> 的基础库。<a href="https://pivotal.io/">Pivotal</a>、 Google 的 <a href="https://github.com/GoogleCloudPlatform/container-diff">container-diff</a> 、<code>kpod push</code> 及 <code>buildah push</code> 都使用了该库。</p>
+<p><code>kpod</code> 与 Kubernetes 并没有紧密的联系，故未来可能会更换名称（事实上，在本文刊发过程中，已经更名为 <a href="https://github.com/projectatomic/libpod/blob/master/docs/podman.1.md"><code>podman</code></a>），毕竟 Red Hat 法务部门还没有明确其名称。该团队希望实现更多 pod 级别的命令，这样可以对多个容器进行操作，有点类似于 <a href="https://docs.docker.com/compose/overview/#compose-documentation"><code>docker compose</code></a> 实现的功能。但在这方面，<a href="http://kompose.io/">Kompose</a> 是更好的工具，可以通过 <a href="https://docs.docker.com/compose/compose-file/">复合 YAML 文件</a> 在 Kubernetes 集群中运行容器。按计划，我们不会实现类似于 [<code>swarm</code>] 的 Docker 命令，这部分功能最好由 Kubernetes 本身完成。</p>
+<p>目前看来，已经持续数年的 Docker 模块化努力终将硕果累累。但目前 <code>kpod</code> 处于快速迭代过程中，不太适合用于生产环境，不过那些工具的与众不同的设计理念让人很感兴趣，而且其中大部分的工具已经可以用于开发环境。目前只能通过编译源码的方式安装 libpod，但最终会提供各个发行版的二进制包。</p>
+<blockquote>
+<p>本文<a href="https://lwn.net/Articles/741841/">最初发表</a>于 <a href="http://lwn.net/">Linux Weekly News</a>。</p>
+</blockquote>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

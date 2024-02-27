@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何通过反向 SSH 隧道访问 NAT 后面的 Linux 服务器</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Dan Nanni 你在家里运行着一台 Linux 服务器，它放在一个 NAT 路由器或者限制性防火墙后面。现在你想在外出时用 SSH 登录到这台 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/08/ru-he-tong-guo-fan-xiang-ssh-sui-dao-fang-wen-nat-hou-mian-de-linux-fu-wu-qi.html" rel="bookmark"
+           title="Permalink to 如何通过反向 SSH 隧道访问 NAT 后面的 Linux 服务器">如何通过反向 SSH 隧道访问 NAT 后面的 Linux 服务器</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-08-08T13:50:00+02:00">
+                Published: Sat 08 August 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Dan Nanni</p>
+<p>你在家里运行着一台 Linux 服务器，它放在一个 NAT 路由器或者限制性防火墙后面。现在你想在外出时用 SSH 登录到这台服务器。你如何才能做到呢？SSH 端口转发当然是一种选择。但是，如果你需要处理多级嵌套的 NAT 环境，端口转发可能会变得非常棘手。另外，在多种 ISP 特定条件下可能会受到干扰，例如阻塞转发端口的限制性 ISP 防火墙、或者在用户间共享 IPv4 地址的运营商级 NAT。</p>
+<h3>什么是反向 SSH 隧道？</h3>
+<p>SSH 端口转发的一种替代方案是 <strong>反向 SSH 隧道</strong>。反向 SSH 隧道的概念非常简单。使用这种方案，在你的受限的家庭网络之外你需要另一台主机（所谓的“中继主机”），你能从当前所在地通过 SSH 登录到它。你可以用有公网 IP 地址的 <a href="http://xmodulo.com/go/digitalocean">VPS 实例</a> 配置一个中继主机。然后要做的就是从你的家庭网络服务器中建立一个到公网中继主机的永久 SSH 隧道。有了这个隧道，你就可以从中继主机中连接“回”家庭服务器（这就是为什么称之为 “反向” 隧道）。不管你在哪里、你的家庭网络中的 NAT 或 防火墙限制多么严格，只要你可以访问中继主机，你就可以连接到家庭服务器。</p>
+<p><img alt="" src="/data/attachment/album/201508/07/235248bx5kxx52gg8yyty4.jpg"></p>
+<h3>在 Linux 上设置反向 SSH 隧道</h3>
+<p>让我们来看看怎样创建和使用反向 SSH 隧道。我们做如下假设：我们会设置一个从家庭服务器（homeserver）到中继服务器（relayserver）的反向 SSH 隧道，然后我们可以通过中继服务器从客户端计算机（clientcomputer） SSH 登录到家庭服务器。本例中的<strong>中继服务器</strong> 的公网 IP 地址是 1.1.1.1。</p>
+<p>在家庭服务器上，按照以下方式打开一个到中继服务器的 SSH 连接。</p>
+<div class="highlight"><pre><span></span><code><span class="n">homeserver</span><span class="o">~</span><span class="n">$</span><span class="w"> </span><span class="n">ssh</span><span class="w"> </span><span class="o">-</span><span class="n">fN</span><span class="w"> </span><span class="o">-</span><span class="n">R</span><span class="w"> </span><span class="mi">10022</span><span class="o">:</span><span class="n">localhost</span><span class="o">:</span><span class="mi">22</span><span class="w"> </span><span class="n">relayserver_user</span><span class="mf">@1.1.1.1</span>
+</code></pre></div>
+
+<p>这里端口 10022 是任何你可以使用的端口数字。只需要确保中继服务器上不会有其它程序使用这个端口。</p>
+<p>“-R 10022:localhost:22” 选项定义了一个反向隧道。它转发中继服务器 10022 端口的流量到家庭服务器的 22 号端口。</p>
+<p>用 “-fN” 选项，当你成功通过 SSH 服务器验证时 SSH 会进入后台运行。当你不想在远程 SSH 服务器执行任何命令，就像我们的例子中只想转发端口的时候非常有用。</p>
+<p>运行上面的命令之后，你就会回到家庭主机的命令行提示框中。</p>
+<p>登录到中继服务器，确认其 127.0.0.1:10022 绑定到了 sshd。如果是的话就表示已经正确设置了反向隧道。</p>
+<div class="highlight"><pre><span></span><code>relayserver~$ sudo netstat -nap | grep 10022
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code>GatewayPorts clientspecified
+</code></pre></div>
+
+<p>重启 sshd。</p>
+<p>基于 Debian 的系统：</p>
+<div class="highlight"><pre><span></span><code>relayserver~$ sudo /etc/init.d/ssh restart
+</code></pre></div>
+
+<p>基于红帽的系统：</p>
+<div class="highlight"><pre><span></span><code>relayserver~$ sudo systemctl restart sshd
+</code></pre></div>
+
+<p>现在在家庭服务器中按照下面方式初始化一个反向 SSH 隧道。</p>
+<div class="highlight"><pre><span></span><code><span class="n">homeserver</span><span class="o">~</span><span class="n">$</span><span class="w"> </span><span class="n">ssh</span><span class="w"> </span><span class="o">-</span><span class="n">fN</span><span class="w"> </span><span class="o">-</span><span class="n">R</span><span class="w"> </span><span class="mf">1.1.1.1</span><span class="o">:</span><span class="mi">10022</span><span class="o">:</span><span class="n">localhost</span><span class="o">:</span><span class="mi">22</span><span class="w"> </span><span class="n">relayserver_user</span><span class="mf">@1.1.1.1</span>
+</code></pre></div>
+
+<p>登录到中继服务器然后用 netstat 命令确认成功建立的一个反向 SSH 隧道。</p>
+<div class="highlight"><pre><span></span><code>relayserver~$ sudo netstat -nap | grep 10022
+</code></pre></div>
+
+<p>via: <a href="http://xmodulo.com/access-linux-server-behind-nat-reverse-ssh-tunnel.html">http://xmodulo.com/access-linux-server-behind-nat-reverse-ssh-tunnel.html</a></p>
+<p>作者：<a href="http://xmodulo.com/author/nanni">Dan Nanni</a> 译者：<a href="https://github.com/ictlyh">ictlyh</a> 校对：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创翻译，<a href="http://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

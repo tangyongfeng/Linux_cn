@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>为LUKS加密的磁盘/分区做增量备份</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Iulian Murgulet 我们中有些人出于安全原因，在家里或者VPS上通过Linux统一密钥配置（LUKS）为硬盘驱动器加密，而这些驱动器的容量很快会增长到数 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/06/wei-luksjia-mi-de-ci-pan-fen-qu-zuo-zeng-liang-bei-fen.html" rel="bookmark"
+           title="Permalink to 为LUKS加密的磁盘/分区做增量备份">为LUKS加密的磁盘/分区做增量备份</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-06-16T14:17:32+02:00">
+                Published: Tue 16 June 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Iulian Murgulet</p>
+<p>我们中有些人出于安全原因，在家里或者<a href="http://xmodulo.com/go/digitalocean">VPS</a>上通过<a href="http://xmodulo.com/how-to-create-encrypted-disk-partition-on-linux.html">Linux统一密钥配置（LUKS）</a>为硬盘驱动器加密，而这些驱动器的容量很快会增长到数十或数百GB。因此，虽然我们享受着LUKS设备带来的安全感，但是我们也该开始考虑一个可能的远程备份方案了。对于安全的非现场备份，我们将需要能在LUKS加密的设备上以块级别操作的东西。因此，最后我们发现这么个状况，我们每次都需要传输想要做备份的整个LUKS设备（比如说200GB大）。很明显，这是不可行的。我们该怎么来处理这个问题呢？</p>
+<p><img alt="" src="/data/attachment/album/201506/16/141734j97br97ubvb7jr7x.jpg"></p>
+<h3>一个解决方案： Bdsync</h3>
+<p>这时，一个卓越的开源工具来拯救我们了，它叫<a href="http://bdsync.rolf-fokkens.nl/">Bdsync</a>（多亏了Rolf Fokkens）。顾名思义，Bdsync可以通过网络同步“块设备”。对于快速同步，Bdsync会生成并对比本地/远程块设备的块的MD5校验和，只同步差异部分。rsync在文件系统级别可以做的，Bdsync可以在块设备级别完成。很自然，对于LUKS加密的设备它也能工作得很好。相当地灵巧！</p>
+<p>使用Bdsync，首次备份将拷贝整个LUKS块设备到远程主机，因而会花费大量时间来完成。然而，在初始备份后，如果我们在LUKS设备新建一些文件，再次备份就会很快完成，因为我们只需拷贝修改过的块。经典的增量备份在起作用了！</p>
+<h3>安装Bdsync到Linux</h3>
+<p>Bdsync并不包含在Linux发行版的标准仓库中，因而你需要从源代码来构建它。使用以下针对特定版本的指令来安装Bdsync及其手册页到你的系统中。</p>
+<h4>Debian，Ubuntu或Linux Mint</h4>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>git<span class="w"> </span>gcc<span class="w"> </span>libssl-dev
+$<span class="w"> </span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/TargetHolding/bdsync.git
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>bdsync
+$<span class="w"> </span>make
+$<span class="w"> </span>sudo<span class="w"> </span>cp<span class="w"> </span>bdsync<span class="w"> </span>/usr/local/sbin
+$<span class="w"> </span>sudo<span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>/usr/local/man/man1
+$<span class="w"> </span>sudo<span class="w"> </span>sh<span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;gzip -c bdsync.1 &gt; /usr/local/man/man1/bdsync.1.gz&#39;</span>
+</code></pre></div>
+
+<h4>Fedora或CentOS/RHEL</h4>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>git<span class="w"> </span>gcc<span class="w"> </span>openssl-devel
+$<span class="w"> </span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/TargetHolding/bdsync.git
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>bdsync
+$<span class="w"> </span>make
+$<span class="w"> </span>sudo<span class="w"> </span>cp<span class="w"> </span>bdsync<span class="w"> </span>/usr/local/sbin
+$<span class="w"> </span>sudo<span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>/usr/local/man/man1
+$<span class="w"> </span>sudo<span class="w"> </span>sh<span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;gzip -c bdsync.1 &gt; /usr/local/man/man1/bdsync.1.gz&#39;</span>
+</code></pre></div>
+
+<h3>对LUKS加密的设备实施非现场增量备份</h3>
+<p>我假定你已经准备好了一个LUKS加密的块设备作为备份源（如，/dev/LOCDEV）。同时，我假定你也有一台远程主机，用以作为源设备的备份点（如，/dev/REMDEV）。</p>
+<p>你需要在两台系统上具有root帐号访问权限，并且设置从本地访问远程的<a href="/article-5444-1.html">无密码SSH访问</a>。最后，你需要安装Bdsync到两台主机上。</p>
+<p>要在本地主机上初始化一个远程备份进程，我们需要以root执行以下命令：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="n">bdsync</span><span class="w"> </span><span class="ss">&quot;ssh root@remote_host bdsync --server&quot;</span><span class="w"> </span><span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="n">LOCDEV</span><span class="w"> </span><span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="n">REMDEV</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">gzip</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="o">/</span><span class="n">some_local_path</span><span class="o">/</span><span class="n">DEV</span><span class="p">.</span><span class="n">bdsync</span><span class="p">.</span><span class="n">gz</span><span class="w"> </span>
+</code></pre></div>
+
+<p>这里需要进行一些说明。Bdsync客户端将以root打开一个到远程主机的SSH连接，并执行带有--server选项的Bdsync客户端。明确说明一下，/dev/LOCDEV是我们的本地主机上的源LUKS块设备，而/dev/REMDEV是远程主机上的目标块设备。它们可以是/dev/sda（作为整个磁盘），或者/dev/sda2（作为单个分区）。本地Bdsync客户端的输出结果随后被管道输送到gzip，用来在本地主机中创建DEV.bdsync.gz（所谓的二进制补丁文件）。</p>
+<p>你第一次运行上面的命令的时候，它会花费很长一段时间，这取决于你的互联网/局域网速度，以及/dev/LOCDEV的大小。记住，你必须有两个大小相同的块设备（/dev/LOCDEV和/dev/REMDEV）。</p>
+<p>下一步是要将补丁文件从本地主机拷贝到远程主机。一种方式是使用scp：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="n">scp</span><span class="w"> </span><span class="o">/</span><span class="n">some_local_path</span><span class="o">/</span><span class="n">DEV</span><span class="p">.</span><span class="n">bdsync</span><span class="p">.</span><span class="n">gz</span><span class="w"> </span><span class="n">root</span><span class="nv">@remote_host</span><span class="err">:</span><span class="o">/</span><span class="n">remote_path</span><span class="w"> </span>
+</code></pre></div>
+
+<p>最后一步，是要在远程主机上执行以下命令，它们会将补丁文件应用到/dev/REMDEV：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> gzip -d &lt; /remote_path/DEV.bdsync.gz | bdsync --patch=/dev/DSTDEV 
+</code></pre></div>
+
+<p>我推荐在使用真实数据部署Bdsync前，使用一些（没有任何重要数据）小分区来做这些测试。在你完全弄懂整个设置是如何工作之后，你可以开始备份真实数据。</p>
+<h3>尾声</h3>
+<p>小结之，我们演示了如何使用Bdsync来为LUKS设备实施增量备份。和rsync一样，每次备份只有一小部分数据，而不是整个LUKS设备，需要被推送到非现场备份点，这样会节省带宽和备份时间。剩下来，需要通过SSH或SCP来保证所有数据传输的安全，事实上设备自身是由LUKS加密的。也可以通过使用可以运行bdsync的专用用户（而非root）来改进该配置。我们也可以将bdsync用于任何块设备，如LVM卷或RAID磁盘，也可以很轻易地设置Bdsync备份本地磁盘到USB驱动器上。如你所见，它有着无限可能性！</p>
+<p>随时分享你的想法。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

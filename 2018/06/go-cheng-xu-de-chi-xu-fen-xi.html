@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Go 程序的持续分析</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Jbd Google 最有趣的部分之一就是我们规模庞大的持续分析服务。我们可以看到谁在使用 CPU 和内存，我们可以持续地监控我 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/06/go-cheng-xu-de-chi-xu-fen-xi.html" rel="bookmark"
+           title="Permalink to Go 程序的持续分析">Go 程序的持续分析</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-06-04T11:00:21+02:00">
+                Published: Mon 04 June 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Jbd</p>
+<p><img alt="" src="/data/attachment/album/201806/04/110004y0orb4eeepzovqed.png"></p>
+<p>Google 最有趣的部分之一就是我们规模庞大的持续分析服务。我们可以看到谁在使用 CPU 和内存，我们可以持续地监控我们的生产服务以争用和阻止配置文件，并且我们可以生成分析和报告，并轻松地告诉我们可以进行哪些有重要影响的优化。</p>
+<p>我简单研究了 <a href="https://cloud.google.com/profiler/">Stackdriver Profiler</a>，这是我们的新产品，它填补了针对云端用户在云服务范围内分析服务的空白。请注意，你无需在 Google 云平台上运行你的代码即可使用它。实际上，我现在每天都在开发时使用它。它也支持 Java 和 Node.js。</p>
+<h3>在生产中分析</h3>
+<p>pprof 可安全地用于生产。我们针对 CPU 和堆分配分析的额外会增加 5% 的开销。一个实例中每分钟收集 10 秒。如果你有一个 Kubernetes Pod 的多个副本，我们确保进行分摊收集。例如，如果你拥有一个 pod 的 10 个副本，模式，那么开销将变为 0.5％。这使用户可以一直进行分析。</p>
+<p>我们目前支持 Go 程序的 CPU、堆、互斥和线程分析。</p>
+<h3>为什么？</h3>
+<p>在解释如何在生产中使用分析器之前，先解释为什么你想要在生产中进行分析将有所帮助。一些非常常见的情况是：</p>
+<ul>
+<li>调试仅在生产中可见的性能问题。</li>
+<li>了解 CPU 使用率以减少费用。</li>
+<li>了解争用的累积和优化的地方。</li>
+<li>了解新版本的影响，例如看到 canary 和产品级之间的区别。</li>
+<li>通过<a href="https://rakyll.org/profiler-labels/">关联</a>分析样本以了解延迟的根本原因来丰富你的分布式经验。</li>
+</ul>
+<h3>启用</h3>
+<p>Stackdriver Profiler 不能与 <code>net/http/pprof</code> 处理程序一起使用，并要求你在程序中安装和配置一个一行的代理。</p>
+<div class="highlight"><pre><span></span><code><span class="k">go</span><span class="w"> </span><span class="k">get</span><span class="w"> </span><span class="n">cloud</span><span class="p">.</span><span class="n">google</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="k">go</span><span class="o">/</span><span class="n">profiler</span>
+</code></pre></div>
+
+<p>在你的主函数中，启动分析器：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">if</span><span class="w"> </span><span class="nt">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nt">profiler</span><span class="p">.</span><span class="nc">Start</span><span class="o">(</span><span class="nt">profiler</span><span class="p">.</span><span class="nc">Config</span><span class="p">{</span>
+<span class="w">   </span><span class="n">Service</span><span class="p">:</span><span class="w">        </span><span class="s2">&quot;indexing-service&quot;</span><span class="p">,</span>
+<span class="w">   </span><span class="n">ServiceVersion</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;1.0&quot;</span><span class="p">,</span>
+<span class="w">   </span><span class="n">ProjectID</span><span class="o">:</span><span class="w">      </span><span class="s2">&quot;bamboo-project-606&quot;</span><span class="p">,</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="n">optional</span><span class="w"> </span><span class="kc">on</span><span class="w"> </span><span class="n">GCP</span>
+<span class="p">}</span><span class="o">);</span><span class="w"> </span><span class="nt">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="nt">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">   </span><span class="err">log.Fatalf(&quot;Cannot</span><span class="w"> </span><span class="err">start</span><span class="w"> </span><span class="err">the</span><span class="w"> </span><span class="n">profiler</span><span class="p">:</span><span class="w"> </span><span class="o">%</span><span class="n">v</span><span class="err">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">)</span><span class="w"> </span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>当你运行你的程序后，profiler 包将每分钟报告给分析器 10 秒钟。</p>
+<h3>可视化</h3>
+<p>当分析被报告给后端后，你将在 <a href="https://console.cloud.google.com/profiler">https://console.cloud.google.com/profiler</a> 上看到火焰图。你可以按标签过滤并更改时间范围，也可以按服务名称和版本进行细分。数据将会长达 30 天。</p>
+<p><img alt="" src="/data/attachment/album/201806/04/110031zrl3tvppvs2v67s3.gif"></p>
+<p>你可以选择其中一个分析，按服务，区域和版本分解。你可以在火焰中移动并通过标签进行过滤。</p>
+<h3>阅读火焰图</h3>
+<p><a href="http://www.brendangregg.com/flamegraphs.html">Brendan Gregg</a> 非常全面地解释了火焰图可视化。Stackdriver Profiler 增加了一点它自己的特点。</p>
+<p><img alt="" src="/data/attachment/album/201806/04/110038t61nopp64mzoimvo.png"></p>
+<p>我们将查看一个 CPU 分析，但这也适用于其他分析。</p>
+<ol>
+<li>最上面的 x 轴表示整个程序。火焰上的每个框表示调用路径上的一帧。框的宽度与执行该函数花费的 CPU 时间成正比。</li>
+<li>框从左到右排序，左边是花费最多的调用路径。</li>
+<li>来自同一包的帧具有相同的颜色。这里所有运行时功能均以绿色表示。</li>
+<li>你可以单击任何框进一步展开执行树。</li>
+</ol>
+<p><img alt="" src="/data/attachment/album/201806/04/110040svh65h9nh44v96oz.png"></p>
+<p>你可以将鼠标悬停在任何框上查看任何帧的详细信息。</p>
+<h3>过滤</h3>
+<p>你可以显示、隐藏和高亮符号名称。如果你特别想了解某个特定调用或包的消耗，这些信息非常有用。</p>
+<p><img alt="" src="/data/attachment/album/201806/04/110047mix5uqofmoefimug.png"></p>
+<ol>
+<li>选择你的过滤器。你可以组合多个过滤器。在这里，我们将高亮显示 <code>runtime.memmove</code>。</li>
+<li>火焰将使用过滤器过滤帧并可视化过滤后的框。在这种情况下，它高亮显示所有 <code>runtime.memmove</code> 框。</li>
+</ol>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

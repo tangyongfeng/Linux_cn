@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何在 Linux 中使用 parted 对磁盘分区</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Daniel Oh 学习如何在 Linux 中使用 parted 命令来对存储设备分区。 在 Linux 中创建和删除分区是一种常见的操作，因为存储设备（如硬盘 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/06/ru-he-zai-linux-zhong-shi-yong-parted-dui-ci-pan-fen-qu.html" rel="bookmark"
+           title="Permalink to 如何在 Linux 中使用 parted 对磁盘分区">如何在 Linux 中使用 parted 对磁盘分区</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-06-22T23:38:51+02:00">
+                Published: Fri 22 June 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Daniel Oh</p>
+<blockquote>
+<p>学习如何在 Linux 中使用 parted 命令来对存储设备分区。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/201806/22/233843lzn6br133ebn1oww.jpg"></p>
+<p>在 Linux 中创建和删除分区是一种常见的操作，因为存储设备（如硬盘驱动器和 USB 驱动器）在使用之前必须以某种方式进行结构化。在大多数情况下，大型存储设备被分为称为<ruby> 分区 <rt>  partition </rt></ruby>的独立部分。分区操作允许您将硬盘分割成独立的部分，每个部分都像是一个硬盘驱动器一样。如果您运行多个操作系统，那么分区是非常有用的。</p>
+<p>在 Linux 中有许多强大的工具可以创建、删除和操作磁盘分区。在本文中，我将解释如何使用 <code>parted</code> 命令，这对于大型磁盘设备和许多磁盘分区尤其有用。<code>parted</code> 与更常见的 <code>fdisk</code> 和 <code>cfdisk</code> 命令之间的区别包括:</p>
+<ul>
+<li><strong>GPT 格式：</strong><code>parted</code> 命令可以创建全局惟一的标识符分区表 <a href="https://en.wikipedia.org/wiki/GUID_Partition_Table">GPT</a>，而 <code>fdisk</code> 和 <code>cfdisk</code> 则仅限于 DOS 分区表。</li>
+<li><strong>更大的磁盘：</strong> DOS 分区表可以格式化最多 2TB 的磁盘空间，尽管在某些情况下最多可以达到 16TB。然而，一个 GPT 分区表可以处理最多 8ZiB 的空间。</li>
+<li><strong>更多的分区：</strong> 使用主分区和扩展分区，DOS 分区表只允许 16 个分区。在 GPT 中，默认情况下您可以得到 128 个分区，并且可以选择更多的分区。</li>
+<li><strong>可靠性：</strong> 在 DOS 分区表中，只保存了一份分区表备份，在 GPT 中保留了两份分区表的备份（在磁盘的起始和结束部分），同时 GPT 还使用了 <a href="https://en.wikipedia.org/wiki/Cyclic_redundancy_check">CRC</a> 校验和来检查分区表的完整性，在 DOS 分区中并没有实现。</li>
+</ul>
+<p>由于现在的磁盘更大，需要更灵活地使用它们，建议使用 <code>parted</code> 来处理磁盘分区。大多数时候，磁盘分区表是作为操作系统安装过程的一部分创建的。在向现有系统添加存储设备时，直接使用 <code>parted</code> 命令非常有用。</p>
+<h3>尝试一下 parted</h3>
+<p>下面解释了使用 <code>parted</code> 命令对存储设备进行分区的过程。为了尝试这些步骤，我强烈建议使用一块全新的存储设备或一种您不介意将其内容删除的设备。</p>
+<h4>1、列出分区</h4>
+<p>使用 <code>parted -l</code> 来标识你要进行分区的设备。一般来说，第一个硬盘 （<code>/dev/sda</code> 或 <code>/dev/vda</code> ）保存着操作系统， 因此要寻找另一个磁盘，以找到你想要分区的磁盘 (例如，<code>/dev/sdb</code>、<code>/dev/sdc</code>、 <code>/dev/vdb</code>、<code>/dev/vdc</code> 等)。</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">parted</span><span class="w"> </span><span class="o">-</span><span class="n">l</span>
+<span class="o">[</span><span class="n">sudo</span><span class="o">]</span><span class="w"> </span><span class="n">password</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nl">daniel</span><span class="p">:</span><span class="w"> </span>
+<span class="nl">Model</span><span class="p">:</span><span class="w"> </span><span class="n">ATA</span><span class="w"> </span><span class="n">RevuAhn_850X1TU5</span><span class="w"> </span><span class="p">(</span><span class="n">scsi</span><span class="p">)</span>
+<span class="k">Disk</span><span class="w"> </span><span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="nl">vdc</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="n">GB</span>
+<span class="n">Sector</span><span class="w"> </span><span class="k">size</span><span class="w"> </span><span class="p">(</span><span class="n">logical</span><span class="o">/</span><span class="n">physical</span><span class="p">)</span><span class="err">:</span><span class="w"> </span><span class="mi">512</span><span class="n">B</span><span class="o">/</span><span class="mi">512</span><span class="n">B</span>
+<span class="k">Partition</span><span class="w"> </span><span class="nc">Table</span><span class="err">:</span><span class="w"> </span><span class="n">msdos</span>
+<span class="k">Disk</span><span class="w"> </span><span class="nl">Flags</span><span class="p">:</span><span class="w"> </span>
+
+<span class="n">Number</span><span class="w">  </span><span class="k">Start</span><span class="w">   </span><span class="k">End</span><span class="w">    </span><span class="k">Size</span><span class="w">   </span><span class="n">Type</span><span class="w">     </span><span class="k">File</span><span class="w"> </span><span class="k">system</span><span class="w">  </span><span class="n">Flags</span>
+<span class="w"> </span><span class="mi">1</span><span class="w">      </span><span class="mi">1049</span><span class="n">kB</span><span class="w">  </span><span class="mi">525</span><span class="n">MB</span><span class="w">  </span><span class="mi">524</span><span class="n">MB</span><span class="w">  </span><span class="k">primary</span><span class="w">  </span><span class="n">ext4</span><span class="w">         </span><span class="n">boot</span>
+<span class="w"> </span><span class="mi">2</span><span class="w">      </span><span class="mi">525</span><span class="n">MB</span><span class="w">   </span><span class="mi">512</span><span class="n">GB</span><span class="w">  </span><span class="mi">512</span><span class="n">GB</span><span class="w">  </span><span class="k">primary</span><span class="w">               </span><span class="n">lvm</span>
+</code></pre></div>
+
+<h4>2、打开存储设备</h4>
+<p>使用 <code>parted</code> 选中您要分区的设备。在这里例子中，是虚拟系统上的第三个磁盘（<code>/dev/vdc</code>）。指明你要使用哪一个设备非常重要。 如果你仅仅输入了 <code>parted</code> 命令而没有指定设备名字， 它会<strong>随机</strong>选择一个设备进行操作。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>parted<span class="w"> </span>/dev/vdc
+GNU<span class="w"> </span>Parted<span class="w"> </span><span class="m">3</span>.2
+Using<span class="w"> </span>/dev/vdc
+Welcome<span class="w"> </span>to<span class="w"> </span>GNU<span class="w"> </span>Parted!<span class="w"> </span>Type<span class="w"> </span><span class="s1">&#39;help&#39;</span><span class="w"> </span>to<span class="w"> </span>view<span class="w"> </span>a<span class="w"> </span>list<span class="w"> </span>of<span class="w"> </span>commands.
+<span class="o">(</span>parted<span class="o">)</span>
+</code></pre></div>
+
+<h4>3、 设定分区表</h4>
+<p>设置分区表为 GPT ，然后输入 <code>Yes</code> 开始执行。</p>
+<div class="highlight"><pre><span></span><code><span class="ss">(</span><span class="nv">parted</span><span class="ss">)</span><span class="w"> </span><span class="nv">mklabel</span><span class="w"> </span><span class="nv">gpt</span><span class="w"> </span>
+<span class="nv">Warning</span>:<span class="w"> </span><span class="nv">the</span><span class="w"> </span><span class="nv">existing</span><span class="w"> </span><span class="nv">disk</span><span class="w"> </span><span class="nv">label</span><span class="w"> </span><span class="nv">on</span><span class="w"> </span><span class="o">/</span><span class="nv">dev</span><span class="o">/</span><span class="nv">vdc</span><span class="w"> </span><span class="nv">will</span><span class="w"> </span><span class="nv">be</span><span class="w"> </span><span class="nv">destroyed</span><span class="w"> </span>
+<span class="nv">and</span><span class="w"> </span><span class="nv">all</span><span class="w"> </span><span class="nv">data</span><span class="w"> </span><span class="nv">on</span><span class="w"> </span><span class="nv">this</span><span class="w"> </span><span class="nv">disk</span><span class="w"> </span><span class="nv">will</span><span class="w"> </span><span class="nv">be</span><span class="w"> </span><span class="nv">lost</span>.<span class="w"> </span><span class="k">Do</span><span class="w"> </span><span class="nv">you</span><span class="w"> </span><span class="nv">want</span><span class="w"> </span><span class="nv">to</span><span class="w"> </span><span class="k">continue</span>?<span class="w"> </span>
+<span class="nv">Yes</span><span class="o">/</span><span class="nv">No</span>?<span class="w"> </span><span class="nv">Yes</span>
+</code></pre></div>
+
+<p><code>mklabel</code> 和 <code>mktable</code> 命令用于相同的目的（在存储设备上创建分区表）。支持的分区表有：aix、amiga、bsd、dvh、gpt、mac、ms-dos、pc98、sun 和 loop。记住 <code>mklabel</code> 不会创建一个分区，而是创建一个分区表。</p>
+<h4>4、 检查分区表</h4>
+<p>查看存储设备信息:</p>
+<div class="highlight"><pre><span></span><code><span class="ss">(</span><span class="nv">parted</span><span class="ss">)</span><span class="w"> </span><span class="nv">print</span><span class="w"> </span>
+<span class="nv">Model</span>:<span class="w"> </span><span class="nv">Virtio</span><span class="w"> </span><span class="nv">Block</span><span class="w"> </span><span class="nv">Device</span><span class="w"> </span><span class="ss">(</span><span class="nv">virtblk</span><span class="ss">)</span><span class="w"> </span>
+<span class="nv">Disk</span><span class="w"> </span><span class="o">/</span><span class="nv">dev</span><span class="o">/</span><span class="nv">vdc</span>:<span class="w"> </span><span class="mi">1396</span><span class="nv">MB</span><span class="w"> </span>
+<span class="nv">Sector</span><span class="w"> </span><span class="nv">size</span><span class="w"> </span><span class="ss">(</span><span class="nv">logical</span><span class="o">/</span><span class="nv">physical</span><span class="ss">)</span>:<span class="w"> </span><span class="mi">512</span><span class="nv">B</span><span class="o">/</span><span class="mi">512</span><span class="nv">B</span><span class="w"> </span>
+<span class="nv">Partition</span><span class="w"> </span><span class="nv">Table</span>:<span class="w"> </span><span class="nv">gpt</span><span class="w"> </span>
+<span class="nv">Disk</span><span class="w"> </span><span class="nv">Flags</span>:<span class="w"> </span>
+<span class="nv">Number</span><span class="w"> </span><span class="nv">Start</span><span class="w"> </span><span class="k">End</span><span class="w"> </span><span class="nv">Size</span><span class="w"> </span><span class="nv">File</span><span class="w"> </span><span class="nv">system</span><span class="w"> </span><span class="nv">Name</span><span class="w"> </span><span class="nv">Flags</span>
+</code></pre></div>
+
+<h4>5、 获取帮助</h4>
+<p>为了知道如何去创建一个新分区，输入： <code>(parted) help mkpart</code> 。</p>
+<div class="highlight"><pre><span></span><code><span class="p">(</span><span class="n">parted</span><span class="p">)</span> <span class="n">help</span> <span class="n">mkpart</span> 
+  <span class="n">mkpart</span> <span class="n">PART</span><span class="o">-</span><span class="kr">TYPE</span> <span class="p">[</span><span class="n">FS</span><span class="o">-</span><span class="kr">TYPE</span><span class="p">]</span> <span class="n">START</span> <span class="kr">END</span>     <span class="n">make</span> <span class="n">a</span> <span class="n">partition</span>
+
+        <span class="n">PART</span><span class="o">-</span><span class="kr">TYPE</span> <span class="n">is</span> <span class="n">one</span> <span class="n">of</span><span class="p">:</span> <span class="n">primary</span><span class="p">,</span> <span class="n">logical</span><span class="p">,</span> <span class="n">extended</span>
+        <span class="n">FS</span><span class="o">-</span><span class="kr">TYPE</span> <span class="n">is</span> <span class="n">one</span> <span class="n">of</span><span class="p">:</span> <span class="n">btrfs</span><span class="p">,</span> <span class="n">nilfs2</span><span class="p">,</span> <span class="n">ext4</span><span class="p">,</span> <span class="n">ext3</span><span class="p">,</span> <span class="n">ext2</span><span class="p">,</span> <span class="n">fat32</span><span class="p">,</span> <span class="n">fat16</span><span class="p">,</span> <span class="n">hfsx</span><span class="p">,</span> <span class="n">hfs</span><span class="o">+</span><span class="p">,</span> <span class="n">hfs</span><span class="p">,</span> <span class="n">jfs</span><span class="p">,</span> <span class="n">swsusp</span><span class="p">,</span>
+        <span class="n">linux</span><span class="o">-</span><span class="n">swap</span><span class="p">(</span><span class="n">v1</span><span class="p">),</span> <span class="n">linux</span><span class="o">-</span><span class="n">swap</span><span class="p">(</span><span class="n">v0</span><span class="p">),</span> <span class="n">ntfs</span><span class="p">,</span> <span class="n">reiserfs</span><span class="p">,</span> <span class="n">hp</span><span class="o">-</span><span class="n">ufs</span><span class="p">,</span> <span class="n">sun</span><span class="o">-</span><span class="n">ufs</span><span class="p">,</span> <span class="n">xfs</span><span class="p">,</span> <span class="n">apfs2</span><span class="p">,</span> <span class="n">apfs1</span><span class="p">,</span> <span class="n">asfs</span><span class="p">,</span> <span class="n">amufs5</span><span class="p">,</span>
+        <span class="n">amufs4</span><span class="p">,</span> <span class="n">amufs3</span><span class="p">,</span> <span class="n">amufs2</span><span class="p">,</span> <span class="n">amufs1</span><span class="p">,</span> <span class="n">amufs0</span><span class="p">,</span> <span class="n">amufs</span><span class="p">,</span> <span class="n">affs7</span><span class="p">,</span> <span class="n">affs6</span><span class="p">,</span> <span class="n">affs5</span><span class="p">,</span> <span class="n">affs4</span><span class="p">,</span> <span class="n">affs3</span><span class="p">,</span> <span class="n">affs2</span><span class="p">,</span> <span class="n">affs1</span><span class="p">,</span>
+        <span class="n">affs0</span><span class="p">,</span> <span class="n">linux</span><span class="o">-</span><span class="n">swap</span><span class="p">,</span> <span class="n">linux</span><span class="o">-</span><span class="n">swap</span><span class="p">(</span><span class="n">new</span><span class="p">),</span> <span class="n">linux</span><span class="o">-</span><span class="n">swap</span><span class="p">(</span><span class="n">old</span><span class="p">)</span>
+        <span class="n">START</span> <span class="n">and</span> <span class="kr">END</span> <span class="n">are</span> <span class="n">disk</span> <span class="n">locations</span><span class="p">,</span> <span class="n">such</span> <span class="n">as</span> <span class="mi">4</span><span class="n">GB</span> <span class="n">or</span> <span class="mi">10</span><span class="err">%</span><span class="p">.</span>  <span class="n">Negative</span> <span class="n">values</span> <span class="n">count</span> <span class="n">from</span> <span class="n">the</span> <span class="n">end</span> <span class="n">of</span> <span class="n">the</span>
+        <span class="n">disk</span><span class="p">.</span>  <span class="n">For</span> <span class="n">example</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="n">s</span> <span class="n">specifies</span> <span class="n">exactly</span> <span class="n">the</span> <span class="n">last</span> <span class="n">sector</span><span class="p">.</span>
+
+        <span class="s">&#39;mkpart&#39;</span> <span class="n">makes</span> <span class="n">a</span> <span class="n">partition</span> <span class="n">without</span> <span class="n">creating</span> <span class="n">a</span> <span class="n">new</span> <span class="n">file</span> <span class="n">system</span> <span class="n">on</span> <span class="n">the</span> <span class="n">partition</span><span class="p">.</span>  <span class="n">FS</span><span class="o">-</span><span class="kr">TYPE</span> <span class="n">may</span> <span class="n">be</span>
+        <span class="n">specified</span> <span class="n">to</span> <span class="n">set</span> <span class="n">an</span> <span class="n">appropriate</span> <span class="n">partition</span> <span class="n">ID</span><span class="p">.</span>
+</code></pre></div>
+
+<h4>6、 创建分区</h4>
+<p>为了创建一个新分区（在这个例子中，分区 0 有 1396MB），输入下面的命令：</p>
+<div class="highlight"><pre><span></span><code><span class="ss">(</span><span class="nv">parted</span><span class="ss">)</span><span class="w"> </span><span class="nv">mkpart</span><span class="w"> </span><span class="nv">primary</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="mi">1396</span><span class="nv">MB</span><span class="w"> </span>
+
+<span class="nv">Warning</span>:<span class="w"> </span><span class="nv">The</span><span class="w"> </span><span class="nv">resulting</span><span class="w"> </span><span class="nv">partition</span><span class="w"> </span><span class="nv">is</span><span class="w"> </span><span class="nv">not</span><span class="w"> </span><span class="nv">properly</span><span class="w"> </span><span class="nv">aligned</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nv">best</span><span class="w"> </span><span class="nv">performance</span><span class="w"> </span>
+<span class="nv">Ignore</span><span class="o">/</span><span class="nv">Cancel</span>?<span class="w"> </span><span class="nv">I</span><span class="w"> </span>
+
+<span class="ss">(</span><span class="nv">parted</span><span class="ss">)</span><span class="w"> </span><span class="nv">print</span><span class="w"> </span>
+<span class="nv">Model</span>:<span class="w"> </span><span class="nv">Virtio</span><span class="w"> </span><span class="nv">Block</span><span class="w"> </span><span class="nv">Device</span><span class="w"> </span><span class="ss">(</span><span class="nv">virtblk</span><span class="ss">)</span><span class="w"> </span>
+<span class="nv">Disk</span><span class="w"> </span><span class="o">/</span><span class="nv">dev</span><span class="o">/</span><span class="nv">vdc</span>:<span class="w"> </span><span class="mi">1396</span><span class="nv">MB</span><span class="w"> </span>
+<span class="nv">Sector</span><span class="w"> </span><span class="nv">size</span><span class="w"> </span><span class="ss">(</span><span class="nv">logical</span><span class="o">/</span><span class="nv">physical</span><span class="ss">)</span>:<span class="w"> </span><span class="mi">512</span><span class="nv">B</span><span class="o">/</span><span class="mi">512</span><span class="nv">B</span><span class="w"> </span>
+<span class="nv">Partition</span><span class="w"> </span><span class="nv">Table</span>:<span class="w"> </span><span class="nv">gpt</span><span class="w"> </span>
+<span class="nv">Disk</span><span class="w"> </span><span class="nv">Flags</span>:<span class="w"> </span>
+<span class="nv">Number</span><span class="w"> </span><span class="nv">Start</span><span class="w">   </span><span class="k">End</span><span class="w">     </span><span class="nv">Size</span><span class="w">    </span><span class="nv">File</span><span class="w"> </span><span class="nv">system</span><span class="w"> </span><span class="nv">Name</span><span class="w"> </span><span class="nv">Flags</span><span class="w"> </span>
+<span class="mi">1</span><span class="w">      </span><span class="mi">17</span>.<span class="mi">4</span><span class="nv">kB</span><span class="w">  </span><span class="mi">1396</span><span class="nv">MB</span><span class="w">  </span><span class="mi">1396</span><span class="nv">MB</span><span class="w">  </span><span class="nv">primary</span>
+</code></pre></div>
+
+<p>文件系统类型（<code>fstype</code>）并不是在 <code>/dev/vdc1</code>上创建 ext4 文件系统。 DOS 分区表的分区类型是<ruby> 主分区 <rt>  primary </rt></ruby>、<ruby> 逻辑分区 <rt>  logical </rt></ruby>和<ruby> 扩展分区 <rt>  extended </rt></ruby>。 在 GPT 分区表中，分区类型用作分区名称。 在 GPT 下必须提供分区名称；在上例中，<code>primary</code> 是分区名称，而不是分区类型。</p>
+<h4>7、 保存退出</h4>
+<p>当你退出 <code>parted</code> 时，修改会自动保存。退出请输入如下命令：</p>
+<div class="highlight"><pre><span></span><code><span class="p">(</span><span class="nv">parted</span><span class="p">)</span><span class="w"> </span><span class="nv">quit</span>
+<span class="nv">Information</span><span class="o">:</span><span class="w"> </span><span class="nv">You</span><span class="w"> </span><span class="nv">may</span><span class="w"> </span><span class="nv">need</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="nv">update</span><span class="w"> </span><span class="o">/</span><span class="nv">etc</span><span class="o">/</span><span class="nv">fstab</span><span class="o">.</span>
+<span class="p">$</span>
+</code></pre></div>
+
+<h3>谨记</h3>
+<p>当您添加新的存储设备时，请确保在开始更改其分区表之前确定正确的磁盘。如果您错误地更改了包含计算机操作系统的磁盘分区，会使您的系统无法启动。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

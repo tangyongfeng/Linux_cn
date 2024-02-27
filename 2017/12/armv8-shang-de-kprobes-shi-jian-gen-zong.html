@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>ARMv8 上的 kprobes 事件跟踪</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: David Long 介绍 kprobes 是一种内核功能，它允许通过在执行（或模拟）断点指令之前和之后，设置调用开发者提供例程的任意断点来 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/12/armv8-shang-de-kprobes-shi-jian-gen-zong.html" rel="bookmark"
+           title="Permalink to ARMv8 上的 kprobes 事件跟踪">ARMv8 上的 kprobes 事件跟踪</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-12-01T20:04:23+01:00">
+                Published: Fri 01 December 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: David Long</p>
+<p><img alt="" src="/data/attachment/album/201712/01/200415tacytrrorw9t2yb9.jpg"></p>
+<h3>介绍</h3>
+<p>kprobes 是一种内核功能，它允许通过在执行（或模拟）断点指令之前和之后，设置调用开发者提供例程的任意断点来检测内核。可参见 kprobes 文档<sup> 注1</sup> 获取更多信息。基本的 kprobes 功能可使用 <code>CONFIG_KPROBEES</code> 来选择。在 arm64 的 v4.8 内核发行版中， kprobes 支持被添加到主线。</p>
+<p>在这篇文章中，我们将介绍 kprobes 在 arm64 上的使用，通过在命令行中使用 debugfs 事件追踪接口来收集动态追踪事件。这个功能在一些架构（包括 arm32）上可用已经有段时间，现在在 arm64 上也能使用了。这个功能可以无需编写任何代码就能使用 kprobes。</p>
+<h3>探针类型</h3>
+<p>kprobes 子系统提供了三种不同类型的动态探针，如下所述。</p>
+<h4>kprobes</h4>
+<p>基本探针是 kprobes 插入的一个软件断点，用以替代你正在探测的指令，当探测点被命中时，它为最终的单步执行（或模拟）保存下原始指令。</p>
+<h4>kretprobes</h4>
+<p>kretprobes 是 kprobes 的一部分，它允许拦截返回函数，而不必在返回点设置一个探针（或者可能有多个探针）。对于支持的架构（包括 ARMv8），只要选择 kprobes，就可以选择此功能。</p>
+<h4>jprobes</h4>
+<p>jprobes 允许通过提供一个具有相同<ruby> 调用签名 <rt>  call signature </rt></ruby>的中间函数来拦截对一个函数的调用，这里中间函数将被首先调用。jprobes 只是一个编程接口，它不能通过 debugfs 事件追踪子系统来使用。因此，我们将不会在这里进一步讨论 jprobes。如果你想使用 jprobes，请参考 kprobes 文档。</p>
+<h3>调用 kprobes</h3>
+<p>kprobes 提供一系列能从内核代码中调用的 API 来设置探测点和当探测点被命中时调用的注册函数。在不往内核中添加代码的情况下，kprobes 也是可用的，这是通过写入特定事件追踪的 debugfs 文件来实现的，需要在文件中设置探针地址和信息，以便在探针被命中时记录到追踪日志中。后者是本文将要讨论的重点。最后 kprobes 可以通过 perl 命令来使用。</p>
+<h4>kprobes API</h4>
+<p>内核开发人员可以在内核中编写函数(通常在专用的调试模块中完成）来设置探测点，并且在探测指令执行前和执行后立即执行任何所需操作。这在 kprobes.txt 中有很好的解释。</p>
+<h4>事件追踪</h4>
+<p>事件追踪子系统有自己的自己的文档<sup> 注2</sup> ，对于了解一般追踪事件的背景可能值得一读。事件追踪子系统是<ruby> 追踪点 <rt>  tracepoints </rt></ruby>和 kprobes 事件追踪的基础。事件追踪文档重点关注追踪点，所以请在查阅文档时记住这一点。kprobes 与追踪点不同的是没有预定义的追踪点列表，而是采用动态创建的用于触发追踪事件信息收集的任意探测点。事件追踪子系统通过一系列 debugfs 文件来控制和监视。事件追踪（<code>CONFIG_EVENT_TRACING</code>）将在被如 kprobe 事件追踪子系统等需要时自动选择。</p>
+<h5>kprobes 事件</h5>
+<p>使用 kprobes 事件追踪子系统，用户可以在内核任意断点处指定要报告的信息，只需要指定任意现有可探测指令的地址以及格式化信息即可确定。在执行过程中遇到断点时，kprobes 将所请求的信息传递给事件追踪子系统的公共部分，这些部分将数据格式化并追加到追踪日志中，就像追踪点的工作方式一样。kprobes 使用一个类似的但是大部分是独立的 debugfs 文件来控制和显示追踪事件信息。该功能可使用 <code>CONFIG_KPROBE_EVENT</code> 来选择。Kprobetrace 文档^ 注3 提供了如何使用 kprobes 事件追踪的基本信息，并且应当被参考用以了解以下介绍示例的详细信息。</p>
+<h4>kprobes 和 perf</h4>
+<p>perf 工具为 kprobes 提供了另一个命令行接口。特别地，<code>perf probe</code> 允许探测点除了由函数名加偏移量和地址指定外，还可由源文件和行号指定。perf 接口实际上是使用 kprobes 的 debugfs 接口的封装器。</p>
+<h3>Arm64 kprobes</h3>
+<p>上述所有 kprobes 的方面现在都在 arm64 上得到实现，然而实际上与其它架构上的有一些不同：</p>
+<ul>
+<li>注册名称参数当然是依架构而特定的，并且可以在 ARM ARM 中找到。</li>
+<li>目前不是所有的指令类型都可被探测。当前不可探测的指令包括 mrs/msr（除了 DAIF 读取）、异常生成指令、eret 和 hint（除了 nop 变体）。在这些情况下，只探测一个附近的指令来代替是最简单的。这些指令在探测的黑名单里是因为在 kprobes 单步执行或者指令模拟时它们对处理器状态造成的改变是不安全的，这是由于 kprobes 构造的单步执行上下文和指令所需要的不一致，或者是由于指令不能容忍在 kprobes 中额外的处理时间和异常处理（ldx/stx）。</li>
+<li>试图识别在 ldx/stx 序列中的指令并且防止探测，但是理论上这种检查可能会失败，导致允许探测到的原子序列永远不会成功。当探测原子代码序列附近时应该小心。</li>
+<li>注意由于 linux ARM64 调用约定的具体信息，为探测函数可靠地复制栈帧是不可能的，基于此不要试图用 jprobes 这样做，这一点与支持 jprobes 的大多数其它架构不同。这样的原因是被调用者没有足够的信息来确定需要的栈数量。</li>
+<li>注意当探针被命中时，一个探针记录的栈指针信息将反映出使用中的特定栈指针，它是内核栈指针或者中断栈指针。</li>
+<li>有一组内核函数是不能被探测的，通常因为它们作为 kprobes 处理的一部分被调用。这组函数的一部分是依架构特定的，并且也包含如异常入口代码等。</li>
+</ul>
+<h3>使用 kprobes 事件追踪</h3>
+<p>kprobes 的一个常用例子是检测函数入口和/或出口。因为只需要使用函数名来作为探针地址，它安装探针特别简单。kprobes 事件追踪将查看符号名称并且确定地址。ARMv8 调用标准定义了函数参数和返回值的位置，并且这些可以作为 kprobes 事件处理的一部分被打印出来。</p>
+<h4>例子: 函数入口探测</h4>
+<p>检测 USB 以太网驱动程序复位功能：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">pwd</span>
+/sys/kernel/debug/tracing
+$<span class="w"> </span>cat<span class="w"> </span>&gt;<span class="w"> </span>kprobe_events<span class="w"> </span><span class="s">&lt;&lt;EOF</span>
+<span class="s">p ax88772_reset %x0</span>
+<span class="s">EOF</span>
+$<span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="m">1</span><span class="w"> </span>&gt;<span class="w"> </span>events/kprobes/enable
+</code></pre></div>
+
+<p>此时每次该驱动的 <code>ax8872_reset()</code> 函数被调用，追踪事件都将会被记录。这个事件将显示指向通过作为此函数的唯一参数的 <code>X0</code>（按照 ARMv8 调用标准）传入的 <code>usbnet</code> 结构的指针。插入需要以太网驱动程序的 USB 加密狗后，我们看见以下追踪信息：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cat<span class="w"> </span>trace
+<span class="c1"># tracer: nop</span>
+<span class="c1">#</span>
+<span class="c1"># entries-in-buffer/entries-written: 1/1   #P:8</span>
+<span class="c1">#</span>
+<span class="c1">#                           _—–=&gt; irqs-off</span>
+<span class="c1">#                          / _—-=&gt; need-resched</span>
+<span class="c1">#                         | / _—=&gt; hardirq/softirq</span>
+<span class="c1">#                         || / _–=&gt; preempt-depth</span>
+<span class="c1">#                         ||| / delay</span>
+<span class="c1">#        TASK-PID   CPU#  |||| TIMESTAMP  FUNCTION</span>
+<span class="c1">#           | |    |   ||||    |      |</span>
+kworker/0:0-4<span class="w">             </span><span class="o">[</span><span class="m">000</span><span class="o">]</span><span class="w"> </span>d…<span class="w"> </span><span class="m">10972</span>.102939:<span class="w">   </span>p_ax88772_reset_0:
+<span class="o">(</span>ax88772_reset+0x0/0x230<span class="o">)</span><span class="w">   </span><span class="nv">arg1</span><span class="o">=</span>0xffff800064824c80
+</code></pre></div>
+
+<p>这里我们可以看见传入到我们的探测函数的指针参数的值。由于我们没有使用 kprobes 事件追踪的可选标签功能，我们需要的信息自动被标注为 <code>arg1</code>。注意这指向我们需要 kprobes 记录这个探针的一组值的第一个，而不是函数参数的实际位置。在这个例子中它也只是碰巧是我们探测函数的第一个参数。</p>
+<h4>例子: 函数入口和返回探测</h4>
+<p>kretprobe 功能专门用于探测函数返回。在函数入口 kprobes 子系统将会被调用并且建立钩子以便在函数返回时调用，钩子将记录需求事件信息。对最常见情况，返回信息通常在 <code>X0</code> 寄存器中，这是非常有用的。在 <code>%x0</code> 中返回值也可以被称为 <code>$retval</code>。以下例子也演示了如何提供一个可读的标签来展示有趣的信息。</p>
+<p>使用 kprobes 和 kretprobe 检测内核 <code>do_fork()</code> 函数来记录参数和结果的例子：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>/sys/kernel/debug/tracing
+$<span class="w"> </span>cat<span class="w"> </span>&gt;<span class="w"> </span>kprobe_events<span class="w"> </span><span class="s">&lt;&lt;EOF</span>
+<span class="s">p _do_fork %x0 %x1 %x2 %x3 %x4 %x5</span>
+<span class="s">r _do_fork pid=%x0</span>
+<span class="s">EOF</span>
+$<span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="m">1</span><span class="w"> </span>&gt;<span class="w"> </span>events/kprobes/enable
+</code></pre></div>
+
+<p>此时每次对 <code>_do_fork()</code> 的调用都会产生两个记录到 trace 文件的 kprobe 事件，一个报告调用参数值，另一个报告返回值。返回值在 trace 文件中将被标记为 <code>pid</code>。这里是三次 fork 系统调用执行后的 trace 文件的内容：</p>
+<div class="highlight"><pre><span></span><code>_<span class="o">$</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="n">trace</span>
+<span class="c1"># tracer: nop</span>
+<span class="c1">#</span>
+<span class="c1"># entries-in-buffer/entries-written: 6/6   #P:8</span>
+<span class="c1">#</span>
+<span class="c1">#                              _—–=&gt; irqs-off</span>
+<span class="c1">#                             / _—-=&gt; need-resched</span>
+<span class="c1">#                            | / _—=&gt; hardirq/softirq</span>
+<span class="c1">#                            || / _–=&gt; preempt-depth</span>
+<span class="c1">#                            ||| /     delay</span>
+<span class="c1">#           TASK-PID   CPU#  ||||    TIMESTAMP  FUNCTION</span>
+<span class="c1">#              | |       |   ||||       |         |</span>
+<span class="w">              </span><span class="n">bash</span><span class="m">-1671</span><span class="w">  </span><span class="p">[</span><span class="m">001</span><span class="p">]</span><span class="w"> </span><span class="n">d</span>…<span class="w">   </span><span class="m">204.946007</span><span class="o">:</span><span class="w"> </span><span class="n">p__do_fork_0</span><span class="o">:</span><span class="w"> </span><span class="p">(</span>_<span class="n">do_fork</span><span class="m">+0</span><span class="n">x0</span><span class="o">/</span><span class="mh">0x3e4</span><span class="p">)</span><span class="w"> </span><span class="n">arg1</span><span class="o">=</span><span class="mh">0x1200011</span><span class="w"> </span><span class="n">arg2</span><span class="o">=</span><span class="mh">0x0</span><span class="w"> </span><span class="n">arg3</span><span class="o">=</span><span class="mh">0x0</span><span class="w"> </span><span class="n">arg4</span><span class="o">=</span><span class="mh">0x0</span><span class="w"> </span><span class="n">arg5</span><span class="o">=</span><span class="mh">0xffff78b690d0</span><span class="w"> </span><span class="n">arg6</span><span class="o">=</span><span class="mh">0x0</span>
+<span class="w">              </span><span class="n">bash</span><span class="m">-1671</span><span class="w">  </span><span class="p">[</span><span class="m">001</span><span class="p">]</span><span class="w"> </span><span class="n">d..1</span><span class="w">   </span><span class="m">204.946391</span><span class="o">:</span><span class="w"> </span><span class="n">r__do_fork_0</span><span class="o">:</span><span class="w"> </span><span class="p">(</span><span class="n">SyS_clone</span><span class="m">+0</span><span class="n">x18</span><span class="o">/</span><span class="mh">0x20</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span>_<span class="n">do_fork</span><span class="p">)</span><span class="w"> </span><span class="n">pid</span><span class="o">=</span><span class="mh">0x724</span>
+<span class="w">              </span><span class="n">bash</span><span class="m">-1671</span><span class="w">  </span><span class="p">[</span><span class="m">001</span><span class="p">]</span><span class="w"> </span><span class="n">d</span>…<span class="w">   </span><span class="m">208.845749</span><span class="o">:</span><span class="w"> </span><span class="n">p__do_fork_0</span><span class="o">:</span><span class="w"> </span><span class="p">(</span>_<span class="n">do_fork</span><span class="m">+0</span><span class="n">x0</span><span class="o">/</span><span class="mh">0x3e4</span><span class="p">)</span><span class="w"> </span><span class="n">arg1</span><span class="o">=</span><span class="mh">0x1200011</span><span class="w"> </span><span class="n">arg2</span><span class="o">=</span><span class="mh">0x0</span><span class="w"> </span><span class="n">arg3</span><span class="o">=</span><span class="mh">0x0</span><span class="w"> </span><span class="n">arg4</span><span class="o">=</span><span class="mh">0x0</span><span class="w"> </span><span class="n">arg5</span><span class="o">=</span><span class="mh">0xffff78b690d0</span><span class="w"> </span><span class="n">arg6</span><span class="o">=</span><span class="mh">0x0</span>
+<span class="w">              </span><span class="n">bash</span><span class="m">-1671</span><span class="w">  </span><span class="p">[</span><span class="m">001</span><span class="p">]</span><span class="w"> </span><span class="n">d..1</span><span class="w">   </span><span class="m">208.846127</span><span class="o">:</span><span class="w"> </span><span class="n">r__do_fork_0</span><span class="o">:</span><span class="w"> </span><span class="p">(</span><span class="n">SyS_clone</span><span class="m">+0</span><span class="n">x18</span><span class="o">/</span><span class="mh">0x20</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span>_<span class="n">do_fork</span><span class="p">)</span><span class="w"> </span><span class="n">pid</span><span class="o">=</span><span class="mh">0x725</span>
+<span class="w">              </span><span class="n">bash</span><span class="m">-1671</span><span class="w">  </span><span class="p">[</span><span class="m">001</span><span class="p">]</span><span class="w"> </span><span class="n">d</span>…<span class="w">   </span><span class="m">214.401604</span><span class="o">:</span><span class="w"> </span><span class="n">p__do_fork_0</span><span class="o">:</span><span class="w"> </span><span class="p">(</span>_<span class="n">do_fork</span><span class="m">+0</span><span class="n">x0</span><span class="o">/</span><span class="mh">0x3e4</span><span class="p">)</span><span class="w"> </span><span class="n">arg1</span><span class="o">=</span><span class="mh">0x1200011</span><span class="w"> </span><span class="n">arg2</span><span class="o">=</span><span class="mh">0x0</span><span class="w"> </span><span class="n">arg3</span><span class="o">=</span><span class="mh">0x0</span><span class="w"> </span><span class="n">arg4</span><span class="o">=</span><span class="mh">0x0</span><span class="w"> </span><span class="n">arg5</span><span class="o">=</span><span class="mh">0xffff78b690d0</span><span class="w"> </span><span class="n">arg6</span><span class="o">=</span><span class="mh">0x0</span>
+<span class="w">              </span><span class="n">bash</span><span class="m">-1671</span><span class="w">  </span><span class="p">[</span><span class="m">001</span><span class="p">]</span><span class="w"> </span><span class="n">d..1</span><span class="w">   </span><span class="m">214.401975</span><span class="o">:</span><span class="w"> </span><span class="n">r__do_fork_0</span><span class="o">:</span><span class="w"> </span><span class="p">(</span><span class="n">SyS_clone</span><span class="m">+0</span><span class="n">x18</span><span class="o">/</span><span class="mh">0x20</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span>_<span class="n">do_fork</span><span class="p">)</span><span class="w"> </span><span class="n">pid</span><span class="o">=</span><span class="mh">0x726</span>_
+</code></pre></div>
+
+<h4>例子： 解引用指针参数</h4>
+<p>对于指针值，kprobes 事件处理子系统也允许解引用和打印所需的内存内容，适用于各种基本数据类型。为了展示所需字段，手动计算结构的偏移量是必要的。</p>
+<p>检测 <code>_do_wait()</code> 函数：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cat<span class="w"> </span>&gt;<span class="w"> </span>kprobe_events<span class="w"> </span><span class="s">&lt;&lt;EOF</span>
+<span class="s">p:wait_p do_wait wo_type=+0(%x0):u32 wo_flags=+4(%x0):u32</span>
+<span class="s">r:wait_r do_wait $retval</span>
+<span class="s">EOF</span>
+$<span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="m">1</span><span class="w"> </span>&gt;<span class="w"> </span>events/kprobes/enable
+</code></pre></div>
+
+<p>注意在第一个探针中使用的参数标签是可选的，并且可用于更清晰地识别记录在追踪日志中的信息。带符号的偏移量和括号表明了寄存器参数是指向记录在追踪日志中的内存内容的指针。<code>:u32</code> 表明了内存位置包含一个无符号的 4 字节宽的数据（在这个例子中指局部定义的结构中的一个 emum 和一个 int）。</p>
+<p>探针标签（冒号后）是可选的，并且将用来识别日志中的探针。对每个探针来说标签必须是独一无二的。如果没有指定，将从附近的符号名称自动生成一个有用的标签，如前面的例子所示。</p>
+<p>也要注意 <code>$retval</code> 参数可以只是指定为 <code>%x0</code>。</p>
+<p>这里是两次 fork 系统调用执行后的 trace 文件的内容：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cat<span class="w"> </span>trace
+<span class="c1"># tracer: nop</span>
+<span class="c1">#</span>
+<span class="c1"># entries-in-buffer/entries-written: 4/4   #P:8</span>
+<span class="c1">#</span>
+<span class="c1">#                              _—–=&gt; irqs-off</span>
+<span class="c1">#                             / _—-=&gt; need-resched</span>
+<span class="c1">#                            | / _—=&gt; hardirq/softirq</span>
+<span class="c1">#                            || / _–=&gt; preempt-depth</span>
+<span class="c1">#                            ||| /     delay</span>
+<span class="c1">#           TASK-PID   CPU#  ||||    TIMESTAMP  FUNCTION</span>
+<span class="c1">#              | |       |   ||||       |         |</span>
+<span class="w">             </span>bash-1702<span class="w">  </span><span class="o">[</span><span class="m">001</span><span class="o">]</span><span class="w"> </span>d…<span class="w">   </span><span class="m">175</span>.342074:<span class="w"> </span>wait_p:<span class="w"> </span><span class="o">(</span>do_wait+0x0/0x260<span class="o">)</span><span class="w"> </span><span class="nv">wo_type</span><span class="o">=</span>0x3<span class="w"> </span><span class="nv">wo_flags</span><span class="o">=</span>0xe
+<span class="w">             </span>bash-1702<span class="w">  </span><span class="o">[</span><span class="m">002</span><span class="o">]</span><span class="w"> </span>d..1<span class="w">   </span><span class="m">175</span>.347236:<span class="w"> </span>wait_r:<span class="w"> </span><span class="o">(</span>SyS_wait4+0x74/0xe4<span class="w"> </span>&lt;-<span class="w"> </span>do_wait<span class="o">)</span><span class="w"> </span><span class="nv">arg1</span><span class="o">=</span>0x757
+<span class="w">             </span>bash-1702<span class="w">  </span><span class="o">[</span><span class="m">002</span><span class="o">]</span><span class="w"> </span>d…<span class="w">   </span><span class="m">175</span>.347337:<span class="w"> </span>wait_p:<span class="w"> </span><span class="o">(</span>do_wait+0x0/0x260<span class="o">)</span><span class="w"> </span><span class="nv">wo_type</span><span class="o">=</span>0x3<span class="w"> </span><span class="nv">wo_flags</span><span class="o">=</span>0xf
+<span class="w">             </span>bash-1702<span class="w">  </span><span class="o">[</span><span class="m">002</span><span class="o">]</span><span class="w"> </span>d..1<span class="w">   </span><span class="m">175</span>.347349:<span class="w"> </span>wait_r:<span class="w"> </span><span class="o">(</span>SyS_wait4+0x74/0xe4<span class="w"> </span>&lt;-<span class="w"> </span>do_wait<span class="o">)</span><span class="w"> </span><span class="nv">arg1</span><span class="o">=</span>0xfffffffffffffff6
+</code></pre></div>
+
+<h4>例子: 探测任意指令地址</h4>
+<p>在前面的例子中，我们已经为函数的入口和出口插入探针，然而探测一个任意指令（除少数例外）是可能的。如果我们正在 C 函数中放置一个探针，第一步是查看代码的汇编版本以确定我们要放置探针的位置。一种方法是在 vmlinux 文件上使用 gdb,并在要放置探针的函数中展示指令。下面是一个在 <code>arch/arm64/kernel/modules.c</code> 中 <code>module_alloc</code> 函数执行此操作的示例。在这种情况下，因为 gdb 似乎更喜欢使用弱符号定义，并且它是与这个函数关联的存根代码，所以我们从 System.map 中来获取符号值：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>grep<span class="w"> </span>module_alloc<span class="w"> </span>System.map
+ffff2000080951c4<span class="w"> </span>T<span class="w"> </span>module_alloc
+ffff200008297770<span class="w"> </span>T<span class="w"> </span>kasan_module_alloc
+</code></pre></div>
+
+<p>在这个例子中我们使用了交叉开发工具，并且在我们的主机系统上调用 gdb 来检查指令包含我们感兴趣函数。</p>
+<div class="highlight"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="err">${</span><span class="n">CROSS_COMPILE</span><span class="err">}</span><span class="n">gdb</span><span class="w"> </span><span class="n">vmlinux</span>
+<span class="p">(</span><span class="n">gdb</span><span class="p">)</span><span class="w"> </span><span class="n">x</span><span class="o">/</span><span class="mi">30</span><span class="n">i</span><span class="w"> </span><span class="mh">0xffff2000080951c4</span>
+<span class="w">        </span><span class="mh">0xffff2000080951c4</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="n">sub</span><span class="w">    </span><span class="n">sp</span><span class="p">,</span><span class="w"> </span><span class="n">sp</span><span class="p">,</span><span class="w"> </span><span class="n">#0x30</span>
+<span class="w">        </span><span class="mh">0xffff2000080951c8</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">4</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="n">adrp</span><span class="w">    </span><span class="n">x3</span><span class="p">,</span><span class="w"> </span><span class="mh">0xffff200008d70000</span>
+<span class="w">        </span><span class="mh">0xffff2000080951cc</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">8</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="k">add</span><span class="w">    </span><span class="n">x3</span><span class="p">,</span><span class="w"> </span><span class="n">x3</span><span class="p">,</span><span class="w"> </span><span class="n">#0x0</span>
+<span class="w">        </span><span class="mh">0xffff2000080951d0</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">12</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="n">mov</span><span class="w">    </span><span class="n">x5</span><span class="p">,</span><span class="w"> </span><span class="n">#0x713</span><span class="w">             </span><span class="o">//</span><span class="w"> </span><span class="n">#1811</span>
+<span class="w">        </span><span class="mh">0xffff2000080951d4</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">16</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="n">mov</span><span class="w">    </span><span class="n">w4</span><span class="p">,</span><span class="w"> </span><span class="n">#0xc0</span><span class="w">              </span><span class="o">//</span><span class="w"> </span><span class="n">#192</span>
+<span class="w">        </span><span class="mh">0xffff2000080951d8</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">20</span><span class="o">&gt;</span><span class="err">:</span>
+<span class="w">              </span><span class="n">mov</span><span class="w">    </span><span class="n">x2</span><span class="p">,</span><span class="w"> </span><span class="n">#0xfffffffff8000000</span><span class="w">    </span><span class="o">//</span><span class="w"> </span><span class="err">#</span><span class="o">-</span><span class="mi">134217728</span>
+<span class="w">        </span><span class="mh">0xffff2000080951dc</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">24</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="n">stp</span><span class="w">    </span><span class="n">x29</span><span class="p">,</span><span class="w"> </span><span class="n">x30</span><span class="p">,</span><span class="w"> </span><span class="o">[</span><span class="n">sp,#16</span><span class="o">]</span><span class="w">         </span><span class="mh">0xffff2000080951e0</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">28</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="k">add</span><span class="w">    </span><span class="n">x29</span><span class="p">,</span><span class="w"> </span><span class="n">sp</span><span class="p">,</span><span class="w"> </span><span class="n">#0x10</span>
+<span class="w">        </span><span class="mh">0xffff2000080951e4</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">32</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="n">movk</span><span class="w">    </span><span class="n">x5</span><span class="p">,</span><span class="w"> </span><span class="n">#0xc8</span><span class="p">,</span><span class="w"> </span><span class="n">lsl</span><span class="w"> </span><span class="n">#48</span>
+<span class="w">        </span><span class="mh">0xffff2000080951e8</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">36</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="n">movk</span><span class="w">    </span><span class="n">w4</span><span class="p">,</span><span class="w"> </span><span class="n">#0x240</span><span class="p">,</span><span class="w"> </span><span class="n">lsl</span><span class="w"> </span><span class="n">#16</span>
+<span class="w">        </span><span class="mh">0xffff2000080951ec</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">40</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="nf">str</span><span class="w">    </span><span class="n">x30</span><span class="p">,</span><span class="w"> </span><span class="o">[</span><span class="n">sp</span><span class="o">]</span><span class="w">         </span><span class="mh">0xffff2000080951f0</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">44</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="n">mov</span><span class="w">    </span><span class="n">w7</span><span class="p">,</span><span class="w"> </span><span class="n">#0xffffffff</span><span class="w">        </span><span class="o">//</span><span class="w"> </span><span class="err">#</span><span class="o">-</span><span class="mi">1</span>
+<span class="w">        </span><span class="mh">0xffff2000080951f4</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">48</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="n">mov</span><span class="w">    </span><span class="n">x6</span><span class="p">,</span><span class="w"> </span><span class="n">#0x0</span><span class="w">               </span><span class="o">//</span><span class="w"> </span><span class="n">#0</span>
+<span class="w">        </span><span class="mh">0xffff2000080951f8</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">52</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="k">add</span><span class="w">    </span><span class="n">x2</span><span class="p">,</span><span class="w"> </span><span class="n">x3</span><span class="p">,</span><span class="w"> </span><span class="n">x2</span>
+<span class="w">        </span><span class="mh">0xffff2000080951fc</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">56</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="n">mov</span><span class="w">    </span><span class="n">x1</span><span class="p">,</span><span class="w"> </span><span class="n">#0x8000</span><span class="w">            </span><span class="o">//</span><span class="w"> </span><span class="n">#32768</span>
+<span class="w">        </span><span class="mh">0xffff200008095200</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">60</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="n">stp</span><span class="w">    </span><span class="n">x19</span><span class="p">,</span><span class="w"> </span><span class="n">x20</span><span class="p">,</span><span class="w"> </span><span class="o">[</span><span class="n">sp,#32</span><span class="o">]</span><span class="w">         </span><span class="mh">0xffff200008095204</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">64</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="n">mov</span><span class="w">    </span><span class="n">x20</span><span class="p">,</span><span class="w"> </span><span class="n">x0</span>
+<span class="w">        </span><span class="mh">0xffff200008095208</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">68</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="n">bl</span><span class="w">    </span><span class="mh">0xffff2000082737a8</span><span class="w"> </span><span class="o">&lt;</span><span class="n">__vmalloc_node_range</span><span class="o">&gt;</span>
+<span class="w">        </span><span class="mh">0xffff20000809520c</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">72</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="n">mov</span><span class="w">    </span><span class="n">x19</span><span class="p">,</span><span class="w"> </span><span class="n">x0</span>
+<span class="w">        </span><span class="mh">0xffff200008095210</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">76</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="n">cbz</span><span class="w">    </span><span class="n">x0</span><span class="p">,</span><span class="w"> </span><span class="mh">0xffff200008095234</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">112</span><span class="o">&gt;</span>
+<span class="w">        </span><span class="mh">0xffff200008095214</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">80</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="n">mov</span><span class="w">    </span><span class="n">x1</span><span class="p">,</span><span class="w"> </span><span class="n">x20</span>
+<span class="w">        </span><span class="mh">0xffff200008095218</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">84</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="n">bl</span><span class="w">    </span><span class="mh">0xffff200008297770</span><span class="w"> </span><span class="o">&lt;</span><span class="n">kasan_module_alloc</span><span class="o">&gt;</span>
+<span class="w">        </span><span class="mh">0xffff20000809521c</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">88</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="n">tbnz</span><span class="w">    </span><span class="n">w0</span><span class="p">,</span><span class="w"> </span><span class="n">#31</span><span class="p">,</span><span class="w"> </span><span class="mh">0xffff20000809524c</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">136</span><span class="o">&gt;</span>
+<span class="w">        </span><span class="mh">0xffff200008095220</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">92</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="n">mov</span><span class="w">    </span><span class="n">sp</span><span class="p">,</span><span class="w"> </span><span class="n">x29</span>
+<span class="w">        </span><span class="mh">0xffff200008095224</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">96</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="n">mov</span><span class="w">    </span><span class="n">x0</span><span class="p">,</span><span class="w"> </span><span class="n">x19</span>
+<span class="w">        </span><span class="mh">0xffff200008095228</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">100</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="n">ldp</span><span class="w">    </span><span class="n">x19</span><span class="p">,</span><span class="w"> </span><span class="n">x20</span><span class="p">,</span><span class="w"> </span><span class="o">[</span><span class="n">sp,#16</span><span class="o">]</span><span class="w">         </span><span class="mh">0xffff20000809522c</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">104</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="n">ldp</span><span class="w">    </span><span class="n">x29</span><span class="p">,</span><span class="w"> </span><span class="n">x30</span><span class="p">,</span><span class="w"> </span><span class="o">[</span><span class="n">sp</span><span class="o">]</span><span class="p">,</span><span class="n">#32</span>
+<span class="w">        </span><span class="mh">0xffff200008095230</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">108</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="n">ret</span>
+<span class="w">        </span><span class="mh">0xffff200008095234</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">112</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="n">mov</span><span class="w">    </span><span class="n">sp</span><span class="p">,</span><span class="w"> </span><span class="n">x29</span>
+<span class="w">        </span><span class="mh">0xffff200008095238</span><span class="w"> </span><span class="o">&lt;</span><span class="n">module_alloc</span><span class="o">+</span><span class="mi">116</span><span class="o">&gt;</span><span class="err">:</span><span class="w">    </span><span class="n">mov</span><span class="w">    </span><span class="n">x19</span><span class="p">,</span><span class="w"> </span><span class="n">#0x0</span><span class="w">               </span><span class="o">//</span><span class="w"> </span><span class="n">#0</span>
+</code></pre></div>
+
+<p>在这种情况下，我们将在此函数中显示以下源代码行的结果：</p>
+<div class="highlight"><pre><span></span><code><span class="nx">p</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">__vmalloc_node_range</span><span class="p">(</span><span class="nx">size</span><span class="p">,</span><span class="w"> </span><span class="nx">MODULE_ALIGN</span><span class="p">,</span><span class="w"> </span><span class="nx">VMALLOC_START</span><span class="p">,</span>
+<span class="nx">VMALLOC_END</span><span class="p">,</span><span class="w"> </span><span class="nx">GFP_KERNEL</span><span class="p">,</span><span class="w"> </span><span class="nx">PAGE_KERNEL_EXEC</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="nx">NUMA_NO_NODE</span><span class="p">,</span><span class="w"> </span><span class="nx">__builtin_return_address</span><span class="p">(</span><span class="mi">0</span><span class="p">));</span>
+</code></pre></div>
+
+<p>……以及在此代码行的函数调用的返回值：</p>
+<div class="highlight"><pre><span></span><code>if (p &amp;&amp; (kasan_module_alloc(p, size) &lt; 0)) {
+</code></pre></div>
+
+<p>我们可以在从调用外部函数的汇编代码中识别这些。为了展示这些值，我们将在目标系统上的 <code>0xffff20000809520c</code> 和 <code>0xffff20000809521c</code> 处放置探针。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cat<span class="w"> </span>&gt;<span class="w"> </span>kprobe_events<span class="w"> </span><span class="s">&lt;&lt;EOF</span>
+<span class="s">p 0xffff20000809520c %x0</span>
+<span class="s">p 0xffff20000809521c %x0</span>
+<span class="s">EOF</span>
+$<span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="m">1</span><span class="w"> </span>&gt;<span class="w"> </span>events/kprobes/enable
+</code></pre></div>
+
+<p>现在将一个以太网适配器加密狗插入到 USB 端口后，我们看到以下写入追踪日志的内容：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cat<span class="w"> </span>trace
+<span class="c1"># tracer: nop</span>
+<span class="c1">#</span>
+<span class="c1"># entries-in-buffer/entries-written: 12/12   #P:8</span>
+<span class="c1">#</span>
+<span class="c1">#                           _—–=&gt; irqs-off</span>
+<span class="c1">#                          / _—-=&gt; need-resched</span>
+<span class="c1">#                         | / _—=&gt; hardirq/softirq</span>
+<span class="c1">#                         || / _–=&gt; preempt-depth</span>
+<span class="c1">#                         ||| / delay</span>
+<span class="c1">#        TASK-PID   CPU#  |||| TIMESTAMP  FUNCTION</span>
+<span class="c1">#           | |    |   ||||    |      |</span>
+<span class="w">      </span>systemd-udevd-2082<span class="w">  </span><span class="o">[</span><span class="m">000</span><span class="o">]</span><span class="w"> </span>d…<span class="w"> </span><span class="m">77</span>.200991:<span class="w"> </span>p_0xffff20000809520c:<span class="w"> </span><span class="o">(</span>module_alloc+0x48/0x98<span class="o">)</span><span class="w"> </span><span class="nv">arg1</span><span class="o">=</span>0xffff200001188000
+<span class="w">      </span>systemd-udevd-2082<span class="w">  </span><span class="o">[</span><span class="m">000</span><span class="o">]</span><span class="w"> </span>d…<span class="w"> </span><span class="m">77</span>.201059:<span class="w"> </span>p_0xffff20000809521c:<span class="w"> </span><span class="o">(</span>module_alloc+0x58/0x98<span class="o">)</span><span class="w"> </span><span class="nv">arg1</span><span class="o">=</span>0x0
+<span class="w">      </span>systemd-udevd-2082<span class="w">  </span><span class="o">[</span><span class="m">000</span><span class="o">]</span><span class="w"> </span>d…<span class="w"> </span><span class="m">77</span>.201115:<span class="w"> </span>p_0xffff20000809520c:<span class="w"> </span><span class="o">(</span>module_alloc+0x48/0x98<span class="o">)</span><span class="w"> </span><span class="nv">arg1</span><span class="o">=</span>0xffff200001198000
+<span class="w">      </span>systemd-udevd-2082<span class="w">  </span><span class="o">[</span><span class="m">000</span><span class="o">]</span><span class="w"> </span>d…<span class="w"> </span><span class="m">77</span>.201157:<span class="w"> </span>p_0xffff20000809521c:<span class="w"> </span><span class="o">(</span>module_alloc+0x58/0x98<span class="o">)</span><span class="w"> </span><span class="nv">arg1</span><span class="o">=</span>0x0
+<span class="w">      </span>systemd-udevd-2082<span class="w">  </span><span class="o">[</span><span class="m">000</span><span class="o">]</span><span class="w"> </span>d…<span class="w"> </span><span class="m">77</span>.227456:<span class="w"> </span>p_0xffff20000809520c:<span class="w"> </span><span class="o">(</span>module_alloc+0x48/0x98<span class="o">)</span><span class="w"> </span><span class="nv">arg1</span><span class="o">=</span>0xffff2000011a0000
+<span class="w">      </span>systemd-udevd-2082<span class="w">  </span><span class="o">[</span><span class="m">000</span><span class="o">]</span><span class="w"> </span>d…<span class="w"> </span><span class="m">77</span>.227522:<span class="w"> </span>p_0xffff20000809521c:<span class="w"> </span><span class="o">(</span>module_alloc+0x58/0x98<span class="o">)</span><span class="w"> </span><span class="nv">arg1</span><span class="o">=</span>0x0
+<span class="w">      </span>systemd-udevd-2082<span class="w">  </span><span class="o">[</span><span class="m">000</span><span class="o">]</span><span class="w"> </span>d…<span class="w"> </span><span class="m">77</span>.227579:<span class="w"> </span>p_0xffff20000809520c:<span class="w"> </span><span class="o">(</span>module_alloc+0x48/0x98<span class="o">)</span><span class="w"> </span><span class="nv">arg1</span><span class="o">=</span>0xffff2000011b0000
+<span class="w">      </span>systemd-udevd-2082<span class="w">  </span><span class="o">[</span><span class="m">000</span><span class="o">]</span><span class="w"> </span>d…<span class="w"> </span><span class="m">77</span>.227635:<span class="w"> </span>p_0xffff20000809521c:<span class="w"> </span><span class="o">(</span>module_alloc+0x58/0x98<span class="o">)</span><span class="w"> </span><span class="nv">arg1</span><span class="o">=</span>0x0
+<span class="w">      </span>modprobe-2097<span class="w">  </span><span class="o">[</span><span class="m">002</span><span class="o">]</span><span class="w"> </span>d…<span class="w"> </span><span class="m">78</span>.030643:<span class="w"> </span>p_0xffff20000809520c:<span class="w"> </span><span class="o">(</span>module_alloc+0x48/0x98<span class="o">)</span><span class="w"> </span><span class="nv">arg1</span><span class="o">=</span>0xffff2000011b8000
+<span class="w">      </span>modprobe-2097<span class="w">  </span><span class="o">[</span><span class="m">002</span><span class="o">]</span><span class="w"> </span>d…<span class="w"> </span><span class="m">78</span>.030761:<span class="w"> </span>p_0xffff20000809521c:<span class="w"> </span><span class="o">(</span>module_alloc+0x58/0x98<span class="o">)</span><span class="w"> </span><span class="nv">arg1</span><span class="o">=</span>0x0
+<span class="w">      </span>modprobe-2097<span class="w">  </span><span class="o">[</span><span class="m">002</span><span class="o">]</span><span class="w"> </span>d…<span class="w"> </span><span class="m">78</span>.031132:<span class="w"> </span>p_0xffff20000809520c:<span class="w"> </span><span class="o">(</span>module_alloc+0x48/0x98<span class="o">)</span><span class="w"> </span><span class="nv">arg1</span><span class="o">=</span>0xffff200001270000
+<span class="w">      </span>modprobe-2097<span class="w">  </span><span class="o">[</span><span class="m">002</span><span class="o">]</span><span class="w"> </span>d…<span class="w"> </span><span class="m">78</span>.031187:<span class="w"> </span>p_0xffff20000809521c:<span class="w"> </span><span class="o">(</span>module_alloc+0x58/0x98<span class="o">)</span><span class="w"> </span><span class="nv">arg1</span><span class="o">=</span>0x0
+</code></pre></div>
+
+<p>kprobes 事件系统的另一个功能是记录统计信息，这可在 <code>inkprobe_profile</code> 中找到。在以上追踪后，该文件的内容为：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cat<span class="w"> </span>kprobe_profile
+<span class="w"> </span>p_0xffff20000809520c<span class="w">                                    </span><span class="m">6</span><span class="w">            </span><span class="m">0</span>
+p_0xffff20000809521c<span class="w">                                    </span><span class="m">6</span><span class="w">            </span><span class="m">0</span>
+</code></pre></div>
+
+<p>这表明我们设置的两处断点每个共发生了 8 次命中，这当然与追踪日志数据是一致的。在 kprobetrace 文档中有更多 kprobe_profile 的功能描述。</p>
+<p>也可以进一步过滤 kprobes 事件。用来控制这点的 debugfs 文件在 kprobetrace 文档中被列出，然而它们内容的详细信息大多在 trace events 文档中被描述。</p>
+<h3>总结</h3>
+<p>现在，Linux ARMv8 对支持 kprobes 功能也和其它架构相当。有人正在做添加 uprobes 和 systemtap 支持的工作。这些功能/工具和其他已经完成的功能（如： perf、 coresight）允许 Linux ARMv8 用户像在其它更老的架构上一样调试和测试性能。</p>
+<p>作者简介 ： <a href="http://www.linaro.org/author/david-long/">David Long</a> 在 Linaro Kernel - Core Development 团队中担任工程师。 在加入 Linaro 之前，他在商业和国防行业工作了数年，既做嵌入式实时工作又为Unix提供软件开发工具。之后，在 Digital（又名 Compaq）公司工作了十几年，负责 Unix 标准，C 编译器和运行时库的工作。之后 David 又去了一系列初创公司做嵌入式 Linux 和安卓系统，嵌入式定制操作系统和 Xen 虚拟化。他拥有 MIPS，Alpha 和 ARM 平台的经验（等等）。他使用过从 1979 年贝尔实验室 V6 开始的大部分Unix操作系统，并且长期以来一直是 Linux 用户和倡导者。他偶尔也因使用烙铁和数字示波器调试设备驱动而知名。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

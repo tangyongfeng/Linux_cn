@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何用 Python 和 Flask 建立部署一个 Facebook Messenger 机器人</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Konstantinos Tsaprailis 这是我建立一个简单的 Facebook Messenger 机器人的记录。功能很简单，它是一个回显机器人，只是打印回用户写了什么。 回显服务 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2016/08/ru-he-yong-python-he-flask-jian-li-bu-shu-yi-ge-facebook-messenger-ji-qi-ren.html" rel="bookmark"
+           title="Permalink to 如何用 Python 和 Flask 建立部署一个 Facebook Messenger 机器人">如何用 Python 和 Flask 建立部署一个 Facebook Messenger 机器人</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2016-08-03T20:15:00+02:00">
+                Published: Wed 03 August 2016
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Konstantinos Tsaprailis</p>
+<p>这是我建立一个简单的 Facebook Messenger 机器人的记录。功能很简单，它是一个回显机器人，只是打印回用户写了什么。</p>
+<p>回显服务器类似于服务器的“Hello World”例子。</p>
+<p>这个项目的目的不是建立最好的 Messenger 机器人，而是让你了解如何建立一个小型机器人和每个事物是如何整合起来的。</p>
+<p><img alt="" src="/data/attachment/album/201608/03/201537n6mzpexmqwebi33x.png"></p>
+<h3>技术栈</h3>
+<p>使用到的技术栈:</p>
+<ul>
+<li><a href="https://www.heroku.com">Heroku</a> 做后端主机。免费级足够这个等级的教程。回显机器人不需要任何种类的数据持久，所以不需要数据库。</li>
+<li><a href="https://www.python.org">Python</a> 是我们选择的语言。版本选择 2.7，虽然它移植到 Pyhton 3 很容易，只需要很少的改动。</li>
+<li><a href="http://flask.pocoo.org">Flask</a> 作为网站开发框架。它是非常轻量的框架，用在小型工程或微服务是非常完美的。</li>
+<li>最后 <a href="https://git-scm.com">Git</a> 版本控制系统用来维护代码和部署到 Heroku。</li>
+<li>值得一提：<a href="https://virtualenv.pypa.io/en/stable">Virtualenv</a>。这个 python 工具是用来创建清洁的 python 库“环境”的，这样你可以只安装必要的需求和最小化应用的大小。</li>
+</ul>
+<h3>机器人架构</h3>
+<p>Messenger 机器人是由一个响应两种请求的服务器组成的：</p>
+<ul>
+<li>GET 请求被用来认证。他们与你注册的 FaceBook 认证码一同被 Messenger 发出。</li>
+<li>POST 请求被用来实际的通信。典型的工作流是，机器人将通过用户发送带有消息数据的 POST 请求而建立通信，然后我们将处理这些数据，并发回我们的 POST 请求。如果这个请求完全成功（返回一个 200 OK 状态码），我们也将响应一个 200 OK 状态码给初始的 Messenger请求。</li>
+</ul>
+<p>这个教程应用将托管到 Heroku，它提供了一个优雅而简单的部署应用的接口。如前所述，免费级可以满足这个教程。</p>
+<p>在应用已经部署并且运行后，我们将创建一个 Facebook 应用然后连接它到我们的应用，以便 Messenger 知道发送请求到哪，这就是我们的机器人。</p>
+<h3>机器人服务器</h3>
+<p>基本的服务器代码可以在 Github 用户 <a href="https://github.com/hult">hult(Magnus Hult)</a> 的 <a href="https://github.com/hult/facebook-chatbot-python">Chatbot</a> 项目上获取，做了一些只回显消息的代码修改和修正了一些我遇到的错误。最终版本的服务器代码如下：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">flask</span> <span class="kn">import</span> <span class="n">Flask</span><span class="p">,</span> <span class="n">request</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">import</span> <span class="nn">requests</span>
+
+<span class="n">app</span> <span class="o">=</span> <span class="n">Flask</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+<span class="c1">### 这需要填写被授予的页面通行令牌（PAT）</span>
+<span class="c1">### 它由将要创建的 Facebook 应用提供。</span>
+<span class="n">PAT</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
+
+<span class="nd">@app</span><span class="o">.</span><span class="n">route</span><span class="p">(</span><span class="s1">&#39;/&#39;</span><span class="p">,</span> <span class="n">methods</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;GET&#39;</span><span class="p">])</span>
+<span class="k">def</span> <span class="nf">handle_verification</span><span class="p">():</span>
+  <span class="nb">print</span> <span class="s2">&quot;Handling Verification.&quot;</span>
+  <span class="k">if</span> <span class="n">request</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;hub.verify_token&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span> <span class="o">==</span> <span class="s1">&#39;my_voice_is_my_password_verify_me&#39;</span><span class="p">:</span>
+    <span class="nb">print</span> <span class="s2">&quot;Verification successful!&quot;</span>
+    <span class="k">return</span> <span class="n">request</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;hub.challenge&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span>
+  <span class="k">else</span><span class="p">:</span>
+    <span class="nb">print</span> <span class="s2">&quot;Verification failed!&quot;</span>
+    <span class="k">return</span> <span class="s1">&#39;Error, wrong validation token&#39;</span>
+
+<span class="nd">@app</span><span class="o">.</span><span class="n">route</span><span class="p">(</span><span class="s1">&#39;/&#39;</span><span class="p">,</span> <span class="n">methods</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;POST&#39;</span><span class="p">])</span>
+<span class="k">def</span> <span class="nf">handle_messages</span><span class="p">():</span>
+  <span class="nb">print</span> <span class="s2">&quot;Handling Messages&quot;</span>
+  <span class="n">payload</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">get_data</span><span class="p">()</span>
+  <span class="nb">print</span> <span class="n">payload</span>
+  <span class="k">for</span> <span class="n">sender</span><span class="p">,</span> <span class="n">message</span> <span class="ow">in</span> <span class="n">messaging_events</span><span class="p">(</span><span class="n">payload</span><span class="p">):</span>
+    <span class="nb">print</span> <span class="s2">&quot;Incoming from </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">sender</span><span class="p">,</span> <span class="n">message</span><span class="p">)</span>
+    <span class="n">send_message</span><span class="p">(</span><span class="n">PAT</span><span class="p">,</span> <span class="n">sender</span><span class="p">,</span> <span class="n">message</span><span class="p">)</span>
+  <span class="k">return</span> <span class="s2">&quot;ok&quot;</span>
+
+<span class="k">def</span> <span class="nf">messaging_events</span><span class="p">(</span><span class="n">payload</span><span class="p">):</span>
+<span class="w">  </span><span class="sd">&quot;&quot;&quot;Generate tuples of (sender_id, message_text) from the</span>
+<span class="sd">  provided payload.</span>
+<span class="sd">  &quot;&quot;&quot;</span>
+  <span class="n">data</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+  <span class="n">messaging_events</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s2">&quot;entry&quot;</span><span class="p">][</span><span class="mi">0</span><span class="p">][</span><span class="s2">&quot;messaging&quot;</span><span class="p">]</span>
+  <span class="k">for</span> <span class="n">event</span> <span class="ow">in</span> <span class="n">messaging_events</span><span class="p">:</span>
+    <span class="k">if</span> <span class="s2">&quot;message&quot;</span> <span class="ow">in</span> <span class="n">event</span> <span class="ow">and</span> <span class="s2">&quot;text&quot;</span> <span class="ow">in</span> <span class="n">event</span><span class="p">[</span><span class="s2">&quot;message&quot;</span><span class="p">]:</span>
+      <span class="k">yield</span> <span class="n">event</span><span class="p">[</span><span class="s2">&quot;sender&quot;</span><span class="p">][</span><span class="s2">&quot;id&quot;</span><span class="p">],</span> <span class="n">event</span><span class="p">[</span><span class="s2">&quot;message&quot;</span><span class="p">][</span><span class="s2">&quot;text&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s1">&#39;unicode_escape&#39;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+      <span class="k">yield</span> <span class="n">event</span><span class="p">[</span><span class="s2">&quot;sender&quot;</span><span class="p">][</span><span class="s2">&quot;id&quot;</span><span class="p">],</span> <span class="s2">&quot;I can&#39;t echo this&quot;</span>
+
+
+<span class="k">def</span> <span class="nf">send_message</span><span class="p">(</span><span class="n">token</span><span class="p">,</span> <span class="n">recipient</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
+<span class="w">  </span><span class="sd">&quot;&quot;&quot;Send the message text to recipient with id recipient.</span>
+<span class="sd">  &quot;&quot;&quot;</span>
+
+  <span class="n">r</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">&quot;https://graph.facebook.com/v2.6/me/messages&quot;</span><span class="p">,</span>
+    <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;access_token&quot;</span><span class="p">:</span> <span class="n">token</span><span class="p">},</span>
+    <span class="n">data</span><span class="o">=</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span>
+      <span class="s2">&quot;recipient&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="n">recipient</span><span class="p">},</span>
+      <span class="s2">&quot;message&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">text</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s1">&#39;unicode_escape&#39;</span><span class="p">)}</span>
+    <span class="p">}),</span>
+    <span class="n">headers</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;Content-type&#39;</span><span class="p">:</span> <span class="s1">&#39;application/json&#39;</span><span class="p">})</span>
+  <span class="k">if</span> <span class="n">r</span><span class="o">.</span><span class="n">status_code</span> <span class="o">!=</span> <span class="n">requests</span><span class="o">.</span><span class="n">codes</span><span class="o">.</span><span class="n">ok</span><span class="p">:</span>
+    <span class="nb">print</span> <span class="n">r</span><span class="o">.</span><span class="n">text</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+  <span class="n">app</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+</code></pre></div>
+
+<p>让我们分解代码。第一部分是引入所需的依赖：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">flask</span> <span class="kn">import</span> <span class="n">Flask</span><span class="p">,</span> <span class="n">request</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">import</span> <span class="nn">requests</span>
+</code></pre></div>
+
+<p>接下来我们定义两个函数（使用 Flask 特定的 app.route 装饰器），用来处理到我们的机器人的 GET 和 POST 请求。</p>
+<div class="highlight"><pre><span></span><code><span class="nv">@app</span><span class="p">.</span><span class="n">route</span><span class="p">(</span><span class="s1">&#39;/&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">methods</span><span class="o">=[</span><span class="n">&#39;GET&#39;</span><span class="o">]</span><span class="p">)</span>
+<span class="n">def</span><span class="w"> </span><span class="n">handle_verification</span><span class="p">()</span><span class="err">:</span>
+<span class="w">  </span><span class="k">print</span><span class="w"> </span><span class="ss">&quot;Handling Verification.&quot;</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="n">request</span><span class="p">.</span><span class="n">args</span><span class="p">.</span><span class="k">get</span><span class="p">(</span><span class="s1">&#39;hub.verify_token&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s1">&#39;my_voice_is_my_password_verify_me&#39;</span><span class="err">:</span>
+<span class="w">    </span><span class="k">print</span><span class="w"> </span><span class="ss">&quot;Verification successful!&quot;</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">request</span><span class="p">.</span><span class="n">args</span><span class="p">.</span><span class="k">get</span><span class="p">(</span><span class="s1">&#39;hub.challenge&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="p">)</span>
+<span class="w">  </span><span class="k">else</span><span class="err">:</span>
+<span class="w">    </span><span class="k">print</span><span class="w"> </span><span class="ss">&quot;Verification failed!&quot;</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="s1">&#39;Error, wrong validation token&#39;</span>
+</code></pre></div>
+
+<p>当我们创建 Facebook 应用时，verify_token 对象将由我们声明的 Messenger 发送。我们必须自己来校验它。最后我们返回“hub.challenge”给 Messenger。</p>
+<p>处理 POST 请求的函数更有意思一些：</p>
+<div class="highlight"><pre><span></span><code><span class="err">@</span><span class="n">app</span><span class="o">.</span><span class="n">route</span><span class="p">(</span><span class="s1">&#39;/&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">methods</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;POST&#39;</span><span class="p">])</span>
+<span class="n">def</span><span class="w"> </span><span class="n">handle_messages</span><span class="p">():</span>
+<span class="w">  </span><span class="nb">print</span><span class="w"> </span><span class="s2">&quot;Handling Messages&quot;</span>
+<span class="w">  </span><span class="n">payload</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">request</span><span class="o">.</span><span class="n">get_data</span><span class="p">()</span>
+<span class="w">  </span><span class="nb">print</span><span class="w"> </span><span class="n">payload</span>
+<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="n">sender</span><span class="p">,</span><span class="w"> </span><span class="n">message</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">messaging_events</span><span class="p">(</span><span class="n">payload</span><span class="p">):</span>
+<span class="w">    </span><span class="nb">print</span><span class="w"> </span><span class="s2">&quot;Incoming from </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="p">(</span><span class="n">sender</span><span class="p">,</span><span class="w"> </span><span class="n">message</span><span class="p">)</span>
+<span class="w">    </span><span class="n">send_message</span><span class="p">(</span><span class="n">PAT</span><span class="p">,</span><span class="w"> </span><span class="n">sender</span><span class="p">,</span><span class="w"> </span><span class="n">message</span><span class="p">)</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="s2">&quot;ok&quot;</span>
+</code></pre></div>
+
+<p>当被调用时，我们抓取消息载荷，使用函数 messaging_events 来拆解它，并且提取发件人身份和实际发送的消息，生成一个可以循环处理的 python 迭代器。请注意 Messenger 发送的每个请求有可能多于一个消息。</p>
+<div class="highlight"><pre><span></span><code><span class="n">def</span><span class="w"> </span><span class="n">messaging_events</span><span class="p">(</span><span class="n">payload</span><span class="p">):</span>
+<span class="w">  </span><span class="sd">&quot;&quot;&quot;Generate tuples of (sender_id, message_text) from the</span>
+<span class="sd">  provided payload.</span>
+<span class="sd">  &quot;&quot;&quot;</span>
+<span class="w">  </span><span class="n">data</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+<span class="w">  </span><span class="n">messaging_events</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;entry&quot;</span><span class="p">][</span><span class="mi">0</span><span class="p">][</span><span class="s2">&quot;messaging&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="n">event</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">messaging_events</span><span class="p">:</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="s2">&quot;message&quot;</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">event</span><span class="w"> </span><span class="ow">and</span><span class="w"> </span><span class="s2">&quot;text&quot;</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">event</span><span class="p">[</span><span class="s2">&quot;message&quot;</span><span class="p">]:</span>
+<span class="w">      </span><span class="nb">yield</span><span class="w"> </span><span class="n">event</span><span class="p">[</span><span class="s2">&quot;sender&quot;</span><span class="p">][</span><span class="s2">&quot;id&quot;</span><span class="p">],</span><span class="w"> </span><span class="n">event</span><span class="p">[</span><span class="s2">&quot;message&quot;</span><span class="p">][</span><span class="s2">&quot;text&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s1">&#39;unicode_escape&#39;</span><span class="p">)</span>
+<span class="w">    </span><span class="k">else</span><span class="p">:</span>
+<span class="w">      </span><span class="nb">yield</span><span class="w"> </span><span class="n">event</span><span class="p">[</span><span class="s2">&quot;sender&quot;</span><span class="p">][</span><span class="s2">&quot;id&quot;</span><span class="p">],</span><span class="w"> </span><span class="s2">&quot;I can&#39;t echo this&quot;</span>
+</code></pre></div>
+
+<p>对每个消息迭代时，我们会调用 send_message 函数，然后我们使用 Facebook Graph messages API 对 Messenger 发回 POST 请求。在这期间我们一直没有回应我们阻塞的原始 Messenger请求。这会导致超时和 5XX 错误。</p>
+<p>上述情况是我在解决遇到错误时发现的，当用户发送表情时实际上是发送的 unicode 标识符，但是被 Python 错误的编码了，最终我们发回了一些乱码。</p>
+<p>这个发回 Messenger 的 POST 请求将永远不会完成，这会导致给初始请求返回 5xx 状态码，显示服务不可用。</p>
+<p>通过使用 <code>encode('unicode_escape')</code> 封装消息，然后在我们发送回消息前用 <code>decode('unicode_escape')</code> 解码消息就可以解决。</p>
+<div class="highlight"><pre><span></span><code><span class="nx">def</span><span class="w"> </span><span class="nx">send_message</span><span class="p">(</span><span class="nx">token</span><span class="p">,</span><span class="w"> </span><span class="nx">recipient</span><span class="p">,</span><span class="w"> </span><span class="nx">text</span><span class="p">):</span>
+<span class="w">  </span><span class="s">&quot;&quot;&quot;Send the message text to recipient with id recipient.</span>
+<span class="s">  &quot;&quot;&quot;</span>
+
+<span class="w">  </span><span class="nx">r</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">requests</span><span class="p">.</span><span class="nx">post</span><span class="p">(</span><span class="s">&quot;https://graph.facebook.com/v2.6/me/messages&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">params</span><span class="p">={</span><span class="s">&quot;access_token&quot;</span><span class="p">:</span><span class="w"> </span><span class="nx">token</span><span class="p">},</span>
+<span class="w">    </span><span class="nx">data</span><span class="p">=</span><span class="nx">json</span><span class="p">.</span><span class="nx">dumps</span><span class="p">({</span>
+<span class="w">      </span><span class="s">&quot;recipient&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="s">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="nx">recipient</span><span class="p">},</span>
+<span class="w">      </span><span class="s">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="s">&quot;text&quot;</span><span class="p">:</span><span class="w"> </span><span class="nx">text</span><span class="p">.</span><span class="nx">decode</span><span class="p">(</span><span class="err">&#39;</span><span class="nx">unicode_escape</span><span class="err">&#39;</span><span class="p">)}</span>
+<span class="w">    </span><span class="p">}),</span>
+<span class="w">    </span><span class="nx">headers</span><span class="p">={</span><span class="err">&#39;</span><span class="nx">Content</span><span class="o">-</span><span class="k">type</span><span class="err">&#39;</span><span class="p">:</span><span class="w"> </span><span class="err">&#39;</span><span class="nx">application</span><span class="o">/</span><span class="nx">json</span><span class="err">&#39;</span><span class="p">})</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">status_code</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="nx">requests</span><span class="p">.</span><span class="nx">codes</span><span class="p">.</span><span class="nx">ok</span><span class="p">:</span>
+<span class="w">    </span><span class="nx">print</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">text</span>
+</code></pre></div>
+
+<h3>部署到 Heroku</h3>
+<p>一旦代码已经建立成我想要的样子时就可以进行下一步。部署应用。</p>
+<p>那么，该怎么做？</p>
+<p>我之前在 Heroku 上部署过应用（主要是 Rails），然而我总是遵循某种教程做的，所用的配置是创建好了的。而在本文的情况下，我就需要从头开始。</p>
+<p>幸运的是有官方 <a href="https://devcenter.heroku.com/articles/python-gunicorn">Heroku 文档</a>来帮忙。这篇文档很好地说明了运行应用程序所需的最低限度。</p>
+<p>长话短说，我们需要的除了我们的代码还有两个文件。第一个文件是“requirements.txt”，它列出了运行应用所依赖的库。</p>
+<p>需要的第二个文件是“Procfile”。这个文件通知 Heroku 如何运行我们的服务。此外这个文件只需要一点点内容：</p>
+<div class="highlight"><pre><span></span><code><span class="n">web</span><span class="o">:</span><span class="w"> </span><span class="n">gunicorn</span><span class="w"> </span><span class="n">echoserver</span><span class="o">:</span><span class="n">app</span><span class="w"> </span>
+</code></pre></div>
+
+<p>Heroku 对它的解读是，我们的应用通过运行 echoserver.py 启动，并且应用将使用 gunicorn 作为 Web 服务器。我们使用一个额外的网站服务器是因为与性能相关，在上面的 Heroku 文档里对此解释了：</p>
+<blockquote>
+<p>Web 应用程序并发处理传入的 HTTP 请求比一次只处理一个请求的 Web 应用程序会更有效利地用测试机的资源。由于这个原因，我们建议使用支持并发请求的 Web 服务器来部署和运行产品级服务。</p>
+<p>Django 和 Flask web 框架提供了一个方便的内建 Web 服务器，但是这些阻塞式服务器一个时刻只能处理一个请求。如果你部署这种服务到 Heroku 上，你的测试机就会资源利用率低下，应用会感觉反应迟钝。</p>
+<p>Gunicorn 是一个纯 Python 的 HTTP 服务器，用于 WSGI 应用。允许你在单独一个测试机内通过运行多 Python 进程的方式来并发的运行各种 Python 应用。它在性能、灵活性和配置简易性方面取得了完美的平衡。</p>
+</blockquote>
+<p>回到我们之前提到过的“requirements.txt”文件，让我们看看它如何结合 Virtualenv 工具。</p>
+<p>很多情况下，你的开发机器也许已经安装了很多 python 库。当部署应用时你不想全部加载那些库，但是辨认出你实际使用哪些库很困难。</p>
+<p>Virtualenv 可以创建一个新的空白虚拟环境，以便你可以只安装你应用所需要的库。</p>
+<p>你可以运行如下命令来检查当前安装了哪些库：</p>
+<div class="highlight"><pre><span></span><code><span class="n">kostis</span><span class="nv">@KostisMBP</span><span class="w"> </span><span class="o">~</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">pip</span><span class="w"> </span><span class="n">freeze</span>
+<span class="n">cycler</span><span class="o">==</span><span class="mf">0.10.0</span>
+<span class="n">Flask</span><span class="o">==</span><span class="mf">0.10.1</span>
+<span class="n">gunicorn</span><span class="o">==</span><span class="mf">19.6.0</span>
+<span class="n">itsdangerous</span><span class="o">==</span><span class="mf">0.24</span>
+<span class="n">Jinja2</span><span class="o">==</span><span class="mf">2.8</span>
+<span class="n">MarkupSafe</span><span class="o">==</span><span class="mf">0.23</span>
+<span class="n">matplotlib</span><span class="o">==</span><span class="mf">1.5.1</span>
+<span class="n">numpy</span><span class="o">==</span><span class="mf">1.10.4</span>
+<span class="n">pyparsing</span><span class="o">==</span><span class="mf">2.1.0</span>
+<span class="n">python</span><span class="o">-</span><span class="n">dateutil</span><span class="o">==</span><span class="mf">2.5.0</span>
+<span class="n">pytz</span><span class="o">==</span><span class="mf">2015.7</span>
+<span class="n">requests</span><span class="o">==</span><span class="mf">2.10.0</span>
+<span class="n">scipy</span><span class="o">==</span><span class="mf">0.17.0</span>
+<span class="n">six</span><span class="o">==</span><span class="mf">1.10.0</span>
+<span class="n">virtualenv</span><span class="o">==</span><span class="mf">15.0.1</span>
+<span class="n">Werkzeug</span><span class="o">==</span><span class="mf">0.11.10</span>
+</code></pre></div>
+
+<p>注意：pip 工具应该已经与 Python 一起安装在你的机器上。如果没有，查看<a href="https://pip.pypa.io/en/stable/installing">官方网站</a>如何安装它。</p>
+<p>现在让我们使用 Virtualenv 来创建一个新的空白环境。首先我们给我们的项目创建一个新文件夹，然后进到目录下：</p>
+<div class="highlight"><pre><span></span><code><span class="n">kostis</span><span class="nv">@KostisMBP</span><span class="w"> </span><span class="n">projects</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">mkdir</span><span class="w"> </span><span class="n">echoserver</span>
+<span class="n">kostis</span><span class="nv">@KostisMBP</span><span class="w"> </span><span class="n">projects</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">cd</span><span class="w"> </span><span class="n">echoserver</span><span class="o">/</span>
+<span class="n">kostis</span><span class="nv">@KostisMBP</span><span class="w"> </span><span class="n">echoserver</span><span class="w"> </span><span class="err">$</span>
+</code></pre></div>
+
+<p>现在来创建一个叫做 echobot 的新环境。运行下面的 source 命令激活它，然后使用 pip freeze 检查，我们能看到现在是空的。</p>
+<div class="highlight"><pre><span></span><code><span class="n">kostis</span><span class="nv">@KostisMBP</span><span class="w"> </span><span class="n">echoserver</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">virtualenv</span><span class="w"> </span><span class="n">echobot</span>
+<span class="n">kostis</span><span class="nv">@KostisMBP</span><span class="w"> </span><span class="n">echoserver</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">source</span><span class="w"> </span><span class="n">echobot</span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">activate</span>
+<span class="p">(</span><span class="n">echobot</span><span class="p">)</span><span class="w"> </span><span class="n">kostis</span><span class="nv">@KostisMBP</span><span class="w"> </span><span class="n">echoserver</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">pip</span><span class="w"> </span><span class="n">freeze</span>
+<span class="p">(</span><span class="n">echobot</span><span class="p">)</span><span class="w"> </span><span class="n">kostis</span><span class="nv">@KostisMBP</span><span class="w"> </span><span class="n">echoserver</span><span class="w"> </span><span class="err">$</span>
+</code></pre></div>
+
+<p>我们可以安装需要的库。我们需要是 flask、gunicorn 和 requests，它们被安装后我们就创建 requirements.txt 文件：</p>
+<div class="highlight"><pre><span></span><code><span class="p">(</span><span class="n">echobot</span><span class="p">)</span><span class="w"> </span><span class="n">kostis</span><span class="nv">@KostisMBP</span><span class="w"> </span><span class="n">echoserver</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">pip</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="n">flask</span>
+<span class="p">(</span><span class="n">echobot</span><span class="p">)</span><span class="w"> </span><span class="n">kostis</span><span class="nv">@KostisMBP</span><span class="w"> </span><span class="n">echoserver</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">pip</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="n">gunicorn</span>
+<span class="p">(</span><span class="n">echobot</span><span class="p">)</span><span class="w"> </span><span class="n">kostis</span><span class="nv">@KostisMBP</span><span class="w"> </span><span class="n">echoserver</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">pip</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="n">requests</span>
+<span class="p">(</span><span class="n">echobot</span><span class="p">)</span><span class="w"> </span><span class="n">kostis</span><span class="nv">@KostisMBP</span><span class="w"> </span><span class="n">echoserver</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">pip</span><span class="w"> </span><span class="n">freeze</span>
+<span class="n">click</span><span class="o">==</span><span class="mf">6.6</span>
+<span class="n">Flask</span><span class="o">==</span><span class="mf">0.11</span>
+<span class="n">gunicorn</span><span class="o">==</span><span class="mf">19.6.0</span>
+<span class="n">itsdangerous</span><span class="o">==</span><span class="mf">0.24</span>
+<span class="n">Jinja2</span><span class="o">==</span><span class="mf">2.8</span>
+<span class="n">MarkupSafe</span><span class="o">==</span><span class="mf">0.23</span>
+<span class="n">requests</span><span class="o">==</span><span class="mf">2.10.0</span>
+<span class="n">Werkzeug</span><span class="o">==</span><span class="mf">0.11.10</span>
+<span class="p">(</span><span class="n">echobot</span><span class="p">)</span><span class="w"> </span><span class="n">kostis</span><span class="nv">@KostisMBP</span><span class="w"> </span><span class="n">echoserver</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">pip</span><span class="w"> </span><span class="n">freeze</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">requirements</span><span class="p">.</span><span class="n">txt</span>
+</code></pre></div>
+
+<p>上述完成之后，我们用 python 代码创建 echoserver.py 文件，然后用之前提到的命令创建 Procfile，我们最终的文件/文件夹如下：</p>
+<div class="highlight"><pre><span></span><code><span class="p">(</span><span class="n">echobot</span><span class="p">)</span><span class="w"> </span><span class="n">kostis</span><span class="nv">@KostisMBP</span><span class="w"> </span><span class="n">echoserver</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">ls</span>
+<span class="n">Procfile</span><span class="w">     </span><span class="n">echobot</span><span class="w">     </span><span class="n">echoserver</span><span class="p">.</span><span class="n">py</span><span class="w">   </span><span class="n">requirements</span><span class="p">.</span><span class="n">txt</span>
+</code></pre></div>
+
+<p>我们现在准备上传到 Heroku。我们需要做两件事。第一是如果还没有安装 Heroku toolbet，就安装它（详见 <a href="https://toolbelt.heroku.com">Heroku</a>）。第二是通过 Heroku <a href="https://dashboard.heroku.com/apps">网页界面</a>创建一个新的 Heroku 应用。</p>
+<p>点击右上的大加号然后选择“Create new app”。</p>
+<p><img alt="" src="/data/attachment/album/201608/03/201548q7h79d478hcl6j7x.png"></p>
+<p>为你的应用选择一个名字，然后点击“Create App”。</p>
+<p><img alt="" src="/data/attachment/album/201608/03/201548omseb9scjz90m96s.png"></p>
+<p>你将会重定向到你的应用的控制面板，在那里你可以找到如何部署你的应用到 Heroku 的细节说明。</p>
+<div class="highlight"><pre><span></span><code><span class="p">(</span><span class="n">echobot</span><span class="p">)</span><span class="w"> </span><span class="n">kostis</span><span class="nv">@KostisMBP</span><span class="w"> </span><span class="n">echoserver</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">heroku</span><span class="w"> </span><span class="n">login</span>
+<span class="p">(</span><span class="n">echobot</span><span class="p">)</span><span class="w"> </span><span class="n">kostis</span><span class="nv">@KostisMBP</span><span class="w"> </span><span class="n">echoserver</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">git</span><span class="w"> </span><span class="n">init</span>
+<span class="p">(</span><span class="n">echobot</span><span class="p">)</span><span class="w"> </span><span class="n">kostis</span><span class="nv">@KostisMBP</span><span class="w"> </span><span class="n">echoserver</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">heroku</span><span class="w"> </span><span class="nl">git</span><span class="p">:</span><span class="n">remote</span><span class="w"> </span><span class="o">-</span><span class="n">a</span><span class="w"> </span><span class="o">&lt;</span><span class="n">myappname</span><span class="o">&gt;</span>
+<span class="p">(</span><span class="n">echobot</span><span class="p">)</span><span class="w"> </span><span class="n">kostis</span><span class="nv">@KostisMBP</span><span class="w"> </span><span class="n">echoserver</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">git</span><span class="w"> </span><span class="k">add</span><span class="w"> </span><span class="p">.</span>
+<span class="p">(</span><span class="n">echobot</span><span class="p">)</span><span class="w"> </span><span class="n">kostis</span><span class="nv">@KostisMBP</span><span class="w"> </span><span class="n">echoserver</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">git</span><span class="w"> </span><span class="k">commit</span><span class="w"> </span><span class="o">-</span><span class="n">m</span><span class="w"> </span><span class="ss">&quot;Initial commit&quot;</span>
+<span class="p">(</span><span class="n">echobot</span><span class="p">)</span><span class="w"> </span><span class="n">kostis</span><span class="nv">@KostisMBP</span><span class="w"> </span><span class="n">echoserver</span><span class="w"> </span><span class="p">(</span><span class="n">master</span><span class="p">)</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">git</span><span class="w"> </span><span class="n">push</span><span class="w"> </span><span class="n">heroku</span><span class="w"> </span><span class="n">master</span>
+<span class="p">...</span>
+<span class="nl">remote</span><span class="p">:</span><span class="w">        </span><span class="nl">https</span><span class="p">:</span><span class="o">//&lt;</span><span class="n">myappname</span><span class="o">&gt;</span><span class="p">.</span><span class="n">herokuapp</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="w"> </span><span class="n">deployed</span><span class="w"> </span><span class="k">to</span><span class="w"> </span><span class="n">Heroku</span>
+<span class="p">...</span>
+<span class="p">(</span><span class="n">echobot</span><span class="p">)</span><span class="w"> </span><span class="n">kostis</span><span class="nv">@KostisMBP</span><span class="w"> </span><span class="n">echoserver</span><span class="w"> </span><span class="p">(</span><span class="n">master</span><span class="p">)</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">heroku</span><span class="w"> </span><span class="nl">config</span><span class="p">:</span><span class="k">set</span><span class="w"> </span><span class="n">WEB_CONCURRENCY</span><span class="o">=</span><span class="mi">3</span>
+</code></pre></div>
+
+<p>如上，当你推送你的修改到 Heroku 之后，你会得到一个用于公开访问你新创建的应用的 URL。保存该 URL，下一步需要它。</p>
+<h3>创建这个 Facebook 应用</h3>
+<p>让我们的机器人可以工作的最后一步是创建这个我们将连接到其上的 Facebook 应用。Facebook 通常要求每个应用都有一个相关页面，所以我们来<a href="https://www.facebook.com/pages/create">创建一个</a>。</p>
+<p>接下来我们去 <a href="https://developers.facebook.com/">Facebook 开发者专页</a>，点击右上角的“My Apps”按钮并选择“Add a New App”。不要选择建议的那个，而是点击“basic setup”。填入需要的信息并点击“Create App Id”，然后你会重定向到新的应用页面。</p>
+<p><img alt="" src="/data/attachment/album/201608/03/201549eqyi8qe3g83ferh2.png"></p>
+<p>在 “Products” 菜单之下，点击“+ Add Product” ，然后在“Messenger”下点击“Get Started”。跟随这些步骤设置 Messenger，当完成后你就可以设置你的 webhooks 了。Webhooks 简单的来说是你的服务所用的 URL 的名称。点击 “Setup Webhooks” 按钮，并添加该 Heroku 应用的 URL （你之前保存的那个）。在校验元组中写入 ‘my<em>voice</em>is<em>my</em>password<em>verify</em>me’。你可以写入任何你要的内容，但是不管你在这里写入的是什么内容，要确保同时修改代码中 handle_verification 函数。然后勾选 “messages” 选项。</p>
+<p><img alt="" src="/data/attachment/album/201608/03/201550v0yls44sjljzypjy.png"></p>
+<p>点击“Verify and Save” 就完成了。Facebook 将访问该 Heroku 应用并校验它。如果不工作，可以试试运行：</p>
+<div class="highlight"><pre><span></span><code><span class="p">(</span><span class="n">echobot</span><span class="p">)</span><span class="w"> </span><span class="n">kostis</span><span class="nv">@KostisMBP</span><span class="w"> </span><span class="n">heroku</span><span class="w"> </span><span class="n">logs</span><span class="w"> </span><span class="o">-</span><span class="n">t</span>
+</code></pre></div>
+
+<p>然后看看日志中是否有错误。如果发现错误， Google 搜索一下可能是最快的解决方法。</p>
+<p>最后一步是取得页面访问元组（PAT），它可以将该 Facebook 应用于你创建好的页面连接起来。</p>
+<p><img alt="" src="/data/attachment/album/201608/03/201550xo3szzsog3yr3ooj.png"></p>
+<p>从下拉列表中选择你创建好的页面。这会在“Page Access Token”（PAT）下面生成一个字符串。点击复制它，然后编辑 echoserver.py 文件，将其贴入 PAT 变量中。然后在 Git 中添加、提交并推送该修改。</p>
+<div class="highlight"><pre><span></span><code><span class="p">(</span><span class="n">echobot</span><span class="p">)</span><span class="w"> </span><span class="n">kostis</span><span class="nv">@KostisMBP</span><span class="w"> </span><span class="n">echoserver</span><span class="w"> </span><span class="p">(</span><span class="n">master</span><span class="p">)</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">git</span><span class="w"> </span><span class="k">add</span><span class="w"> </span><span class="p">.</span>
+<span class="p">(</span><span class="n">echobot</span><span class="p">)</span><span class="w"> </span><span class="n">kostis</span><span class="nv">@KostisMBP</span><span class="w"> </span><span class="n">echoserver</span><span class="w"> </span><span class="p">(</span><span class="n">master</span><span class="p">)</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">git</span><span class="w"> </span><span class="k">commit</span><span class="w"> </span><span class="o">-</span><span class="n">m</span><span class="w"> </span><span class="ss">&quot;Initial commit&quot;</span>
+<span class="p">(</span><span class="n">echobot</span><span class="p">)</span><span class="w"> </span><span class="n">kostis</span><span class="nv">@KostisMBP</span><span class="w"> </span><span class="n">echoserver</span><span class="w"> </span><span class="p">(</span><span class="n">master</span><span class="p">)</span><span class="w"> </span><span class="err">$</span><span class="w"> </span><span class="n">git</span><span class="w"> </span><span class="n">push</span><span class="w"> </span><span class="n">heroku</span><span class="w"> </span><span class="n">master</span>
+</code></pre></div>
+
+<p>最后，在 Webhooks 菜单下再次选择你的页面并点击“Subscribe”。</p>
+<p><img alt="" src="/data/attachment/album/201608/03/201551a3ji3d99j44w8ubm.png"></p>
+<p>现在去访问你的页面并建立会话：</p>
+<p><img alt="" src="/data/attachment/album/201608/03/201552vpoblo88bkggib2f.png"></p>
+<p>成功了，机器人回显了！</p>
+<p>注意：除非你要将这个机器人用在 Messenger 上测试，否则你就是机器人唯一响应的那个人。如果你想让其他人也试试它，到 <a href="https://developers.facebook.com/">Facebook 开发者专页</a>中，选择你的应用、角色，然后添加你要添加的测试者。</p>
+<h3>总结</h3>
+<p>这对于我来说是一个非常有用的项目，希望它可以指引你找到开始的正确方向。<a href="https://developers.facebook.com/docs/messenger-platform/implementation">官方的 Facebook 指南</a>有更多的资料可以帮你学到更多。</p>
+<p>你可以在 <a href="https://github.com/kostistsaprailis/messenger-bot-tutorial">Github</a> 上找到该项目的代码。</p>
+<p>如果你有任何评论、勘误和建议，请随时联系我。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

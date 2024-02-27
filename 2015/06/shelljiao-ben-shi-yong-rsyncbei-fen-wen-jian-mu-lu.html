@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Shell脚本：使用rsync备份文件/目录</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Yevhen Duma 本文我们介绍一个shell脚本，用来使用rsync命令将你本地Linux机器上的文件/目录备份到远程Linux服务器上。使用该脚本会以交互的方式实施备份，你需要提供远程备份 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/06/shelljiao-ben-shi-yong-rsyncbei-fen-wen-jian-mu-lu.html" rel="bookmark"
+           title="Permalink to Shell脚本：使用rsync备份文件/目录">Shell脚本：使用rsync备份文件/目录</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-06-25T10:13:00+02:00">
+                Published: Thu 25 June 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Yevhen Duma</p>
+<p><img alt="" src="/data/attachment/album/201506/25/101502qmc0s2og00rm20q0.png"></p>
+<p>本文我们介绍一个shell脚本，用来使用rsync命令将你本地Linux机器上的文件/目录备份到远程Linux服务器上。使用该脚本会以交互的方式实施备份，你需要提供远程备份服务器的主机名/ip地址和文件夹位置。我们使用一个单独的列表文件，在这个文件中你需要列出要备份的文件/目录。我们添加了两个脚本，<strong>第一个脚本</strong>在每次拷贝完一个文件后询问密码（如果你启用了ssh密钥验证，那么就不会询问密码），而第二个脚本中，则只会提示一次输入密码。</p>
+<p>我们打算备份bckup.txt，dataconfig.txt，docs和orcledb。</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">root@Fedora21 tmp</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">ls</span><span class="w"> </span><span class="o">-</span><span class="n">l</span>
+<span class="n">total</span><span class="w"> </span><span class="mi">12</span>
+<span class="o">-</span><span class="n">rw</span><span class="o">-</span><span class="n">r</span><span class="o">--</span><span class="n">r</span><span class="o">--</span><span class="p">.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="n">May</span><span class="w"> </span><span class="mi">15</span><span class="w"> </span><span class="mi">10</span><span class="err">:</span><span class="mi">43</span><span class="w"> </span><span class="n">bckrsync</span><span class="p">.</span><span class="n">sh</span>
+<span class="o">-</span><span class="n">rw</span><span class="o">-</span><span class="n">r</span><span class="o">--</span><span class="n">r</span><span class="o">--</span><span class="p">.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="n">May</span><span class="w"> </span><span class="mi">15</span><span class="w"> </span><span class="mi">10</span><span class="err">:</span><span class="mi">44</span><span class="w"> </span><span class="n">bckup</span><span class="p">.</span><span class="n">txt</span>
+<span class="o">-</span><span class="n">rw</span><span class="o">-</span><span class="n">r</span><span class="o">--</span><span class="n">r</span><span class="o">--</span><span class="p">.</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="n">May</span><span class="w"> </span><span class="mi">15</span><span class="w"> </span><span class="mi">10</span><span class="err">:</span><span class="mi">46</span><span class="w"> </span><span class="n">dataconfig</span><span class="p">.</span><span class="n">txt</span>
+<span class="n">drwxr</span><span class="o">-</span><span class="n">xr</span><span class="o">-</span><span class="n">x</span><span class="p">.</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="mi">4096</span><span class="w"> </span><span class="n">May</span><span class="w"> </span><span class="mi">15</span><span class="w"> </span><span class="mi">10</span><span class="err">:</span><span class="mi">45</span><span class="w"> </span><span class="n">docs</span>
+<span class="n">drwxr</span><span class="o">-</span><span class="n">xr</span><span class="o">-</span><span class="n">x</span><span class="p">.</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="mi">4096</span><span class="w"> </span><span class="n">May</span><span class="w"> </span><span class="mi">15</span><span class="w"> </span><span class="mi">10</span><span class="err">:</span><span class="mi">44</span><span class="w"> </span><span class="n">oracledb</span>
+</code></pre></div>
+
+<p>bckup.txt文件包含了需要备份的文件/目录的详情</p>
+<div class="highlight"><pre><span></span><code><span class="o">[</span><span class="n">root@Fedora21 tmp</span><span class="o">]</span><span class="err">#</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="o">/</span><span class="n">tmp</span><span class="o">/</span><span class="n">bckup</span><span class="p">.</span><span class="n">txt</span>
+<span class="o">/</span><span class="n">tmp</span><span class="o">/</span><span class="n">oracledb</span>
+<span class="o">/</span><span class="n">tmp</span><span class="o">/</span><span class="n">dataconfig</span><span class="p">.</span><span class="n">txt</span>
+<span class="o">/</span><span class="n">tmp</span><span class="o">/</span><span class="n">docs</span>
+<span class="o">[</span><span class="n">root@Fedora21 tmp</span><span class="o">]</span><span class="err">#</span>
+</code></pre></div>
+
+<h3>脚本 1：</h3>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/bin/bash</span>
+
+<span class="c1"># 将备份列表文件的路径保存到变量中</span>
+<span class="nv">backupf</span><span class="o">=</span><span class="s1">&#39;/tmp/bckup.txt&#39;</span>
+
+<span class="c1"># 输入一个提示信息</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Shell Script Backup Your Files / Directories Using rsync&quot;</span>
+
+<span class="c1"># 检查是否输入了目标服务器，如果为空就再次提示用户输入</span>
+<span class="k">while</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>x<span class="nv">$desthost</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;x&quot;</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+
+<span class="c1"># 提示用户输入目标服务器地址并保存到变量</span>
+<span class="nb">read</span><span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;Destination backup Server : &quot;</span><span class="w"> </span>desthost
+
+<span class="c1"># 结束循环</span>
+<span class="k">done</span>
+
+<span class="c1"># 检查是否输入了目标文件夹，如果为空就再次提示用户输入</span>
+<span class="k">while</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>x<span class="nv">$destpath</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;x&quot;</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+
+<span class="c1"># 提示用户输入目标文件夹并保存到变量</span>
+<span class="nb">read</span><span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;Destination Folder : &quot;</span><span class="w"> </span>destpath
+
+<span class="c1"># 结束循环</span>
+<span class="k">done</span>
+
+<span class="c1"># 逐行读取备份列表文件</span>
+<span class="k">for</span><span class="w"> </span>line<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="sb">`</span>cat<span class="w"> </span><span class="nv">$backupf</span><span class="sb">`</span>
+
+<span class="c1"># 对每一行都进行处理</span>
+<span class="k">do</span>
+
+<span class="c1"># 显示要被复制的文件/文件夹名称</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Copying </span><span class="nv">$line</span><span class="s2"> ... &quot;</span>
+<span class="c1"># 通过 rsync 复制文件/文件夹到目标位置</span>
+
+rsync<span class="w"> </span>-ar<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$line</span><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$desthost</span><span class="s2">&quot;</span>:<span class="s2">&quot;</span><span class="nv">$destpath</span><span class="s2">&quot;</span>
+
+<span class="c1"># 显示完成</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;DONE&quot;</span>
+
+<span class="c1"># 结束</span>
+<span class="k">done</span>
+</code></pre></div>
+
+<h4>运行带有输出结果的脚本</h4>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="n">root</span><span class="p">@</span><span class="n">Fedora21</span><span class="w"> </span><span class="n">tmp</span><span class="p">]</span><span class="err">#</span><span class="w"> </span><span class="p">.</span><span class="o">/</span><span class="n">bckrsync</span><span class="p">.</span><span class="n">sh</span>
+<span class="n">Shell</span><span class="w"> </span><span class="n">Script</span><span class="w"> </span><span class="n">Backup</span><span class="w"> </span><span class="n">Your</span><span class="w"> </span><span class="n">Files</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">Directories</span><span class="w"> </span><span class="n">Using</span><span class="w"> </span><span class="n">rsync</span>
+<span class="n">Destination</span><span class="w"> </span><span class="n">backup</span><span class="w"> </span><span class="n">Server</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="mf">104.</span><span class="o">*</span><span class="p">.</span><span class="o">*</span><span class="mf">.41</span>
+<span class="n">Destination</span><span class="w"> </span><span class="n">Folder</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="o">/</span><span class="n">tmp</span>
+<span class="n">Copying</span><span class="w"> </span><span class="o">/</span><span class="n">tmp</span><span class="o">/</span><span class="n">oracledb</span><span class="w"> </span><span class="p">...</span>
+<span class="n">The</span><span class="w"> </span><span class="n">authenticity</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="n">host</span><span class="w"> </span><span class="err">&#39;</span><span class="mf">104.</span><span class="o">*</span><span class="p">.</span><span class="o">*</span><span class="mf">.41</span><span class="w"> </span><span class="p">(</span><span class="mf">104.</span><span class="o">*</span><span class="p">.</span><span class="o">*</span><span class="mf">.41</span><span class="p">)</span><span class="err">&#39;</span><span class="w"> </span><span class="n">can</span><span class="err">&#39;</span><span class="n">t</span><span class="w"> </span><span class="n">be</span><span class="w"> </span><span class="n">established</span><span class="p">.</span>
+<span class="n">ECDSA</span><span class="w"> </span><span class="n">key</span><span class="w"> </span><span class="n">fingerprint</span><span class="w"> </span><span class="n">is</span><span class="w"> </span><span class="mi">96</span><span class="o">:</span><span class="mi">11</span><span class="o">:</span><span class="mi">61</span><span class="o">:</span><span class="mi">17</span><span class="o">:</span><span class="mf">7f</span><span class="o">:</span><span class="n">fa</span><span class="o">:</span><span class="p">......</span>
+<span class="n">Are</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="n">sure</span><span class="w"> </span><span class="n">you</span><span class="w"> </span><span class="n">want</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="k">continue</span><span class="w"> </span><span class="n">connecting</span><span class="w"> </span><span class="p">(</span><span class="n">yes</span><span class="o">/</span><span class="n">no</span><span class="p">)</span><span class="o">?</span><span class="w"> </span><span class="n">yes</span>
+<span class="nl">Warning</span><span class="p">:</span><span class="w"> </span><span class="n">Permanently</span><span class="w"> </span><span class="n">added</span><span class="w"> </span><span class="err">&#39;</span><span class="mf">104.</span><span class="o">*</span><span class="p">.</span><span class="o">*</span><span class="mf">.41</span><span class="err">&#39;</span><span class="w"> </span><span class="p">(</span><span class="n">ECDSA</span><span class="p">)</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">list</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="n">known</span><span class="w"> </span><span class="n">hosts</span><span class="p">.</span>
+<span class="n">root</span><span class="mf">@104.</span><span class="o">*</span><span class="p">.</span><span class="o">*</span><span class="mf">.41</span><span class="err">&#39;</span><span class="n">s</span><span class="w"> </span><span class="n">password</span><span class="o">:</span>
+<span class="n">DONE</span>
+<span class="n">Copying</span><span class="w"> </span><span class="o">/</span><span class="n">tmp</span><span class="o">/</span><span class="n">dataconfig</span><span class="p">.</span><span class="n">txt</span><span class="w"> </span><span class="p">...</span>
+<span class="n">root</span><span class="mf">@104.</span><span class="o">*</span><span class="p">.</span><span class="o">*</span><span class="mf">.41</span><span class="err">&#39;</span><span class="n">s</span><span class="w"> </span><span class="n">password</span><span class="o">:</span>
+<span class="n">DONE</span>
+<span class="n">Copying</span><span class="w"> </span><span class="o">/</span><span class="n">tmp</span><span class="o">/</span><span class="n">docs</span><span class="w"> </span><span class="p">...</span>
+<span class="n">root</span><span class="mf">@104.</span><span class="o">*</span><span class="p">.</span><span class="o">*</span><span class="mf">.41</span><span class="err">&#39;</span><span class="n">s</span><span class="w"> </span><span class="n">password</span><span class="o">:</span>
+<span class="n">DONE</span>
+<span class="p">[</span><span class="n">root</span><span class="p">@</span><span class="n">Fedora21</span><span class="w"> </span><span class="n">tmp</span><span class="p">]</span><span class="err">#</span>
+</code></pre></div>
+
+<h3>脚本 2：</h3>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/bin/bash</span>
+
+<span class="c1"># 将备份列表文件的路径保存到变量中</span>
+<span class="nv">backupf</span><span class="o">=</span><span class="s1">&#39;/tmp/bckup.txt&#39;</span>
+
+<span class="c1"># 输入一个提示信息</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Shell Script Backup Your Files / Directories Using rsync&quot;</span>
+
+<span class="c1"># 检查是否输入了目标服务器，如果为空就再次提示用户输入</span>
+<span class="k">while</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>x<span class="nv">$desthost</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;x&quot;</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+
+<span class="c1"># 提示用户输入目标服务器地址并保存到变量</span>
+<span class="nb">read</span><span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;Destination backup Server : &quot;</span><span class="w"> </span>desthost
+
+<span class="c1"># 结束循环</span>
+<span class="k">done</span>
+
+<span class="c1"># 检查是否输入了目标文件夹，如果为空就再次提示用户输入</span>
+<span class="k">while</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>x<span class="nv">$destpath</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;x&quot;</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+
+<span class="c1"># 提示用户输入目标文件夹并保存到变量</span>
+<span class="nb">read</span><span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;Destination Folder : &quot;</span><span class="w"> </span>destpath
+
+<span class="c1"># 结束循环</span>
+<span class="k">done</span>
+
+<span class="c1"># 检查是否输入了目标服务器密码，如果为空就再次提示用户输入</span>
+<span class="k">while</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>x<span class="nv">$password</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;x&quot;</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="c1"># 提示用户输入密码并保存到变量</span>
+<span class="c1"># 使用 -s 选项不回显输入的密码</span>
+<span class="nb">read</span><span class="w"> </span>-sp<span class="w"> </span><span class="s2">&quot;Password : &quot;</span><span class="w"> </span>password
+<span class="c1"># 结束循环</span>
+<span class="k">done</span>
+
+<span class="c1"># 逐行读取备份列表文件</span>
+<span class="k">for</span><span class="w"> </span>line<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="sb">`</span>cat<span class="w"> </span><span class="nv">$backupf</span><span class="sb">`</span>
+
+<span class="c1"># 对每一行都进行处理</span>
+<span class="k">do</span>
+
+<span class="c1"># 显示要被复制的文件/文件夹名称</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Copying </span><span class="nv">$line</span><span class="s2"> ... &quot;</span>
+<span class="c1"># 使用 expect 来在脚本中输入密码</span>
+/usr/bin/expect<span class="w"> </span><span class="s">&lt;&lt; EOD</span>
+<span class="s"># 推荐设置超时为 -1 </span>
+<span class="s">set timeout -1</span>
+<span class="s"># 通过 rsync 复制文件/文件夹到目标位置，使用 expect 的组成部分 spawn 命令</span>
+
+<span class="s">spawn rsync -ar ${line} ${desthost}:${destpath}</span>
+<span class="s"># 上一行命令会等待 “password” 提示</span>
+<span class="s">expect &quot;*?assword:*&quot;</span>
+<span class="s"># 在脚本中提供密码</span>
+<span class="s">send &quot;${password}\r&quot;</span>
+<span class="s"># 等待文件结束符（远程服务器处理完了所有事情）</span>
+<span class="s">expect eof</span>
+<span class="s"># 结束 expect 脚本</span>
+<span class="s">EOD</span>
+<span class="c1"># 显示结束</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;DONE&quot;</span>
+
+<span class="c1"># 完成</span>
+<span class="k">done</span>
+</code></pre></div>
+
+<h4>运行第二个带有输出结果的脚本的屏幕截图</h4>
+<p><img alt="" src="/data/attachment/album/201506/25/101538i78tldd3pclt7l5p.png"></p>
+<p>希望这些脚本对你备份会有帮助！！</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

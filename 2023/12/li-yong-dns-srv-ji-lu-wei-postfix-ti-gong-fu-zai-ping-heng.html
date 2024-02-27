@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>利用 DNS SRV 记录为 Postfix 提供负载平衡</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Tomáš Korbař 2011 年 3 月，苹果公司提出 RFC 6186，描述了如何利用域名系统服务（DNS SRV）记录来查找电子邮件的提交以及访问服务。现在 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2023/12/li-yong-dns-srv-ji-lu-wei-postfix-ti-gong-fu-zai-ping-heng.html" rel="bookmark"
+           title="Permalink to 利用 DNS SRV 记录为 Postfix 提供负载平衡">利用 DNS SRV 记录为 Postfix 提供负载平衡</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2023-12-15T17:36:01+01:00">
+                Published: Fri 15 December 2023
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Tomáš Korbař</p>
+<p><img alt="" src="/data/attachment/album/202312/15/173522hpze31p331ppljrj.jpg"></p>
+<p>2011 年 3 月，苹果公司提出 <a href="https://www.ietf.org/rfc/rfc6186.txt">RFC 6186</a>，描述了如何利用域名系统服务（DNS SRV）记录来查找电子邮件的提交以及访问服务。现在 Postfix 从 3.8.0 版本开始支持 RFC 中提出的设计。这个新增功能让你可以使用 DNS SRV 记录进行负载分配和自动配置。</p>
+<h3>DNS SRV 记录的形态</h3>
+<p>DNS SRV 记录定义在 <a href="https://www.ietf.org/rfc/rfc2782.txt">RFC 2782</a> 中，它指定在区域文件中，并且包含了服务名称、传输协议规范、优先级、权重、端口，以及提供该服务的主机。</p>
+<div class="highlight"><pre><span></span><code>_submission._tcp    SRV 5 10 50 bruce.my-domain.com.
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>值</th>
+<th>意义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>服务名称</td>
+<td><code>submission</code></td>
+<td>服务名为 submission</td>
+</tr>
+<tr>
+<td>传输协议规范</td>
+<td><code>tcp</code></td>
+<td>本服务使用 TCP 协议</td>
+</tr>
+<tr>
+<td>优先级</td>
+<td><code>5</code></td>
+<td>服务器优先级设为 5（数值越小，优先级越高）</td>
+</tr>
+<tr>
+<td>权重</td>
+<td><code>10</code></td>
+<td>服务器应承担的负载部分</td>
+</tr>
+<tr>
+<td>端口</td>
+<td><code>50</code></td>
+<td>服务器监听连接的端口</td>
+</tr>
+<tr>
+<td>目标</td>
+<td><code>bruce.my-domain.com.</code></td>
+<td>提供此服务的服务器名称</td>
+</tr>
+</tbody>
+</table>
+<p><em>记录解释</em></p>
+<h3>服务器选择算法</h3>
+<p>客户端应该按照 <a href="https://www.ietf.org/rfc/rfc2782.txt">RFC 2782</a> 中描述的方式解析 SRV 记录。这意味着，首先尝试联系拥有最高优先级（最小的优先级数字）的服务器。如果该服务器无回应，那么重试联系拥有同样或者更低优先级的下一台服务器。当有多台服务器拥有同样优先级的时候，应随机选择其中一台，但是必须确保选择记录的概率符合下列公式：</p>
+<p><img alt="" src="/data/attachment/album/202312/15/173602ftk942x9xtrjrzkr.png"></p>
+<p>其中 <code>i</code> 是 SRV 记录的标识，<code>k</code> 是具有相同优先级的 SRV 记录的数量。</p>
+<p>在现实中，这意味着如果你有两台服务器，其中一台的处理能力是另一台的三倍，那么你应该给第一台服务器的权重赋于另一台三倍的值。这样就能保证更强大的服务器会接收到大约 75% 的客户端请求，而另一台接收大约 25% 的请求。</p>
+<p>这些原则使得 SRV 记录能够同时作为客户端自动配置及在服务器之间分配工作负载的工具。</p>
+<p>看看以下这个记录的例子：</p>
+<div class="highlight"><pre><span></span><code>_submission._tcp     SRV 0 0 2525 server-one
+_submission._tcp     SRV 1 75 2625 server-two
+_submission._tcp     SRV 1 25 2625 server-three
+</code></pre></div>
+
+<p>这里 <code>server-one</code> 总是会被首选来进行联系。如果 <code>server-one</code> 无回应，客户端就会将剩下优先级为 1 的两个记录顺序打乱，生成一个从 0 到 100 的随机数，如果第一条记录的运行总和大于或者等于这个随机数，它就会尝试去联系这个记录。否则，客户端会倒序联系所有服务器。注意，客户端会向它优先成功连接的服务器发送请求。</p>
+<h3>示例配置</h3>
+<p>请考虑以下这种情况。你想为大量的电脑配置 Postfix，使其通过公司的邮件服务器利用 SRV 记录转发外部电邮。为了达到这个目标，你需要在每台电脑的 Postfix 中配置 <code>relayhost</code> 参数，即邮件用户代理（MUA）。如果将 <code>relayhost</code> 参数的值设置为 <code>$mydomain</code>，你的机器将开始为你的域名查找 MX 记录，并尝试按照它们的优先级顺序发送邮件。这种方法虽然有效，但是可能会遇到负载平衡问题。Postfix 会使用优先级最高的服务器，直到其变为无响应才会联系其他备用服务器。此外，如果你在环境中使用了动态分配的端口，你无法指明哪个端口正在被特定的服务器使用。使用 SRV 记录，你可以应对这些挑战，并在需要改变服务器端口的时候维持服务器的平滑运行。</p>
+<h4>区域文件</h4>
+<p>为了使得 DNS 服务器提供信息给客户端，可以参考以下使用服务器 <code>server-one</code>、<code>server-two</code>、<code>server-three</code> 作为中继，并把服务器 <code>server-four</code> 配置为接收测试邮件的区域文件示例。</p>
+<div class="highlight"><pre><span></span><code>$TTL  3600
+@       IN SOA  example-domain.com. root.example-domain.com. (
+                1571655122 ; 区域文件的序列号
+                1200       ; 刷新时间
+                180        ; 发生问题时的重试时间
+                1209600    ; 过期时间
+                10800 )    ; 查询失败时的最大缓存时间
+;
+        IN NS   ns1
+        IN A    192.168.2.0
+;
+ns1     IN A    192.168.2.2
+server-one           IN A   192.168.2.4
+server-two           IN A   192.168.2.5
+server-three         IN A   192.168.2.6
+server-four          IN A   192.168.2.7
+_submission._tcp     SRV 0 0 2525  server-one
+_submission._tcp     SRV 1 50 2625 server-two
+_submission._tcp     SRV 1 50 2625 server-three
+@ MX 0 server-four
+</code></pre></div>
+
+<h4>Postfix MUA 配置</h4>
+<p>设置客户端机器去查找 SRV 记录：</p>
+<div class="highlight"><pre><span></span><code>use_srv_lookup = submission
+relayhost = example-domain.com:submission
+</code></pre></div>
+
+<p>通过这个配置，你的客户端机器上的 Postfix 实例会联络到 <code>example-domain</code> 的 DNS 服务器，然后获取邮件提交的 SRV 记录。在这个例子中，<code>server-one</code> 有最高的优先级，Postfix 会先试图连接它。然后，Postfix 随机的选择剩下的两个服务器其中一个去尝试连接。这个配置确保了大约有 50% 的机会会优先联系到服务器一。注意，SRV 记录的权重值并不等同于百分比。你也可以用 1 和 1 这样的值达到同样的目标。</p>
+<p>同时，Postfix 也知道 <code>server-one</code> 在监听 2525 端口，而 <code>server-two</code> 在监听 2625 端口。如果你正在缓存检索到的 DNS 记录，并且你动态改变 SRV 记录，那么设置一个低的生存时间（TTL）对你的记录是很重要的。</p>
+<h4>整套设置</h4>
+<p><img alt="" src="/data/attachment/album/202312/15/173603pjr3jzjqq13q4enm.png"></p>
+<p>你可以通过下面的方式尝试这个配置，包含 podman 和在此处提供的 compose 文件：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/TomasKorbar/srv_article
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>srv_article/environment
+$<span class="w"> </span>podman-compose<span class="w"> </span>up
+$<span class="w"> </span>podman<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>article_client<span class="w"> </span>/bin/bash
+root@client<span class="w"> </span><span class="c1"># ./senddummy.sh</span>
+root@client<span class="w"> </span><span class="c1"># exit</span>
+</code></pre></div>
+
+<p>完成配置之后，你可以检查日志，查看邮件是否经过 <code>server-one</code> 并最终投递到 <code>server-four</code>。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>podman<span class="w"> </span>stop<span class="w"> </span>article_server1
+$<span class="w"> </span>podman<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>article_client<span class="w"> </span>/bin/bash
+root@client<span class="w"> </span><span class="c1"># ./senddummy.sh</span>
+root@client<span class="w"> </span><span class="c1"># ./senddummy.sh</span>
+root@client<span class="w"> </span><span class="c1"># ./senddummy.sh</span>
+root@client<span class="w"> </span><span class="c1"># ./senddummy.sh</span>
+root@client<span class="w"> </span><span class="c1"># ./senddummy.sh</span>
+root@client<span class="w"> </span><span class="c1"># ./senddummy.sh</span>
+root@client<span class="w"> </span><span class="c1"># exit</span>
+</code></pre></div>
+
+<p>现在 <code>server-one</code> 已经关闭了，这六封邮件将会由 <code>server-two</code> 或者 <code>server-three</code> 中转发出去。</p>
+<p>仔细看一下 Dockerfiles 以更深地理解这个配置。</p>
+<p>通过执行：<code>$ podman-compose down</code> 完成示例的操作。</p>
+<p><em>（题图：DA/241079fe-58d6-4dc6-8801-f0fd19dfd64b）</em></p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

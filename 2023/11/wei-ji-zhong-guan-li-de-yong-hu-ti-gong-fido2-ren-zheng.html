@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>为集中管理的用户提供 FIDO2 认证</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Iker Pedrosa Fedora 39 通过 SSSD 和 FreeIPA 为集中管理的用户开启了 FIDO2 认证功能。此篇文章将指导你如何进行配置和启用该功能。 FIDO2 FIDO2 是以 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li class="active"><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2023/11/wei-ji-zhong-guan-li-de-yong-hu-ti-gong-fido2-ren-zheng.html" rel="bookmark"
+           title="Permalink to 为集中管理的用户提供 FIDO2 认证">为集中管理的用户提供 FIDO2 认证</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2023-11-23T09:51:31+01:00">
+                Published: Thu 23 November 2023
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ji-zhu">技术</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Iker Pedrosa</p>
+<p><img alt="" src="/data/attachment/album/202311/23/095049o1kdwqugdgw5d1mk.png"></p>
+<p>Fedora 39 通过 SSSD 和 FreeIPA 为集中管理的用户开启了 FIDO2 认证功能。此篇文章将指导你如何进行配置和启用该功能。</p>
+<h3>FIDO2</h3>
+<p><a href="https://fidoalliance.org/fido2/">FIDO2</a> 是以 <a href="https://en.wikipedia.org/wiki/Public-key_cryptography">公钥加密</a> 为基础的开放式认证标准，比起密码和一次性密码（OTP），它的安全性更高且易用性更强。它通常以类似小型 USB 和基于 NFC 的硬件安全令牌的方式提供。有几种符合 FIDO 认可的密钥品牌，例如：YubiKey、NitroKey、SoloKey v2 等等。</p>
+<p>此协议的优势包括：</p>
+<ul>
+<li>通过使用公钥加密来消除密码，从而实现无密码认证。</li>
+<li>采用 <a href="https://en.wikipedia.org/wiki/Multi-factor_authentication">多因素认证</a>（MFA）以实现强力认证。</li>
+<li>减少了应用程序之间密码或公钥的重复使用，降低数据泄露的风险。</li>
+<li>私钥位于安全令牌中并且永不离开，这大大减少了被网络钓鱼的威胁。</li>
+</ul>
+<h4>前面的文章</h4>
+<p>在 Fedora 杂志中，有多篇文章阐述了如 FIDO2 的应用场景：《<a href="https://fedoramagazine.org/use-fido-u2f-security-keys-with-fedora-linux/">如何使用 FIDO2 验证本地用户</a>》 和 《<a href="https://fedoramagazine.org/use-systemd-cryptenroll-with-fido-u2f-or-tpm2-to-decrypt-your-disk/">如何解锁硬盘</a>》。而此篇文章介绍了如何使用 FIDO2 验证远程用户。请注意，上述所说的设备，主要是指那些来自 Yubico 采用了其他协议的设备，而此篇指南的目的并非讨论这些协议。</p>
+<h3>集中管理的用户</h3>
+<p><a href="https://sssd.io/">SSSD</a> 和 <a href="https://freeipa.readthedocs.io/en/latest/">FreeIPA</a> 最近新增了一个名为 <ruby> <a href="https://fedoraproject.org/wiki/Changes/Passkey_authentication_centrally_managed_users">  通行密钥 </a> <rt>  passkey </rt></ruby> 的特性，以便对集中管理的用户执行 FIDO2 认证。此功能目前只在 <a href="https://sssd.io/release-notes/sssd-2.9.0.html">SSSD 2.9.0</a> 和 <a href="https://www.freeipa.org/release-notes/4-11-0.html">FreeIPA 4.11.0</a> 等版本中支持。</p>
+<p>Fedora 39 已经包含了这些版本，因此，它是第一个为集中管理的用户启用 FIDO2 认证的发行版。此外，用户在认证成功后，也会一并获取一个 Kerberos 票据，实现对其他服务的身份证明。</p>
+<p>请注意，从这里开始，我将交替使用 FIDO2 和通行密钥这两个术语。</p>
+<h3>FIDO2 认证</h3>
+<h4>FIDO2 配置</h4>
+<p>作为额外的安全措施，应在设备中启用 MFA 以防你丢失了密钥，恶意行为者无法使用它进行认证。</p>
+<p>列出连接的通行密钥设备：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>fido2-token<span class="w"> </span>-L
+</code></pre></div>
+
+<p>为你的通行密钥设备设置 PIN（将大写字母替换为所需的）：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>fido2-token<span class="w"> </span>-C<span class="w"> </span>/dev/hidrawX
+</code></pre></div>
+
+<p>如果你有一个兼容的设备，你还可以启用其他认证因素，例如指纹。</p>
+<h4>集中用户配置</h4>
+<p>首先，我们来创建一个用户，并将通行密钥（<code>passkey</code>）设置为其认证方式（请根据需要将大写字母替换为相应的）：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ipa<span class="w"> </span>user-add<span class="w"> </span>USERNAME<span class="w"> </span>--first<span class="w"> </span>NAME<span class="w"> </span>--last<span class="w"> </span>SURNAME<span class="w"> </span>--user-auth-type<span class="o">=</span>passkey
+</code></pre></div>
+
+<p>或者，如果你已有一个用户，并只需要将 <code>passkey</code> 设置为其认证方式：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ipa<span class="w"> </span>user-mod<span class="w"> </span>USERNAME<span class="w"> </span>--user-auth-type<span class="o">=</span>passkey
+</code></pre></div>
+
+<h4>集中管理用户的 FIDO2 注册</h4>
+<p>接下来，我们为该用户注册这个通行密钥。这个步骤会提示你输入 PIN 码，随后触摸设备：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>ipa<span class="w"> </span>user-add-passkey<span class="w"> </span>USERNAME<span class="w"> </span>--register
+Enter<span class="w"> </span>PIN:
+Please<span class="w"> </span>touch<span class="w"> </span>the<span class="w"> </span>device.
+------------------------------------
+Added<span class="w"> </span>passkey<span class="w"> </span>mappings<span class="w"> </span>to<span class="w"> </span>user<span class="w"> </span><span class="s2">&quot;USERNAME&quot;</span>
+------------------------------------
+<span class="w">    </span>User<span class="w"> </span>login:<span class="w"> </span>USERNAME
+<span class="w">    </span>Passkey<span class="w"> </span>mapping:<span class="w"> </span>passkey:XR/MXigmgiBz1z7/RlWoWZkXKIEf1x9Ux5uPNxtzzSTdTiF407u2nRYMPkK8pWjwUR8Aa2urCcC9cnpLbkKgFg<span class="o">==</span>,MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEZqgERsFFv4Yev1dyo2Ap4PvLirg3P3Uhig5mNA4qf061C9q5rg0nMDz9AOYxZmBrwvQEXHCasMNO9VAIVnBIVg<span class="o">==</span>
+</code></pre></div>
+
+<p>此刻，用户的认证已准备就绪。</p>
+<p>注意，如果你想在生产环境中使用此用户，我建议你至少注册两个不同的设备。这样，即使你丢失了其中一个设备，你也可以用另一个进行认证。</p>
+<h4>集中管理的用户的 FIDO2 认证</h4>
+<p>在初次尝试中，只有在物理连接令牌的系统中才能进行认证。这意味着你可以使用 <code>su</code> 或图形界面，但不能远程使用 ssh。</p>
+<p>我们来试试使用 <code>su</code>，记得将大写字母替换为所需的。当要求你输入 PIN，然后触摸设备时，当设备灯闪烁时触摸它：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>su<span class="w"> </span>-<span class="w"> </span>USERNAME@DOMAIN
+Insert<span class="w"> </span>your<span class="w"> </span>passkey<span class="w"> </span>device,<span class="w"> </span><span class="k">then</span><span class="w"> </span>press<span class="w"> </span>ENTER.
+Enter<span class="w"> </span>PIN:
+</code></pre></div>
+
+<p>如果一切进行顺利，Kerberos 票据也应已被授予，然后你就可以向其他服务进行远程认证：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>klist
+Ticket<span class="w"> </span>cache:<span class="w"> </span>KCM:879400005:34862
+Default<span class="w"> </span>principal:<span class="w"> </span>USERNAME@DOMAIN
+Valid<span class="w"> </span>starting<span class="w"> </span>Expires<span class="w">        </span>Service<span class="w"> </span>principal
+<span class="m">10</span>/20/23<span class="w"> </span><span class="m">09</span>:46:04<span class="w">  </span><span class="m">10</span>/21/23<span class="w"> </span><span class="m">09</span>:32:37<span class="w">  </span>krbtgt/DOMAIN@DOMAIN
+</code></pre></div>
+
+<h3>结论</h3>
+<p>此认证机制的目标是提升安全性。通过使用一种众所周知、开放式的标准实现无密码和多因素认证，从而降低数据泄露和网络钓鱼威胁的风险。用户只需要一个硬件令牌及另外一个如 PIN 或者指纹的认证方式，从而消除对密码的需求，同时提供了方便的多因素认证方法。更进一步，每个应用或服务都使用一个唯一的密钥，这样任何一个应用或服务的数据泄露都不会影响其他的。最后，用户并不需要知道他们的凭据的具体细节，只需了解他们使用了一个实体令牌，这极大地降低了社交工程攻击的可能性。</p>
+<p><em>（题图：MJ/838d5392-79b4-4c22-ab0f-c2ada4bf2833）</em></p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

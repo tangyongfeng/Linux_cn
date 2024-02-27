@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>三步上手 GDB</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Julia Evans 调试 C 程序，曾让我很困扰。然而当我之前在写我的操作系统时，我有很多的 Bug 需要调试。我很幸运的使用上了 qemu 模 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/01/san-bu-shang-shou-gdb.html" rel="bookmark"
+           title="Permalink to 三步上手 GDB">三步上手 GDB</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-01-25T13:48:07+01:00">
+                Published: Thu 25 January 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Julia Evans</p>
+<p><img alt="" src="/data/attachment/album/201801/25/134655pdy41fvu7f6ln61k.jpg"></p>
+<p>调试 C 程序，曾让我很困扰。然而当我之前在写我的<a href="https://jvns.ca/blog/categories/kernel">操作系统</a>时，我有很多的 Bug 需要调试。我很幸运的使用上了 qemu 模拟器，它允许我将调试器附加到我的操作系统。这个调试器就是 <code>gdb</code>。</p>
+<p>我得解释一下，你可以使用 <code>gdb</code> 先做一些小事情，因为我发现初学它的时候真的很混乱。我们接下来会在一个小程序中，设置断点，查看内存。</p>
+<h3>1、 设断点</h3>
+<p>如果你曾经使用过调试器，那你可能已经会设置断点了。</p>
+<p>下面是一个我们要调试的程序（虽然没有任何 Bug）:</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;stdio.h&gt;</span>
+<span class="kt">void</span><span class="w"> </span><span class="nf">do_thing</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;Hi!</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+<span class="p">}</span>
+<span class="kt">int</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">do_thing</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>另存为 <code>hello.c</code>. 我们可以使用 <code>dbg</code> 调试它，像这样：</p>
+<div class="highlight"><pre><span></span><code><span class="n">bork</span><span class="nv">@kiwi</span><span class="w"> </span><span class="o">~&gt;</span><span class="w"> </span><span class="n">gcc</span><span class="w"> </span><span class="o">-</span><span class="n">g</span><span class="w"> </span><span class="n">hello</span><span class="p">.</span><span class="n">c</span><span class="w"> </span><span class="o">-</span><span class="n">o</span><span class="w"> </span><span class="n">hello</span>
+<span class="n">bork</span><span class="nv">@kiwi</span><span class="w"> </span><span class="o">~&gt;</span><span class="w"> </span><span class="n">gdb</span><span class="w"> </span><span class="p">.</span><span class="o">/</span><span class="n">hello</span>
+</code></pre></div>
+
+<p>以上是带调试信息编译 <code>hello.c</code>（为了 <code>gdb</code> 可以更好工作），并且它会给我们醒目的提示符，就像这样：</p>
+<div class="highlight"><pre><span></span><code>(gdb)
+</code></pre></div>
+
+<p>我们可以使用 <code>break</code> 命令设置断点，然后使用 <code>run</code> 开始调试程序。</p>
+<div class="highlight"><pre><span></span><code>(gdb) break do_thing 
+Breakpoint 1 at 0x4004f8
+(gdb) run
+Starting program: /home/bork/hello 
+
+Breakpoint 1, 0x00000000004004f8 in do_thing ()
+</code></pre></div>
+
+<p>程序暂停在了 <code>do_thing</code> 开始的地方。</p>
+<p>我们可以通过 <code>where</code> 查看我们所在的调用栈。</p>
+<div class="highlight"><pre><span></span><code>(gdb) where
+<span class="gh">#</span>0  do_thing () at hello.c:3
+<span class="gh">#</span>1  0x08050cdb in main () at hello.c:6
+(gdb) 
+</code></pre></div>
+
+<h3>2、 阅读汇编代码</h3>
+<p>使用 <code>disassemble</code> 命令，我们可以看到这个函数的汇编代码。棒级了，这是 x86 汇编代码。虽然我不是很懂它，但是 <code>callq</code> 这一行是 <code>printf</code> 函数调用。</p>
+<div class="highlight"><pre><span></span><code>(gdb) disassemble do_thing
+Dump of assembler code for function do_thing:
+   0x00000000004004f4 &lt;+0&gt;:     push   %rbp
+   0x00000000004004f5 &lt;+1&gt;:     mov    %rsp,%rbp
+=&gt; 0x00000000004004f8 &lt;+4&gt;:     mov    $0x40060c,%edi
+   0x00000000004004fd &lt;+9&gt;:     callq  0x4003f0 
+   0x0000000000400502 &lt;+14&gt;:    pop    %rbp
+   0x0000000000400503 &lt;+15&gt;:    retq 
+</code></pre></div>
+
+<p>你也可以使用 <code>disassemble</code> 的缩写 <code>disas</code>。</p>
+<h3>3、 查看内存</h3>
+<p>当调试我的内核时，我使用 <code>gdb</code> 的主要原因是，以确保内存布局是如我所想的那样。检查内存的命令是 <code>examine</code>，或者使用缩写 <code>x</code>。我们将使用<code>x</code>。</p>
+<p>通过阅读上面的汇编代码，似乎 <code>0x40060c</code> 可能是我们所要打印的字符串地址。我们来试一下。</p>
+<div class="highlight"><pre><span></span><code>(gdb) x/s 0x40060c
+0x40060c:        &quot;Hi!&quot;
+</code></pre></div>
+
+<p>的确是这样。<code>x/s</code> 中 <code>/s</code> 部分，意思是“把它作为字符串展示”。我也可以“展示 10 个字符”，像这样：</p>
+<div class="highlight"><pre><span></span><code><span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">x</span><span class="o">/</span><span class="nt">10c</span><span class="w"> </span><span class="nt">0x40060c</span>
+<span class="nt">0x40060c</span><span class="o">:</span><span class="w">       </span><span class="nt">72</span><span class="w"> </span><span class="s1">&#39;H&#39;</span><span class="w">  </span><span class="nt">105</span><span class="w"> </span><span class="s1">&#39;i&#39;</span><span class="w"> </span><span class="nt">33</span><span class="w"> </span><span class="s1">&#39;!&#39;</span><span class="w">  </span><span class="nt">0</span><span class="w"> </span><span class="s1">&#39;\000&#39;</span><span class="w">        </span><span class="nt">1</span><span class="w"> </span><span class="s1">&#39;\001&#39;</span><span class="w">        </span><span class="nt">27</span><span class="w"> </span><span class="s1">&#39;\033&#39;</span><span class="w">       </span><span class="nt">3</span><span class="w"> </span><span class="s1">&#39;\003&#39;</span><span class="w">        </span><span class="nt">59</span><span class="w"> </span><span class="s1">&#39;;&#39;</span>
+<span class="nt">0x400614</span><span class="o">:</span><span class="w">       </span><span class="nt">52</span><span class="w"> </span><span class="s1">&#39;4&#39;</span><span class="w">  </span><span class="nt">0</span><span class="w"> </span><span class="s1">&#39;\000&#39;</span>
+</code></pre></div>
+
+<p>你可以看到前四个字符是 <code>H</code>、<code>i</code>、<code>!</code> 和 <code>\0</code>，并且它们之后的是一些不相关的东西。</p>
+<p>我知道 <code>gdb</code> 很多其他的东西，但是我仍然不是很了解它，其中 <code>x</code> 和 <code>break</code> 让我获得很多。你还可以阅读 <a href="https://ftp.gnu.org/old-gnu/Manuals/gdb-5.1.1/html_chapter/gdb_9.html#SEC56">do umentation for examining memory</a>。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

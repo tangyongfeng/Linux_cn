@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何用 Kubeadm 在 Debian 11 上安装 Kubernetes 集群</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Pradeep Kumar 你是否在寻找一份在 Debian 11（Bullseye）上安装 Kubernetes 集群的简易指南？ 这份分步指南将向你展示如何使用 Kubeadm 工具在 Debian 11 上安装 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2022/11/ru-he-yong-kubeadm-zai-debian-11-shang-an-zhuang-kubernetes-ji-qun.html" rel="bookmark"
+           title="Permalink to 如何用 Kubeadm 在 Debian 11 上安装 Kubernetes 集群">如何用 Kubeadm 在 Debian 11 上安装 Kubernetes 集群</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2022-11-30T09:19:30+01:00">
+                Published: Wed 30 November 2022
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Pradeep Kumar</p>
+<p><img alt="" src="/data/attachment/album/202211/30/091928zlxbvttw58x6rztw.jpg"></p>
+<blockquote>
+<p>你是否在寻找一份在 Debian 11（Bullseye）上安装 Kubernetes 集群的简易指南？</p>
+</blockquote>
+<p>这份分步指南将向你展示如何使用 Kubeadm 工具在 Debian 11 上安装 Kubernetes 集群。</p>
+<p>Kubernetes（k8s）集群包含主控节点和工作节点，用于运行容器化的应用程序。主控节点作为控制平面，工作节点为实际工作负载提供环境。</p>
+<p>前置条件：</p>
+<ul>
+<li>已安装 Debian 11</li>
+<li>2 CPU / vCPU</li>
+<li>2 GB RAM</li>
+<li>20 GB 空闲硬盘空间</li>
+<li>有管理员权限的 sudo 用户</li>
+<li>稳定的网络连接</li>
+</ul>
+<p>实验环境配置：</p>
+<p>在本文中，我使用了 3 个 Debian 11 系统的节点，配置如下</p>
+<ul>
+<li>主控节点（<code>k8s-master</code>） – 192.168.1.236</li>
+<li>工作节点 1（<code>k8s-worker1</code>） – 192.168.1.237</li>
+<li>工作节点 2（<code>k8s-worker2</code>） – 192.168.1.238</li>
+</ul>
+<p>事不宜迟，我们直接进入安装步骤。</p>
+<h3>1、设置主机名和更新 /etc/hosts 文件</h3>
+<p>在主控节点和工作节点上使用 <code>hostnamectl</code> 命令来设置主机名：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>hostnamectl<span class="w"> </span>set-hostname<span class="w"> </span><span class="s2">&quot;k8s-master&quot;</span><span class="w">       </span>//<span class="w"> </span>在主控节点运行
+$<span class="w"> </span>sudo<span class="w"> </span>hostnamectl<span class="w"> </span>set-hostname<span class="w"> </span><span class="s2">&quot;k8s-worker1&quot;</span><span class="w">      </span>//<span class="w"> </span>在工作节点<span class="w"> </span><span class="m">1</span><span class="w"> </span>运行
+$<span class="w"> </span>sudo<span class="w"> </span>hostnamectl<span class="w"> </span>set-hostname<span class="w"> </span><span class="s2">&quot;k8s-worker2&quot;</span><span class="w">      </span>//<span class="w"> </span>在工作节点<span class="w"> </span><span class="m">2</span><span class="w"> </span>运行
+</code></pre></div>
+
+<p>在所有节点的 <code>/etc/hosts</code> 文件末尾添加下面几行内容：</p>
+<div class="highlight"><pre><span></span><code><span class="mf">192.168.1.236</span><span class="w">       </span><span class="n">k8s</span><span class="o">-</span><span class="n">master</span>
+<span class="mf">192.168.1.237</span><span class="w">       </span><span class="n">k8s</span><span class="o">-</span><span class="n">worker1</span>
+<span class="mf">192.168.1.238</span><span class="w">       </span><span class="n">k8s</span><span class="o">-</span><span class="n">worker2</span>
+</code></pre></div>
+
+<h3>2、在所有节点上关闭交换分区</h3>
+<p>我推荐关闭交换分区，以便更丝滑地使用 <code>kubelet</code>。在所有节点上执行以下命令来关闭交换分区：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>swapoff<span class="w"> </span>-a
+$<span class="w"> </span>sudo<span class="w"> </span>sed<span class="w"> </span>-i<span class="w"> </span><span class="s1">&#39;/ swap / s/^\(.*\)$/#\1/g&#39;</span><span class="w"> </span>/etc/fstab
+</code></pre></div>
+
+<h3>3、配置 Kubernetes 集群相关的防火墙规则</h3>
+<p>如果你的操作系统防火墙是打开的，请分别在主控节点和工作节点允许以下的端口。</p>
+<p>在主控节点，执行：</p>
+<div class="highlight"><pre><span></span><code><span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">ufw</span><span class="w"> </span><span class="n">allow</span><span class="w"> </span><span class="mi">6443</span><span class="o">/</span><span class="n">tcp</span>
+<span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">ufw</span><span class="w"> </span><span class="n">allow</span><span class="w"> </span><span class="mi">2379</span><span class="o">/</span><span class="n">tcp</span>
+<span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">ufw</span><span class="w"> </span><span class="n">allow</span><span class="w"> </span><span class="mi">2380</span><span class="o">/</span><span class="n">tcp</span>
+<span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">ufw</span><span class="w"> </span><span class="n">allow</span><span class="w"> </span><span class="mi">10250</span><span class="o">/</span><span class="n">tcp</span>
+<span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">ufw</span><span class="w"> </span><span class="n">allow</span><span class="w"> </span><span class="mi">10251</span><span class="o">/</span><span class="n">tcp</span>
+<span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">ufw</span><span class="w"> </span><span class="n">allow</span><span class="w"> </span><span class="mi">10252</span><span class="o">/</span><span class="n">tcp</span>
+<span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">ufw</span><span class="w"> </span><span class="n">allow</span><span class="w"> </span><span class="mi">10255</span><span class="o">/</span><span class="n">tcp</span>
+<span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">ufw</span><span class="w"> </span><span class="n">reload</span>
+</code></pre></div>
+
+<p>在工作节点，执行：</p>
+<div class="highlight"><pre><span></span><code><span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">ufw</span><span class="w"> </span><span class="n">allow</span><span class="w"> </span><span class="mi">10250</span><span class="o">/</span><span class="n">tcp</span>
+<span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">ufw</span><span class="w"> </span><span class="n">allow</span><span class="w"> </span><span class="mi">30000</span><span class="p">:</span><span class="mi">32767</span><span class="o">/</span><span class="n">tcp</span>
+<span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">ufw</span><span class="w"> </span><span class="n">reload</span>
+</code></pre></div>
+
+<p>注意：如果你的 Debian 11 系统防火墙是关闭的，可以跳过此步骤。</p>
+<h3>4、在所有节点安装 Containerd 运行时</h3>
+<p>Containerd 是容器运行时的行业标准，所有节点必须安装 Containerd。</p>
+<p>先在所有节点上配置如下的核心参数，再安装 Containerd。</p>
+<div class="highlight"><pre><span></span><code><span class="o">$</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="n">EOF</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">tee</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">modules</span><span class="o">-</span><span class="nb">load</span><span class="o">.</span><span class="n">d</span><span class="o">/</span><span class="n">containerd</span><span class="o">.</span><span class="n">conf</span>
+<span class="n">overlay</span>
+<span class="n">br_netfilter</span>
+<span class="n">EOF</span>
+
+<span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">modprobe</span><span class="w"> </span><span class="n">overlay</span>
+<span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">modprobe</span><span class="w"> </span><span class="n">br_netfilter</span>
+
+<span class="o">$</span><span class="w"> </span><span class="n">cat</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="n">EOF</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">tee</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">sysctl</span><span class="o">.</span><span class="n">d</span><span class="o">/</span><span class="mi">99</span><span class="o">-</span><span class="n">kubernetes</span><span class="o">-</span><span class="n">k8s</span><span class="o">.</span><span class="n">conf</span>
+<span class="n">net</span><span class="o">.</span><span class="n">bridge</span><span class="o">.</span><span class="n">bridge</span><span class="o">-</span><span class="n">nf</span><span class="o">-</span><span class="n">call</span><span class="o">-</span><span class="n">iptables</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span>
+<span class="n">net</span><span class="o">.</span><span class="n">ipv4</span><span class="o">.</span><span class="n">ip_forward</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span>
+<span class="n">net</span><span class="o">.</span><span class="n">bridge</span><span class="o">.</span><span class="n">bridge</span><span class="o">-</span><span class="n">nf</span><span class="o">-</span><span class="n">call</span><span class="o">-</span><span class="n">ip6tables</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span>
+<span class="n">EOF</span>
+</code></pre></div>
+
+<p>运行如下命令，以使上面的更改生效：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>sysctl<span class="w"> </span>--system
+</code></pre></div>
+
+<p>现在，在所有节点上运行如下 <code>apt</code> 命令来安装 Conatinerd。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>apt<span class="w">  </span>update
+$<span class="w"> </span>sudo<span class="w"> </span>apt<span class="w"> </span>-y<span class="w"> </span>install<span class="w"> </span>containerd
+</code></pre></div>
+
+<p>在所有节点上运行如下命令来配置 Containerd：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>containerd<span class="w"> </span>config<span class="w"> </span>default<span class="w"> </span><span class="p">|</span><span class="w"> </span>sudo<span class="w"> </span>tee<span class="w"> </span>/etc/containerd/config.toml<span class="w"> </span>&gt;/dev/null<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span>
+</code></pre></div>
+
+<p>在所有节点上设置 <code>cgroupdriver</code> 为 <code>systemd</code>，编辑 <code>/etc/containerd/config.toml</code> 文件，找到 <code>[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]</code> 部分，添加一行内容：<code>SystemdCgroup = true</code>：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>vi<span class="w"> </span>/etc/containerd/config.toml
+</code></pre></div>
+
+<p><img alt="systemdCgroup-true-containerd-config-toml" src="/data/attachment/album/202211/30/091931d0niz8ur284i9mzr.png"></p>
+<p>保存并退出文件。</p>
+<p>在所有节点上重启并启用 <code>containerd</code> 服务：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>restart<span class="w"> </span>containerd
+$<span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>containerd
+</code></pre></div>
+
+<h3>5、添加 Kubernetes Apt 库</h3>
+<p>执行以下命令，添加 Kubernetes Apt 库：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>gnupg<span class="w"> </span>gnupg2<span class="w"> </span>curl<span class="w"> </span>software-properties-common<span class="w"> </span>-y
+$<span class="w"> </span>curl<span class="w"> </span>-s<span class="w"> </span>https://packages.cloud.google.com/apt/doc/apt-key.gpg<span class="w"> </span><span class="p">|</span><span class="w"> </span>sudo<span class="w"> </span>gpg<span class="w"> </span>--dearmour<span class="w"> </span>-o<span class="w"> </span>/etc/apt/trusted.gpg.d/cgoogle.gpg
+$<span class="w"> </span>sudo<span class="w"> </span>apt-add-repository<span class="w"> </span><span class="s2">&quot;deb http://apt.kubernetes.io/ kubernetes-xenial main&quot;</span>
+</code></pre></div>
+
+<h3>6、在所有节点上安装 kubelet、kubectl 和 kubeadm</h3>
+<p>在所有节点上执行以下 <code>apt</code> 命令，安装 Kubernetes 集群组件，如 <code>kubelet</code>、<code>kubectl</code> 以及 <code>kubeadm</code>。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>apt<span class="w"> </span>update
+$<span class="w"> </span>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>kubelet<span class="w"> </span>kubeadm<span class="w"> </span>kubectl<span class="w"> </span>-y
+$<span class="w"> </span>sudo<span class="w"> </span>apt-mark<span class="w"> </span>hold<span class="w"> </span>kubelet<span class="w"> </span>kubeadm<span class="w"> </span>kubectl
+</code></pre></div>
+
+<h3>7、使用 Kubeadm 创建 Kubernetes 集群</h3>
+<p>现在我们可以创建 Kubernetes 集群了，在主控节点上执行以下命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>kubeadm<span class="w"> </span>init<span class="w"> </span>--control-plane-endpoint<span class="o">=</span>k8s-master
+</code></pre></div>
+
+<p>命令输出：</p>
+<p><img alt="Kubernetes-Control-Plane-Initialization-Debian11" src="/data/attachment/album/202211/30/091931d99hajs1393vkxex.png"></p>
+<p>出现以上内容，说明控制平面初始化成功。在输出中，有普通用户与集群交互的命令，也有把任何工作节点加入到集群的命令。</p>
+<p>要开始与集群进行交互，请在主控节点上运行以下命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span><span class="nv">$HOME</span>/.kube
+$<span class="w"> </span>sudo<span class="w"> </span>cp<span class="w"> </span>-i<span class="w"> </span>/etc/kubernetes/admin.conf<span class="w"> </span><span class="nv">$HOME</span>/.kube/config
+$<span class="w"> </span>sudo<span class="w"> </span>chown<span class="w"> </span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span>:<span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="w"> </span><span class="nv">$HOME</span>/.kube/config
+</code></pre></div>
+
+<p>执行以下 <code>kubectl</code> 命令来获取节点和集群的信息：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>kubectl<span class="w"> </span>get<span class="w"> </span>nodes
+$<span class="w"> </span>kubectl<span class="w"> </span>cluster-info
+</code></pre></div>
+
+<p>以上命令的输出：</p>
+<p><img alt="Nodes-Cluster-Info-Kubectl" src="/data/attachment/album/202211/30/091932re5fwe9q5fw5ifm9.png"></p>
+<p>通过执行 <code>kubeadm join</code> 命令来把两个工作节点加入到集群。</p>
+<p>注意：请从 <code>kubeadm init</code> 命令的输出中复制完整的命令。在我的例子中，命令如下：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>kubeadm<span class="w"> </span>join<span class="w"> </span>k8s-master:6443<span class="w"> </span>--token<span class="w"> </span>ta622t.enl212euq7z87mgj<span class="w"> </span><span class="se">\</span>
+<span class="w">   </span>--discovery-token-ca-cert-hash<span class="w"> </span>sha256:2be58f54458d0e788c96b8841f811069019161f9a3dd8502a38c773e5c6ead17
+</code></pre></div>
+
+<p>在工作节点 1 上的输出如下：</p>
+<p><img alt="Worker-Node1-Join-Kunernetes-Cluster" src="/data/attachment/album/202211/30/091932wu38rcr87ydxduiu.png"></p>
+<p>在工作节点 2 上的输出如下：</p>
+<p><img alt="Worker-Node2-Join-Kubernetes-Cluster" src="/data/attachment/album/202211/30/091933crf4ws9ju48myzjf.png"></p>
+<p>在主控节点上执行以下命令，检查节点的状态：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>kubectl<span class="w"> </span>get<span class="w"> </span>nodes
+NAME<span class="w">          </span>STATUS<span class="w">     </span>ROLES<span class="w">           </span>AGE<span class="w">     </span>VERSION
+k8s-master<span class="w">    </span>NotReady<span class="w">   </span>control-plane<span class="w">   </span>23m<span class="w">     </span>v1.25.0
+k8s-worker1<span class="w">   </span>NotReady<span class="w">   </span>&lt;none&gt;<span class="w">          </span>9m27s<span class="w">   </span>v1.25.0
+k8s-worker2<span class="w">   </span>NotReady<span class="w">   </span>&lt;none&gt;<span class="w">          </span>2m19s<span class="w">   </span>v1.25.0
+$
+</code></pre></div>
+
+<p>为了使节点状态变为 <code>ready</code>，我们需要安装<ruby> 容器荚 <rt>  Pod </rt></ruby>网络插件，如 Calico 或 flannel。</p>
+<h3>8、安装 Calico Pod 网络插件</h3>
+<p>在主控节点上执行以下命令安装 Calico：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>kubectl<span class="w"> </span>apply<span class="w"> </span>-f<span class="w"> </span>https://projectcalico.docs.tigera.io/manifests/calico.yaml
+</code></pre></div>
+
+<p>输出：</p>
+<p><img alt="Install-calico-pod-network-addon-debian11" src="/data/attachment/album/202211/30/091934r8kz8vkufhv0uhhv.png"></p>
+<p>在所有节点上执行以下命令，配置防火墙允许 Calico 的端口：</p>
+<div class="highlight"><pre><span></span><code><span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">ufw</span><span class="w"> </span><span class="n">allow</span><span class="w"> </span><span class="mi">179</span><span class="o">/</span><span class="n">tcp</span>
+<span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">ufw</span><span class="w"> </span><span class="n">allow</span><span class="w"> </span><span class="mi">4789</span><span class="o">/</span><span class="n">udp</span>
+<span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">ufw</span><span class="w"> </span><span class="n">allow</span><span class="w"> </span><span class="mi">51820</span><span class="o">/</span><span class="n">udp</span>
+<span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">ufw</span><span class="w"> </span><span class="n">allow</span><span class="w"> </span><span class="mi">51821</span><span class="o">/</span><span class="n">udp</span>
+<span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">ufw</span><span class="w"> </span><span class="n">allow</span><span class="w"> </span><span class="mi">4789</span><span class="o">/</span><span class="n">udp</span>
+<span class="o">$</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">ufw</span><span class="w"> </span><span class="n">reload</span>
+</code></pre></div>
+
+<p>执行以下命令检查下 Calico 的状态：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>kubectl<span class="w"> </span>get<span class="w"> </span>pods<span class="w"> </span>-n<span class="w"> </span>kube-system
+</code></pre></div>
+
+<p><img alt="Calico-Pods-Status-Kuberenetes-Debian11" src="/data/attachment/album/202211/30/091935kyytijujjnpi14pq.png"></p>
+<p>完美！现在再检查下节点状态：</p>
+<p><img alt="Nodes-status-after-calico-Installation" src="/data/attachment/album/202211/30/091935m68ka1g2at62ms8s.png"></p>
+<p>非常棒！上面的输出说明主控节点和工作节点的状态都是 <code>ready</code>。现在这个集群可以正常工作了。</p>
+<h3>9、检查 Kubernetes 集群安装是否正确</h3>
+<p>我们尝试通过 <code>deployment</code> 命令来部署基于 Nginx 的应用程序，来验证 Kubernetes 集群的安装是否正确。执行以下命令：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>kubectl<span class="w"> </span>create<span class="w"> </span>deployment<span class="w"> </span>nginx-app<span class="w"> </span>--image<span class="o">=</span>nginx<span class="w"> </span>--replicas<span class="w"> </span><span class="m">2</span>
+$<span class="w"> </span>kubectl<span class="w"> </span>expose<span class="w"> </span>deployment<span class="w"> </span>nginx-app<span class="w"> </span>--name<span class="o">=</span>nginx-web-svc<span class="w"> </span>--type<span class="w"> </span>NodePort<span class="w"> </span>--port<span class="w"> </span><span class="m">80</span><span class="w"> </span>--target-port<span class="w"> </span><span class="m">80</span>
+$<span class="w"> </span>kubectl<span class="w"> </span>describe<span class="w"> </span>svc<span class="w"> </span>nginx-web-svc
+</code></pre></div>
+
+<p>以上命令的输出：</p>
+<p><img alt="Nginx-Based-App-Kubernetes-Cluster-Debian11" src="/data/attachment/album/202211/30/091936jz9b9ndbbd77bx6p.png"></p>
+<p>使用以下的 <code>curl</code> 命令通过节点端口 30036 来访问基于 nginx 的应用程序。</p>
+<p>注意：在 <code>curl</code> 命令中，可以使用两个工作节点任一的主机名。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>curl<span class="w"> </span>http://k8s-worker1:30036
+</code></pre></div>
+
+<p><img alt="Access-Nginx-Based-App-via-NodePort-Kubernetes-Debian11" src="/data/attachment/album/202211/30/091936awvwne1fzee31e55.png"></p>
+<p>以上的输出说明我们可以正常访问基于 nginx 的应用程序了。</p>
+<p>以上为全部内容。希望本文对你有用，参照本文可以在 Debian 11 上正常安装 Kubernetes 集群。如有任何问题，请在下面评论区告诉我。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

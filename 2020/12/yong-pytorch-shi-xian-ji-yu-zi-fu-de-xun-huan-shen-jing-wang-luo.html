@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>用 PyTorch 实现基于字符的循环神经网络</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Julia Evans 在过去的几周里，我花了很多时间用 PyTorch 实现了一个 char-rnn 的版本。我以前从未训练过神经网络，所以这可能是一个有趣 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2020/12/yong-pytorch-shi-xian-ji-yu-zi-fu-de-xun-huan-shen-jing-wang-luo.html" rel="bookmark"
+           title="Permalink to 用 PyTorch 实现基于字符的循环神经网络">用 PyTorch 实现基于字符的循环神经网络</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2020-12-19T10:24:00+01:00">
+                Published: Sat 19 December 2020
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Julia Evans</p>
+<p><img alt="" src="/data/attachment/album/202012/19/102319oe36em6d63bolg0i.jpg"></p>
+<p>在过去的几周里，我花了很多时间用 PyTorch 实现了一个 <a href="https://karpathy.github.io/2015/05/21/rnn-effectiveness/">char-rnn</a> 的版本。我以前从未训练过神经网络，所以这可能是一个有趣的开始。</p>
+<p>这个想法（来自 <a href="https://karpathy.github.io/2015/05/21/rnn-effectiveness/">循环神经网络的不合理效应</a>）可以让你在文本上训练一个基于字符的<ruby> 循环神经网络 <rt>  recurrent neural network </rt></ruby>（RNN），并得到一些出乎意料好的结果。</p>
+<p>不过，虽然没有得到我想要的结果，但是我还是想分享一些示例代码和结果，希望对其他开始尝试使用 PyTorch 和 RNN 的人有帮助。</p>
+<p>这是 Jupyter 笔记本格式的代码：<a href="https://gist.github.com/jvns/b6dda36b2fdcc02b833ed5b0c7a09112">char-rnn in PyTorch.ipynb</a>。你可以点击这个网页最上面那个按钮 “Open in Colab”，就可以在 Google 的 Colab 服务中打开，并使用免费的 GPU 进行训练。所有的东西加起来大概有 75 行代码，我将在这篇博文中尽可能地详细解释。</p>
+<h3>第一步：准备数据</h3>
+<p>首先，我们要下载数据。我使用的是<ruby> 古登堡项目 <rt>  Project Gutenberg </rt></ruby>中的这个数据：<a href="https://www.gutenberg.org/cache/epub/27200/pg27200.txt">Hans Christian Anderson’s fairy tales</a>。</p>
+<div class="highlight"><pre><span></span><code><span class="sx">!wget -O fairy-tales.txt</span>
+</code></pre></div>
+
+<p>这个是准备数据的代码。我使用 <code>fastai</code> 库中的 <code>Vocab</code> 类进行数据处理，它能将一堆字母转换成“词表”，然后用这个“词表”把字母变成数字。</p>
+<p>之后我们就得到了一个大的数字数组（<code>training_set</code>），我们可以用于训练我们的模型。</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">fastai.text</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="n">text</span> <span class="o">=</span> <span class="n">unidecode</span><span class="o">.</span><span class="n">unidecode</span><span class="p">(</span><span class="nb">open</span><span class="p">(</span><span class="s1">&#39;fairy-tales.txt&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">())</span>
+<span class="n">v</span> <span class="o">=</span> <span class="n">Vocab</span><span class="o">.</span><span class="n">create</span><span class="p">((</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">text</span><span class="p">),</span> <span class="n">max_vocab</span><span class="o">=</span><span class="mi">400</span><span class="p">,</span> <span class="n">min_freq</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">training_set</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">numericalize</span><span class="p">([</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">text</span><span class="p">]))</span><span class="o">.</span><span class="n">type</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">LongTensor</span><span class="p">)</span><span class="o">.</span><span class="n">cuda</span><span class="p">()</span>
+<span class="n">num_letters</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">itos</span><span class="p">)</span>
+</code></pre></div>
+
+<h3>第二步：定义模型</h3>
+<p>这个是 PyTorch 中 <code>LSTM</code> 类的封装。除了封装 <code>LSTM</code> 类以外，它还做了三件事：</p>
+<ol>
+<li>对输入向量进行 one-hot 编码，使得它们具有正确的维度。</li>
+<li>在 <code>LSTM</code> 层后一层添加一个线性变换，因为 <code>LSTM</code> 输出的是一个长度为 <code>hidden_size</code> 的向量，我们需要的是一个长度为 <code>input_size</code> 的向量这样才能把它变成一个字符。</li>
+<li>把 <code>LSTM</code> 隐藏层的输出向量（实际上有 2 个向量）保存成实例变量，然后在每轮运行结束后执行 <code>.detach()</code> 函数。（我很难解释清 <code>.detach()</code> 的作用，但我的理解是，它在某种程度上“结束”了模型的求导计算）（LCTT 译注：<code>detach()</code> 函数是将该张量的 <code>requires_grad</code> 参数设置为 <code>False</code>，即反向传播到该张量就结束。）</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="kd">class</span><span class="w"> </span><span class="nx">MyLSTM</span><span class="p">(</span><span class="nx">nn</span><span class="p">.</span><span class="nx">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="nx">def</span><span class="w"> </span><span class="nx">__init__</span><span class="p">(</span><span class="kp">self</span><span class="p">,</span><span class="w"> </span><span class="nx">input_size</span><span class="p">,</span><span class="w"> </span><span class="nx">hidden_size</span><span class="p">):</span>
+<span class="w">        </span><span class="nx">super</span><span class="p">().</span><span class="nx">__init__</span><span class="p">()</span>
+<span class="w">        </span><span class="kp">self</span><span class="p">.</span><span class="nx">lstm</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">nn</span><span class="p">.</span><span class="nx">LSTM</span><span class="p">(</span><span class="nx">input_size</span><span class="p">,</span><span class="w"> </span><span class="nx">hidden_size</span><span class="p">,</span><span class="w"> </span><span class="nx">batch_first</span><span class="p">=</span><span class="nx">True</span><span class="p">)</span>
+<span class="w">        </span><span class="kp">self</span><span class="p">.</span><span class="nx">h2o</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">nn</span><span class="p">.</span><span class="nx">Linear</span><span class="p">(</span><span class="nx">hidden_size</span><span class="p">,</span><span class="w"> </span><span class="nx">input_size</span><span class="p">)</span>
+<span class="w">        </span><span class="kp">self</span><span class="p">.</span><span class="nx">input_size</span><span class="p">=</span><span class="nx">input_size</span>
+<span class="w">        </span><span class="kp">self</span><span class="p">.</span><span class="nx">hidden</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">None</span>
+
+<span class="w">    </span><span class="nx">def</span><span class="w"> </span><span class="nx">forward</span><span class="p">(</span><span class="kp">self</span><span class="p">,</span><span class="w"> </span><span class="nx">input</span><span class="p">):</span>
+<span class="w">        </span><span class="nx">input</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">torch</span><span class="p">.</span><span class="nx">nn</span><span class="p">.</span><span class="nx">functional</span><span class="p">.</span><span class="nx">one_hot</span><span class="p">(</span><span class="nx">input</span><span class="p">,</span><span class="w"> </span><span class="nx">num_classes</span><span class="p">=</span><span class="kp">self</span><span class="p">.</span><span class="nx">input_size</span><span class="p">).</span><span class="k">type</span><span class="p">(</span><span class="nx">torch</span><span class="p">.</span><span class="nx">FloatTensor</span><span class="p">).</span><span class="nx">cuda</span><span class="p">().</span><span class="nx">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="kp">self</span><span class="p">.</span><span class="nx">hidden</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="nx">None</span><span class="p">:</span>
+<span class="w">            </span><span class="nx">l_output</span><span class="p">,</span><span class="w"> </span><span class="kp">self</span><span class="p">.</span><span class="nx">hidden</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kp">self</span><span class="p">.</span><span class="nx">lstm</span><span class="p">(</span><span class="nx">input</span><span class="p">)</span>
+<span class="w">        </span><span class="k">else</span><span class="p">:</span>
+<span class="w">            </span><span class="nx">l_output</span><span class="p">,</span><span class="w"> </span><span class="kp">self</span><span class="p">.</span><span class="nx">hidden</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kp">self</span><span class="p">.</span><span class="nx">lstm</span><span class="p">(</span><span class="nx">input</span><span class="p">,</span><span class="w"> </span><span class="kp">self</span><span class="p">.</span><span class="nx">hidden</span><span class="p">)</span>
+<span class="w">        </span><span class="kp">self</span><span class="p">.</span><span class="nx">hidden</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="p">(</span><span class="kp">self</span><span class="p">.</span><span class="nx">hidden</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="nx">detach</span><span class="p">(),</span><span class="w"> </span><span class="kp">self</span><span class="p">.</span><span class="nx">hidden</span><span class="p">[</span><span class="mi">1</span><span class="p">].</span><span class="nx">detach</span><span class="p">())</span>
+
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="kp">self</span><span class="p">.</span><span class="nx">h2o</span><span class="p">(</span><span class="nx">l_output</span><span class="p">)</span>
+</code></pre></div>
+
+<p>这个代码还做了一些比较神奇但是不太明显的功能。如果你的输入是一个向量（比如 <code>[1,2,3,4,5,6]</code>），对应六个字母，那么我的理解是 <code>nn.LSTM</code> 会在内部使用<a href="https://en.wikipedia.org/wiki/Backpropagation_through_time">沿时间反向传播</a>更新隐藏向量 6 次。</p>
+<h3>第三步：编写训练代码</h3>
+<p>模型不会自己训练的！</p>
+<p>我最开始的时候尝试用 <code>fastai</code> 库中的一个辅助类（也是 PyTorch 中的封装）。我有点疑惑因为我不知道它在做什么，所以最后我自己编写了模型训练代码。</p>
+<p>下面这些代码（<code>epoch()</code> 方法）就是有关于一轮训练过程的基本信息。基本上就是重复做下面这几件事情：</p>
+<ol>
+<li>往 RNN 模型中传入一个字符串，比如 <code>and they ought not to teas</code>。（要以数字向量的形式传入）</li>
+<li>得到下一个字母的预测结果</li>
+<li>计算 RNN 模型预测结果和真实的下一个字母之间的损失函数（<code>e</code>，因为 <code>tease</code> 这个单词是以 <code>e</code> 结尾的）</li>
+<li>计算梯度（用 <code>loss.backward()</code> 函数）</li>
+<li>沿着梯度下降的方向修改模型中参数的权重（用 <code>self.optimizer.step()</code> 函数）</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="k">class</span> <span class="n">Trainer</span>():
+  <span class="n">def</span> <span class="n">__init__</span>(<span class="nb">self</span>):
+      <span class="nb">self</span>.<span class="n">rnn</span> = <span class="n">MyLSTM</span>(<span class="n">input_size</span>, <span class="n">hidden_size</span>).<span class="n">cuda</span>()
+      <span class="nb">self</span>.<span class="n">optimizer</span> = <span class="n">torch</span>.<span class="n">optim</span>.<span class="n">Adam</span>(<span class="nb">self</span>.<span class="n">rnn</span>.<span class="n">parameters</span>(), <span class="n">amsgrad</span>=<span class="nb">True</span>, <span class="n">lr</span>=<span class="n">lr</span>)
+  <span class="n">def</span> <span class="n">epoch</span>(<span class="nb">self</span>):
+      <span class="n">i</span> = <span class="mi">0</span>
+      <span class="k">while</span> <span class="n">i</span> &lt; <span class="n">len</span>(<span class="n">training_set</span>) - <span class="mi">40</span>:
+        <span class="n">seq_len</span> = <span class="n">random</span>.<span class="n">randint</span>(<span class="mi">10</span>, <span class="mi">40</span>)
+        <span class="n">input</span>, <span class="nb">target</span> = <span class="n">training_set</span>[<span class="n">i:i</span><span class="o">+</span><span class="n">seq_len</span>],<span class="n">training_set</span>[<span class="n">i</span><span class="o">+</span><span class="mi">1</span>:<span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="o">+</span><span class="n">seq_len</span>]
+        <span class="n">i</span> += <span class="n">seq_len</span>
+        <span class="c1"># forward pass</span>
+        <span class="n">output</span> = <span class="nb">self</span>.<span class="n">rnn</span>(<span class="n">input</span>)
+        <span class="n">loss</span> = <span class="n">F</span>.<span class="n">cross_entropy</span>(<span class="n">output</span>.<span class="n">squeeze</span>()[-<span class="mi">1</span>:], <span class="nb">target</span>[-<span class="mi">1</span>:])
+        <span class="c1"># compute gradients and take optimizer step</span>
+        <span class="nb">self</span>.<span class="n">optimizer</span>.<span class="n">zero_grad</span>()
+        <span class="n">loss</span>.<span class="n">backward</span>()
+        <span class="nb">self</span>.<span class="n">optimizer</span>.<span class="n">step</span>()
+</code></pre></div>
+
+<h3>使用 nn.LSTM 沿着时间反向传播，不要自己写代码</h3>
+<p>开始的时候我自己写代码每次传一个字母到 LSTM 层中，之后定期计算导数，就像下面这样：</p>
+<div class="highlight"><pre><span></span><code>for i in range(20):
+    input, target = next(iter)
+    output, hidden = self.lstm(input, hidden)
+loss = F.cross_entropy(output, target)
+hidden = hidden.detach()
+self.optimizer.zero_grad()
+loss.backward()
+self.optimizer.step()
+</code></pre></div>
+
+<p>这段代码每次传入 20 个字母，每次一个，并且在最后训练了一次。这个步骤就被称为<a href="https://en.wikipedia.org/wiki/Backpropagation_through_time">沿时间反向传播</a>，Karpathy 在他的博客中就是用这种方法。</p>
+<p>这个方法有些用处，我编写的损失函数开始能够下降一段时间，但之后就会出现峰值。我不知道为什么会出现这种现象，但之后我改为一次传入 20 个字符到 LSTM 之后（按 <code>seq_len</code> 维度），再进行反向传播，情况就变好了。</p>
+<h3>第四步：训练模型！</h3>
+<p>我在同样的数据上重复执行了这个训练代码大概 300 次，直到模型开始输出一些看起来像英文的文本。差不多花了一个多小时吧。</p>
+<p>这种情况下我也不关注模型是不是过拟合了，但是如果你在真实场景中训练模型，应该要在验证集上验证你的模型。</p>
+<h3>第五步：生成输出！</h3>
+<p>最后一件要做的事就是用这个模型生成一些输出。我写了一个辅助方法从这个训练好的模型中生成文本（<code>make_preds</code> 和 <code>next_pred</code>）。这里主要是把向量的维度对齐，重要的一点是：</p>
+<div class="highlight"><pre><span></span><code>output = rnn(input)
+prediction_vector = F.softmax(output/temperature)
+letter = v.textify(torch.multinomial(prediction_vector, 1).flatten(), sep=&#39;&#39;).replace(&#39;_&#39;, &#39; &#39;)
+</code></pre></div>
+
+<p>基本上做的事情就是这些：</p>
+<ol>
+<li>RNN 层为字母表中的每一个字母或者符号输出一个数值向量（<code>output</code>）。</li>
+<li>这个 <code>output</code> 向量<strong>并不是</strong>一个概率向量，所以需要 <code>F.softmax(output/temperature)</code> 操作，将其转换为概率值（也就是所有数值加起来和为 1）。<code>temperature</code> 某种程度上控制了对更高概率的权重，在限制范围内，如果设置 <code>temperature=0.0000001</code>，它将始终选择概率最高的字母。</li>
+<li><code>torch.multinomial(prediction_vector)</code> 用于获取概率向量，并使用这些概率在向量中选择一个索引（如 <code>12</code>）。</li>
+<li><code>v.textify</code> 把 <code>12</code> 转换为字母。</li>
+</ol>
+<p>如果我们想要处理的文本长度为 300，那么只需要重复这个过程 300 次就可以了。</p>
+<h3>结果！</h3>
+<p>我把预测函数中的参数设置为 <code>temperature = 1</code> 得到了下面的这些由模型生成的结果。看起来有点像英语，这个结果已经很不错了，因为这个模型要从头开始“学习”英语，并且是在字符序列的级别上进行学习的。</p>
+<p>虽然这些话没有什么<em>含义</em>，但我们也不知道到底想要得到什么输出。</p>
+<blockquote>
+<p>“An who was you colotal said that have to have been a little crimantable and beamed home the beetle. “I shall be in the head of the green for the sound of the wood. The pastor. “I child hand through the emperor’s sorthes, where the mother was a great deal down the conscious, which are all the gleam of the wood they saw the last great of the emperor’s forments, the house of a large gone there was nothing of the wonded the sound of which she saw in the converse of the beetle. “I shall know happy to him. This stories herself and the sound of the young mons feathery in the green safe.”</p>
+<p>“That was the pastor. The some and hand on the water sound of the beauty be and home to have been consider and tree and the face. The some to the froghesses and stringing to the sea, and the yellow was too intention, he was not a warm to the pastor. The pastor which are the faten to go and the world from the bell, why really the laborer’s back of most handsome that she was a caperven and the confectioned and thoughts were seated to have great made</p>
+</blockquote>
+<p>下面这些结果是当 <code>temperature=0.1</code> 时生成的，它选择字符的方式更接近于“每次都选择出现概率最高的字符”。这就使得输出结果有很多是重复的。</p>
+<blockquote>
+<p>ole the sound of the beauty of the beetle. “She was a great emperor of the sea, and the sun was so warm to the confectioned the beetle. “I shall be so many for the beetle. “I shall be so many for the beetle. “I shall be so standen for the world, and the sun was so warm to the sea, and the sun was so warm to the sea, and the sound of the world from the bell, where the beetle was the sea, and the sound of the world from the bell, where the beetle was the sea, and the sound of the wood flowers and the sound of the wood, and the sound of the world from the bell, where the world from the wood, and the sound of the</p>
+</blockquote>
+<p>这段输出对这几个单词 <code>beetles</code>、<code>confectioners</code>、<code>sun</code> 和 <code>sea</code> 有着奇怪的执念。</p>
+<h3>总结！</h3>
+<p>至此，我的结果远不及 Karpathy 的好，可能有一下几个原因：</p>
+<ol>
+<li>没有足够多的训练数据。</li>
+<li>训练了一个小时之后我就没有耐心去查看 Colab 笔记本上的信息。</li>
+<li>Karpathy 使用了两层LSTM，包含了更多的参数，而我只使用了一层。</li>
+<li>完全是另一回事。</li>
+</ol>
+<p>但我得到了一些大致说得过去的结果！还不错！</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

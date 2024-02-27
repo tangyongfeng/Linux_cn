@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在 Linux 下使用 RAID（二）：使用 mdadm 工具创建软件 RAID 0 （条带化）</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Babin Lonston RAID 即廉价磁盘冗余阵列，其高可用性和可靠性适用于大规模环境中，相比正常使用，数据更需要被保护。RAID 是一些磁 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/08/zai-linux-xia-shi-yong-raider-shi-yong-mdadm-gong-ju-chuang-jian-ruan-jian-raid-0-tiao-dai-hua.html" rel="bookmark"
+           title="Permalink to 在 Linux 下使用 RAID（二）：使用 mdadm 工具创建软件 RAID 0 （条带化）">在 Linux 下使用 RAID（二）：使用 mdadm 工具创建软件 RAID 0 （条带化）</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-08-25T09:25:00+02:00">
+                Published: Tue 25 August 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Babin Lonston</p>
+<p>RAID 即廉价磁盘冗余阵列，其高可用性和可靠性适用于大规模环境中，相比正常使用，数据更需要被保护。RAID 是一些磁盘的集合，是包含一个阵列的逻辑卷。驱动器可以组合起来成为一个阵列或称为（组的）集合。</p>
+<p>创建 RAID 最少应使用2个连接到 RAID 控制器的磁盘组成，来构成逻辑卷，可以根据定义的 RAID 级别将更多的驱动器添加到一个阵列中。不使用物理硬件创建的 RAID 被称为软件 RAID。软件 RAID 也叫做穷人 RAID。</p>
+<p><img alt="Setup RAID0 in Linux" src="/data/attachment/album/201508/24/222802kx000602thjwxthu.jpg"></p>
+<p><em>在 Linux 中创建 RAID0</em></p>
+<p>使用 RAID 的主要目的是为了在发生单点故障时保存数据，如果我们使用单个磁盘来存储数据，如果它损坏了，那么就没有机会取回我们的数据了，为了防止数据丢失我们需要一个容错的方法。所以，我们可以使用多个磁盘组成 RAID 阵列。</p>
+<h4>在 RAID 0 中条带是什么</h4>
+<p>条带是通过将数据在同时分割到多个磁盘上。假设我们有两个磁盘，如果我们将数据保存到该逻辑卷上，它会将数据保存在两个磁盘上。使用 RAID 0 是为了获得更好的性能，但是如果驱动器中一个出现故障，我们将不能得到完整的数据。因此，使用 RAID 0 不是一种好的做法。唯一的解决办法就是安装有 RAID 0 逻辑卷的操作系统来提高重要文件的安全性。</p>
+<ul>
+<li>RAID 0 性能较高。</li>
+<li>在 RAID 0 上，空间零浪费。</li>
+<li>零容错（如果硬盘中的任何一个发生故障，无法取回数据）。</li>
+<li>写和读性能都很好。</li>
+</ul>
+<h4>要求</h4>
+<p>创建 RAID 0 允许的最小磁盘数目是2个，但你可以添加更多的磁盘，不过数目应该是2，4，6，8等的偶数。如果你有一个物理 RAID 卡并且有足够的端口，你可以添加更多磁盘。</p>
+<p>在这里，我们没有使用硬件 RAID，此设置只需要软件 RAID。如果我们有一个物理硬件 RAID 卡，我们可以从它的功能界面访问它。有些主板默认内建 RAID 功能，还可以使用 Ctrl + I 键访问它的界面。</p>
+<p>如果你是刚开始设置 RAID，请阅读我们前面的文章，我们已经介绍了一些关于 RAID 基本的概念。</p>
+<ul>
+<li><a href="/article-6085-1.html">介绍 RAID 的级别和概念</a></li>
+</ul>
+<p><strong>我的服务器设置</strong></p>
+<div class="highlight"><pre><span></span><code><span class="err">操作系统</span><span class="w"> </span><span class="o">:</span><span class="w">  </span><span class="n">CentOS</span><span class="w"> </span><span class="mf">6.5</span><span class="w"> </span><span class="n">Final</span>
+<span class="n">IP</span><span class="w"> </span><span class="err">地址</span><span class="w">    </span><span class="o">:</span><span class="w">  </span><span class="mf">192.168</span><span class="o">.</span><span class="mf">0.225</span>
+<span class="err">两块盘</span><span class="w">    </span><span class="o">:</span><span class="w">  </span><span class="mi">20</span><span class="w"> </span><span class="n">GB</span><span class="w"> </span><span class="k">each</span>
+</code></pre></div>
+
+<p>这是9篇系列教程的第2部分，在这部分，我们将看看如何能够在 Linux 上创建和使用 RAID 0（条带化），以名为 sdb 和 sdc 两个 20GB 的硬盘为例。</p>
+<h3>第1步：更新系统和安装管理 RAID 的 mdadm 软件</h3>
+<p>1、 在 Linux 上设置 RAID 0 前，我们先更新一下系统，然后安装<code>mdadm</code> 包。mdadm 是一个小程序，这将使我们能够在Linux下配置和管理 RAID 设备。</p>
+<div class="highlight"><pre><span></span><code># yum clean all &amp;&amp; yum update
+# yum install mdadm -y
+</code></pre></div>
+
+<p><img alt="install mdadm in linux" src="/data/attachment/album/201508/24/222803t18vzbvv8g0bb89m.png"></p>
+<p><em>安装 mdadm 工具</em></p>
+<h3>第2步：确认连接了两个 20GB 的硬盘</h3>
+<p>2、 在创建 RAID 0 前，请务必确认两个硬盘能被检测到，使用下面的命令确认。</p>
+<div class="highlight"><pre><span></span><code># ls -l /dev | grep sd
+</code></pre></div>
+
+<p><img alt="Check Hard Drives in Linux" src="/data/attachment/album/201508/24/222803rq0qe0rwe3n22wkw.png"></p>
+<p><em>检查硬盘</em></p>
+<p>3、 一旦检测到新的硬盘驱动器，同时检查是否连接的驱动器已经被现有的 RAID 使用，使用下面的<code>mdadm</code> 命令来查看。</p>
+<div class="highlight"><pre><span></span><code># mdadm --examine /dev/sd[b-c]
+</code></pre></div>
+
+<p><img alt="Check RAID Devices in Linux" src="/data/attachment/album/201508/24/222804ulntnhzxylob0b0t.png"></p>
+<p><em>检查 RAID 设备</em></p>
+<p>从上面的输出我们可以看到，没有任何 RAID 使用 sdb 和 sdc 这两个驱动器。</p>
+<h3>第3步：创建 RAID 分区</h3>
+<p>4、 现在用 sdb 和 sdc 创建 RAID 的分区，使用 fdisk 命令来创建。在这里，我将展示如何创建 sdb 驱动器上的分区。</p>
+<div class="highlight"><pre><span></span><code># fdisk /dev/sdb
+</code></pre></div>
+
+<p>请按照以下说明创建分区。</p>
+<ul>
+<li>按<code>n</code> 创建新的分区。</li>
+<li>然后按<code>P</code> 选择主分区。</li>
+<li>接下来选择分区号为1。</li>
+<li>只需按两次回车键选择默认值即可。</li>
+<li>然后，按<code>P</code> 来显示创建好的分区。</li>
+</ul>
+<p><img alt="Create Partitions in Linux" src="/data/attachment/album/201508/24/222806zse644qqf46d79y6.png"></p>
+<p><em>创建分区</em></p>
+<p>请按照以下说明将分区创建为 Linux 的 RAID 类型。</p>
+<ul>
+<li>按<code>L</code>，列出所有可用的类型。</li>
+<li>按<code>t</code> 去修改分区。</li>
+<li>键入<code>fd</code> 设置为 Linux 的 RAID 类型，然后按回车确认。</li>
+<li>然后再次使用<code>p</code>查看我们所做的更改。</li>
+<li>使用<code>w</code>保存更改。</li>
+</ul>
+<p><img alt="Create RAID Partitions" src="/data/attachment/album/201508/24/222809j0hzhtq1huykhecw.png"></p>
+<p><em>在 Linux 上创建 RAID 分区</em></p>
+<p><strong>注</strong>: 请使用上述步骤同样在 sdc 驱动器上创建分区。</p>
+<p>5、 创建分区后，验证这两个驱动器是否正确定义 RAID，使用下面的命令。</p>
+<div class="highlight"><pre><span></span><code># mdadm --examine /dev/sd[b-c]
+# mdadm --examine /dev/sd[b-c]1
+</code></pre></div>
+
+<p><img alt="Verify RAID Partitions" src="/data/attachment/album/201508/24/222811w6uql6ez699he6c7.png"></p>
+<p><em>验证 RAID 分区</em></p>
+<h3>第4步：创建 RAID md 设备</h3>
+<p>6、 现在使用以下命令创建 md 设备（即 /dev/md0），并选择 RAID 合适的级别。</p>
+<div class="highlight"><pre><span></span><code># mdadm -C /dev/md0 -l raid0 -n 2 /dev/sd[b-c]1
+# mdadm --create /dev/md0 --level=stripe --raid-devices=2 /dev/sd[b-c]1
+</code></pre></div>
+
+<ul>
+<li>-C – 创建</li>
+<li>-l – 级别</li>
+<li>-n – RAID 设备数</li>
+</ul>
+<p>7、 一旦 md 设备已经建立，使用如下命令可以查看 RAID 级别，设备和阵列的使用状态。</p>
+<div class="highlight"><pre><span></span><code># cat /proc/mdstat
+</code></pre></div>
+
+<p><img alt="Verify RAID Level" src="/data/attachment/album/201508/24/222811wvx8y222xnz2prww.png"></p>
+<p><em>查看 RAID 级别</em></p>
+<div class="highlight"><pre><span></span><code># mdadm -E /dev/sd[b-c]1
+</code></pre></div>
+
+<p><img alt="Verify RAID Device" src="/data/attachment/album/201508/24/222813n6p4hf6m9jpwpepz.png"></p>
+<p><em>查看 RAID 设备</em></p>
+<div class="highlight"><pre><span></span><code># mdadm --detail /dev/md0
+</code></pre></div>
+
+<p><img alt="Verify RAID Array" src="/data/attachment/album/201508/24/222815q1llml1slwhbhqrb.png"></p>
+<p><em>查看 RAID 阵列</em></p>
+<h3>第5步：给 RAID 设备创建文件系统</h3>
+<p>8、 将 RAID 设备 /dev/md0 创建为 ext4 文件系统，并挂载到 /mnt/raid0 下。</p>
+<div class="highlight"><pre><span></span><code># mkfs.ext4 /dev/md0
+</code></pre></div>
+
+<p><img alt="Create ext4 Filesystem in Linux" src="/data/attachment/album/201508/24/222817tyj74d56fqdpk72e.png"></p>
+<p><em>创建 ext4 文件系统</em></p>
+<p>9、 在 RAID 设备上创建好 ext4 文件系统后，现在创建一个挂载点（即 /mnt/raid0），并将设备 /dev/md0 挂载在它下。</p>
+<div class="highlight"><pre><span></span><code># mkdir /mnt/raid0
+# mount /dev/md0 /mnt/raid0/
+</code></pre></div>
+
+<p>10、下一步，使用 df 命令验证设备 /dev/md0 是否被挂载在 /mnt/raid0 下。</p>
+<div class="highlight"><pre><span></span><code># df -h
+</code></pre></div>
+
+<p>11、 接下来，在挂载点 /mnt/raid0 下创建一个名为<code>tecmint.txt</code> 的文件，为创建的文件添加一些内容，并查看文件和目录的内容。</p>
+<div class="highlight"><pre><span></span><code># touch /mnt/raid0/tecmint.txt
+# echo &quot;Hi everyone how you doing ?&quot; &gt; /mnt/raid0/tecmint.txt
+# cat /mnt/raid0/tecmint.txt
+# ls -l /mnt/raid0/
+</code></pre></div>
+
+<p><img alt="Verify Mount Device" src="/data/attachment/album/201508/24/222822coztobq68wpzf6qp.png"></p>
+<p><em>验证挂载的设备</em></p>
+<p>12、 当你验证挂载点后，就可以将它添加到 /etc/fstab 文件中。</p>
+<div class="highlight"><pre><span></span><code># vim /etc/fstab
+</code></pre></div>
+
+<p>添加以下条目，根据你的安装位置和使用文件系统的不同，自行做修改。</p>
+<div class="highlight"><pre><span></span><code>/dev/md0                /mnt/raid0              ext4    deaults         0 0
+</code></pre></div>
+
+<p><img alt="Add Device to Fstab" src="/data/attachment/album/201508/24/222823tj0od78qedw59o9s.png"></p>
+<p><em>添加设备到 fstab 文件中</em></p>
+<p>13、 使用 mount 命令的 <code>-a</code> 来检查 fstab 的条目是否有误。</p>
+<div class="highlight"><pre><span></span><code># mount -av
+</code></pre></div>
+
+<p><img alt="Check Errors in Fstab" src="/data/attachment/album/201508/24/222825n644vx4pfd4x62rr.png"></p>
+<p><em>检查 fstab 文件是否有误</em></p>
+<h3>第6步：保存 RAID 配置</h3>
+<p>14、 最后，保存 RAID 配置到一个文件中，以供将来使用。我们再次使用带有<code>-s</code> (scan) 和<code>-v</code> (verbose) 选项的 <code>mdadm</code> 命令，如图所示。</p>
+<div class="highlight"><pre><span></span><code># mdadm -E -s -v &gt;&gt; /etc/mdadm.conf
+# mdadm --detail --scan --verbose &gt;&gt; /etc/mdadm.conf  
+# cat /etc/mdadm.conf
+</code></pre></div>
+
+<p><img alt="Save RAID Configurations" src="/data/attachment/album/201508/24/222826atiiobykt9jy8yxt.png"></p>
+<p><em>保存 RAID 配置</em></p>
+<p>就这样，我们在这里看到，如何通过使用两个硬盘配置具有条带化的 RAID 0 。在接下来的文章中，我们将看到如何设置 RAID 1。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

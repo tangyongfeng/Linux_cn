@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>无密码验证：服务器</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Nicolás Parada 无密码验证可以让你只输入一个 email 而无需输入密码即可登入系统。这是一种比传统的电子邮件/密码验证方式登 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/06/wu-mi-ma-yan-zheng-fu-wu-qi.html" rel="bookmark"
+           title="Permalink to 无密码验证：服务器">无密码验证：服务器</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-06-15T00:01:00+02:00">
+                Published: Fri 15 June 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Nicolás Parada</p>
+<p><img alt="" src="/data/attachment/album/201806/15/000057ms1oszswwhooiiis.jpg"></p>
+<p>无密码验证可以让你只输入一个 email 而无需输入密码即可登入系统。这是一种比传统的电子邮件/密码验证方式登入更安全的方法。</p>
+<p>下面我将为你展示，如何在 <a href="https://golang.org/">Go</a> 中实现一个 HTTP API 去提供这种服务。</p>
+<h3>流程</h3>
+<ul>
+<li>用户输入他的电子邮件地址。</li>
+<li>服务器创建一个临时的一次性使用的代码（就像一个临时密码一样）关联到用户，然后给用户邮箱中发送一个“魔法链接”。</li>
+<li>用户点击魔法链接。</li>
+<li>服务器提取魔法链接中的代码，获取关联的用户，并且使用一个新的 JWT 重定向到客户端。</li>
+<li>在每次有新请求时，客户端使用 JWT 去验证用户。</li>
+</ul>
+<h3>必需条件</h3>
+<ul>
+<li>数据库：我们为这个服务使用了一个叫 <a href="https://www.cockroachlabs.com/">CockroachDB</a> 的 SQL 数据库。它非常像 postgres，但它是用 Go 写的。</li>
+<li>SMTP 服务器：我们将使用一个第三方的邮件服务器去发送邮件。开发的时我们使用 <a href="https://mailtrap.io/">mailtrap</a>。Mailtrap 发送所有的邮件到它的收件箱，因此，你在测试时不需要创建多个假邮件帐户。</li>
+</ul>
+<p>从 <a href="https://golang.org/dl/">Go 的主页</a> 上安装它，然后使用 <code>go version</code>（1.10.1 atm）命令去检查它能否正常工作。</p>
+<p>从 <a href="https://www.cockroachlabs.com/docs/stable/install-cockroachdb.html">CockroachDB 的主页</a> 上下载它，展开它并添加到你的 <code>PATH</code> 变量中。使用 <code>cockroach version</code>（2.0 atm）命令检查它能否正常工作。</p>
+<h3>数据库模式</h3>
+<p>现在，我们在 <code>GOPATH</code> 目录下为这个项目创建一个目录，然后使用 <code>cockroach start</code> 启动一个新的 CockroachDB 节点：</p>
+<div class="highlight"><pre><span></span><code>cockroach start --insecure --host 127.0.0.1
+</code></pre></div>
+
+<p>它会输出一些内容，找到 SQL 地址行，它将显示像 <code>postgresql://root@127.0.0.1:26257?sslmode=disable</code> 这样的内容。稍后我们将使用它去连接到数据库。</p>
+<p>使用如下的内容去创建一个 <code>schema.sql</code> 文件。</p>
+<div class="highlight"><pre><span></span><code><span class="k">DROP</span><span class="w"> </span><span class="k">DATABASE</span><span class="w"> </span><span class="k">IF</span><span class="w"> </span><span class="ow">EXISTS</span><span class="w"> </span><span class="n">passwordless_demo</span><span class="w"> </span><span class="k">CASCADE</span><span class="p">;</span>
+<span class="k">CREATE</span><span class="w"> </span><span class="k">DATABASE</span><span class="w"> </span><span class="k">IF</span><span class="w"> </span><span class="ow">NOT</span><span class="w"> </span><span class="ow">EXISTS</span><span class="w"> </span><span class="n">passwordless_demo</span><span class="p">;</span>
+<span class="k">SET</span><span class="w"> </span><span class="k">DATABASE</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">passwordless_demo</span><span class="p">;</span>
+
+<span class="k">CREATE</span><span class="w"> </span><span class="nc">TABLE</span><span class="w"> </span><span class="k">IF</span><span class="w"> </span><span class="ow">NOT</span><span class="w"> </span><span class="ow">EXISTS</span><span class="w"> </span><span class="n">users</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="n">id</span><span class="w"> </span><span class="n">UUID</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">gen_random_uuid</span><span class="p">(),</span>
+<span class="w">    </span><span class="n">email</span><span class="w"> </span><span class="n">STRING</span><span class="w"> </span><span class="k">UNIQUE</span><span class="p">,</span>
+<span class="w">    </span><span class="n">username</span><span class="w"> </span><span class="n">STRING</span><span class="w"> </span><span class="k">UNIQUE</span>
+<span class="p">);</span>
+
+<span class="k">CREATE</span><span class="w"> </span><span class="nc">TABLE</span><span class="w"> </span><span class="k">IF</span><span class="w"> </span><span class="ow">NOT</span><span class="w"> </span><span class="ow">EXISTS</span><span class="w"> </span><span class="n">verification_codes</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="n">id</span><span class="w"> </span><span class="n">UUID</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">gen_random_uuid</span><span class="p">(),</span>
+<span class="w">    </span><span class="nf">user_id</span><span class="w"> </span><span class="n">UUID</span><span class="w"> </span><span class="ow">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">REFERENCES</span><span class="w"> </span><span class="n">users</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="k">DELETE</span><span class="w"> </span><span class="k">CASCADE</span><span class="p">,</span>
+<span class="w">    </span><span class="n">created_at</span><span class="w"> </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="ow">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">now</span><span class="p">()</span>
+<span class="p">);</span>
+
+<span class="k">INSERT</span><span class="w"> </span><span class="k">INTO</span><span class="w"> </span><span class="n">users</span><span class="w"> </span><span class="p">(</span><span class="n">email</span><span class="p">,</span><span class="w"> </span><span class="n">username</span><span class="p">)</span><span class="w"> </span><span class="k">VALUES</span>
+<span class="w">    </span><span class="p">(</span><span class="s1">&#39;john@passwordless.local&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;john_doe&#39;</span><span class="p">);</span>
+</code></pre></div>
+
+<p>这个脚本创建了一个名为 <code>passwordless_demo</code> 的数据库、两个名为 <code>users</code> 和 <code>verification_codes</code> 的表，以及为了稍后测试而插入的一些假用户。每个验证代码都与用户关联并保存创建时间，以用于去检查验证代码是否过期。</p>
+<p>在另外的终端中使用 <code>cockroach sql</code> 命令去运行这个脚本：</p>
+<div class="highlight"><pre><span></span><code>cat schema.sql | cockroach sql --insecure
+</code></pre></div>
+
+<h3>环境配置</h3>
+<p>需要配置两个环境变量：<code>SMTP_USERNAME</code> 和 <code>SMTP_PASSWORD</code>，你可以从你的 mailtrap 帐户中获得它们。将在我们的程序中用到它们。</p>
+<h3>Go 依赖</h3>
+<p>我们需要下列的 Go 包：</p>
+<ul>
+<li><a href="https://github.com/lib/pq">github.com/lib/pq</a>：它是 CockroachDB 使用的 postgres 驱动</li>
+<li><a href="https://github.com/matryer/way">github.com/matryer/way</a>: 路由器</li>
+<li><a href="https://github.com/dgrijalva/jwt-go">github.com/dgrijalva/jwt-go</a>: JWT 实现</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="k">go</span><span class="w"> </span><span class="k">get</span><span class="w"> </span><span class="o">-</span><span class="n">u</span><span class="w"> </span><span class="n">github</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">pq</span>
+<span class="k">go</span><span class="w"> </span><span class="k">get</span><span class="w"> </span><span class="o">-</span><span class="n">u</span><span class="w"> </span><span class="n">github</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">matryer</span><span class="o">/</span><span class="n">way</span>
+<span class="k">go</span><span class="w"> </span><span class="k">get</span><span class="w"> </span><span class="o">-</span><span class="n">u</span><span class="w"> </span><span class="n">github</span><span class="p">.</span><span class="n">com</span><span class="o">/</span><span class="n">dgrijalva</span><span class="o">/</span><span class="n">jwt</span><span class="o">-</span><span class="k">go</span>
+</code></pre></div>
+
+<h3>代码</h3>
+<h4>初始化函数</h4>
+<p>创建 <code>main.go</code> 并且通过 <code>init</code> 函数里的环境变量中取得一些配置来启动。</p>
+<div class="highlight"><pre><span></span><code><span class="n">var</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">port</span><span class="w">        </span><span class="kt">int</span>
+<span class="w">    </span><span class="n">appURL</span><span class="w">      </span><span class="o">*</span><span class="n">url</span><span class="p">.</span><span class="n">URL</span>
+<span class="w">    </span><span class="n">databaseURL</span><span class="w"> </span><span class="n">string</span>
+<span class="w">    </span><span class="n">jwtKey</span><span class="w">      </span><span class="p">[]</span><span class="n">byte</span>
+<span class="w">    </span><span class="n">smtpAddr</span><span class="w">    </span><span class="n">string</span>
+<span class="w">    </span><span class="n">smtpAuth</span><span class="w">    </span><span class="n">smtp</span><span class="p">.</span><span class="n">Auth</span>
+<span class="p">}</span>
+
+<span class="n">func</span><span class="w"> </span><span class="n">init</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">config</span><span class="p">.</span><span class="n">port</span><span class="p">,</span><span class="w"> </span><span class="n">_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">strconv</span><span class="p">.</span><span class="n">Atoi</span><span class="p">(</span><span class="n">env</span><span class="p">(</span><span class="s">&quot;PORT&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;80&quot;</span><span class="p">))</span>
+<span class="w">    </span><span class="n">config</span><span class="p">.</span><span class="n">appURL</span><span class="p">,</span><span class="w"> </span><span class="n">_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">url</span><span class="p">.</span><span class="n">Parse</span><span class="p">(</span><span class="n">env</span><span class="p">(</span><span class="s">&quot;APP_URL&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;http://localhost:&quot;</span><span class="o">+</span><span class="n">strconv</span><span class="p">.</span><span class="n">Itoa</span><span class="p">(</span><span class="n">config</span><span class="p">.</span><span class="n">port</span><span class="p">)</span><span class="o">+</span><span class="s">&quot;/&quot;</span><span class="p">))</span>
+<span class="w">    </span><span class="n">config</span><span class="p">.</span><span class="n">databaseURL</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">env</span><span class="p">(</span><span class="s">&quot;DATABASE_URL&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;postgresql://root@127.0.0.1:26257/passwordless_demo?sslmode=disable&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">config</span><span class="p">.</span><span class="n">jwtKey</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[]</span><span class="n">byte</span><span class="p">(</span><span class="n">env</span><span class="p">(</span><span class="s">&quot;JWT_KEY&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;super-duper-secret-key&quot;</span><span class="p">))</span>
+<span class="w">    </span><span class="nl">smtpHost</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">env</span><span class="p">(</span><span class="s">&quot;SMTP_HOST&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;smtp.mailtrap.io&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">config</span><span class="p">.</span><span class="n">smtpAddr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">net</span><span class="p">.</span><span class="n">JoinHostPort</span><span class="p">(</span><span class="n">smtpHost</span><span class="p">,</span><span class="w"> </span><span class="n">env</span><span class="p">(</span><span class="s">&quot;SMTP_PORT&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;25&quot;</span><span class="p">))</span>
+<span class="w">    </span><span class="n">smtpUsername</span><span class="p">,</span><span class="w"> </span><span class="n">ok</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="n">os</span><span class="p">.</span><span class="n">LookupEnv</span><span class="p">(</span><span class="s">&quot;SMTP_USERNAME&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="o">!</span><span class="n">ok</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">log</span><span class="p">.</span><span class="n">Fatalln</span><span class="p">(</span><span class="s">&quot;could not find SMTP_USERNAME on environment variables&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="n">smtpPassword</span><span class="p">,</span><span class="w"> </span><span class="n">ok</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="n">os</span><span class="p">.</span><span class="n">LookupEnv</span><span class="p">(</span><span class="s">&quot;SMTP_PASSWORD&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="o">!</span><span class="n">ok</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">log</span><span class="p">.</span><span class="n">Fatalln</span><span class="p">(</span><span class="s">&quot;could not find SMTP_PASSWORD on environment variables&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="n">config</span><span class="p">.</span><span class="n">smtpAuth</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">smtp</span><span class="p">.</span><span class="n">PlainAuth</span><span class="p">(</span><span class="s">&quot;&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">smtpUsername</span><span class="p">,</span><span class="w"> </span><span class="n">smtpPassword</span><span class="p">,</span><span class="w"> </span><span class="n">smtpHost</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="n">func</span><span class="w"> </span><span class="n">env</span><span class="p">(</span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="n">fallbackValue</span><span class="w"> </span><span class="n">string</span><span class="p">)</span><span class="w"> </span><span class="n">string</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">v</span><span class="p">,</span><span class="w"> </span><span class="n">ok</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="n">os</span><span class="p">.</span><span class="n">LookupEnv</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="o">!</span><span class="n">ok</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">fallbackValue</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">v</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<ul>
+<li><code>appURL</code> 将去构建我们的 “魔法链接”。</li>
+<li><code>port</code> 将要启动的 HTTP 服务器。</li>
+<li><code>databaseURL</code> 是 CockroachDB 地址，我添加 <code>/passwordless_demo</code> 前面的数据库地址去表示数据库名字。</li>
+<li><code>jwtKey</code> 用于签名 JWT。</li>
+<li><code>smtpAddr</code> 是 <code>SMTP_HOST</code> + <code>SMTP_PORT</code> 的联合；我们将使用它去发送邮件。</li>
+<li><code>smtpUsername</code> 和 <code>smtpPassword</code> 是两个必需的变量。</li>
+<li><code>smtpAuth</code> 也是用于发送邮件。</li>
+</ul>
+<p><code>env</code> 函数允许我们去获得环境变量，不存在时返回一个回退值。</p>
+<h4>主函数</h4>
+<div class="highlight"><pre><span></span><code><span class="k">var</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="o">*</span><span class="n">sql</span><span class="o">.</span><span class="n">DB</span>
+
+<span class="k">func</span><span class="w"> </span><span class="n">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">var</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="n">error</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">db</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">sql</span><span class="o">.</span><span class="n">Open</span><span class="p">(</span><span class="s2">&quot;postgres&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">config</span><span class="o">.</span><span class="n">databaseURL</span><span class="p">);</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nb">log</span><span class="o">.</span><span class="n">Fatalf</span><span class="p">(</span><span class="s2">&quot;could not open database connection: %v</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="n">defer</span><span class="w"> </span><span class="n">db</span><span class="o">.</span><span class="n">Close</span><span class="p">()</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">db</span><span class="o">.</span><span class="n">Ping</span><span class="p">();</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nb">log</span><span class="o">.</span><span class="n">Fatalf</span><span class="p">(</span><span class="s2">&quot;could not ping to database: %v</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="n">router</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">way</span><span class="o">.</span><span class="n">NewRouter</span><span class="p">()</span>
+<span class="w">    </span><span class="n">router</span><span class="o">.</span><span class="n">HandleFunc</span><span class="p">(</span><span class="s2">&quot;POST&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;/api/users&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">jsonRequired</span><span class="p">(</span><span class="n">createUser</span><span class="p">))</span>
+<span class="w">    </span><span class="n">router</span><span class="o">.</span><span class="n">HandleFunc</span><span class="p">(</span><span class="s2">&quot;POST&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;/api/passwordless/start&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">jsonRequired</span><span class="p">(</span><span class="n">passwordlessStart</span><span class="p">))</span>
+<span class="w">    </span><span class="n">router</span><span class="o">.</span><span class="n">HandleFunc</span><span class="p">(</span><span class="s2">&quot;GET&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;/api/passwordless/verify_redirect&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">passwordlessVerifyRedirect</span><span class="p">)</span>
+<span class="w">    </span><span class="n">router</span><span class="o">.</span><span class="n">Handle</span><span class="p">(</span><span class="s2">&quot;GET&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;/api/auth_user&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">authRequired</span><span class="p">(</span><span class="n">getAuthUser</span><span class="p">))</span>
+
+<span class="w">    </span><span class="n">addr</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">fmt</span><span class="o">.</span><span class="n">Sprintf</span><span class="p">(</span><span class="s2">&quot;:</span><span class="si">%d</span><span class="s2">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">config</span><span class="o">.</span><span class="n">port</span><span class="p">)</span>
+<span class="w">    </span><span class="nb">log</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s2">&quot;starting server at </span><span class="si">%s</span><span class="s2"> </span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">config</span><span class="o">.</span><span class="n">appURL</span><span class="p">)</span>
+<span class="w">    </span><span class="nb">log</span><span class="o">.</span><span class="n">Fatalf</span><span class="p">(</span><span class="s2">&quot;could not start server: %v</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">ListenAndServe</span><span class="p">(</span><span class="n">addr</span><span class="p">,</span><span class="w"> </span><span class="n">router</span><span class="p">))</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>首先，打开数据库连接。记得要加载驱动。</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">_</span> <span class="s2">&quot;github.com/lib/pq&quot;</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<p>然后，我们创建路由器并定义一些端点。对于无密码流程来说，我们使用两个端点：<code>/api/passwordless/start</code> 发送魔法链接，和 <code>/api/passwordless/verify_redirect</code> 用 JWT 响应。</p>
+<p>最后，我们启动服务器。</p>
+<p>你可以创建空处理程序和中间件去测试服务器启动。</p>
+<div class="highlight"><pre><span></span><code><span class="k">func</span><span class="w"> </span><span class="n">createUser</span><span class="p">(</span><span class="n">w</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">ResponseWriter</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="o">*</span><span class="n">http</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">http</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusText</span><span class="p">(</span><span class="n">http</span><span class="o">.</span><span class="n">StatusNotImplemented</span><span class="p">),</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusNotImplemented</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="k">func</span><span class="w"> </span><span class="n">passwordlessStart</span><span class="p">(</span><span class="n">w</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">ResponseWriter</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="o">*</span><span class="n">http</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">http</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusText</span><span class="p">(</span><span class="n">http</span><span class="o">.</span><span class="n">StatusNotImplemented</span><span class="p">),</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusNotImplemented</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="k">func</span><span class="w"> </span><span class="n">passwordlessVerifyRedirect</span><span class="p">(</span><span class="n">w</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">ResponseWriter</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="o">*</span><span class="n">http</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">http</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusText</span><span class="p">(</span><span class="n">http</span><span class="o">.</span><span class="n">StatusNotImplemented</span><span class="p">),</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusNotImplemented</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="k">func</span><span class="w"> </span><span class="n">getAuthUser</span><span class="p">(</span><span class="n">w</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">ResponseWriter</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="o">*</span><span class="n">http</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">http</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusText</span><span class="p">(</span><span class="n">http</span><span class="o">.</span><span class="n">StatusNotImplemented</span><span class="p">),</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusNotImplemented</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="k">func</span><span class="w"> </span><span class="n">jsonRequired</span><span class="p">(</span><span class="n">next</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">HandlerFunc</span><span class="p">)</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">HandlerFunc</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="k">func</span><span class="p">(</span><span class="n">w</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">ResponseWriter</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="o">*</span><span class="n">http</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">next</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="k">func</span><span class="w"> </span><span class="n">authRequired</span><span class="p">(</span><span class="n">next</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">HandlerFunc</span><span class="p">)</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">HandlerFunc</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="k">func</span><span class="p">(</span><span class="n">w</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">ResponseWriter</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="o">*</span><span class="n">http</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">next</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>接下来：</p>
+<div class="highlight"><pre><span></span><code><span class="k">go</span><span class="w"> </span><span class="n">build</span>
+<span class="p">.</span><span class="o">/</span><span class="n">passwordless</span><span class="o">-</span><span class="n">demo</span>
+</code></pre></div>
+
+<p>我们在目录中有了一个 “passwordless-demo”，但是你的目录中可能与示例不一样，<code>go build</code> 将创建一个同名的可执行文件。如果你没有关闭前面的 cockroach 节点，并且你正确配置了 <code>SMTP_USERNAME</code> 和 <code>SMTP_PASSWORD</code> 变量，你将看到命令 <code>starting server at http://localhost/</code> 没有错误输出。</p>
+<h4>请求 JSON 的中间件</h4>
+<p>端点需要从请求体中解码 JSON，因此要确保请求是 <code>application/json</code> 类型。因为它是一个通用的东西，我将它解耦到中间件。</p>
+<div class="highlight"><pre><span></span><code><span class="k">func</span><span class="w"> </span><span class="n">jsonRequired</span><span class="p">(</span><span class="n">next</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">HandlerFunc</span><span class="p">)</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">HandlerFunc</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="k">func</span><span class="p">(</span><span class="n">w</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">ResponseWriter</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="o">*</span><span class="n">http</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">ct</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">r</span><span class="o">.</span><span class="n">Header</span><span class="o">.</span><span class="n">Get</span><span class="p">(</span><span class="s2">&quot;Content-Type&quot;</span><span class="p">)</span>
+<span class="w">        </span><span class="n">isJSON</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">strings</span><span class="o">.</span><span class="n">HasPrefix</span><span class="p">(</span><span class="n">ct</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;application/json&quot;</span><span class="p">)</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="o">!</span><span class="n">isJSON</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">respondJSON</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;JSON body required&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusUnsupportedMediaType</span><span class="p">)</span>
+<span class="w">            </span><span class="k">return</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="n">next</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>实现很容易。首先它从请求头中获得内容的类型，然后检查它是否是以 “application/json” 开始，如果不是则以 <code>415 Unsupported Media Type</code> 提前返回。</p>
+<h4>响应 JSON 的函数</h4>
+<p>以 JSON 响应是非常通用的做法，因此我把它提取到函数中。</p>
+<div class="highlight"><pre><span></span><code><span class="n">func</span><span class="w"> </span><span class="n">respondJSON</span><span class="p">(</span><span class="n">w</span><span class="w"> </span><span class="n">http</span><span class="p">.</span><span class="n">ResponseWriter</span><span class="p">,</span><span class="w"> </span><span class="n">payload</span><span class="w"> </span><span class="n">interface</span><span class="err">{}</span><span class="p">,</span><span class="w"> </span><span class="n">code</span><span class="w"> </span><span class="nc">int</span><span class="p">)</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">switch</span><span class="w"> </span><span class="k">value</span><span class="w"> </span><span class="err">:</span><span class="o">=</span><span class="w"> </span><span class="n">payload</span><span class="p">.(</span><span class="n">type</span><span class="p">)</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="nl">string</span><span class="p">:</span>
+<span class="w">        </span><span class="n">payload</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">map</span><span class="o">[</span><span class="n">string</span><span class="o">]</span><span class="n">string</span><span class="err">{</span><span class="ss">&quot;message&quot;</span><span class="err">:</span><span class="w"> </span><span class="k">value</span><span class="err">}</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="nc">int</span><span class="err">:</span>
+<span class="w">        </span><span class="n">payload</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">map</span><span class="o">[</span><span class="n">string</span><span class="o">]</span><span class="nc">int</span><span class="err">{</span><span class="ss">&quot;value&quot;</span><span class="err">:</span><span class="w"> </span><span class="k">value</span><span class="err">}</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="nl">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="n">payload</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">map</span><span class="o">[</span><span class="n">string</span><span class="o">]</span><span class="n">bool</span><span class="err">{</span><span class="ss">&quot;result&quot;</span><span class="err">:</span><span class="w"> </span><span class="k">value</span><span class="err">}</span>
+<span class="w">    </span><span class="err">}</span>
+<span class="w">    </span><span class="n">b</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="err">:</span><span class="o">=</span><span class="w"> </span><span class="n">json</span><span class="p">.</span><span class="n">Marshal</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="err">{</span>
+<span class="w">        </span><span class="n">respondInternalError</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">fmt</span><span class="p">.</span><span class="n">Errorf</span><span class="p">(</span><span class="ss">&quot;could not marshal response payload: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">        </span><span class="k">return</span>
+<span class="w">    </span><span class="err">}</span>
+<span class="w">    </span><span class="n">w</span><span class="p">.</span><span class="n">Header</span><span class="p">().</span><span class="k">Set</span><span class="p">(</span><span class="ss">&quot;Content-Type&quot;</span><span class="p">,</span><span class="w"> </span><span class="ss">&quot;application/json; charset=utf-8&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">w</span><span class="p">.</span><span class="n">WriteHeader</span><span class="p">(</span><span class="n">code</span><span class="p">)</span>
+<span class="w">    </span><span class="n">w</span><span class="p">.</span><span class="k">Write</span><span class="p">(</span><span class="n">b</span><span class="p">)</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<p>首先，对原始类型做一个类型判断，并将它们封装到一个 <code>map</code>。然后将它们编组到 JSON，设置响应内容类型和状态码，并写 JSON。如果 JSON 编组失败，则响应一个内部错误。</p>
+<h4>响应内部错误的函数</h4>
+<p><code>respondInternalError</code> 是一个响应 <code>500 Internal Server Error</code> 的函数，但是也同时将错误输出到控制台。</p>
+<div class="highlight"><pre><span></span><code><span class="k">func</span><span class="w"> </span><span class="n">respondInternalError</span><span class="p">(</span><span class="n">w</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">ResponseWriter</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="n">error</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nb">log</span><span class="o">.</span><span class="n">Println</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+<span class="w">    </span><span class="n">respondJSON</span><span class="p">(</span><span class="n">w</span><span class="p">,</span>
+<span class="w">        </span><span class="n">http</span><span class="o">.</span><span class="n">StatusText</span><span class="p">(</span><span class="n">http</span><span class="o">.</span><span class="n">StatusInternalServerError</span><span class="p">),</span>
+<span class="w">        </span><span class="n">http</span><span class="o">.</span><span class="n">StatusInternalServerError</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h4>创建用户的处理程序</h4>
+<p>下面开始编写 <code>createUser</code> 处理程序，因为它非常容易并且是 REST 式的。</p>
+<div class="highlight"><pre><span></span><code><span class="k">type</span><span class="w"> </span><span class="nx">User</span><span class="w"> </span><span class="nx">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">ID</span><span class="w">       </span><span class="kt">string</span><span class="w"> </span><span class="err">`</span><span class="nx">json</span><span class="p">:</span><span class="s">&quot;id&quot;</span><span class="err">`</span>
+<span class="w">    </span><span class="nx">Email</span><span class="w">    </span><span class="kt">string</span><span class="w"> </span><span class="err">`</span><span class="nx">json</span><span class="p">:</span><span class="s">&quot;email&quot;</span><span class="err">`</span>
+<span class="w">    </span><span class="nx">Username</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="err">`</span><span class="nx">json</span><span class="p">:</span><span class="s">&quot;username&quot;</span><span class="err">`</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><code>User</code> 类型和 <code>users</code> 表相似。</p>
+<div class="highlight"><pre><span></span><code><span class="k">var</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="n">rxEmail</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">regexp</span><span class="o">.</span><span class="n">MustCompile</span><span class="p">(</span><span class="s2">&quot;^[^</span><span class="se">\\</span><span class="s2">s@]+@[^</span><span class="se">\\</span><span class="s2">s@]+</span><span class="se">\\</span><span class="s2">.[^</span><span class="se">\\</span><span class="s2">s@]+$&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">rxUsername</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">regexp</span><span class="o">.</span><span class="n">MustCompile</span><span class="p">(</span><span class="s2">&quot;^[a-zA-Z][</span><span class="se">\\</span><span class="s2">w|-]{1,17}$&quot;</span><span class="p">)</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<p>这些正则表达式是分别用于去验证电子邮件和用户名的。这些都很简单，可以根据你的需要随意去适配。</p>
+<p>现在，在 <code>createUser</code> 函数内部，我们将开始解码请求体。</p>
+<div class="highlight"><pre><span></span><code><span class="k">var</span><span class="w"> </span><span class="n">user</span><span class="w"> </span><span class="n">User</span>
+<span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">json</span><span class="o">.</span><span class="n">NewDecoder</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">Body</span><span class="p">)</span><span class="o">.</span><span class="n">Decode</span><span class="p">(</span><span class="o">&amp;</span><span class="n">user</span><span class="p">);</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">respondJSON</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="o">.</span><span class="n">Error</span><span class="p">(),</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusBadRequest</span><span class="p">)</span>
+<span class="w">    </span><span class="k">return</span>
+<span class="p">}</span>
+<span class="n">defer</span><span class="w"> </span><span class="n">r</span><span class="o">.</span><span class="n">Body</span><span class="o">.</span><span class="n">Close</span><span class="p">()</span>
+</code></pre></div>
+
+<p>我们将使用请求体去创建一个 JSON 解码器来解码出一个用户指针。如果发生错误则返回一个 <code>400 Bad Request</code>。不要忘记关闭请求体读取器。</p>
+<div class="highlight"><pre><span></span><code><span class="n">errs</span><span class="w"> </span><span class="err">:</span><span class="o">=</span><span class="w"> </span><span class="n">make</span><span class="p">(</span><span class="k">map</span><span class="o">[</span><span class="n">string</span><span class="o">]</span><span class="n">string</span><span class="p">)</span>
+<span class="k">if</span><span class="w"> </span><span class="k">user</span><span class="p">.</span><span class="n">Email</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="ss">&quot;&quot;</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">errs</span><span class="o">[</span><span class="n">&quot;email&quot;</span><span class="o">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ss">&quot;Email required&quot;</span>
+<span class="err">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="err">!</span><span class="n">rxEmail</span><span class="p">.</span><span class="n">MatchString</span><span class="p">(</span><span class="k">user</span><span class="p">.</span><span class="n">Email</span><span class="p">)</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">errs</span><span class="o">[</span><span class="n">&quot;email&quot;</span><span class="o">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ss">&quot;Invalid email&quot;</span>
+<span class="err">}</span>
+<span class="k">if</span><span class="w"> </span><span class="k">user</span><span class="p">.</span><span class="n">Username</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="ss">&quot;&quot;</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">errs</span><span class="o">[</span><span class="n">&quot;username&quot;</span><span class="o">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ss">&quot;Username required&quot;</span>
+<span class="err">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="err">!</span><span class="n">rxUsername</span><span class="p">.</span><span class="n">MatchString</span><span class="p">(</span><span class="k">user</span><span class="p">.</span><span class="n">Username</span><span class="p">)</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">errs</span><span class="o">[</span><span class="n">&quot;username&quot;</span><span class="o">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ss">&quot;Invalid username&quot;</span>
+<span class="err">}</span>
+<span class="k">if</span><span class="w"> </span><span class="nf">len</span><span class="p">(</span><span class="n">errs</span><span class="p">)</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">respondJSON</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">errs</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="p">.</span><span class="n">StatusUnprocessableEntity</span><span class="p">)</span>
+<span class="w">    </span><span class="k">return</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<p>这是我如何做验证；一个简单的 <code>map</code> 并检查如果 <code>len(errs) != 0</code>，则使用 <code>422 Unprocessable Entity</code> 去返回。</p>
+<div class="highlight"><pre><span></span><code><span class="nv">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nv">db</span><span class="o">.</span><span class="nf">QueryRowContext</span><span class="p">(</span><span class="nv">r</span><span class="o">.</span><span class="nf">Context</span><span class="p">(),</span><span class="w"> </span><span class="nv">`</span>
+<span class="nv">    INSERT INTO users (email, username) VALUES ($1, $2)</span>
+<span class="nv">    RETURNING id</span>
+<span class="nv">`</span><span class="p">,</span><span class="w"> </span><span class="nv">user</span><span class="o">.</span><span class="nv">Email</span><span class="p">,</span><span class="w"> </span><span class="nv">user</span><span class="o">.</span><span class="nv">Username</span><span class="p">)</span><span class="o">.</span><span class="nf">Scan</span><span class="p">(</span>&amp;<span class="nv">user</span><span class="o">.</span><span class="nv">ID</span><span class="p">)</span>
+
+<span class="k">if</span><span class="w"> </span><span class="nv">errPq</span><span class="p">,</span><span class="w"> </span><span class="nv">ok</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nv">err</span><span class="o">.</span><span class="p">(</span><span class="o">*</span><span class="nv">pq</span><span class="o">.</span><span class="nv">Error</span><span class="p">);</span><span class="w"> </span><span class="nv">ok</span><span class="w"> </span>&amp;&amp;<span class="w"> </span><span class="nv">errPq</span><span class="o">.</span><span class="nv">Code</span><span class="o">.</span><span class="nf">Name</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s">&quot;unique_violation&quot;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nv">strings</span><span class="o">.</span><span class="nf">Contains</span><span class="p">(</span><span class="nv">errPq</span><span class="o">.</span><span class="nf">Error</span><span class="p">(),</span><span class="w"> </span><span class="s">&quot;email&quot;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nv">errs</span><span class="p">[</span><span class="s">&quot;email&quot;</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;Email taken&quot;</span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nv">errs</span><span class="p">[</span><span class="s">&quot;username&quot;</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;Username taken&quot;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="nf">respondJSON</span><span class="p">(</span><span class="nv">w</span><span class="p">,</span><span class="w"> </span><span class="nv">errs</span><span class="p">,</span><span class="w"> </span><span class="nv">http</span><span class="o">.</span><span class="nv">StatusForbidden</span><span class="p">)</span>
+<span class="w">    </span><span class="nv">return</span>
+<span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="nv">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="nv">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nf">respondInternalError</span><span class="p">(</span><span class="nv">w</span><span class="p">,</span><span class="w"> </span><span class="nv">fmt</span><span class="o">.</span><span class="nf">Errorf</span><span class="p">(</span><span class="s">&quot;could not insert user: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="nv">err</span><span class="p">))</span>
+<span class="w">    </span><span class="nv">return</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这个 SQL 查询使用一个给定的 email 和用户名去插入一个新用户，并返回自动生成的 id，每个 <code>$</code> 将被接下来传递给 <code>QueryRowContext</code> 的参数替换掉。</p>
+<p>因为 <code>users</code> 表在 <code>email</code> 和 <code>username</code> 字段上有唯一性约束，因此我将检查 “unique_violation” 错误并返回 <code>403 Forbidden</code> 或者返回一个内部错误。</p>
+<div class="highlight"><pre><span></span><code>respondJSON(w, user, http.StatusCreated)
+</code></pre></div>
+
+<p>最后使用创建的用户去响应。</p>
+<h4>无密码验证开始部分的处理程序</h4>
+<div class="highlight"><pre><span></span><code><span class="k">type</span><span class="w"> </span><span class="nx">PasswordlessStartRequest</span><span class="w"> </span><span class="nx">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">Email</span><span class="w">       </span><span class="kt">string</span><span class="w"> </span><span class="err">`</span><span class="nx">json</span><span class="p">:</span><span class="s">&quot;email&quot;</span><span class="err">`</span>
+<span class="w">    </span><span class="nx">RedirectURI</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="err">`</span><span class="nx">json</span><span class="p">:</span><span class="s">&quot;redirectUri&quot;</span><span class="err">`</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这个结构体含有 <code>passwordlessStart</code> 的请求体：希望去登入的用户 email、来自客户端的重定向 URI（这个应用中将使用我们的 API）如：<code>https://frontend.app/callback</code>。</p>
+<div class="highlight"><pre><span></span><code><span class="k">var</span><span class="w"> </span><span class="n">magicLinkTmpl</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">template</span><span class="o">.</span><span class="n">Must</span><span class="p">(</span><span class="n">template</span><span class="o">.</span><span class="n">ParseFiles</span><span class="p">(</span><span class="s2">&quot;templates/magic-link.html&quot;</span><span class="p">))</span>
+</code></pre></div>
+
+<p>我们将使用 golang 模板引擎去构建邮件，因此需要你在 <code>templates</code> 目录中，用如下的内容创建一个 <code>magic-link.html</code> 文件：</p>
+<div class="highlight"><pre><span></span><code><span class="cp">&lt;!DOCTYPE html&gt;</span>
+<span class="p">&lt;</span><span class="nt">html</span> <span class="na">lang</span><span class="o">=</span><span class="s">&quot;en&quot;</span><span class="p">&gt;</span>
+<span class="p">&lt;</span><span class="nt">head</span><span class="p">&gt;</span>
+    <span class="p">&lt;</span><span class="nt">meta</span> <span class="na">charset</span><span class="o">=</span><span class="s">&quot;utf-8&quot;</span><span class="p">&gt;</span>
+    <span class="p">&lt;</span><span class="nt">meta</span> <span class="na">name</span><span class="o">=</span><span class="s">&quot;viewport&quot;</span> <span class="na">content</span><span class="o">=</span><span class="s">&quot;width=device-width, initial-scale=1.0&quot;</span><span class="p">&gt;</span>
+    <span class="p">&lt;</span><span class="nt">title</span><span class="p">&gt;</span>Magic Link<span class="p">&lt;/</span><span class="nt">title</span><span class="p">&gt;</span>
+<span class="p">&lt;/</span><span class="nt">head</span><span class="p">&gt;</span>
+<span class="p">&lt;</span><span class="nt">body</span><span class="p">&gt;</span>
+    Click <span class="p">&lt;</span><span class="nt">a</span> <span class="na">href</span><span class="o">=</span><span class="s">&quot;</span><span class="cp">{{</span> <span class="nv">.MagicLink</span> <span class="cp">}}</span><span class="s">&quot;</span> <span class="na">target</span><span class="o">=</span><span class="s">&quot;_blank&quot;</span><span class="p">&gt;</span>here<span class="p">&lt;/</span><span class="nt">a</span><span class="p">&gt;</span> to login.
+    <span class="p">&lt;</span><span class="nt">br</span><span class="p">&gt;</span>
+    <span class="p">&lt;</span><span class="nt">em</span><span class="p">&gt;</span>This link expires in 15 minutes and can only be used once.<span class="p">&lt;/</span><span class="nt">em</span><span class="p">&gt;</span>
+<span class="p">&lt;/</span><span class="nt">body</span><span class="p">&gt;</span>
+<span class="p">&lt;/</span><span class="nt">html</span><span class="p">&gt;</span>
+</code></pre></div>
+
+<p>这个模板是给用户发送魔法链接邮件用的。你可以根据你的需要去随意调整它。</p>
+<p>现在， 进入 <code>passwordlessStart</code> 函数内部：</p>
+<div class="highlight"><pre><span></span><code><span class="k">var</span><span class="w"> </span><span class="n">input</span><span class="w"> </span><span class="n">PasswordlessStartRequest</span>
+<span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">json</span><span class="o">.</span><span class="n">NewDecoder</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">Body</span><span class="p">)</span><span class="o">.</span><span class="n">Decode</span><span class="p">(</span><span class="o">&amp;</span><span class="n">input</span><span class="p">);</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">respondJSON</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="o">.</span><span class="n">Error</span><span class="p">(),</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusBadRequest</span><span class="p">)</span>
+<span class="w">    </span><span class="k">return</span>
+<span class="p">}</span>
+<span class="n">defer</span><span class="w"> </span><span class="n">r</span><span class="o">.</span><span class="n">Body</span><span class="o">.</span><span class="n">Close</span><span class="p">()</span>
+</code></pre></div>
+
+<p>首先，我们像前面一样解码请求体。</p>
+<div class="highlight"><pre><span></span><code><span class="n">errs</span><span class="w"> </span><span class="err">:</span><span class="o">=</span><span class="w"> </span><span class="n">make</span><span class="p">(</span><span class="k">map</span><span class="o">[</span><span class="n">string</span><span class="o">]</span><span class="n">string</span><span class="p">)</span>
+<span class="k">if</span><span class="w"> </span><span class="k">input</span><span class="p">.</span><span class="n">Email</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="ss">&quot;&quot;</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">errs</span><span class="o">[</span><span class="n">&quot;email&quot;</span><span class="o">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ss">&quot;Email required&quot;</span>
+<span class="err">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="err">!</span><span class="n">rxEmail</span><span class="p">.</span><span class="n">MatchString</span><span class="p">(</span><span class="k">input</span><span class="p">.</span><span class="n">Email</span><span class="p">)</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">errs</span><span class="o">[</span><span class="n">&quot;email&quot;</span><span class="o">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ss">&quot;Invalid email&quot;</span>
+<span class="err">}</span>
+<span class="k">if</span><span class="w"> </span><span class="k">input</span><span class="p">.</span><span class="n">RedirectURI</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="ss">&quot;&quot;</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">errs</span><span class="o">[</span><span class="n">&quot;redirectUri&quot;</span><span class="o">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ss">&quot;Redirect URI required&quot;</span>
+<span class="err">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">u</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="err">:</span><span class="o">=</span><span class="w"> </span><span class="n">url</span><span class="p">.</span><span class="nf">Parse</span><span class="p">(</span><span class="k">input</span><span class="p">.</span><span class="n">RedirectURI</span><span class="p">);</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="err">!</span><span class="n">u</span><span class="p">.</span><span class="n">IsAbs</span><span class="p">()</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">errs</span><span class="o">[</span><span class="n">&quot;redirectUri&quot;</span><span class="o">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ss">&quot;Invalid redirect URI&quot;</span>
+<span class="err">}</span>
+<span class="k">if</span><span class="w"> </span><span class="nf">len</span><span class="p">(</span><span class="n">errs</span><span class="p">)</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">respondJSON</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">errs</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="p">.</span><span class="n">StatusUnprocessableEntity</span><span class="p">)</span>
+<span class="w">    </span><span class="k">return</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<p>我们使用 golang 的 URL 解析器去验证重定向 URI，检查那个 URI 是否为绝对地址。</p>
+<div class="highlight"><pre><span></span><code><span class="k">var</span><span class="w"> </span><span class="n">verificationCode</span><span class="w"> </span><span class="n">string</span>
+<span class="n">err</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">db</span><span class="o">.</span><span class="n">QueryRowContext</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">Context</span><span class="p">(),</span><span class="w"> </span><span class="err">`</span>
+<span class="w">    </span><span class="n">INSERT</span><span class="w"> </span><span class="n">INTO</span><span class="w"> </span><span class="n">verification_codes</span><span class="w"> </span><span class="p">(</span><span class="n">user_id</span><span class="p">)</span><span class="w"> </span><span class="n">VALUES</span>
+<span class="w">        </span><span class="p">((</span><span class="n">SELECT</span><span class="w"> </span><span class="n">id</span><span class="w"> </span><span class="n">FROM</span><span class="w"> </span><span class="n">users</span><span class="w"> </span><span class="n">WHERE</span><span class="w"> </span><span class="n">email</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="mi">1</span><span class="p">))</span>
+<span class="w">    </span><span class="n">RETURNING</span><span class="w"> </span><span class="n">id</span>
+<span class="err">`</span><span class="p">,</span><span class="w"> </span><span class="n">input</span><span class="o">.</span><span class="n">Email</span><span class="p">)</span><span class="o">.</span><span class="n">Scan</span><span class="p">(</span><span class="o">&amp;</span><span class="n">verificationCode</span><span class="p">)</span>
+<span class="k">if</span><span class="w"> </span><span class="n">errPq</span><span class="p">,</span><span class="w"> </span><span class="n">ok</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">err</span><span class="o">.</span><span class="p">(</span><span class="o">*</span><span class="n">pq</span><span class="o">.</span><span class="n">Error</span><span class="p">);</span><span class="w"> </span><span class="n">ok</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">errPq</span><span class="o">.</span><span class="n">Code</span><span class="o">.</span><span class="n">Name</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s2">&quot;not_null_violation&quot;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">respondJSON</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;No user found with that email&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusNotFound</span><span class="p">)</span>
+<span class="w">    </span><span class="k">return</span>
+<span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">respondInternalError</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">fmt</span><span class="o">.</span><span class="n">Errorf</span><span class="p">(</span><span class="s2">&quot;could not insert verification code: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">    </span><span class="k">return</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这个 SQL 查询将插入一个验证代码，这个代码通过给定的 email 关联到用户，并且返回一个自动生成的 id。因为有可能会出现用户不存在的情况，那样的话子查询可能解析为 <code>NULL</code>，这将导致在 <code>user_id</code> 字段上因违反 <code>NOT NULL</code> 约束而导致失败，因此需要对这种情况进行检查，如果用户不存在，则返回 <code>404 Not Found</code> 或者一个内部错误。</p>
+<div class="highlight"><pre><span></span><code><span class="nv">q</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nf">make</span><span class="p">(</span><span class="nv">url</span><span class="o">.</span><span class="nv">Values</span><span class="p">)</span>
+<span class="nv">q</span><span class="o">.</span><span class="nf">Set</span><span class="p">(</span><span class="s">&quot;verification_code&quot;</span><span class="p">,</span><span class="w"> </span><span class="nv">verificationCode</span><span class="p">)</span>
+<span class="nv">q</span><span class="o">.</span><span class="nf">Set</span><span class="p">(</span><span class="s">&quot;redirect_uri&quot;</span><span class="p">,</span><span class="w"> </span><span class="nv">input</span><span class="o">.</span><span class="nv">RedirectURI</span><span class="p">)</span>
+<span class="nv">magicLink</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="o">*</span><span class="nv">config</span><span class="o">.</span><span class="nv">appURL</span>
+<span class="nv">magicLink</span><span class="o">.</span><span class="nv">Path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;/api/passwordless/verify_redirect&quot;</span>
+<span class="nv">magicLink</span><span class="o">.</span><span class="nv">RawQuery</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">q</span><span class="o">.</span><span class="nf">Encode</span><span class="p">()</span>
+</code></pre></div>
+
+<p>现在，构建魔法链接并设置查询字符串中的 <code>verification_code</code> 和 <code>redirect_uri</code> 的值。如：<code>http://localhost/api/passwordless/verify_redirect?verification_code=some_code&amp;redirect_uri=https://frontend.app/callback</code>。</p>
+<div class="highlight"><pre><span></span><code><span class="nf">var</span><span class="w"> </span><span class="n">body</span><span class="w"> </span><span class="n">bytes</span><span class="p">.</span><span class="n">Buffer</span>
+<span class="k">data</span><span class="w"> </span><span class="err">:</span><span class="o">=</span><span class="w"> </span><span class="k">map</span><span class="o">[</span><span class="n">string</span><span class="o">]</span><span class="n">string</span><span class="err">{</span><span class="ss">&quot;MagicLink&quot;</span><span class="err">:</span><span class="w"> </span><span class="n">magicLink</span><span class="p">.</span><span class="n">String</span><span class="p">()</span><span class="err">}</span>
+<span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="err">:</span><span class="o">=</span><span class="w"> </span><span class="n">magicLinkTmpl</span><span class="p">.</span><span class="k">Execute</span><span class="p">(</span><span class="o">&amp;</span><span class="n">body</span><span class="p">,</span><span class="w"> </span><span class="k">data</span><span class="p">);</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">respondInternalError</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">fmt</span><span class="p">.</span><span class="n">Errorf</span><span class="p">(</span><span class="ss">&quot;could not execute magic link template: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">    </span><span class="k">return</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<p>我们将得到的魔法链接模板的内容保存到缓冲区中。如果发生错误则返回一个内部错误。</p>
+<div class="highlight"><pre><span></span><code><span class="nt">to</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nt">mail</span><span class="p">.</span><span class="nc">Address</span><span class="p">{</span><span class="n">Address</span><span class="p">:</span><span class="w"> </span><span class="n">input</span><span class="o">.</span><span class="n">Email</span><span class="p">}</span>
+<span class="nt">if</span><span class="w"> </span><span class="nt">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nt">sendMail</span><span class="o">(</span><span class="nt">to</span><span class="o">,</span><span class="w"> </span><span class="s2">&quot;Magic Link&quot;</span><span class="o">,</span><span class="w"> </span><span class="nt">body</span><span class="p">.</span><span class="nc">String</span><span class="o">());</span><span class="w"> </span><span class="nt">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="nt">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="err">respondInternalError(w,</span><span class="w"> </span><span class="err">fmt.Errorf(&quot;could</span><span class="w"> </span><span class="err">not</span><span class="w"> </span><span class="err">mail</span><span class="w"> </span><span class="err">magic</span><span class="w"> </span><span class="n">link</span><span class="p">:</span><span class="w"> </span><span class="o">%</span><span class="n">v</span><span class="err">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">    </span><span class="n">return</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>现在来写给用户发邮件的 <code>sendMail</code> 函数。如果发生错误则返回一个内部错误。</p>
+<div class="highlight"><pre><span></span><code>w.WriteHeader(http.StatusNoContent)
+</code></pre></div>
+
+<p>最后，设置响应状态码为 <code>204 No Content</code>。对于成功的状态码，客户端不需要很多数据。</p>
+<h4>发送邮件函数</h4>
+<div class="highlight"><pre><span></span><code><span class="n">func</span><span class="w"> </span><span class="nf">sendMail</span><span class="p">(</span><span class="n">to</span><span class="w"> </span><span class="n">mail</span><span class="p">.</span><span class="n">Address</span><span class="p">,</span><span class="w"> </span><span class="n">subject</span><span class="p">,</span><span class="w"> </span><span class="n">body</span><span class="w"> </span><span class="n">string</span><span class="p">)</span><span class="w"> </span><span class="n">error</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nl">from</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">mail</span><span class="p">.</span><span class="n">Address</span><span class="p">{</span>
+<span class="w">        </span><span class="nl">Name</span><span class="p">:</span><span class="w">    </span><span class="s">&quot;Passwordless Demo&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nl">Address</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;noreply@&quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">config</span><span class="p">.</span><span class="n">appURL</span><span class="p">.</span><span class="n">Host</span><span class="p">,</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="nl">headers</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">map</span><span class="p">[</span><span class="n">string</span><span class="p">]</span><span class="n">string</span><span class="p">{</span>
+<span class="w">        </span><span class="s">&quot;From&quot;</span><span class="o">:</span><span class="w">         </span><span class="n">from</span><span class="p">.</span><span class="n">String</span><span class="p">(),</span>
+<span class="w">        </span><span class="s">&quot;To&quot;</span><span class="o">:</span><span class="w">           </span><span class="n">to</span><span class="p">.</span><span class="n">String</span><span class="p">(),</span>
+<span class="w">        </span><span class="s">&quot;Subject&quot;</span><span class="o">:</span><span class="w">      </span><span class="n">subject</span><span class="p">,</span>
+<span class="w">        </span><span class="s">&quot;Content-Type&quot;</span><span class="o">:</span><span class="w"> </span><span class="err">`</span><span class="n">text</span><span class="o">/</span><span class="n">html</span><span class="p">;</span><span class="w"> </span><span class="n">charset</span><span class="o">=</span><span class="s">&quot;utf-8&quot;</span><span class="err">`</span><span class="p">,</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="nl">msg</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="s">&quot;&quot;</span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="n">k</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="n">range</span><span class="w"> </span><span class="n">headers</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">msg</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">fmt</span><span class="p">.</span><span class="n">Sprintf</span><span class="p">(</span><span class="s">&quot;%s: %s</span><span class="se">\r\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">k</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="n">msg</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="s">&quot;</span><span class="se">\r\n</span><span class="s">&quot;</span>
+<span class="w">    </span><span class="n">msg</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">body</span>
+
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">smtp</span><span class="p">.</span><span class="n">SendMail</span><span class="p">(</span>
+<span class="w">        </span><span class="n">config</span><span class="p">.</span><span class="n">smtpAddr</span><span class="p">,</span>
+<span class="w">        </span><span class="n">config</span><span class="p">.</span><span class="n">smtpAuth</span><span class="p">,</span>
+<span class="w">        </span><span class="n">from</span><span class="p">.</span><span class="n">Address</span><span class="p">,</span>
+<span class="w">        </span><span class="p">[]</span><span class="n">string</span><span class="p">{</span><span class="n">to</span><span class="p">.</span><span class="n">Address</span><span class="p">},</span>
+<span class="w">        </span><span class="p">[]</span><span class="n">byte</span><span class="p">(</span><span class="n">msg</span><span class="p">))</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这个函数创建一个基本的 HTML 邮件结构体并使用 SMTP 服务器去发送它。邮件的内容你可以随意定制，我喜欢使用比较简单的内容。</p>
+<h4>无密码验证重定向的处理程序</h4>
+<div class="highlight"><pre><span></span><code><span class="k">var</span><span class="w"> </span><span class="n">rxUUID</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">regexp</span><span class="o">.</span><span class="n">MustCompile</span><span class="p">(</span><span class="s2">&quot;^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>首先，这个正则表达式去验证一个 UUID（即验证代码）。</p>
+<p>现在进入 <code>passwordlessVerifyRedirect</code> 函数内部：</p>
+<div class="highlight"><pre><span></span><code><span class="nv">q</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nv">r</span><span class="o">.</span><span class="nv">URL</span><span class="o">.</span><span class="nf">Query</span><span class="p">()</span>
+<span class="nv">verificationCode</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nv">q</span><span class="o">.</span><span class="nf">Get</span><span class="p">(</span><span class="s">&quot;verification_code&quot;</span><span class="p">)</span>
+<span class="nv">redirectURI</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nv">q</span><span class="o">.</span><span class="nf">Get</span><span class="p">(</span><span class="s">&quot;redirect_uri&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<p><code>/api/passwordless/verify_redirect</code> 是一个 <code>GET</code> 端点，以便于我们从查询字符串中读取数据。</p>
+<div class="highlight"><pre><span></span><code><span class="n">errs</span><span class="w"> </span><span class="err">:</span><span class="o">=</span><span class="w"> </span><span class="n">make</span><span class="p">(</span><span class="k">map</span><span class="o">[</span><span class="n">string</span><span class="o">]</span><span class="n">string</span><span class="p">)</span>
+<span class="k">if</span><span class="w"> </span><span class="n">verificationCode</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="ss">&quot;&quot;</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">errs</span><span class="o">[</span><span class="n">&quot;verification_code&quot;</span><span class="o">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ss">&quot;Verification code required&quot;</span>
+<span class="err">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="err">!</span><span class="n">rxUUID</span><span class="p">.</span><span class="n">MatchString</span><span class="p">(</span><span class="n">verificationCode</span><span class="p">)</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">errs</span><span class="o">[</span><span class="n">&quot;verification_code&quot;</span><span class="o">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ss">&quot;Invalid verification code&quot;</span>
+<span class="err">}</span>
+<span class="nf">var</span><span class="w"> </span><span class="n">callback</span><span class="w"> </span><span class="o">*</span><span class="n">url</span><span class="p">.</span><span class="n">URL</span>
+<span class="nf">var</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="n">error</span>
+<span class="k">if</span><span class="w"> </span><span class="n">redirectURI</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="ss">&quot;&quot;</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">errs</span><span class="o">[</span><span class="n">&quot;redirect_uri&quot;</span><span class="o">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ss">&quot;Redirect URI required&quot;</span>
+<span class="err">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">callback</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">url</span><span class="p">.</span><span class="nf">Parse</span><span class="p">(</span><span class="n">redirectURI</span><span class="p">);</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="err">!</span><span class="n">callback</span><span class="p">.</span><span class="n">IsAbs</span><span class="p">()</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">errs</span><span class="o">[</span><span class="n">&quot;redirect_uri&quot;</span><span class="o">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ss">&quot;Invalid redirect URI&quot;</span>
+<span class="err">}</span>
+<span class="k">if</span><span class="w"> </span><span class="nf">len</span><span class="p">(</span><span class="n">errs</span><span class="p">)</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="err">{</span>
+<span class="w">    </span><span class="n">respondJSON</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">errs</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="p">.</span><span class="n">StatusUnprocessableEntity</span><span class="p">)</span>
+<span class="w">    </span><span class="k">return</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<p>类似的验证，我们保存解析后的重定向 URI 到一个 <code>callback</code> 变量中。</p>
+<div class="highlight"><pre><span></span><code><span class="k">var</span><span class="w"> </span><span class="n">userID</span><span class="w"> </span><span class="n">string</span>
+<span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="p">:</span><span class="o">=</span><span class="w"> </span><span class="n">db</span><span class="o">.</span><span class="n">QueryRowContext</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">Context</span><span class="p">(),</span><span class="w"> </span><span class="err">`</span>
+<span class="w">    </span><span class="n">DELETE</span><span class="w"> </span><span class="n">FROM</span><span class="w"> </span><span class="n">verification_codes</span>
+<span class="w">    </span><span class="n">WHERE</span><span class="w"> </span><span class="n">id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="mi">1</span>
+<span class="w">        </span><span class="n">AND</span><span class="w"> </span><span class="n">created_at</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">now</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">INTERVAL</span><span class="w"> </span><span class="s1">&#39;15m&#39;</span>
+<span class="w">    </span><span class="n">RETURNING</span><span class="w"> </span><span class="n">user_id</span>
+<span class="err">`</span><span class="p">,</span><span class="w"> </span><span class="n">verificationCode</span><span class="p">)</span><span class="o">.</span><span class="n">Scan</span><span class="p">(</span><span class="o">&amp;</span><span class="n">userID</span><span class="p">);</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">sql</span><span class="o">.</span><span class="n">ErrNoRows</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">respondJSON</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;Link expired or already used&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">http</span><span class="o">.</span><span class="n">StatusBadRequest</span><span class="p">)</span>
+<span class="w">    </span><span class="k">return</span>
+<span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">respondInternalError</span><span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="w"> </span><span class="n">fmt</span><span class="o">.</span><span class="n">Errorf</span><span class="p">(</span><span class="s2">&quot;could not delete verification code: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">err</span><span class="p">))</span>
+<span class="w">    </span><span class="k">return</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这个 SQL 查询通过给定的 id 去删除相应的验证代码，并且确保它创建之后时间不超过 15 分钟，它也返回关联的 <code>user_id</code>。如果没有检索到内容，意味着代码不存在或者已过期，我们返回一个响应信息，否则就返回一个内部错误。</p>
+<div class="highlight"><pre><span></span><code><span class="nv">expiresAt</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nv">time</span><span class="o">.</span><span class="nf">Now</span><span class="p">()</span><span class="o">.</span><span class="nf">Add</span><span class="p">(</span><span class="nv">time</span><span class="o">.</span><span class="nv">Hour</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">24</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">60</span><span class="p">)</span>
+<span class="k">to</span><span class="nv">kenString</span><span class="p">,</span><span class="w"> </span><span class="nv">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nv">jwt</span><span class="o">.</span><span class="nf">NewWithClaims</span><span class="p">(</span><span class="nv">jwt</span><span class="o">.</span><span class="nv">SigningMethodHS256</span><span class="p">,</span><span class="w"> </span><span class="nv">jwt</span><span class="o">.</span><span class="nv">StandardClaims</span><span class="p">{</span>
+<span class="w">    </span><span class="nv">Subject</span><span class="o">:</span><span class="w">   </span><span class="nv">userID</span><span class="p">,</span>
+<span class="w">    </span><span class="nv">ExpiresAt</span><span class="o">:</span><span class="w"> </span><span class="nv">expiresAt</span><span class="o">.</span><span class="nf">Unix</span><span class="p">(),</span>
+<span class="p">})</span><span class="o">.</span><span class="nf">SignedString</span><span class="p">(</span><span class="nv">config</span><span class="o">.</span><span class="nv">jwtKey</span><span class="p">)</span>
+<span class="k">if</span><span class="w"> </span><span class="nv">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="nv">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nf">respondInternalError</span><span class="p">(</span><span class="nv">w</span><span class="p">,</span><span class="w"> </span><span class="nv">fmt</span><span class="o">.</span><span class="nf">Errorf</span><span class="p">(</span><span class="s">&quot;could not create JWT: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="nv">err</span><span class="p">))</span>
+<span class="w">    </span><span class="nv">return</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这些是如何去创建 JWT。我们为 JWT 设置一个 60 天的过期值，你也可以设置更短的时间（大约 2 周），并添加一个新端点去刷新令牌，但是不要搞的过于复杂。</p>
+<div class="highlight"><pre><span></span><code><span class="nv">expiresAtB</span><span class="p">,</span><span class="w"> </span><span class="nv">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nv">expiresAt</span><span class="o">.</span><span class="nf">MarshalText</span><span class="p">()</span>
+<span class="k">if</span><span class="w"> </span><span class="nv">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="nv">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nf">respondInternalError</span><span class="p">(</span><span class="nv">w</span><span class="p">,</span><span class="w"> </span><span class="nv">fmt</span><span class="o">.</span><span class="nf">Errorf</span><span class="p">(</span><span class="s">&quot;could not marshal expiration date: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="nv">err</span><span class="p">))</span>
+<span class="w">    </span><span class="nv">return</span>
+<span class="p">}</span>
+<span class="nv">f</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nf">make</span><span class="p">(</span><span class="nv">url</span><span class="o">.</span><span class="nv">Values</span><span class="p">)</span>
+<span class="nv">f</span><span class="o">.</span><span class="nf">Set</span><span class="p">(</span><span class="s">&quot;jwt&quot;</span><span class="p">,</span><span class="w"> </span><span class="k">to</span><span class="nv">kenString</span><span class="p">)</span>
+<span class="nv">f</span><span class="o">.</span><span class="nf">Set</span><span class="p">(</span><span class="s">&quot;expires_at&quot;</span><span class="p">,</span><span class="w"> </span><span class="nf">string</span><span class="p">(</span><span class="nv">expiresAtB</span><span class="p">))</span>
+<span class="nv">callback</span><span class="o">.</span><span class="nv">Fragment</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">f</span><span class="o">.</span><span class="nf">Encode</span><span class="p">()</span>
+</code></pre></div>
+
+<p>我们去规划重定向；你可使用查询字符串去添加 JWT，但是更常见的是使用一个哈希片段。如：<code>https://frontend.app/callback#jwt=token_here&amp;expires_at=some_date</code>.</p>
+<p>过期日期可以从 JWT 中提取出来，但是这样做的话，就需要在客户端上实现一个 JWT 库来解码它，因此为了简化，我将它加到这里。</p>
+<div class="highlight"><pre><span></span><code>http.Redirect(w, r, callback.String(), http.StatusFound)
+</code></pre></div>
+
+<p>最后我们使用一个 <code>302 Found</code> 重定向。</p>
+<p>以上就是全部的代码。你可以自己去构建它和测试它。<a href="https://go-passwordless-demo.herokuapp.com/">这里</a> 还有一个 demo 你可以试用一下。</p>
+<p>如果你在 mailtrap 上点击之后出现有关 <code>脚本运行被拦截，因为文档的框架是沙箱化的，并且没有设置 'allow-scripts' 权限</code> 的问题，你可以尝试右键点击 “在新标签中打开链接“。这样做是安全的，因为邮件内容是 <a href="https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#attr-sandbox">沙箱化的</a>。我在 <code>localhost</code> 上有时也会出现这个问题，但是我认为你一旦以 <code>https://</code> 方式部署到服务器上应该不会出现这个问题了。</p>
+<p>如果有任何问题，请在我的 <a href="https://github.com/nicolasparada/go-passwordless-demo">GitHub repo</a> 留言或者提交 PRs</p>
+<p>以后，我为这个 API 写了一个客户端作为这篇文章的<a href="https://nicolasparada.netlify.com/posts/passwordless-auth-client/">第二部分</a>。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

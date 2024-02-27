@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Git 的遴选和撤销操作是如何利用三路合并的</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Julia Evans 大家好！几天前，我尝试向其他人解释 Git 遴选（git cherry-pick）的工作原理，结果发现自己反而更混淆了。 我原先以为 Git 遴选是简 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2023/11/git-de-lin-xuan-he-che-xiao-cao-zuo-shi-ru-he-li-yong-san-lu-he-bing-de.html" rel="bookmark"
+           title="Permalink to Git 的遴选和撤销操作是如何利用三路合并的">Git 的遴选和撤销操作是如何利用三路合并的</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2023-11-14T10:32:40+01:00">
+                Published: Tue 14 November 2023
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Julia Evans</p>
+<p><img alt="" src="/data/attachment/album/202311/14/103134uddjt7ljl8dbbdj2.png"></p>
+<p>大家好！几天前，我尝试向其他人解释 Git 遴选（<code>git cherry-pick</code>）的工作原理，结果发现自己反而更混淆了。</p>
+<p>我原先以为 Git 遴选是简单地应用一个补丁，但当我真正这样尝试时，却未能成功！</p>
+<p>因此，接下来我们将谈论我原来以为的遴选操作（即应用一个补丁），这个理解为何不准确，以及实际上它是如何执行的（进行“三路合并”）。</p>
+<p>尽管本文的内容有些深入，但你并不需要全部理解才能有效地使用 Git。不过，如果你（和我一样）对 Git 的内部运作感到好奇，那就跟我一起深入探讨一下吧！</p>
+<h3>遴选操作并不只是应用一个补丁</h3>
+<p>我先前理解的 <code>git cherry-pick COMMIT_ID</code> 的步骤如下：</p>
+<ul>
+<li>首先是计算 <code>COMMIT_ID</code> 的差异，就如同执行 <code>git show COMMIT_ID --patch &gt; out.patch</code> 这个命令</li>
+<li>然后是将补丁应用到当前分支，就如同执行 <code>git apply out.patch</code> 这个命令</li>
+</ul>
+<p>在我们详细讨论之前，我想指出的是，虽然大部分情况下这个模型是正确的，如果这是你的认知模型，那就没有问题。但是在一些细微的地方，它可能会错，我觉得这个疑惑挺有意思的，所以我们来看看它究竟是如何运作的。</p>
+<p>如果我在存在合并冲突的情况下尝试进行“计算差异并应用补丁”的操作，下面我们就看看具体会发生什么情况：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>git<span class="w"> </span>show<span class="w"> </span>10e96e46<span class="w"> </span>--patch<span class="w"> </span>&gt;<span class="w"> </span>out.patch
+$<span class="w"> </span>git<span class="w"> </span>apply<span class="w"> </span>out.patch
+error:<span class="w"> </span>patch<span class="w"> </span>failed:<span class="w"> </span>content/post/2023-07-28-why-is-dns-still-hard-to-learn-.markdown:17
+error:<span class="w"> </span>content/post/2023-07-28-why-is-dns-still-hard-to-learn-.markdown:<span class="w"> </span>patch<span class="w"> </span>does<span class="w"> </span>not<span class="w"> </span>apply
+</code></pre></div>
+
+<p>这一过程无法成功完成，它并未提供任何解决冲突或处理问题的方案。</p>
+<p>而真正运行 <code>git cherry-pick</code> 时的实际情况却大为不同，我遭遇到了一处合并冲突:</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>git<span class="w"> </span>cherry-pick<span class="w"> </span>10e96e46
+error:<span class="w"> </span>could<span class="w"> </span>not<span class="w"> </span>apply<span class="w"> </span>10e96e46...<span class="w"> </span>wip
+hint:<span class="w"> </span>After<span class="w"> </span>resolving<span class="w"> </span>the<span class="w"> </span>conflicts,<span class="w"> </span>mark<span class="w"> </span>them<span class="w"> </span>with
+hint:<span class="w"> </span><span class="s2">&quot;git add/rm &lt;pathspec&gt;&quot;</span>,<span class="w"> </span><span class="k">then</span><span class="w"> </span>run
+hint:<span class="w"> </span><span class="s2">&quot;git cherry-pick --continue&quot;</span>.
+</code></pre></div>
+
+<p>因此，看起来 “Git 正在应用一个补丁”这样的理解方式并不十分准确。但这里的错误信息确实标明了 “无法<strong>应用</strong> 10e96e46”，这么看来，这种理解又不完全是错的。这到底是怎么回事呢？</p>
+<h3>那么，遴选到底是怎么执行的呢？</h3>
+<p>我深入研究了 Git 的源代码，主要是想了解 <code>cherry-pick</code> 是如何工作的，最终我找到了 <a href="https://github.com/git/git/blob/dadef801b365989099a9929e995589e455c51fed/sequencer.c#L2353-L2358">这一行代码</a>：</p>
+<div class="highlight"><pre><span></span><code>res = do_recursive_merge(r, base, next, base_label, next_label, &amp;head, &amp;msgbuf, opts);
+</code></pre></div>
+
+<p>所以，遴选实际上就是一种……合并操作？这有些出乎意料。那具体都合并了什么内容？如何执行这个合并操作的呢？</p>
+<p>我意识到我对 Git 的合并操作并不是特别理解，于是我上网搜索了一下。结果发现 Git 实际上采用了一种被称为 “三路合并” 的合并方式。那这到底是什么含义呢？</p>
+<h3>Git 的合并策略：三路合并</h3>
+<p>假设我要合并下面两个文件，我们将其分别命名为 <code>v1.py</code> 和 <code>v2.py</code>。</p>
+<div class="highlight"><pre><span></span><code><span class="nv">def</span><span class="w"> </span><span class="nv">greet</span><span class="ss">()</span>:
+<span class="w">    </span><span class="nv">greeting</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;hello&quot;</span>
+<span class="w">    </span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;julia&quot;</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nv">greeting</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s2">&quot; &quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nv">name</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code>def say_hello():
+    greeting = &quot;hello&quot;
+    name = &quot;aanya&quot;
+    return greeting + &quot; &quot; + name
+</code></pre></div>
+
+<p>在这两个文件间，存在两处不同：</p>
+<ul>
+<li><code>def greet()</code> 和 <code>def say_hello</code></li>
+<li><code>name = "julia"</code> 和 <code>name = "aanya"</code></li>
+</ul>
+<p>我们应该选择哪个呢？看起来好像不可能有答案！</p>
+<p>不过，如果我告诉你，原始的函数（我们称之为 <code>base.py</code>）是这样的：</p>
+<div class="highlight"><pre><span></span><code>def say_hello():
+    greeting = &quot;hello&quot;
+    name = &quot;julia&quot;
+    return greeting + &quot; &quot; + name
+</code></pre></div>
+
+<p>一切似乎变得清晰许多！在这个基础上，<code>v1</code> 将函数的名字更改为 <code>greet</code>，<code>v2</code> 将 <code>name = "aanya"</code>。因此，合并时，我们应该同时做出这两处改变：</p>
+<div class="highlight"><pre><span></span><code><span class="nv">def</span><span class="w"> </span><span class="nv">greet</span><span class="ss">()</span>:
+<span class="w">    </span><span class="nv">greeting</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;hello&quot;</span>
+<span class="w">    </span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;aanya&quot;</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nv">greeting</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s2">&quot; &quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nv">name</span>
+</code></pre></div>
+
+<p>我们可以命令 Git 使用 <code>git merge-file</code> 来完成这次合并，结果正是我们预期的：它选择了 <code>def greet()</code> 和 <code>name = "aanya"</code>。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>git<span class="w"> </span>merge-file<span class="w"> </span>v1.py<span class="w"> </span>base.py<span class="w"> </span>v2.py<span class="w"> </span>-p
+def<span class="w"> </span>greet<span class="o">()</span>:
+<span class="w">    </span><span class="nv">greeting</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;hello&quot;</span>
+<span class="w">    </span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;aanya&quot;</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span>greeting<span class="w"> </span>+<span class="w"> </span><span class="s2">&quot; &quot;</span><span class="w"> </span>+<span class="w"> </span>name⏎
+</code></pre></div>
+
+<p>这种将两个文件与其原始版本进行合并的方式，被称为 <strong>三路合并</strong>。</p>
+<p>如果你想在线上试一试，我在 <a href="https://jvns.ca/3-way-merge/">jvns.ca/3-way-merge/</a> 创建了一个小实验场。不过我只是草草制作，所以可能对移动端并不友好。</p>
+<h3>Git 合并的是更改，而非文件</h3>
+<p>我对三路合并的理解是 —— Git 合并的是<strong>更改</strong>，而不是文件。我们对同一个文件做出两种不同的更改，Git 试图以合理的方式将这两种更改结合到一起。当两个更改都对同一行进行操作时，Git 可能会遇到困难，此时就会产生合并冲突。</p>
+<p>Git 也可以合并超过两处的更改：你可以对同一文件有多达 8 处不同的更改，Git 会尝试将所有更改协调一致。这被称为八爪鱼合并，但除此之外我对其并不了解，因为我从未执行过这样的操作。</p>
+<h3>Git 如何使用三路合并来应用补丁</h3>
+<p>接下来，让我们进入到一个有些出乎意料的情境！当我们讨论 Git “应用补丁”（如在变基 —— <code>rebase</code>、撤销 —— <code>revert</code> 或遴选 —— <code>cherry-pick</code> 中所做的）时，其实并非是生成一个补丁文件并应用它。相反，实际执行的是一次三路合并。</p>
+<p>下面是如何将提交 <code>X</code> 作为补丁应用到你当前的提交，并与之前的 <code>v1</code>、<code>v2</code> 和 <code>base</code> 设置相对应：</p>
+<ol>
+<li><strong>在你当前提交中</strong>，文件的版本是 <code>v1</code>。</li>
+<li><strong>在提交 X 之前</strong>，文件的版本是 <code>base</code>。</li>
+<li><strong>在提交 X 中</strong>，文件的版本是 <code>v2</code>。</li>
+<li>执行 <code>git merge-file v1 base v2</code> 以合并它们（实际上，Git 并不直接执行 <code>git merge-file</code>，而是运行一个实现这个功能的 C 函数）。</li>
+</ol>
+<p>总的来说，你可以将 <code>base</code> 和 <code>v2</code> 视为“补丁”，它们之间的差异就是你想要应用到 <code>v1</code> 上的更改。</p>
+<h3>遴选如何运作</h3>
+<p>假设我们有如下提交图，并且我们打算在 <code>main</code> 分支上遴选提交 <code>Y</code>：</p>
+<div class="highlight"><pre><span></span><code>A - B (main)
+  \ 
+   \ 
+    X - Y - Z
+</code></pre></div>
+
+<p>那么，如何将此情景转化为我们前面提过的 <code>v1</code>、<code>v2</code> 和 <code>base</code> 组成的三路合并呢？</p>
+<ul>
+<li><code>B</code> 是 <code>v1</code></li>
+<li><code>X</code> 是 <code>base</code>，而 <code>Y</code> 是 <code>v2</code></li>
+</ul>
+<p>所以，<code>X</code> 和 <code>Y</code> 共同构成了这个“补丁”。</p>
+<p>其实，<code>git rebase</code> 无非就是重复多次执行 <code>git cherry-pick</code> 的过程。</p>
+<h3>撤销如何运作</h3>
+<p>现在，假如我们希望在如下的提交图上执行 <code>git revert Y</code>：</p>
+<div class="highlight"><pre><span></span><code>X - Y - Z - A - B
+</code></pre></div>
+
+<ul>
+<li><code>B</code> 是 <code>v1</code></li>
+<li><code>Y</code> 是 <code>base</code>，而 <code>X</code> 是 <code>v2</code></li>
+</ul>
+<p>这个过程反映的实际上就是遴选的情况，不过 <code>X</code> 和 <code>Y</code> 的位置颠倒了。我们需要这样做因为我们期望生成一个“反向补丁”。在 Git 中，撤销和遴选关系如此的紧密，它们甚至在同一个文件中实现：<a href="https://github.com/git/git/blob/dadef801b365989099a9929e995589e455c51fed/builtin/revert.c">revert.c</a>。</p>
+<h3>“三路补丁”是一个非常棒的技巧</h3>
+<p>使用三路合并将提交作为补丁应用的这个技巧非常巧妙且酷炫，我很惊讶之前从未听说过！我并未听过一个特定的名字来描述这种方法，但我更倾向于称之为“三路补丁”。</p>
+<p>“三路补丁”的理念在于，你可以通过两个文件来定义补丁：在应用补丁前后的文件（在我们这篇文章中称之为 <code>base</code> 和 <code>v2</code>）。</p>
+<p>因此，总体来看有三个文件被涉及到：一个是原文件，另外两个构成了补丁。</p>
+<p>最重要的是，与普通补丁相比，三路补丁是一个更加高效的补丁方案，因为在有两个完整文件的情况下，你拥有更丰富的上下文信息来进行合并。</p>
+<p>以下是我们例子中的常规补丁的大致情况：</p>
+<div class="highlight"><pre><span></span><code>@@ -1,1 +1,1 @@:
+<span class="k">-</span> def greet():
++ def say_hello():
+    greeting = &quot;hello&quot;
+</code></pre></div>
+
+<p>而下面这就是一个三路补丁。不过，需要提醒的是这个“三路补丁”并不是一个真正的文件格式，这只是我自己提出的一种概念。</p>
+<div class="highlight"><pre><span></span><code>BEFORE: (the full file)
+def greet():
+    greeting = &quot;hello&quot;
+    name = &quot;julia&quot;
+    return greeting + &quot; &quot; + name
+AFTER: (the full file)
+def say_hello():
+    greeting = &quot;hello&quot;
+    name = &quot;julia&quot;
+    return greeting + &quot; &quot; + name
+</code></pre></div>
+
+<h3>《Building Git》 中提到了这点</h3>
+<p>James Coglan 的书籍 <a href="https://shop.jcoglan.com/building-git/">《Building Git》</a> 是我在 Git 源码之外唯一找到的地方，他解释了 <code>git cherry-pick</code> 是如何在底层运用三路合并的（我原以为《Pro Git》可能会提及这个，但我并没能找到此话题的内容）。</p>
+<p>我购买完这本书后发现，我早在 2019 年时就已经买过了，这对我来说真的是个很好的参考。</p>
+<h3>Git 中的合并实际上比这更复杂</h3>
+<p>在 Git 中，合并不限于三路合并 —— 还有一种我不太理解的叫做“递归合并”，还有许多具体处理文件删除和移动的细节，同时也有多种合并算法。</p>
+<p>如果想要了解更多相关知识，我最好的建议是阅读《Building Git》，尽管我还未完全阅读这本书。</p>
+<h3>Git 应用到底做了什么？</h3>
+<p>我也参阅了 Git 的源代码，试图理解 <code>git apply</code> 的功能。它似乎（不出意外地）在 <code>apply.c</code> 中实现。这段代码解析了一个补丁文件，并通入目标文件来寻找应该在何处应用补丁。核心逻辑似乎在 <a href="https://github.com/git/git/blob/dadef801b365989099a9929e995589e455c51fed/apply.c#L2684">这里</a>：思路好像是从补丁建议的行数开始，然后向前向后找寻。</p>
+<div class="highlight"><pre><span></span><code><span class="w">    </span><span class="cm">/*</span>
+<span class="cm">     * There&#39;s probably some smart way to do this, but I&#39;ll leave</span>
+<span class="cm">     * that to the smart and beautiful people. I&#39;m simple and stupid.</span>
+<span class="cm">     */</span>
+<span class="w">    </span><span class="nx">backwards</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">current</span><span class="p">;</span>
+<span class="w">    </span><span class="nx">backwards_lno</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">line</span><span class="p">;</span>
+<span class="w">    </span><span class="nx">forwards</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">current</span><span class="p">;</span>
+<span class="w">    </span><span class="nx">forwards_lno</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">line</span><span class="p">;</span>
+<span class="w">    </span><span class="nx">current_lno</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">line</span><span class="p">;</span>
+<span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="nx">i</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">     </span><span class="o">...</span>
+</code></pre></div>
+
+<p>这个处理过程不禁让人觉得非常直白、与之前的期望相符。</p>
+<h3>Git 三路应用的工作方式</h3>
+<p><code>git apply</code> 命令中也有一个 <code>--3way</code> 参数，可以实现三路合并。因此，我们实际上可以通过如下方式，使用 <code>git apply</code> 来大体实现 <code>git cherry-pick</code> 的功能：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>git<span class="w"> </span>show<span class="w"> </span>10e96e46<span class="w"> </span>--patch<span class="w"> </span>&gt;<span class="w"> </span>out.patch
+$<span class="w"> </span>git<span class="w"> </span>apply<span class="w"> </span>out.patch<span class="w"> </span>--3way
+Applied<span class="w"> </span>patch<span class="w"> </span>to<span class="w"> </span><span class="s1">&#39;content/post/2023-07-28-why-is-dns-still-hard-to-learn-.markdown&#39;</span><span class="w"> </span>with<span class="w"> </span>conflicts.
+U<span class="w"> </span>content/post/2023-07-28-why-is-dns-still-hard-to-learn-.markdown
+</code></pre></div>
+
+<p>但要注意，参数 <code>--3way</code> 并不只用到了补丁文件的内容！补丁文件开始的部分是:</p>
+<div class="highlight"><pre><span></span><code>index d63ade04..65778fc0 100644
+</code></pre></div>
+
+<p><code>d63ade04</code> 和 <code>65778fc0</code> 是旧/新文件版本在 Git 对象数据库中的 ID，因此 Git 可以用这些 ID 来执行三路补丁操作。但如果有人将补丁文件通过邮件发送给你，而你并没有新/旧版本的文件，就无法执行这个操作：如果你缺少 blob，将会出现如下错误：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>git<span class="w"> </span>apply<span class="w"> </span>out.patch
+error:<span class="w"> </span>repository<span class="w"> </span>lacks<span class="w"> </span>the<span class="w"> </span>necessary<span class="w"> </span>blob<span class="w"> </span>to<span class="w"> </span>perform<span class="w"> </span><span class="m">3</span>-way<span class="w"> </span>merge.
+</code></pre></div>
+
+<h3>三路合并有点历史了</h3>
+<p>有一部分人指出，三路合并比 Git 的历史还要久远，它起源于 70 年代末期左右。有一篇 2007 年的 <a href="https://www.cis.upenn.edu/~bcpierce/papers/diff3-short.pdf">论文</a> 对此进行了讨论。</p>
+<h3>就说这么多！</h3>
+<p>我真的对于我对于 Git 内部应用补丁的核心方法其实理解得并不深入这一点感到非常吃惊——学习这一点真的很酷！</p>
+<p>虽然我对 Git 用户界面存在 <a href="https://jvns.ca/blog/2023/11/01/confusing-git-terminology/">诸多不满</a>，但是这个特定问题并不包含在内。三路合并似乎是统一解决一系列不同问题的优雅方式，它对于人们来说也很直观（“应用一个补丁”这个想法是许多编程者都习以为常的思考模式，而它底层实现为三路合并的细节，实际上没有人真正需要去思考）。</p>
+<p><em>我顺便快速推荐一下：我正在写一部有关 Git 的 <a href="https://wizardzines.com">zine</a>，如果你对它的发布感兴趣，你可以注册我非常不频繁的 <a href="https://wizardzines.com/zine-announcements/">公告邮件列表</a>。</em></p>
+<p><em>（题图：MJ/321bc2c9-4363-4661-802a-c74fb6a721b2）</em></p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Linux 内核里的数据结构——基数树</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: 0xAX 基数树 （ Radix tree ） 正如你所知道的，Linux内核提供了许多不同的库和函数，它们实现了不同的数据结构和算法。在这部分，我们将研究其中一种数据结构—— 基数树 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2016/05/linux-nei-he-li-de-shu-ju-jie-gou-ji-shu-shu.html" rel="bookmark"
+           title="Permalink to Linux 内核里的数据结构——基数树">Linux 内核里的数据结构——基数树</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2016-05-18T08:56:00+02:00">
+                Published: Wed 18 May 2016
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: 0xAX</p>
+<h3><ruby> 基数树 <rp>  （ </rp> <rt>  Radix tree </rt> <rp>  ） </rp></ruby></h3>
+<p><img alt="Trie" src="/data/attachment/album/201605/18/085613hqkbz7gkpv8lc1ck.jpg"></p>
+<p>正如你所知道的，Linux内核提供了许多不同的库和函数，它们实现了不同的数据结构和算法。在这部分，我们将研究其中一种数据结构——<ruby> <a href="http://en.wikipedia.org/wiki/Radix_tree">  基数树 </a> <rp>  （ </rp> <rt>  Radix tree </rt> <rp>  ） </rp></ruby>。在 Linux 内核中，有两个文件与基数树的实现和API相关：</p>
+<ul>
+<li><a href="https://github.com/torvalds/linux/blob/master/include/linux/radix-tree.h">include/linux/radix-tree.h</a></li>
+<li><a href="https://github.com/torvalds/linux/blob/master/lib/radix-tree.c">lib/radix-tree.c</a></li>
+</ul>
+<p>让我们先说说什么是 <code>基数树</code> 吧。基数树是一种 <ruby> 压缩的字典树 <rp>  （ </rp> <rt>  compressed trie </rt> <rp>  ） </rp></ruby> ，而<a href="http://en.wikipedia.org/wiki/Trie">字典树</a>是实现了关联数组接口并允许以 <code>键值对</code> 方式存储值的一种数据结构。这里的键通常是字符串，但可以使用任意数据类型。字典树因为它的节点而与 <code>n叉树</code> 不同。字典树的节点不存储键，而是存储单个字符的标签。与一个给定节点关联的键可以通过从根遍历到该节点获得。举个例子：</p>
+<div class="highlight"><pre><span></span><code>               +-----------+
+               |           |
+               |    &quot; &quot;    |
+               |           |
+        +------+-----------+------+
+        |                         |
+        |                         |
+   +----v------+            +-----v-----+
+   |           |            |           |
+   |    g      |            |     c     |
+   |           |            |           |
+   +-----------+            +-----------+
+        |                         |
+        |                         |
+   +----v------+            +-----v-----+
+   |           |            |           |
+   |    o      |            |     a     |
+   |           |            |           |
+   +-----------+            +-----------+
+                                  |
+                                  |
+                            +-----v-----+
+                            |           |
+                            |     t     |
+                            |           |
+                            +-----------+
+</code></pre></div>
+
+<p>因此在这个例子中，我们可以看到一个有着两个键 <code>go</code> 和 <code>cat</code> 的 <code>字典树</code> 。压缩的字典树也叫做 <code>基数树</code> ，它和 <code>字典树</code> 的不同之处在于，所有只有一个子节点的中间节点都被删除。</p>
+<p>Linux 内核中的基数树是把值映射到整形键的一种数据结构。<a href="https://github.com/torvalds/linux/blob/master/include/linux/radix-tree.h">include/linux/radix-tree.h</a>文件中的以下结构体描述了基数树：</p>
+<div class="highlight"><pre><span></span><code>struct radix_tree_root {
+         unsigned int            height;
+         gfp_t                   gfp_mask;
+         struct radix_tree_node  __rcu *rnode;
+};
+</code></pre></div>
+
+<p>这个结构体描述了一个基数树的根，它包含了3个域成员：</p>
+<ul>
+<li><code>height</code> - 树的高度;</li>
+<li><code>gfp_mask</code> - 告知如何执行动态内存分配;</li>
+<li><code>rnode</code> - 孩子节点指针.</li>
+</ul>
+<p>我们第一个要讨论的字段是 <code>gfp_mask</code> ：</p>
+<p>底层内核的内存动态分配函数以一组标志作为 <code>gfp_mask</code> ，用于描述如何执行动态内存分配。这些控制分配进程的 <code>GFP_</code> 标志拥有以下值：( <code>GF_NOIO</code> 标志)意味着睡眠以及等待内存，( <code>__GFP_HIGHMEM</code> 标志)意味着高端内存能够被使用，( <code>GFP_ATOMIC</code> 标志)意味着分配进程拥有高优先级并不能睡眠等等。</p>
+<ul>
+<li><code>GFP_NOIO</code> - 睡眠等待内存</li>
+<li><code>__GFP_HIGHMEM</code> - 高端内存能够被使用;</li>
+<li><code>GFP_ATOMIC</code> - 分配进程拥有高优先级并且不能睡眠;</li>
+</ul>
+<p>等等。</p>
+<p>下一个字段是<code>rnode</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="n">struct</span><span class="w"> </span><span class="n">radix_tree_node</span><span class="w"> </span><span class="err">{</span>
+<span class="w">        </span><span class="n">unsigned</span><span class="w"> </span><span class="nc">int</span><span class="w">    </span><span class="k">path</span><span class="p">;</span>
+<span class="w">        </span><span class="n">unsigned</span><span class="w"> </span><span class="nc">int</span><span class="w">    </span><span class="nf">count</span><span class="p">;</span>
+<span class="w">        </span><span class="ow">union</span><span class="w"> </span><span class="err">{</span>
+<span class="w">                </span><span class="n">struct</span><span class="w"> </span><span class="err">{</span>
+<span class="w">                        </span><span class="n">struct</span><span class="w"> </span><span class="n">radix_tree_node</span><span class="w"> </span><span class="o">*</span><span class="n">parent</span><span class="p">;</span>
+<span class="w">                        </span><span class="n">void</span><span class="w"> </span><span class="o">*</span><span class="n">private_data</span><span class="p">;</span>
+<span class="w">                </span><span class="err">}</span><span class="p">;</span>
+<span class="w">                </span><span class="n">struct</span><span class="w"> </span><span class="n">rcu_head</span><span class="w"> </span><span class="n">rcu_head</span><span class="p">;</span>
+<span class="w">        </span><span class="err">}</span><span class="p">;</span>
+<span class="w">        </span><span class="cm">/* For tree user */</span>
+<span class="w">        </span><span class="n">struct</span><span class="w"> </span><span class="n">list_head</span><span class="w"> </span><span class="n">private_list</span><span class="p">;</span>
+<span class="w">        </span><span class="n">void</span><span class="w"> </span><span class="n">__rcu</span><span class="w">      </span><span class="o">*</span><span class="n">slots</span><span class="o">[</span><span class="n">RADIX_TREE_MAP_SIZE</span><span class="o">]</span><span class="p">;</span>
+<span class="w">        </span><span class="n">unsigned</span><span class="w"> </span><span class="n">long</span><span class="w">   </span><span class="n">tags</span><span class="o">[</span><span class="n">RADIX_TREE_MAX_TAGS</span><span class="o">][</span><span class="n">RADIX_TREE_TAG_LONGS</span><span class="o">]</span><span class="p">;</span>
+<span class="err">}</span><span class="p">;</span>
+</code></pre></div>
+
+<p>这个结构体包含的信息有父节点中的偏移以及到底端(叶节点)的高度、子节点的个数以及用于访问和释放节点的字段成员。这些字段成员描述如下：</p>
+<ul>
+<li><code>path</code> - 父节点中的偏移和到底端(叶节点)的高度</li>
+<li><code>count</code> - 子节点的个数;</li>
+<li><code>parent</code> - 父节点指针;</li>
+<li><code>private_data</code> - 由树的用户使用;</li>
+<li><code>rcu_head</code> - 用于释放节点;</li>
+<li><code>private_list</code> - 由树的用户使用;</li>
+</ul>
+<p><code>radix_tree_node</code> 的最后两个成员—— <code>tags</code> 和 <code>slots</code> 非常重要且令人关注。Linux 内核基数树的每个节点都包含了一组<ruby> 指针槽 <rp>  （ </rp> <rt>  slots </rt> <rp>  ） </rp></ruby>，槽里存储着指向数据的指针。在Linux内核基数树的实现中，空槽存储的是 <code>NULL</code> 。Linux内核中的基数树也支持<ruby> 标签 <rp>  （ </rp> <rt>  tags </rt> <rp>  ） </rp></ruby>，它与 <code>radix_tree_node</code> 结构体的 <code>tags</code> 字段相关联。有了标签，我们就可以对基数树中存储的记录以单个<ruby> 比特位 <rp>  （ </rp> <rt>  bit </rt> <rp>  ） </rp></ruby>进行设置。</p>
+<p>既然我们了解了基数树的结构，那么该是时候看一下它的API了。</p>
+<h3>Linux内核基数树API</h3>
+<p>我们从结构体的初始化开始。有两种方法初始化一个新的基数树。第一种是使用 <code>RADIX_TREE</code> 宏：</p>
+<div class="highlight"><pre><span></span><code>RADIX_TREE(name, gfp_mask);
+</code></pre></div>
+
+<p>正如你所看到的，我们传递了 <code>name</code> 参数，所以通过 <code>RADIX_TREE</code> 宏，我们能够定义和初始化基数树为给定的名字。<code>RADIX_TREE</code> 的实现很简单：</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span>define RADIX_TREE(name, mask) \
+         struct radix_tree_root name = RADIX_TREE_INIT(mask)
+
+<span class="gh">#</span>define RADIX_TREE_INIT(mask)   { \
+        .height = 0,              \
+        .gfp_mask = (mask),       \
+        .rnode = NULL,            \
+}
+</code></pre></div>
+
+<p>在 <code>RADIX_TREE</code> 宏的开始，我们使用给定的名字定义 <code>radix_tree_root</code> 结构体实例，并使用给定的 mask 调用 <code>RADIX_TREE_INIT</code> 宏。 而 <code>RADIX_TREE_INIT</code> 宏则是使用默认值和给定的mask对 <code>radix_tree_root</code> 结构体进行了初始化。</p>
+<p>第二种方法是手动定义<code>radix_tree_root</code>结构体，并且将它和mask传给 <code>INIT_RADIX_TREE</code> 宏：</p>
+<div class="highlight"><pre><span></span><code>struct radix_tree_root my_radix_tree;
+INIT_RADIX_TREE(my_tree, gfp_mask_for_my_radix_tree);
+</code></pre></div>
+
+<p><code>INIT_RADIX_TREE</code> 宏的定义如下:</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#define INIT_RADIX_TREE(root, mask)  \</span>
+<span class="n">do</span><span class="w"> </span><span class="p">{</span><span class="w">                                 </span><span class="err">\</span>
+<span class="w">        </span><span class="p">(</span><span class="n">root</span><span class="p">)</span><span class="o">-&gt;</span><span class="n">height</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w">          </span><span class="err">\</span>
+<span class="w">        </span><span class="p">(</span><span class="n">root</span><span class="p">)</span><span class="o">-&gt;</span><span class="n">gfp_mask</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">mask</span><span class="p">);</span><span class="w">   </span><span class="err">\</span>
+<span class="w">        </span><span class="p">(</span><span class="n">root</span><span class="p">)</span><span class="o">-&gt;</span><span class="n">rnode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">NULL</span><span class="p">;</span><span class="w">        </span><span class="err">\</span>
+<span class="p">}</span><span class="w"> </span><span class="n">while</span><span class="w"> </span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+</code></pre></div>
+
+<p>和<code>RADIX_TREE_INIT</code>宏所做的初始化工作一样，<code>INIT_RADIX_TREE</code> 宏使用默认值和给定的 mask 完成初始化工作。</p>
+<p>接下来是用于向基数树插入和删除数据的两个函数：</p>
+<ul>
+<li><code>radix_tree_insert</code>;</li>
+<li><code>radix_tree_delete</code>;</li>
+</ul>
+<p>第一个函数 <code>radix_tree_insert</code> 需要3个参数：</p>
+<ul>
+<li>基数树的根;</li>
+<li>索引键;</li>
+<li>插入的数据;</li>
+</ul>
+<p><code>radix_tree_delete</code> 函数需要和 <code>radix_tree_insert</code> 一样的一组参数，但是不需要传入要删除的数据。</p>
+<p>基数树的搜索以两种方法实现：</p>
+<ul>
+<li><code>radix_tree_lookup</code>;</li>
+<li><code>radix_tree_gang_lookup</code>;</li>
+<li><code>radix_tree_lookup_slot</code>.</li>
+</ul>
+<p>第一个函数<code>radix_tree_lookup</code>需要两个参数：</p>
+<ul>
+<li>基数树的根;</li>
+<li>索引键;</li>
+</ul>
+<p>这个函数尝试在树中查找给定的键，并返回和该键相关联的记录。第二个函数 <code>radix_tree_gang_lookup</code> 有以下的函数签名：</p>
+<div class="highlight"><pre><span></span><code>unsigned int radix_tree_gang_lookup(struct radix_tree_root <span class="gs">*root,</span>
+<span class="gs">                                    void *</span>*results,
+                                    unsigned long first_index,
+                                    unsigned int max_items);
+</code></pre></div>
+
+<p>它返回的是记录的个数。 <code>results</code> 中的结果，按键排序，并从第一个索引开始。返回的记录个数将不会超过 <code>max_items</code> 的值。</p>
+<p>最后一个函数<code>radix_tree_lookup_slot</code>将会返回包含数据的指针槽。</p>
+<h3>链接</h3>
+<ul>
+<li><a href="http://en.wikipedia.org/wiki/Radix_tree">Radix tree</a></li>
+<li><a href="http://en.wikipedia.org/wiki/Trie">Trie</a></li>
+</ul>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何使用 syslog-ng 从远程 Linux 机器上收集日志</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Jack Wallen 如果你的数据中心全是 Linux 服务器，而你就是系统管理员。那么你的其中一项工作内容就是查看服务器的日志文件 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/03/ru-he-shi-yong-syslog-ng-cong-yuan-cheng-linux-ji-qi-shang-shou-ji-ri-zhi.html" rel="bookmark"
+           title="Permalink to 如何使用 syslog-ng 从远程 Linux 机器上收集日志">如何使用 syslog-ng 从远程 Linux 机器上收集日志</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-03-08T22:49:23+01:00">
+                Published: Thu 08 March 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Jack Wallen</p>
+<p><img alt="" src="/data/attachment/album/201803/08/224914clxpxmjbvxpj8j8e.jpg"></p>
+<p>如果你的数据中心全是 Linux 服务器，而你就是系统管理员。那么你的其中一项工作内容就是查看服务器的日志文件。但是，如果你在大量的机器上去查看日志文件，那么意味着你需要挨个去登入到机器中来阅读日志文件。如果你管理的机器很多，仅这项工作就可以花费你一天的时间。</p>
+<p>另外的选择是，你可以配置一台单独的 Linux 机器去收集这些日志。这将使你的每日工作更加高效。要实现这个目的，有很多的不同系统可供你选择，而 syslog-ng 就是其中之一。</p>
+<p>syslog-ng 的不足是文档并不容易梳理。但是，我已经解决了这个问题，我可以通过这种方法马上进行安装和配置 syslog-ng。下面我将在 Ubuntu Server 16.04 上示范这两种方法：</p>
+<ul>
+<li>UBUNTUSERVERVM 的 IP 地址是 192.168.1.118 ，将配置为日志收集器</li>
+<li>UBUNTUSERVERVM2 将配置为一个客户端，发送日志文件到收集器</li>
+</ul>
+<p>现在我们来开始安装和配置。</p>
+<h3>安装</h3>
+<p>安装很简单。为了尽可能容易，我将从标准仓库安装。打开一个终端窗口，运行如下命令：</p>
+<div class="highlight"><pre><span></span><code>sudo apt install syslog-ng
+</code></pre></div>
+
+<p>你必须在收集器和客户端的机器上都要运行上面的命令。安装完成之后，你将开始配置。</p>
+<h3>配置收集器</h3>
+<p>现在，我们开始日志收集器的配置。它的配置文件是 <code>/etc/syslog-ng/syslog-ng.conf</code>。syslog-ng 安装完成时就已经包含了一个配置文件。我们不使用这个默认的配置文件，可以使用 <code>mv /etc/syslog-ng/syslog-ng.conf /etc/syslog-ng/syslog-ng.conf.BAK</code> 将这个自带的默认配置文件重命名。现在使用 <code>sudo nano /etc/syslog/syslog-ng.conf</code> 命令创建一个新的配置文件。在这个文件中添加如下的行：</p>
+<div class="highlight"><pre><span></span><code><span class="err">@</span><span class="n">version</span><span class="p">:</span><span class="w"> </span><span class="mf">3.5</span>
+<span class="err">@</span><span class="n">include</span><span class="w"> </span><span class="s2">&quot;scl.conf&quot;</span>
+<span class="err">@</span><span class="n">include</span><span class="w"> </span><span class="s2">&quot;`scl-root`/system/tty10.conf&quot;</span>
+<span class="w">    </span><span class="n">options</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">time</span><span class="o">-</span><span class="n">reap</span><span class="p">(</span><span class="mi">30</span><span class="p">);</span>
+<span class="w">        </span><span class="n">mark</span><span class="o">-</span><span class="n">freq</span><span class="p">(</span><span class="mi">10</span><span class="p">);</span>
+<span class="w">        </span><span class="n">keep</span><span class="o">-</span><span class="n">hostname</span><span class="p">(</span><span class="n">yes</span><span class="p">);</span>
+<span class="w">        </span><span class="p">};</span>
+<span class="w">    </span><span class="n">source</span><span class="w"> </span><span class="n">s_local</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">system</span><span class="p">();</span><span class="w"> </span><span class="n">internal</span><span class="p">();</span><span class="w"> </span><span class="p">};</span>
+<span class="w">    </span><span class="n">source</span><span class="w"> </span><span class="n">s_network</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">syslog</span><span class="p">(</span><span class="n">transport</span><span class="p">(</span><span class="n">tcp</span><span class="p">)</span><span class="w"> </span><span class="n">port</span><span class="p">(</span><span class="mi">514</span><span class="p">));</span>
+<span class="w">        </span><span class="p">};</span>
+<span class="w">    </span><span class="n">destination</span><span class="w"> </span><span class="n">d_local</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">file</span><span class="p">(</span><span class="s2">&quot;/var/log/syslog-ng/messages_${HOST}&quot;</span><span class="p">);</span><span class="w"> </span><span class="p">};</span>
+<span class="w">    </span><span class="n">destination</span><span class="w"> </span><span class="n">d_logs</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">file</span><span class="p">(</span>
+<span class="w">            </span><span class="s2">&quot;/var/log/syslog-ng/logs.txt&quot;</span>
+<span class="w">            </span><span class="n">owner</span><span class="p">(</span><span class="s2">&quot;root&quot;</span><span class="p">)</span>
+<span class="w">            </span><span class="n">group</span><span class="p">(</span><span class="s2">&quot;root&quot;</span><span class="p">)</span>
+<span class="w">            </span><span class="n">perm</span><span class="p">(</span><span class="mi">0777</span><span class="p">)</span>
+<span class="w">            </span><span class="p">);</span><span class="w"> </span><span class="p">};</span>
+<span class="w">    </span><span class="nb">log</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">source</span><span class="p">(</span><span class="n">s_local</span><span class="p">);</span><span class="w"> </span><span class="n">source</span><span class="p">(</span><span class="n">s_network</span><span class="p">);</span><span class="w"> </span><span class="n">destination</span><span class="p">(</span><span class="n">d_logs</span><span class="p">);</span><span class="w"> </span><span class="p">};</span>
+</code></pre></div>
+
+<p>需要注意的是，syslog-ng 使用 514 端口，你需要确保在你的网络上它可以被访问。</p>
+<p>保存并关闭这个文件。上面的配置将转存期望的日志文件（由 <code>system()</code> 和 <code>internal()</code> 指出）到 <code>/var/log/syslog-ng/logs.txt</code> 中。因此，你需要使用如下的命令去创建所需的目录和文件：</p>
+<div class="highlight"><pre><span></span><code><span class="n">sudo</span><span class="w"> </span><span class="n">mkdir</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="n">syslog</span><span class="o">-</span><span class="n">ng</span>
+<span class="n">sudo</span><span class="w"> </span><span class="n">touch</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="n">syslog</span><span class="o">-</span><span class="n">ng</span><span class="o">/</span><span class="n">logs</span><span class="o">.</span><span class="n">txt</span>
+</code></pre></div>
+
+<p>使用如下的命令启动和启用 syslog-ng：</p>
+<div class="highlight"><pre><span></span><code>sudo systemctl start syslog-ng
+sudo systemctl enable syslog-ng
+</code></pre></div>
+
+<h3>配置客户端</h3>
+<p>我们将在客户端上做同样的事情（移动默认配置文件并创建新配置文件）。拷贝下列文本到新的客户端配置文件中：</p>
+<div class="highlight"><pre><span></span><code><span class="nv">@version</span><span class="err">:</span><span class="w"> </span><span class="mf">3.5</span>
+<span class="nv">@include</span><span class="w"> </span><span class="ss">&quot;scl.conf&quot;</span>
+<span class="nv">@include</span><span class="w"> </span><span class="ss">&quot;`scl-root`/system/tty10.conf&quot;</span>
+<span class="n">source</span><span class="w"> </span><span class="n">s_local</span><span class="w"> </span><span class="err">{</span><span class="w"> </span><span class="k">system</span><span class="p">();</span><span class="w"> </span><span class="n">internal</span><span class="p">();</span><span class="w"> </span><span class="err">}</span><span class="p">;</span>
+<span class="n">destination</span><span class="w"> </span><span class="n">d_syslog_tcp</span><span class="w"> </span><span class="err">{</span>
+<span class="w">              </span><span class="n">syslog</span><span class="p">(</span><span class="ss">&quot;192.168.1.118&quot;</span><span class="w"> </span><span class="n">transport</span><span class="p">(</span><span class="ss">&quot;tcp&quot;</span><span class="p">)</span><span class="w"> </span><span class="n">port</span><span class="p">(</span><span class="mi">514</span><span class="p">));</span><span class="w"> </span><span class="err">}</span><span class="p">;</span>
+<span class="nf">log</span><span class="w"> </span><span class="err">{</span><span class="w"> </span><span class="n">source</span><span class="p">(</span><span class="n">s_local</span><span class="p">);</span><span class="n">destination</span><span class="p">(</span><span class="n">d_syslog_tcp</span><span class="p">);</span><span class="w"> </span><span class="err">}</span><span class="p">;</span>
+</code></pre></div>
+
+<p>请注意：请将 IP 地址修改为收集器的 IP 地址。</p>
+<p>保存和关闭这个文件。与在配置为收集器的机器上一样的方法启动和启用 syslog-ng。</p>
+<h2>查看日志文件</h2>
+<p>回到你的配置为收集器的服务器上，运行这个命令 <code>sudo tail -f /var/log/syslog-ng/logs.txt</code>。你将看到包含了收集器和客户端的日志条目的输出（图 A）。</p>
+<p><img alt="图 A" src="/data/attachment/album/201803/08/224926s0hn2grvvv03c933.jpg"></p>
+<p>恭喜你！syslog-ng 已经正常工作了。你现在可以登入到你的收集器上查看本地机器和远程客户端的日志了。如果你的数据中心有很多 Linux 服务器，在每台服务器上都安装上 syslog-ng 并配置它们作为客户端发送日志到收集器，这样你就不需要登入到每个机器去查看它们的日志了。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

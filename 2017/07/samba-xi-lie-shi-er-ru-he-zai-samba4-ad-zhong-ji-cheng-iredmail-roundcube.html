@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>Samba 系列（十二）：如何在 Samba4 AD 中集成 iRedMail Roundcube</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Matei Cezar Roundcube 是 Linux 中最常用的 Webmail 用户代理之一，它为终端用户提供了一个现代化的 Web 界面，它可以与所有邮件服务进行交互 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/07/samba-xi-lie-shi-er-ru-he-zai-samba4-ad-zhong-ji-cheng-iredmail-roundcube.html" rel="bookmark"
+           title="Permalink to Samba 系列（十二）：如何在 Samba4 AD 中集成 iRedMail Roundcube">Samba 系列（十二）：如何在 Samba4 AD 中集成 iRedMail Roundcube</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-07-08T20:51:00+02:00">
+                Published: Sat 08 July 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Matei Cezar</p>
+<p><img alt="" src="/data/attachment/album/201707/08/205134sabclabnq2injj2l.jpg"></p>
+<p><a href="https://www.tecmint.com/install-and-configure-roundcube-webmail-for-postfix-mail-server/">Roundcube</a> 是 Linux 中最常用的 Webmail 用户代理之一，它为终端用户提供了一个现代化的 Web 界面，它可以与所有邮件服务进行交互，以便阅读、撰写和发送电子邮件。Roundcube 支持各种邮件协议，包括安全的邮件协议，如IMAPS、POP3S 或者 submission。</p>
+<p>在本文中，我们将讨论如何在 iRedMail 中使用 IMAPS 以及 submission 安全端口配置 Roundcube，以检索和发送 Samba4 AD 帐户的电子邮件、如何从浏览器访问 iRedMail Roundcube Web 界面，并添加网址别名、如何启用 Samba4 AD 集成全局 LDAP 地址簿以及如何禁用某些不需要的 iRedMail 服务。</p>
+<h3>要求</h3>
+<ol>
+<li><a href="/article-8567-1.html">如何在 CentOS 7 上安装 iRedMail，用于Samba4 AD集成</a></li>
+<li><a href="/article-8673-1.html">在 CentOS 7 上配置 iRedMail，用于 Samba4 AD 集成</a></li>
+</ol>
+<h3>第一步：在 Samba4 AD DC 中声明域帐户的电子邮件地址</h3>
+<p>1、 为了发送和接收 Samba4 AD DC 域账户的邮件，您需要编辑每个用户帐户，如下所示，通过从<a href="/article-8097-1.html">安装了 RSAT 工具的 Windows 机器</a>并且已经加入 Samba4 AD 中打开 ADUC 工具显式地在邮箱字段填写正确的地址。</p>
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/05/Active-Directory-User-and-Computers.jpg"><img alt="Add Email Account to Join Samba4 AD DC" src="/data/attachment/album/201707/08/205141k1pchw2p2x1kxdd6.jpg"></a></p>
+<p><em>添加邮箱帐户来加入 Samba4 AD DC</em></p>
+<p>2、 相似地，要使用邮件列表，你需要在 ADUC 中创建组，为每个组添加相应的电子邮件地址，并分配合适的用户帐户作为每个组的成员。</p>
+<p>这步创建了一个邮件列表，所有 Samba4 AD 组成员的邮箱都会收到给这个 AD 组邮箱地址的邮件。使用下面的截图作为指导为 Samba4 组声明电子邮件字段，并为组添加域成员。</p>
+<p>确保所有的域账户成员都添加到了声明了邮件地址的组中。</p>
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/05/Create-Group-Admin-for-Samba4-AD-DC.png"><img alt="Create Group Admin for Samba4 AD DC" src="/data/attachment/album/201707/08/205141uszsiexybrvxvmv7.png"></a></p>
+<p><em>为 Samba4 AD DC 创建组管理员</em></p>
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/05/Add-Users-to-Group.png"><img alt="Add Users to Group" src="/data/attachment/album/201707/08/205142nvw01zp03pwvvrvi.png"></a></p>
+<p><em>将用户添加到组</em></p>
+<p>在本例中，发送给 <a href="mailto:admins@tecmint.lan">admins@tecmint.lan</a> 的所有邮件地址将被该组的每个成员邮箱接收，它是 “Domain Admins” 组声明的电子邮件地址。</p>
+<p>3、 你可以声明 Samba4 AD 帐户的电子邮件地址的另一种方法是直接从其中一个 AD DC 控制台使用 samba-tool 命令行创建一个用户或组，并使用 <code>--mail-address</code> 标志指定邮件地址。</p>
+<p>使用下面其中一个命令创建一个指定邮件地址的用户：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># samba-tool user add  --mail-address=user_email@domain.tld  --surname=your_surname  --given-name=your_given_name  your_ad_user</span>
+</code></pre></div>
+
+<p>创建一个指定邮件地址的组：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># samba-tool group add  --mail-address=group_email@domain.tld  your_ad_group</span>
+</code></pre></div>
+
+<p>将成员添加到组中：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># samba-tool group addmembers your_group user1,user2,userX</span>
+</code></pre></div>
+
+<p>使用下面的语法列出 samba-tool 中有关用户或者组的命令字段：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># samba-tool user add -h</span>
+<span class="c1"># samba-tool group add -h</span>
+</code></pre></div>
+
+<h3>第二步：安全 Roundcube Webmail</h3>
+<p>4、 开始修改 Roundcube 配置文件之前，首先使用 <a href="https://www.tecmint.com/20-netstat-commands-for-linux-network-management/">netstat 命令</a>管道输出给 egrep 过滤器来列出 <a href="https://www.tecmint.com/configure-postfix-and-dovecot-with-virtual-domain-users-in-linux/">Dovecot 和 Postfix</a> 监听的套接字，并确保安全端口（IMAPS 是 993，submission 是 587 ）是活跃的并且已启用。</p>
+<div class="highlight"><pre><span></span><code># netstat -tulpn| egrep &#39;dovecot|master&#39;
+</code></pre></div>
+
+<p>5、 要强制邮件的接收和发送在使用安全的 IMAP 和 SMTP 端口的 Roundcube 以及 iRedMail 服务之间，打开位于 <code>/var/www/roundcubemail/config/config.inc.php</code> 的 Roundcube 配置文件并确保你修改过了下面的行，本例中是 <code>localhost</code>，如下片段所示：</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// For IMAPS</span>
+<span class="err">$</span><span class="nx">config</span><span class="p">[</span><span class="err">&#39;</span><span class="nx">default_host</span><span class="err">&#39;</span><span class="p">]</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="err">&#39;</span><span class="nx">ssl</span><span class="p">:</span><span class="c1">//127.0.0.1&#39;;</span>
+<span class="err">$</span><span class="nx">config</span><span class="p">[</span><span class="err">&#39;</span><span class="nx">default_port</span><span class="err">&#39;</span><span class="p">]</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mi">993</span><span class="p">;</span>
+<span class="err">$</span><span class="nx">config</span><span class="p">[</span><span class="err">&#39;</span><span class="nx">imap_auth_type</span><span class="err">&#39;</span><span class="p">]</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="err">&#39;</span><span class="nx">LOGIN</span><span class="err">&#39;</span><span class="p">;</span>
+<span class="c1">// For SMTP</span>
+<span class="err">$</span><span class="nx">config</span><span class="p">[</span><span class="err">&#39;</span><span class="nx">smtp_server</span><span class="err">&#39;</span><span class="p">]</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="err">&#39;</span><span class="nx">tls</span><span class="p">:</span><span class="c1">//127.0.0.1&#39;;</span>
+<span class="err">$</span><span class="nx">config</span><span class="p">[</span><span class="err">&#39;</span><span class="nx">smtp_port</span><span class="err">&#39;</span><span class="p">]</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mi">587</span><span class="p">;</span>
+<span class="err">$</span><span class="nx">config</span><span class="p">[</span><span class="err">&#39;</span><span class="nx">smtp_user</span><span class="err">&#39;</span><span class="p">]</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="err">&#39;</span><span class="o">%</span><span class="nx">u</span><span class="err">&#39;</span><span class="p">;</span>
+<span class="err">$</span><span class="nx">config</span><span class="p">[</span><span class="err">&#39;</span><span class="nx">smtp_pass</span><span class="err">&#39;</span><span class="p">]</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="err">&#39;</span><span class="o">%</span><span class="nx">p</span><span class="err">&#39;</span><span class="p">;</span>
+<span class="err">$</span><span class="nx">config</span><span class="p">[</span><span class="err">&#39;</span><span class="nx">smtp_auth_type</span><span class="err">&#39;</span><span class="p">]</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="err">&#39;</span><span class="nx">LOGIN</span><span class="err">&#39;</span><span class="p">;</span>
+</code></pre></div>
+
+<p>这步强烈建议在远程主机中安装 Roudcube，而不是提供了邮件服务的主机中（IMAP、POP3 或者 SMTP 守护进程）。</p>
+<p>6、 接下来，不要关闭配置文件，搜索并做如下小的修改以便 Roundcube 能够通过 HTTPS 协议访问、隐藏版本号以及自动为登录 Web 界面的帐户追加域名。</p>
+<div class="highlight"><pre><span></span><code>$config[&#39;force_https&#39;] = true;
+$config[&#39;useragent&#39;] = &#39;Your Webmail&#39;; // Hide version number
+$config[&#39;username_domain&#39;] = &#39;domain.tld&#39;
+</code></pre></div>
+
+<p>7、 同样，禁用下面的插件：managesieve 和 password，通过在以 <code>$config[‘plugins’]</code> 开头的行前添加注释 <code>//</code>。</p>
+<p>一旦登录并验证了域，用户将从连接到 Samba4 AD DC 的 Windows 或 Linux 机器上更改密码。系统管理员将全局管理域帐户的所有筛选规则。</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// $config[&#39;plugins&#39;] = array(&#39;managesieve&#39;, &#39;password&#39;);</span>
+</code></pre></div>
+
+<p>8、 最后，保存并关闭配置文件，并打开浏览器访问 Roundcube Webmail，通过 HTTPS 协议进入 iRedMail IP 地址或者 FQDN/mail 位置。</p>
+<p>由于浏览器使用的是自签名证书，所以你首次访问 Roundcube 会在浏览器上看到一个警告。接受证书并用 Samba AD 帐户凭证登录。</p>
+<div class="highlight"><pre><span></span><code>https://iredmail-FQDN/mail
+</code></pre></div>
+
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/05/Roundcube-Webmail-Login.png"><img alt="Roundcube Webmail Login" src="/data/attachment/album/201707/08/205146luxa10cq8r5iq8ic.png"></a></p>
+<p><em>Roundcube Webmail 登录</em></p>
+<h3>第三步：在 Roundcube 中启用 Samba AD 联系人</h3>
+<p>9、 要配置 Samba AD 全局 LDAP 地址簿以在 Roundcube 联系人中显示，再次打开 Roundcube 配置文件，并做如下修改：</p>
+<p>到达文件的底部，并辨认以 <code># Global LDAP Address Book with AD</code> 开头的部分，删除到文件底部的所有内容，并替换成如下代码段：</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="k">Global</span><span class="w"> </span><span class="n">LDAP</span><span class="w"> </span><span class="n">Address</span><span class="w"> </span><span class="n">Book</span><span class="w"> </span><span class="k">with</span><span class="w"> </span><span class="n">AD</span><span class="p">.</span>
+<span class="err">#</span>
+<span class="err">$</span><span class="n">config</span><span class="o">[</span><span class="n">&#39;ldap_public&#39;</span><span class="o">][</span><span class="n">&quot;global_ldap_abook&quot;</span><span class="o">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">array</span><span class="p">(</span>
+<span class="w">  </span><span class="s1">&#39;name&#39;</span><span class="w">          </span><span class="o">=&gt;</span><span class="w"> </span><span class="s1">&#39;tecmint.lan&#39;</span><span class="p">,</span>
+<span class="w">  </span><span class="s1">&#39;hosts&#39;</span><span class="w">         </span><span class="o">=&gt;</span><span class="w"> </span><span class="k">array</span><span class="p">(</span><span class="ss">&quot;tecmint.lan&quot;</span><span class="p">),</span>
+<span class="w">  </span><span class="s1">&#39;port&#39;</span><span class="w">          </span><span class="o">=&gt;</span><span class="w"> </span><span class="mi">389</span><span class="p">,</span>
+<span class="w">  </span><span class="s1">&#39;use_tls&#39;</span><span class="w">       </span><span class="o">=&gt;</span><span class="w"> </span><span class="k">false</span><span class="p">,</span>
+<span class="w">  </span><span class="s1">&#39;ldap_version&#39;</span><span class="w">  </span><span class="o">=&gt;</span><span class="w"> </span><span class="s1">&#39;3&#39;</span><span class="p">,</span>
+<span class="w">  </span><span class="s1">&#39;network_timeout&#39;</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span>
+<span class="w">  </span><span class="s1">&#39;user_specific&#39;</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="k">false</span><span class="p">,</span>
+<span class="w">  </span><span class="s1">&#39;base_dn&#39;</span><span class="w">       </span><span class="o">=&gt;</span><span class="w"> </span><span class="ss">&quot;dc=tecmint,dc=lan&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="s1">&#39;bind_dn&#39;</span><span class="w">       </span><span class="o">=&gt;</span><span class="w"> </span><span class="ss">&quot;vmail@tecmint.lan&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="s1">&#39;bind_pass&#39;</span><span class="w">     </span><span class="o">=&gt;</span><span class="w"> </span><span class="ss">&quot;your_password&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="s1">&#39;writable&#39;</span><span class="w">      </span><span class="o">=&gt;</span><span class="w"> </span><span class="k">false</span><span class="p">,</span>
+<span class="w">  </span><span class="s1">&#39;search_fields&#39;</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="k">array</span><span class="p">(</span><span class="s1">&#39;mail&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;cn&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;sAMAccountName&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;displayname&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;sn&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;givenName&#39;</span><span class="p">),</span>
+<span class="w">  </span><span class="s1">&#39;fieldmap&#39;</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="k">array</span><span class="p">(</span>
+<span class="w">    </span><span class="s1">&#39;name&#39;</span><span class="w">        </span><span class="o">=&gt;</span><span class="w"> </span><span class="s1">&#39;cn&#39;</span><span class="p">,</span>
+<span class="w">    </span><span class="s1">&#39;surname&#39;</span><span class="w">     </span><span class="o">=&gt;</span><span class="w"> </span><span class="s1">&#39;sn&#39;</span><span class="p">,</span>
+<span class="w">    </span><span class="s1">&#39;firstname&#39;</span><span class="w">   </span><span class="o">=&gt;</span><span class="w"> </span><span class="s1">&#39;givenName&#39;</span><span class="p">,</span>
+<span class="w">    </span><span class="s1">&#39;title&#39;</span><span class="w">       </span><span class="o">=&gt;</span><span class="w"> </span><span class="s1">&#39;title&#39;</span><span class="p">,</span>
+<span class="w">    </span><span class="s1">&#39;email&#39;</span><span class="w">       </span><span class="o">=&gt;</span><span class="w"> </span><span class="s1">&#39;mail:*&#39;</span><span class="p">,</span>
+<span class="w">    </span><span class="s1">&#39;phone:work&#39;</span><span class="w">  </span><span class="o">=&gt;</span><span class="w"> </span><span class="s1">&#39;telephoneNumber&#39;</span><span class="p">,</span>
+<span class="w">    </span><span class="s1">&#39;phone:mobile&#39;</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="s1">&#39;mobile&#39;</span><span class="p">,</span>
+<span class="w">    </span><span class="s1">&#39;department&#39;</span><span class="w">  </span><span class="o">=&gt;</span><span class="w"> </span><span class="s1">&#39;departmentNumber&#39;</span><span class="p">,</span>
+<span class="w">    </span><span class="s1">&#39;notes&#39;</span><span class="w">       </span><span class="o">=&gt;</span><span class="w"> </span><span class="s1">&#39;description&#39;</span><span class="p">,</span>
+<span class="w">  </span><span class="p">),</span>
+<span class="w">  </span><span class="s1">&#39;sort&#39;</span><span class="w">          </span><span class="o">=&gt;</span><span class="w"> </span><span class="s1">&#39;cn&#39;</span><span class="p">,</span>
+<span class="w">  </span><span class="s1">&#39;scope&#39;</span><span class="w">         </span><span class="o">=&gt;</span><span class="w"> </span><span class="s1">&#39;sub&#39;</span><span class="p">,</span>
+<span class="w">  </span><span class="s1">&#39;filter&#39;</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="s1">&#39;(&amp;(mail=*)(|(&amp;(objectClass=user)(!(objectClass=computer)))(objectClass=group)))&#39;</span><span class="p">,</span>
+<span class="w">  </span><span class="s1">&#39;fuzzy_search&#39;</span><span class="w">  </span><span class="o">=&gt;</span><span class="w"> </span><span class="k">true</span><span class="p">,</span>
+<span class="w">  </span><span class="s1">&#39;vlv&#39;</span><span class="w">           </span><span class="o">=&gt;</span><span class="w"> </span><span class="k">false</span><span class="p">,</span>
+<span class="w">  </span><span class="s1">&#39;sizelimit&#39;</span><span class="w">     </span><span class="o">=&gt;</span><span class="w"> </span><span class="s1">&#39;0&#39;</span><span class="p">,</span>
+<span class="w">  </span><span class="s1">&#39;timelimit&#39;</span><span class="w">     </span><span class="o">=&gt;</span><span class="w"> </span><span class="s1">&#39;0&#39;</span><span class="p">,</span>
+<span class="w">  </span><span class="s1">&#39;referrals&#39;</span><span class="w">     </span><span class="o">=&gt;</span><span class="w"> </span><span class="k">false</span><span class="p">,</span>
+<span class="p">);</span>
+</code></pre></div>
+
+<p>在这段代码中替换相应的 <code>name</code>、<code>hosts</code>、<code>base_dn</code>、<code>bind_dn</code> 和 <code>bind_pass</code> 的值。</p>
+<p>10、 做了所需修改后，保存并关闭文件，登录 Roundcube webmail 界面，并进入地址簿菜单。</p>
+<p>所有域名帐户（用户和组）与其指定的电子邮件地址的联系人列表都将被显示在全局地址簿上。</p>
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/05/Roundcube-User-Contact-List.png"><img alt="Roundcube User Contact List" src="/data/attachment/album/201707/08/205147ysmigtkcfzmziwik.png"></a></p>
+<p><em>Roundcube 用户联系人列表</em></p>
+<h3>第四步：为 Roundcube Webmail 界面添加一个别名</h3>
+<p>11、 要从 <a href="https://webmail.domain.tld">https://webmail.domain.tld</a> 访问 Roundcube 而不是从 iRedMail 默认提供的旧地址，你需要进行以下更改。</p>
+<p>在已安装 RSAT 工具的已加入的 Windows 机器上打开 DNS 管理器，并如下所示，添加一条 iRedMail FQDN、named webmail 的 CNAME 记录。</p>
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/05/DNS-Webmail-Properties.jpg"><img alt="DNS Webmail Properties" src="/data/attachment/album/201707/08/205149pt8jkzubsnt32zgs.jpg"></a></p>
+<p><em>DNS Webmail 属性</em></p>
+<p>12、 接下来，在 iRedMail 机器中，打开位于 <code>/etc/httpd/conf.d/ssl.conf</code> 的 Apache Web 服务器的 SSL 配置文件，将 <code>DocumentRoot</code> 指向 <code>/var/www/roundcubemail/</code>。</p>
+<p>修改 <code>/etc/httpd/conf.d/ssl.conf</code> 片段：</p>
+<div class="highlight"><pre><span></span><code><span class="n">DocumentRoot</span><span class="w"> </span><span class="err">“</span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">www</span><span class="o">/</span><span class="n">roundcubemail</span><span class="o">/</span><span class="err">”</span>
+</code></pre></div>
+
+<p>重启 Apache 使更改生效。</p>
+<div class="highlight"><pre><span></span><code># systemctl restart httpd
+</code></pre></div>
+
+<p>13、 现在打开下面的地址，Roundcube 界面应该会显示出来。接受自签名证书错误以进入登录页面。用你自己的域名替换例子中的 domain.tld。</p>
+<div class="highlight"><pre><span></span><code>https://webmail.domain.tld
+</code></pre></div>
+
+<h3>第五步：禁用 iRedMail 未使用的服务</h3>
+<p>14、 由于 iRedMail 守护进程配置为查询 Samba4 AD DC LDAP 服务器的帐户信息和其他资源，因此可以通过使用以下命令来安全地停止和禁用 iRedMail 机器上的某些本地服务，例如 LDAP 数据库服务器和 iredpad 服务。</p>
+<div class="highlight"><pre><span></span><code># systemctl stop slapd iredpad
+# systemctl disable slapd iredpad
+</code></pre></div>
+
+<p>15、 另外，如下图所示，通过在 crontab 文件中的每行之前添加注释 <code>#</code>，禁用 iRedMail 执行的某些计划任务，例如 LDAP 数据库备份和 iRedPad 跟踪记录。</p>
+<div class="highlight"><pre><span></span><code># crontab -e
+</code></pre></div>
+
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/05/Disable-iRedMail-Tasks.png"><img alt="Disable iRedMail Tasks" src="/data/attachment/album/201707/08/205149sqooffe1qr11m1f1.png"></a></p>
+<p><em>禁用 iRedMail 任务</em></p>
+<h3>第六步：在 Postfix 中使用邮件别名</h3>
+<p>16、 要将所有本地生成的邮件（发往 postmaster 并随后重定向到 root 帐户）重定向到特定的 Samba4 AD 帐户，请打开位于 <code>/etc/postfix/aliases</code> 中的 Postfix 别名配置文件，并修改 <code>root</code> 行，如下所示：</p>
+<div class="highlight"><pre><span></span><code><span class="n">root</span><span class="o">:</span><span class="w">   </span><span class="n">your_AD_email_account</span><span class="err">@</span><span class="n">domain</span><span class="o">.</span><span class="na">tld</span>
+</code></pre></div>
+
+<p>17、 应用别名配置文件，以便 Postfix 可以通过执行 <code>newaliases</code> 命令以其自己的格式读取它，并测试邮件是否通过发出以下命令发送到正确的域电子邮件帐户。</p>
+<div class="highlight"><pre><span></span><code># echo “Test mail” | mail -s “This is root’s email” root
+</code></pre></div>
+
+<p>18、 邮件发送完毕后，请使用你为邮件重定向设置的域帐户登录 Roundcube webmail，并验证先前发送的邮件应该在你的帐户收件箱中。</p>
+<p><a href="https://www.tecmint.com/wp-content/uploads/2017/05/Verify-User-Mail.png"><img alt="Verify User Mail" src="/data/attachment/album/201707/08/205151a6zuidl8j8jj66jb.png"></a></p>
+<p><em>验证用户邮件</em></p>
+<p>就是这样了！现在你已经有了一个完全工作的与 Samba4 AD 集成的邮件服务器了。域帐户可以用它们的内部或者其他外部域发送和接收邮件了。</p>
+<p>本教程中使用的配置可以成功将 iRedMail 服务器集成到 Windows Server 2012 R2 或 2016 AD 中。</p>
+<p>via: <a href="https://www.tecmint.com/integrate-iredmail-roundcube-with-samba4-ad-dc/">https://www.tecmint.com/integrate-iredmail-roundcube-with-samba4-ad-dc/</a></p>
+<p>作者：<a href="https://www.tecmint.com/author/cezarmatei/">Matei Cezar</a> 译者：<a href="https://github.com/geekpi">geekpi</a> 校对：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创编译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

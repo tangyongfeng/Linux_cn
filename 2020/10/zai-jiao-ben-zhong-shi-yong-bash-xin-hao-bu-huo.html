@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>在脚本中使用 Bash 信号捕获</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Seth Kenlon 无论你的脚本是否成功运行， 信号捕获 trap 都能让它平稳结束。 Shell 脚本的启动并不难被检测到，但 Shell 脚本的终止检测 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2020/10/zai-jiao-ben-zhong-shi-yong-bash-xin-hao-bu-huo.html" rel="bookmark"
+           title="Permalink to 在脚本中使用 Bash 信号捕获">在脚本中使用 Bash 信号捕获</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2020-10-13T18:22:31+02:00">
+                Published: Tue 13 October 2020
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Seth Kenlon</p>
+<blockquote>
+<p>无论你的脚本是否成功运行，<ruby> 信号捕获 <rt>  trap </rt></ruby>都能让它平稳结束。</p>
+</blockquote>
+<p><img alt="" src="/data/attachment/album/202010/13/182135f2nktcrnryncisg8.jpg"></p>
+<p>Shell 脚本的启动并不难被检测到，但 Shell 脚本的终止检测却并不容易，因为我们无法确定脚本会按照预期地正常结束，还是由于意外的错误导致失败。当脚本执行失败时，将正在处理的内容记录下来是非常有用的做法，但有时候这样做起来并不方便。而 <a href="https://opensource.com/resources/what-bash">Bash</a> 中 <code>trap</code> 命令的存在正是为了解决这个问题，它可以捕获到脚本的终止信号，并以某种预设的方式作出应对。</p>
+<h3>响应失败</h3>
+<p>如果出现了一个错误，可能导致发生一连串错误。下面示例脚本中，首先在 <code>/tmp</code> 中创建一个临时目录，这样可以在临时目录中执行解包、文件处理等操作，然后再以另一种压缩格式进行打包：</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env bash</span>
+<span class="nv">CWD</span><span class="o">=</span><span class="sb">`</span><span class="nb">pwd</span><span class="sb">`</span>
+<span class="nv">TMP</span><span class="o">=</span><span class="si">${</span><span class="nv">TMP</span><span class="k">:-</span><span class="p">/tmp/tmpdir</span><span class="si">}</span>
+
+<span class="c1">## create tmp dir</span>
+mkdir<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">TMP</span><span class="si">}</span><span class="s2">&quot;</span>
+
+<span class="c1">## extract files to tmp</span>
+tar<span class="w"> </span>xf<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">1</span><span class="si">}</span><span class="s2">&quot;</span><span class="w"> </span>--directory<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">TMP</span><span class="si">}</span><span class="s2">&quot;</span>
+
+<span class="c1">## move to tmpdir and run commands</span>
+<span class="nb">pushd</span><span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">TMP</span><span class="si">}</span><span class="s2">&quot;</span>
+<span class="k">for</span><span class="w"> </span>IMG<span class="w"> </span><span class="k">in</span><span class="w"> </span>*.jpg<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">  </span>mogrify<span class="w"> </span>-verbose<span class="w"> </span>-flip<span class="w"> </span>-flop<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">IMG</span><span class="si">}</span><span class="s2">&quot;</span>
+<span class="k">done</span>
+tar<span class="w"> </span>--create<span class="w"> </span>--file<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">1</span><span class="p">%.*</span><span class="si">}</span><span class="s2">&quot;</span>.tar<span class="w"> </span>*.jpg
+
+<span class="c1">## move back to origin</span>
+<span class="nb">popd</span>
+
+<span class="c1">## bundle with bzip2</span>
+bzip2<span class="w"> </span>--compress<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">TMP</span><span class="si">}</span><span class="s2">&quot;</span>/<span class="s2">&quot;</span><span class="si">${</span><span class="nv">1</span><span class="p">%.*</span><span class="si">}</span><span class="s2">&quot;</span>.tar<span class="w"> </span><span class="se">\</span>
+<span class="w">      </span>--stdout<span class="w"> </span>&gt;<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">1</span><span class="p">%.*</span><span class="si">}</span><span class="s2">&quot;</span>.tbz
+
+<span class="c1">## clean up</span>
+/usr/bin/rm<span class="w"> </span>-r<span class="w"> </span>/tmp/tmpdir
+</code></pre></div>
+
+<p>一般情况下，这个脚本都可以按照预期执行。但如果归档文件中的文件是 PNG 文件而不是期望的 JPEG 文件，脚本就会在中途失败，这时候另一个问题就出现了：最后一步删除临时目录的操作没有被正常执行。如果你手动把临时目录删掉，倒是不会造成什么影响，但是如果没有手动把临时目录删掉，在下一次执行这个脚本的时候，它必须处理一个现有的临时目录，里面充满了不可预知的剩余文件。</p>
+<p>其中一个解决方案是在脚本开头增加一个预防性删除逻辑用来处理这种情况。但这种做法显得有些暴力，而我们更应该从结构上解决这个问题。使用 <code>trap</code> 是一个优雅的方法。</p>
+<h3>使用 trap 捕获信号</h3>
+<p>我们可以通过 <code>trap</code> 捕捉程序运行时的信号。如果你使用过 <code>kill</code> 或者 <code>killall</code> 命令，那你就已经使用过名为 <code>SIGTERM</code> 的信号了。除此以外，还可以执行 <code>trap -l</code> 或 <code>trap --list</code> 命令列出其它更多的信号：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span><span class="nb">trap</span><span class="w"> </span>--list
+<span class="w"> </span><span class="m">1</span><span class="o">)</span><span class="w"> </span>SIGHUP<span class="w">       </span><span class="m">2</span><span class="o">)</span><span class="w"> </span>SIGINT<span class="w">       </span><span class="m">3</span><span class="o">)</span><span class="w"> </span>SIGQUIT<span class="w">      </span><span class="m">4</span><span class="o">)</span><span class="w"> </span>SIGILL<span class="w">       </span><span class="m">5</span><span class="o">)</span><span class="w"> </span>SIGTRAP
+<span class="w"> </span><span class="m">6</span><span class="o">)</span><span class="w"> </span>SIGABRT<span class="w">      </span><span class="m">7</span><span class="o">)</span><span class="w"> </span>SIGBUS<span class="w">       </span><span class="m">8</span><span class="o">)</span><span class="w"> </span>SIGFPE<span class="w">       </span><span class="m">9</span><span class="o">)</span><span class="w"> </span>SIGKILL<span class="w">     </span><span class="m">10</span><span class="o">)</span><span class="w"> </span>SIGUSR1
+<span class="m">11</span><span class="o">)</span><span class="w"> </span>SIGSEGV<span class="w">     </span><span class="m">12</span><span class="o">)</span><span class="w"> </span>SIGUSR2<span class="w">     </span><span class="m">13</span><span class="o">)</span><span class="w"> </span>SIGPIPE<span class="w">     </span><span class="m">14</span><span class="o">)</span><span class="w"> </span>SIGALRM<span class="w">     </span><span class="m">15</span><span class="o">)</span><span class="w"> </span>SIGTERM
+<span class="m">16</span><span class="o">)</span><span class="w"> </span>SIGSTKFLT<span class="w">   </span><span class="m">17</span><span class="o">)</span><span class="w"> </span>SIGCHLD<span class="w">     </span><span class="m">18</span><span class="o">)</span><span class="w"> </span>SIGCONT<span class="w">     </span><span class="m">19</span><span class="o">)</span><span class="w"> </span>SIGSTOP<span class="w">     </span><span class="m">20</span><span class="o">)</span><span class="w"> </span>SIGTSTP
+<span class="m">21</span><span class="o">)</span><span class="w"> </span>SIGTTIN<span class="w">     </span><span class="m">22</span><span class="o">)</span><span class="w"> </span>SIGTTOU<span class="w">     </span><span class="m">23</span><span class="o">)</span><span class="w"> </span>SIGURG<span class="w">      </span><span class="m">24</span><span class="o">)</span><span class="w"> </span>SIGXCPU<span class="w">     </span><span class="m">25</span><span class="o">)</span><span class="w"> </span>SIGXFSZ
+<span class="m">26</span><span class="o">)</span><span class="w"> </span>SIGVTALRM<span class="w">   </span><span class="m">27</span><span class="o">)</span><span class="w"> </span>SIGPROF<span class="w">     </span><span class="m">28</span><span class="o">)</span><span class="w"> </span>SIGWINCH<span class="w">    </span><span class="m">29</span><span class="o">)</span><span class="w"> </span>SIGIO<span class="w">       </span><span class="m">30</span><span class="o">)</span><span class="w"> </span>SIGPWR
+<span class="m">31</span><span class="o">)</span><span class="w"> </span>SIGSYS<span class="w">      </span><span class="m">34</span><span class="o">)</span><span class="w"> </span>SIGRTMIN<span class="w">    </span><span class="m">35</span><span class="o">)</span><span class="w"> </span>SIGRTMIN+1<span class="w">  </span><span class="m">36</span><span class="o">)</span><span class="w"> </span>SIGRTMIN+2<span class="w">  </span><span class="m">37</span><span class="o">)</span><span class="w"> </span>SIGRTMIN+3
+<span class="m">38</span><span class="o">)</span><span class="w"> </span>SIGRTMIN+4<span class="w">  </span><span class="m">39</span><span class="o">)</span><span class="w"> </span>SIGRTMIN+5<span class="w">  </span><span class="m">40</span><span class="o">)</span><span class="w"> </span>SIGRTMIN+6<span class="w">  </span><span class="m">41</span><span class="o">)</span><span class="w"> </span>SIGRTMIN+7<span class="w">  </span><span class="m">42</span><span class="o">)</span><span class="w"> </span>SIGRTMIN+8
+<span class="m">43</span><span class="o">)</span><span class="w"> </span>SIGRTMIN+9<span class="w">  </span><span class="m">44</span><span class="o">)</span><span class="w"> </span>SIGRTMIN+10<span class="w"> </span><span class="m">45</span><span class="o">)</span><span class="w"> </span>SIGRTMIN+11<span class="w"> </span><span class="m">46</span><span class="o">)</span><span class="w"> </span>SIGRTMIN+12<span class="w"> </span><span class="m">47</span><span class="o">)</span><span class="w"> </span>SIGRTMIN+13
+<span class="m">48</span><span class="o">)</span><span class="w"> </span>SIGRTMIN+14<span class="w"> </span><span class="m">49</span><span class="o">)</span><span class="w"> </span>SIGRTMIN+15<span class="w"> </span><span class="m">50</span><span class="o">)</span><span class="w"> </span>SIGRTMAX-14<span class="w"> </span><span class="m">51</span><span class="o">)</span><span class="w"> </span>SIGRTMAX-13<span class="w"> </span><span class="m">52</span><span class="o">)</span><span class="w"> </span>SIGRTMAX-12
+<span class="m">53</span><span class="o">)</span><span class="w"> </span>SIGRTMAX-11<span class="w"> </span><span class="m">54</span><span class="o">)</span><span class="w"> </span>SIGRTMAX-10<span class="w"> </span><span class="m">55</span><span class="o">)</span><span class="w"> </span>SIGRTMAX-9<span class="w">  </span><span class="m">56</span><span class="o">)</span><span class="w"> </span>SIGRTMAX-8<span class="w">  </span><span class="m">57</span><span class="o">)</span><span class="w"> </span>SIGRTMAX-7
+<span class="m">58</span><span class="o">)</span><span class="w"> </span>SIGRTMAX-6<span class="w">  </span><span class="m">59</span><span class="o">)</span><span class="w"> </span>SIGRTMAX-5<span class="w">  </span><span class="m">60</span><span class="o">)</span><span class="w"> </span>SIGRTMAX-4<span class="w">  </span><span class="m">61</span><span class="o">)</span><span class="w"> </span>SIGRTMAX-3<span class="w">  </span><span class="m">62</span><span class="o">)</span><span class="w"> </span>SIGRTMAX-2
+<span class="m">63</span><span class="o">)</span><span class="w"> </span>SIGRTMAX-1<span class="w">  </span><span class="m">64</span><span class="o">)</span><span class="w"> </span>SIGRTMAX
+</code></pre></div>
+
+<p>可以被 <code>trap</code> 识别的信号除了以上这些，还包括：</p>
+<ul>
+<li><code>EXIT</code>：进程退出时发出的信号</li>
+<li><code>ERR</code>：进程以非 0 状态码退出时发出的信号</li>
+<li><code>DEBUG</code>：表示调试模式的布尔值</li>
+</ul>
+<p>如果要在 Bash 中实现信号捕获，只需要在 <code>trap</code> 后加上需要执行的命令，再加上需要捕获的信号列表就可以了。</p>
+<p>例如，下面的这行语句可以捕获到在进程运行时用户按下 <code>Ctrl + C</code> 组合键发出的 <code>SIGINT</code> 信号：</p>
+<div class="highlight"><pre><span></span><code>trap &quot;{ echo &#39;Terminated with Ctrl+C&#39;; }&quot; SIGINT
+</code></pre></div>
+
+<p>因此，上文中脚本的缺陷可以通过使用 <code>trap</code> 捕获 <code>SIGINT</code>、<code>SIGTERM</code>、进程错误退出、进程正常退出等信号，并正确处理临时目录的方式来修复：</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env bash</span>
+<span class="nv">CWD</span><span class="o">=</span><span class="sb">`</span><span class="nb">pwd</span><span class="sb">`</span>
+<span class="nv">TMP</span><span class="o">=</span><span class="si">${</span><span class="nv">TMP</span><span class="k">:-</span><span class="p">/tmp/tmpdir</span><span class="si">}</span>
+
+<span class="nb">trap</span><span class="w"> </span><span class="se">\</span>
+<span class="w"> </span><span class="s2">&quot;{ /usr/bin/rm -r &quot;</span><span class="si">${</span><span class="nv">TMP</span><span class="si">}</span><span class="s2">&quot; ; exit 255; }&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w"> </span>SIGINT<span class="w"> </span>SIGTERM<span class="w"> </span>ERR<span class="w"> </span>EXIT
+
+<span class="c1">## create tmp dir</span>
+mkdir<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">TMP</span><span class="si">}</span><span class="s2">&quot;</span>
+tar<span class="w"> </span>xf<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">1</span><span class="si">}</span><span class="s2">&quot;</span><span class="w"> </span>--directory<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">TMP</span><span class="si">}</span><span class="s2">&quot;</span>
+
+<span class="c1">## move to tmp and run commands</span>
+<span class="nb">pushd</span><span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">TMP</span><span class="si">}</span><span class="s2">&quot;</span>
+<span class="k">for</span><span class="w"> </span>IMG<span class="w"> </span><span class="k">in</span><span class="w"> </span>*.jpg<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">  </span>mogrify<span class="w"> </span>-verbose<span class="w"> </span>-flip<span class="w"> </span>-flop<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">IMG</span><span class="si">}</span><span class="s2">&quot;</span>
+<span class="k">done</span>
+tar<span class="w"> </span>--create<span class="w"> </span>--file<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">1</span><span class="p">%.*</span><span class="si">}</span><span class="s2">&quot;</span>.tar<span class="w"> </span>*.jpg
+
+<span class="c1">## move back to origin</span>
+<span class="nb">popd</span>
+
+<span class="c1">## zip tar</span>
+bzip2<span class="w"> </span>--compress<span class="w"> </span><span class="nv">$TMP</span>/<span class="s2">&quot;</span><span class="si">${</span><span class="nv">1</span><span class="p">%.*</span><span class="si">}</span><span class="s2">&quot;</span>.tar<span class="w"> </span><span class="se">\</span>
+<span class="w">      </span>--stdout<span class="w"> </span>&gt;<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">1</span><span class="p">%.*</span><span class="si">}</span><span class="s2">&quot;</span>.tbz
+</code></pre></div>
+
+<p>对于更复杂的功能，还可以用 <a href="https://opensource.com/article/20/6/how-write-functions-bash">Bash 函数</a>来简化 <code>trap</code> 语句。</p>
+<h3>Bash 中的信号捕获</h3>
+<p>信号捕获可以让脚本在无论是否成功执行所有任务的情况下都能够正确完成清理工作，能让你的脚本更加可靠，这是一个很好的习惯。尽管尝试把信号捕获加入到你的脚本里看看能够起到什么作用吧。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

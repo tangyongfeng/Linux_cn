@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>LXD 2.0 系列（七）：LXD 中的 Docker</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Stéphane Graber 这是 LXD 2.0 系列介绍文章的第七篇。 LXD 入门 安装与配置 你的第一个 LXD 容器 资源控制 镜像管理 远程主机及容器迁 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2017/02/lxd-20-xi-lie-qi-lxd-zhong-de-docker.html" rel="bookmark"
+           title="Permalink to LXD 2.0 系列（七）：LXD 中的 Docker">LXD 2.0 系列（七）：LXD 中的 Docker</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2017-02-24T08:14:00+01:00">
+                Published: Fri 24 February 2017
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Stéphane Graber</p>
+<p>这是 LXD 2.0 系列介绍文章的第七篇。</p>
+<ol>
+<li><a href="/article-7618-1.html">LXD 入门</a></li>
+<li><a href="/article-7687-1.html">安装与配置</a></li>
+<li><a href="/article-7706-1.html">你的第一个 LXD 容器</a></li>
+<li><a href="/article-8072-1.html">资源控制</a></li>
+<li><a href="/article-8107-1.html">镜像管理</a></li>
+<li><a href="/article-8169-1.html">远程主机及容器迁移</a></li>
+<li><a href="/article-8235-1.html">LXD 中的 Docker</a></li>
+<li><a href="/article-8257-1.html">LXD 中的 LXD</a></li>
+<li><a href="/article-8263-1.html">实时迁移</a></li>
+<li><a href="/article-8273-1.html">LXD 和 Juju</a></li>
+<li><a href="/article-8274-1.html">LXD 和 OpenStack</a></li>
+<li><a href="/article-8282-1.html">调试，及给 LXD 做贡献</a></li>
+</ol>
+<p><img alt="" src="/data/attachment/album/201702/24/041605t4p22tzivy20mwmy.jpg"></p>
+<h3>为什么在 LXD 中运行 Docker</h3>
+<p>正如我在<a href="/article-7618-1.html">系列的第一篇</a>中简要介绍的，LXD 的重点是系统容器，也就是我们在容器中运行一个完全未经修改的 Linux 发行版。LXD 的所有意图和目的并不在乎容器中的负载是什么。它只是设置容器命名空间和安全策略，然后运行 <code>/sbin/init</code> 来生成容器，接着等待容器停止。</p>
+<p>应用程序容器，例如由 Docker 或 Rkt 所实现的应用程序容器是非常不同的，因为它们用于分发应用程序，通常在它们内部运行单个主进程，并且比 LXD 容器生命期更短暂。</p>
+<p>这两种容器类型不是相互排斥的，我们的确看到使用 Docker 容器来分发应用程序的价值。这就是为什么我们在过去一年中努力工作以便让 LXD 中运行 Docker 成为可能。</p>
+<p>这意味着，使用 Ubuntu 16.04 和 LXD 2.0，您可以为用户创建容器，然后可以像正常的 Ubuntu 系统一样连接到这些容器，然后运行 Docker 来安装他们想要的服务和应用程序。</p>
+<h3>要求</h3>
+<p>要让它正常工作要做很多事情，Ubuntu 16.04 上已经包含了这些：</p>
+<ul>
+<li>支持 CGroup 命名空间的内核（4.4 Ubuntu 或 4.6 主线内核）</li>
+<li>使用 LXC 2.0 和 LXCFS 2.0 的 LXD 2.0</li>
+<li>一个自定义版本的 Docker（或一个用我们提交的所有补丁构建的）</li>
+<li>Docker 镜像，其受限于用户命名空间限制，或者使父 LXD 容器成为特权容器（<code>security.privileged = true</code>）</li>
+</ul>
+<h3>运行一个基础的 Docker 载荷</h3>
+<p>说完这些，让我们开始运行 Docker 容器！</p>
+<p>首先你可以用下面的命令得到一个 Ubuntu 16.04 的容器：</p>
+<div class="highlight"><pre><span></span><code>lxc launch ubuntu-daily:16.04 docker -p default -p docker
+</code></pre></div>
+
+<p><code>-p default -p docker</code> 表示 LXD 将 <code>default</code> 和 <code>docker</code> 配置文件应用于容器。<code>default</code> 配置文件包含基本网络配置，而 <code>docker</code> 配置文件告诉 LXD 加载几个必需的内核模块并为容器设置一些挂载。 <code>docker</code> 配置文件还支持容器嵌套。</p>
+<p>现在让我们确保容器是最新的并安装 docker：</p>
+<div class="highlight"><pre><span></span><code><span class="nv">lxc</span><span class="w"> </span><span class="k">exec</span><span class="w"> </span><span class="nv">docker</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="nv">apt</span><span class="w"> </span><span class="nv">update</span>
+<span class="nv">lxc</span><span class="w"> </span><span class="k">exec</span><span class="w"> </span><span class="nv">docker</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="nv">apt</span><span class="w"> </span><span class="nv">dist</span><span class="o">-</span><span class="nv">upgrade</span><span class="w"> </span><span class="o">-</span><span class="nv">y</span>
+<span class="nv">lxc</span><span class="w"> </span><span class="k">exec</span><span class="w"> </span><span class="nv">docker</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="nv">apt</span><span class="w"> </span><span class="nv">install</span><span class="w"> </span><span class="nv">docker</span>.<span class="nv">io</span><span class="w"> </span><span class="o">-</span><span class="nv">y</span>
+</code></pre></div>
+
+<p>就是这样！你已经安装并运行了一个 Docker 容器。</p>
+<p>现在让我们用两个 Docker 容器开启一个基础的 web 服务：</p>
+<div class="highlight"><pre><span></span><code><span class="n">stgraber</span><span class="err">@</span><span class="n">dakara</span><span class="p">:</span><span class="o">~$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">exec</span><span class="w"> </span><span class="n">docker</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="n">docker</span><span class="w"> </span><span class="n">run</span><span class="w"> </span><span class="o">--</span><span class="n">detach</span><span class="w"> </span><span class="o">--</span><span class="n">name</span><span class="w"> </span><span class="n">app</span><span class="w"> </span><span class="n">carinamarina</span><span class="o">/</span><span class="n">hello</span><span class="o">-</span><span class="n">world</span><span class="o">-</span><span class="n">app</span>
+<span class="n">Unable</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">find</span><span class="w"> </span><span class="n">image</span><span class="w"> </span><span class="s1">&#39;carinamarina/hello-world-app:latest&#39;</span><span class="w"> </span><span class="n">locally</span>
+<span class="n">latest</span><span class="p">:</span><span class="w"> </span><span class="n">Pulling</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="n">carinamarina</span><span class="o">/</span><span class="n">hello</span><span class="o">-</span><span class="n">world</span><span class="o">-</span><span class="n">app</span>
+<span class="n">efd26ecc9548</span><span class="p">:</span><span class="w"> </span><span class="n">Pull</span><span class="w"> </span><span class="n">complete</span><span class="w"> </span>
+<span class="n">a3ed95caeb02</span><span class="p">:</span><span class="w"> </span><span class="n">Pull</span><span class="w"> </span><span class="n">complete</span><span class="w"> </span>
+<span class="n">d1784d73276e</span><span class="p">:</span><span class="w"> </span><span class="n">Pull</span><span class="w"> </span><span class="n">complete</span><span class="w"> </span>
+<span class="mf">72e581645</span><span class="n">fc3</span><span class="p">:</span><span class="w"> </span><span class="n">Pull</span><span class="w"> </span><span class="n">complete</span><span class="w"> </span>
+<span class="mi">9709</span><span class="n">ddcc4d24</span><span class="p">:</span><span class="w"> </span><span class="n">Pull</span><span class="w"> </span><span class="n">complete</span><span class="w"> </span>
+<span class="mi">2</span><span class="n">d600f0ec235</span><span class="p">:</span><span class="w"> </span><span class="n">Pull</span><span class="w"> </span><span class="n">complete</span><span class="w"> </span>
+<span class="n">c4cf94f61cbd</span><span class="p">:</span><span class="w"> </span><span class="n">Pull</span><span class="w"> </span><span class="n">complete</span><span class="w"> </span>
+<span class="n">c40f2ab60404</span><span class="p">:</span><span class="w"> </span><span class="n">Pull</span><span class="w"> </span><span class="n">complete</span><span class="w"> </span>
+<span class="n">e87185df6de7</span><span class="p">:</span><span class="w"> </span><span class="n">Pull</span><span class="w"> </span><span class="n">complete</span><span class="w"> </span>
+<span class="mi">62</span><span class="n">a11c66eb65</span><span class="p">:</span><span class="w"> </span><span class="n">Pull</span><span class="w"> </span><span class="n">complete</span><span class="w"> </span>
+<span class="mi">4</span><span class="n">c5eea9f676d</span><span class="p">:</span><span class="w"> </span><span class="n">Pull</span><span class="w"> </span><span class="n">complete</span><span class="w"> </span>
+<span class="mi">498</span><span class="n">df6a0d074</span><span class="p">:</span><span class="w"> </span><span class="n">Pull</span><span class="w"> </span><span class="n">complete</span><span class="w"> </span>
+<span class="n">Digest</span><span class="p">:</span><span class="w"> </span><span class="n">sha256</span><span class="p">:</span><span class="mi">6</span><span class="n">a159db50cb9c0fbe127fb038ed5a33bb5a443fcdd925ec74bf578142718f516</span>
+<span class="n">Status</span><span class="p">:</span><span class="w"> </span><span class="n">Downloaded</span><span class="w"> </span><span class="n">newer</span><span class="w"> </span><span class="n">image</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">carinamarina</span><span class="o">/</span><span class="n">hello</span><span class="o">-</span><span class="n">world</span><span class="o">-</span><span class="n">app</span><span class="p">:</span><span class="n">latest</span>
+<span class="n">c8318f0401fb1e119e6c5bb23d1e706e8ca080f8e44b42613856ccd0bf8bfb0d</span>
+
+<span class="n">stgraber</span><span class="err">@</span><span class="n">dakara</span><span class="p">:</span><span class="o">~$</span><span class="w"> </span><span class="n">lxc</span><span class="w"> </span><span class="n">exec</span><span class="w"> </span><span class="n">docker</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="n">docker</span><span class="w"> </span><span class="n">run</span><span class="w"> </span><span class="o">--</span><span class="n">detach</span><span class="w"> </span><span class="o">--</span><span class="n">name</span><span class="w"> </span><span class="n">web</span><span class="w"> </span><span class="o">--</span><span class="n">link</span><span class="w"> </span><span class="n">app</span><span class="p">:</span><span class="n">helloapp</span><span class="w"> </span><span class="o">-</span><span class="n">p</span><span class="w"> </span><span class="mi">80</span><span class="p">:</span><span class="mi">5000</span><span class="w"> </span><span class="n">carinamarina</span><span class="o">/</span><span class="n">hello</span><span class="o">-</span><span class="n">world</span><span class="o">-</span><span class="n">web</span>
+<span class="n">Unable</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">find</span><span class="w"> </span><span class="n">image</span><span class="w"> </span><span class="s1">&#39;carinamarina/hello-world-web:latest&#39;</span><span class="w"> </span><span class="n">locally</span>
+<span class="n">latest</span><span class="p">:</span><span class="w"> </span><span class="n">Pulling</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="n">carinamarina</span><span class="o">/</span><span class="n">hello</span><span class="o">-</span><span class="n">world</span><span class="o">-</span><span class="n">web</span>
+<span class="n">efd26ecc9548</span><span class="p">:</span><span class="w"> </span><span class="n">Already</span><span class="w"> </span><span class="n">exists</span><span class="w"> </span>
+<span class="n">a3ed95caeb02</span><span class="p">:</span><span class="w"> </span><span class="n">Already</span><span class="w"> </span><span class="n">exists</span><span class="w"> </span>
+<span class="n">d1784d73276e</span><span class="p">:</span><span class="w"> </span><span class="n">Already</span><span class="w"> </span><span class="n">exists</span><span class="w"> </span>
+<span class="mf">72e581645</span><span class="n">fc3</span><span class="p">:</span><span class="w"> </span><span class="n">Already</span><span class="w"> </span><span class="n">exists</span><span class="w"> </span>
+<span class="mi">9709</span><span class="n">ddcc4d24</span><span class="p">:</span><span class="w"> </span><span class="n">Already</span><span class="w"> </span><span class="n">exists</span><span class="w"> </span>
+<span class="mi">2</span><span class="n">d600f0ec235</span><span class="p">:</span><span class="w"> </span><span class="n">Already</span><span class="w"> </span><span class="n">exists</span><span class="w"> </span>
+<span class="n">c4cf94f61cbd</span><span class="p">:</span><span class="w"> </span><span class="n">Already</span><span class="w"> </span><span class="n">exists</span><span class="w"> </span>
+<span class="n">c40f2ab60404</span><span class="p">:</span><span class="w"> </span><span class="n">Already</span><span class="w"> </span><span class="n">exists</span><span class="w"> </span>
+<span class="n">e87185df6de7</span><span class="p">:</span><span class="w"> </span><span class="n">Already</span><span class="w"> </span><span class="n">exists</span><span class="w"> </span>
+<span class="n">f2d249ff479b</span><span class="p">:</span><span class="w"> </span><span class="n">Pull</span><span class="w"> </span><span class="n">complete</span><span class="w"> </span>
+<span class="mi">97</span><span class="n">cb83fe7a9a</span><span class="p">:</span><span class="w"> </span><span class="n">Pull</span><span class="w"> </span><span class="n">complete</span><span class="w"> </span>
+<span class="n">d7ce7c58a919</span><span class="p">:</span><span class="w"> </span><span class="n">Pull</span><span class="w"> </span><span class="n">complete</span><span class="w"> </span>
+<span class="n">Digest</span><span class="p">:</span><span class="w"> </span><span class="n">sha256</span><span class="p">:</span><span class="n">c31cf04b1ab6a0dac40d0c5e3e64864f4f2e0527a8ba602971dab5a977a74f20</span>
+<span class="n">Status</span><span class="p">:</span><span class="w"> </span><span class="n">Downloaded</span><span class="w"> </span><span class="n">newer</span><span class="w"> </span><span class="n">image</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">carinamarina</span><span class="o">/</span><span class="n">hello</span><span class="o">-</span><span class="n">world</span><span class="o">-</span><span class="n">web</span><span class="p">:</span><span class="n">latest</span>
+<span class="n">d7b8963401482337329faf487d5274465536eebe76f5b33c89622b92477a670f</span>
+</code></pre></div>
+
+<p>现在这两个 Docker 容器已经运行了，我们可以得到 LXD 容器的 IP 地址，并且访问它的服务了！</p>
+<div class="highlight"><pre><span></span><code><span class="c">stgraber@dakara:~$ lxc list</span>
+<span class="nb">+--------+---------+----------------------+----------------------------------------------+------------+-----------+</span>
+<span class="c">|  NAME  |  STATE  |         IPV4         |                      IPV6                    |    TYPE    | SNAPSHOTS |</span>
+<span class="nb">+--------+---------+----------------------+----------------------------------------------+------------+-----------+</span>
+<span class="c">| docker | RUNNING | 172</span><span class="nt">.</span><span class="c">17</span><span class="nt">.</span><span class="c">0</span><span class="nt">.</span><span class="c">1 (docker0) | 2001:470:b368:4242:216:3eff:fe55:45f4 (eth0) | PERSISTENT | 0         |</span>
+<span class="c">|        |         | 10</span><span class="nt">.</span><span class="c">178</span><span class="nt">.</span><span class="c">150</span><span class="nt">.</span><span class="c">73 (eth0) |                                              |            |           |</span>
+<span class="nb">+--------+---------+----------------------+----------------------------------------------+------------+-----------+</span>
+
+<span class="c">stgraber@dakara:~$ curl http://10</span><span class="nt">.</span><span class="c">178</span><span class="nt">.</span><span class="c">150</span><span class="nt">.</span><span class="c">73</span>
+<span class="c">The linked container said</span><span class="nt">...</span><span class="c"> &quot;Hello World!&quot;</span>
+</code></pre></div>
+
+<h3>总结</h3>
+<p>就是这样了！在 LXD 容器中运行 Docker 容器真的很简单。</p>
+<p>现在正如我前面提到的，并不是所有的 Docker 镜像都会像我的示例一样，这通常是因为 LXD 带来了额外的限制，特别是用户命名空间。</p>
+<p>在这种模式下只有 Docker 的 overlayfs 存储驱动可以工作。该存储驱动有一组自己的限制，这进一步限制了在该环境中可以有多少镜像工作。</p>
+<p>如果您的负载无法正常工作，并且您信任该 LXD 容器中的用户，你可以试下：</p>
+<div class="highlight"><pre><span></span><code>lxc config set docker security.privileged true
+lxc restart docker
+</code></pre></div>
+
+<p>这将取消激活用户命名空间，并以特权模式运行容器。</p>
+<p>但是请注意，在这种模式下，容器内的 root 与主机上的 root 是相同的 uid。现在有许多已知的方法让用户脱离容器，并获得主机上的 root 权限，所以你应该只有在信任你的 LXD 容器中的用户可以具有主机上的 root 权限才这样做。</p>
+<h3>额外信息</h3>
+<p>LXD 的主站在： <a href="https://linuxcontainers.org/lxd">https://linuxcontainers.org/lxd</a></p>
+<p>LXD 的 GitHub 仓库： <a href="https://github.com/lxc/lxd">https://github.com/lxc/lxd</a></p>
+<p>LXD 的邮件列表： <a href="https://lists.linuxcontainers.org">https://lists.linuxcontainers.org</a></p>
+<p>LXD 的 IRC 频道： #lxcontainers on irc.freenode.net</p>
+<p>via: <a href="https://www.stgraber.org/2016/04/13/lxd-2-0-docker-in-lxd-712/">https://www.stgraber.org/2016/04/13/lxd-2-0-docker-in-lxd-712/</a></p>
+<p>作者：<a href="https://www.stgraber.org/author/stgraber/">Stéphane Graber</a> 译者：<a href="https://github.com/geekpi">geekpi</a> 校对：<a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 组织翻译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何配置 fail2ban 来保护 Apache 服务器</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Dan Nanni 生产环境中的 Apache 服务器可能会受到不同的攻击。攻击者或许试图通过暴力攻击或者执行恶意脚本来获取未经授 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li class="active"><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2015/03/ru-he-pei-zhi-fail2ban-lai-bao-hu-apache-fu-wu-qi.html" rel="bookmark"
+           title="Permalink to 如何配置 fail2ban 来保护 Apache 服务器">如何配置 fail2ban 来保护 Apache 服务器</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2015-03-18T07:02:00+01:00">
+                Published: Wed 18 March 2015
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/xi-tong-yun-wei">系统运维</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Dan Nanni</p>
+<p>生产环境中的 Apache 服务器可能会受到不同的攻击。攻击者或许试图通过暴力攻击或者执行恶意脚本来获取未经授权或者禁止访问的目录。一些恶意爬虫或许会扫描你网站下的各种安全漏洞，或者通过收集email地址和web表单来发送垃圾邮件。</p>
+<p>Apache服务器具有全面的日志功能，可以捕捉到各种攻击所反映的异常事件。然而，它还不能系统地解析具体的apache 日志并迅速地对潜在的攻击进行反应（比如，禁止/解禁IP地址）。这时候<code>fail2ban</code>可以解救这一切，解放了系统管理员的工作。</p>
+<p><code>fail2ban</code>是一款入侵防御工具，可以基于系统日志检测不同的工具并且可以自动采取保护措施比如：通过<code>iptables</code>禁止ip、通过 /etc/hosts.deny 阻止连接、或者通过邮件发送通知。fail2ban具有一系列预定义的“监狱”，它使用特定程序日志过滤器来检测通常的攻击。你也可以编写自定义的规则来检测来自任意程序的攻击。</p>
+<p>在本教程中，我会演示如何配置fail2ban来保护你的apache服务器。我假设你已经安装了apache和fail2ban。对于安装，请参考<a href="http://linux.cn/article-5067-1.html">另外一篇教程</a>。</p>
+<h3>什么是 Fail2ban 监狱</h3>
+<p><img alt="" src="/data/attachment/album/201503/16/220730kgg5ksgsggfgl2jw.png"></p>
+<p>让我们更深入地了解 fail2ban 监狱。监狱定义了具体的应用策略，它会为指定的程序触发一个保护措施。fail2ban在 /etc/fail2ban/jail.conf 下为一些流行程序如Apache、Dovecot、Lighttpd、MySQL、Postfix、<a href="http://linux.cn/article-5067-1.html">SSH</a> 等预定义了一些监狱。每个监狱都通过特定的程序日志过滤器（在/etc/fail2ban/fileter.d 下面）来检测通常的攻击。让我看一个例子监狱：SSH监狱。</p>
+<div class="highlight"><pre><span></span><code><span class="k">[ssh]</span>
+<span class="na">enabled</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="s">true</span>
+<span class="na">port</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="s">ssh</span>
+<span class="na">filter</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="s">sshd</span>
+<span class="na">logpath</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="s">/var/log/auth.log</span>
+<span class="na">maxretry</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="s">6</span>
+<span class="na">banaction</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">iptables-multiport</span>
+</code></pre></div>
+
+<p>SSH监狱的配置定义了这些参数：</p>
+<ul>
+<li><strong>[ssh]</strong>： 方括号内是监狱的名字。</li>
+<li><strong>enabled</strong>：是否启用监狱</li>
+<li><strong>port</strong>： 端口号(或者对应的服务名称)</li>
+<li><strong>filter</strong>： 检测攻击的日志解析规则</li>
+<li><strong>logpath</strong>： 所检测的日志文件</li>
+<li><strong>maxretry</strong>： 最大失败次数</li>
+<li><strong>banaction</strong>： 所进行的禁止操作</li>
+</ul>
+<p>定义在监狱配置中的任意参数都会覆盖<code>fail2ban-wide</code> 中相应的默认配置参数。相反，任何缺少的参数都会使用定义在[DEFAULT] 字段的默认值。</p>
+<p>预定义的日志过滤器都放在/etc/fail2ban/filter.d，而可以采取的禁止操作放在 /etc/fail2ban/action.d。</p>
+<p><img alt="" src="/data/attachment/album/201503/16/220750ee5w2gal9ay4r3fz.jpg"></p>
+<p>如果你想要覆盖<code>fail2ban</code>的默认操作或者定义任何自定义监狱，你可以创建<em>/etc/fail2ban/jail.local</em>*文件。本篇教程中，我会使用/etc/fail2ban/jail.local。</p>
+<h3>启用预定义的apache监狱</h3>
+<p><code>fail2ban</code>的默认安装为Apache服务提供了一些预定义监狱和过滤器。我要启用这些内建的Apache监狱。由于Debian和RedHat配置的稍微不同，我会分别提供它们的配置文件。</p>
+<h4>在Debian 或者 Ubuntu启用Apache监狱</h4>
+<p>要在基于Debian的系统上启用预定义的apache监狱，如下创建/etc/fail2ban/jail.local。</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>vi<span class="w"> </span>/etc/fail2ban/jail.local<span class="w"> </span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="n">检测密码认证失败</span>
+<span class="o">[</span><span class="n">apache</span><span class="o">]</span>
+<span class="n">enabled</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="k">true</span>
+<span class="n">port</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="n">http</span><span class="p">,</span><span class="n">https</span>
+<span class="k">filter</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="n">apache</span><span class="o">-</span><span class="n">auth</span>
+<span class="n">logpath</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="o">/</span><span class="nf">var</span><span class="o">/</span><span class="nf">log</span><span class="o">/</span><span class="n">httpd</span><span class="cm">/*error_log</span>
+<span class="cm">maxretry = 6</span>
+
+<span class="cm"># 检测抓取邮件地址的爬虫</span>
+<span class="cm">[apache-badbots]</span>
+<span class="cm">enabled  = true</span>
+<span class="cm">port     = http,https</span>
+<span class="cm">filter   = apache-badbots</span>
+<span class="cm">logpath  = /var/log/httpd/*access_log</span>
+<span class="cm">bantime  = 172800</span>
+<span class="cm">maxretry = 1</span>
+
+<span class="cm"># 检测漏洞和 PHP 脆弱性扫描 </span>
+<span class="cm">[apache-noscript]</span>
+<span class="cm">enabled  = true</span>
+<span class="cm">port     = http,https</span>
+<span class="cm">filter   = apache-noscript</span>
+<span class="cm">logpath  = /var/log/httpd/*error_log</span>
+<span class="cm">maxretry = 6</span>
+
+<span class="cm"># 检测 Apache 溢出攻击 </span>
+<span class="cm">[apache-overflows]</span>
+<span class="cm">enabled  = true</span>
+<span class="cm">port     = http,https</span>
+<span class="cm">filter   = apache-overflows</span>
+<span class="cm">logpath  = /var/log/httpd/*error_log</span>
+<span class="cm">maxretry = 2</span>
+
+<span class="cm"># 检测在服务器寻找主目录的尝试</span>
+<span class="cm">[apache-nohome]</span>
+<span class="cm">enabled  = true</span>
+<span class="cm">port     = http,https</span>
+<span class="cm">filter   = apache-nohome</span>
+<span class="cm">logpath  = /var/log/httpd/*error_log</span>
+<span class="cm">maxretry = 2</span>
+
+<span class="cm"># 检测执行不存在的脚本的企图</span>
+<span class="cm"># 这些都是流行的网站服务程序</span>
+<span class="cm"># 如：webmail， phpMyAdmin，WordPress</span>
+<span class="cm">port     = http,https</span>
+<span class="cm">filter   = apache-botsearch</span>
+<span class="cm">logpath  = /var/log/httpd/*error_log</span>
+<span class="cm">maxretry = 2</span>
+</code></pre></div>
+
+<p>注意这些监狱文件默认的操作是iptables-multiport（定义在/etc/fail2ban/jail.conf中[DEFAULT]字段下的“banaction”中）。这个措施使用iptable的多端口模块禁止一个IP地址。</p>
+<p>启用监狱后，你必须重启fail2ban来加载监狱。</p>
+<p>在 Fedora 或者 CentOS/RHEL 7中：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>restart<span class="w"> </span>fail2ban<span class="w"> </span>
+</code></pre></div>
+
+<p>在 CentOS/RHEL 6中：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>service<span class="w"> </span>fail2ban<span class="w"> </span>restart<span class="w"> </span>
+</code></pre></div>
+
+<h3>检查和管理fail2ban禁止状态</h3>
+<p>监狱一旦激活后，你可以用fail2ban的客户端命令行工具来监测当前的禁止状态。</p>
+<p>查看激活的监狱列表：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>fail2ban-client<span class="w"> </span>status<span class="w"> </span>
+</code></pre></div>
+
+<p>查看特定监狱的状态（包含禁止的IP列表）：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>fail2ban-client<span class="w"> </span>status<span class="w"> </span><span class="o">[</span>监狱名<span class="o">]</span><span class="w"> </span>
+</code></pre></div>
+
+<p><img alt="" src="/data/attachment/album/201503/16/220802r6ezeihy3ncminjh.jpg"></p>
+<p>你也可以手动禁止或者解禁IP地址：</p>
+<p>要用制定监狱禁止IP：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>fail2ban-client<span class="w"> </span><span class="nb">set</span><span class="w"> </span><span class="o">[</span>name-of-jail<span class="o">]</span><span class="w"> </span>banip<span class="w"> </span><span class="o">[</span>ip-address<span class="o">]</span><span class="w"> </span>
+</code></pre></div>
+
+<p>要解禁指定监狱屏蔽的IP：</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>sudo<span class="w"> </span>fail2ban-client<span class="w"> </span><span class="nb">set</span><span class="w"> </span><span class="o">[</span>name-of-jail<span class="o">]</span><span class="w"> </span>unbanip<span class="w"> </span><span class="o">[</span>ip-address<span class="o">]</span><span class="w"> </span>
+</code></pre></div>
+
+<h3>总结</h3>
+<p>本篇教程解释了fail2ban监狱如何工作以及如何使用内置的监狱来保护Apache服务器。依赖于你的环境以及要保护的web服务器类型，你或许要调整已有的监狱或者编写自定义监狱和日志过滤器。查看outfail2ban的<a href="https://github.com/fail2ban/fail2ban">官方Github页面</a>来获取最新的监狱和过滤器示例。</p>
+<p>你有在生产环境中使用fail2ban么？分享一下你的经验吧。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

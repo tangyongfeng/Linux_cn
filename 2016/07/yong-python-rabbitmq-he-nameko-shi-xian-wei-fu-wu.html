@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>用 Python、 RabbitMQ 和 Nameko 实现微服务</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Bruno Rocha "微服务是一股新浪潮" - 现如今，将项目拆分成多个独立的、可扩展的服务是保障代码演变的最好选择。在 Python 的世界里 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2016/07/yong-python-rabbitmq-he-nameko-shi-xian-wei-fu-wu.html" rel="bookmark"
+           title="Permalink to 用 Python、 RabbitMQ 和 Nameko 实现微服务">用 Python、 RabbitMQ 和 Nameko 实现微服务</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2016-07-17T16:45:30+02:00">
+                Published: Sun 17 July 2016
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Bruno Rocha</p>
+<p><img alt="" src="/data/attachment/album/201607/17/164459b44yymryj4lby4yd.jpg"></p>
+<blockquote>
+<p>"微服务是一股新浪潮" - 现如今，将项目拆分成多个独立的、可扩展的服务是保障代码演变的最好选择。在 Python 的世界里，有个叫做 “Nameko” 的框架，它将微服务的实现变得简单并且强大。</p>
+</blockquote>
+<h3>微服务</h3>
+<blockquote>
+<p>在最近的几年里，“微服务架构”如雨后春笋般涌现。它用于描述一种特定的软件应用设计方式，这种方式使得应用可以由多个独立部署的服务以服务套件的形式组成。 - M. Fowler</p>
+</blockquote>
+<p>推荐各位读一下 <a href="http://martinfowler.com/articles/microservices.html">Fowler 的文章</a> 以理解它背后的原理。</p>
+<h4>好吧，那它究竟意味着什么呢？</h4>
+<p>简单来说，<strong>微服务架构</strong>可以将你的系统拆分成多个负责不同任务的小的（单一上下文内）<ruby> 功能块 <rp>  （ </rp> <rt>  responsibilities blocks </rt> <rp>  ） </rp></ruby>，它们彼此互无感知，各自只提供用于通讯的<ruby> 通用指向 <rp>  （ </rp> <rt>  common point </rt> <rp>  ） </rp></ruby>。这个指向通常是已经将通讯协议和接口定义好的消息队列。</p>
+<h4>这里给大家提供一个真实案例</h4>
+<blockquote>
+<p>案例的代码可以通过 github: <a href="http://github.com/rochacbruno/nameko-example">http://github.com/rochacbruno/nameko-example</a> 访问，查看 service 和 api 文件夹可以获取更多信息。</p>
+</blockquote>
+<p>想象一下，你有一个 REST API ，这个 API 有一个端点（LCTT 译注：REST 风格的 API 可以有多个端点用于处理对同一资源的不同类型的请求）用来接受数据，并且你需要将接收到的数据进行一些运算工作。那么相比阻塞接口调用者的请求来说，异步实现此接口是一个更好的选择。你可以先给用户返回一个 "OK - 你的请求稍后会处理" 的状态，然后在后台任务中完成运算。</p>
+<p>同样，如果你想要在不阻塞主进程的前提下，在计算完成后发送一封提醒邮件，那么将“邮件发送”委托给其他服务去做会更好一些。</p>
+<h4>场景描述</h4>
+<p><img alt="" src="/data/attachment/album/201607/17/164533rqf9duf9ymu9ho4w.png"></p>
+<h3>用代码说话</h3>
+<p>让我们将系统创建起来，在实践中理解它：</p>
+<h4>环境</h4>
+<p>我们需要的环境：</p>
+<ul>
+<li>运行良好的 RabbitMQ（LCTT 译注：<a href="http://rabbitmq.mr-ping.com/description.html">RabbitMQ</a> 是一个流行的消息队列实现）</li>
+<li>由 VirtualEnv 提供的 Services 虚拟环境</li>
+<li>由 VirtualEnv 提供的 API　虚拟环境</li>
+</ul>
+<h4>Rabbit</h4>
+<p>在开发环境中使用 RabbitMQ 最简单的方式就是运行其官方的 docker 容器。在你已经拥有 Docker 的情况下，运行：</p>
+<div class="highlight"><pre><span></span><code>docker run -d --hostname my-rabbit --name some-rabbit -p 15672:15672 -p 5672:5672 rabbitmq:3-management
+</code></pre></div>
+
+<p>在浏览器中访问 <a href="http://localhost:15672">http://localhost:15672</a> ，如果能够使用 guest:guest 验证信息登录 RabbitMQ 的控制面板，说明它已经在你的开发环境中运行起来了。</p>
+<p><img alt="" src="/data/attachment/album/201607/17/164533km4xtu88qnqkqu48.png"></p>
+<h4>服务环境</h4>
+<p>现在让我们创建微服务来满足我们的任务需要。其中一个服务用来执行计算任务，另一个用来发送邮件。按以下步骤执行：</p>
+<p>在 Shell 中创建项目的根目录</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>mkdir<span class="w"> </span>myproject
+$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>myproject
+</code></pre></div>
+
+<p>用 virtualenv 工具创建并且激活一个虚拟环境（你也可以使用 virtualenv-wrapper）</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>virtualenv<span class="w"> </span>service_env
+$<span class="w"> </span><span class="nb">source</span><span class="w"> </span>service_env/bin/activate
+</code></pre></div>
+
+<p>安装 nameko 框架和 yagmail</p>
+<div class="highlight"><pre><span></span><code>(service_env)$ pip install nameko
+(service_env)$ pip install yagmail
+</code></pre></div>
+
+<h4>服务的代码</h4>
+<p>现在我们已经准备好了 virtualenv 所提供的虚拟环境（可以想象成我们的服务是运行在一个独立服务器上的，而我们的 API 运行在另一个服务器上），接下来让我们编码，实现 nameko 的 RPC 服务。</p>
+<p>我们会将这两个服务放在同一个 python 模块中，当然如果你乐意，也可以把它们放在单独的模块里并且当成不同的服务运行：</p>
+<p>在名为 <code>service.py</code> 的文件中</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">yagmail</span>
+<span class="kn">from</span> <span class="nn">nameko.rpc</span> <span class="kn">import</span> <span class="n">rpc</span><span class="p">,</span> <span class="n">RpcProxy</span>
+
+<span class="k">class</span> <span class="nc">Mail</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;mail&quot;</span>
+
+    <span class="nd">@rpc</span>
+    <span class="k">def</span> <span class="nf">send</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">to</span><span class="p">,</span> <span class="n">subject</span><span class="p">,</span> <span class="n">contents</span><span class="p">):</span>
+        <span class="n">yag</span> <span class="o">=</span> <span class="n">yagmail</span><span class="o">.</span><span class="n">SMTP</span><span class="p">(</span><span class="s1">&#39;myname@gmail.com&#39;</span><span class="p">,</span> <span class="s1">&#39;mypassword&#39;</span><span class="p">)</span>
+        <span class="c1"># 以上的验证信息请从安全的地方进行读取</span>
+        <span class="c1"># 贴士: 可以去看看 Dynaconf 设置模块</span>
+        <span class="n">yag</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">to</span><span class="o">=</span><span class="n">to</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s1">&#39;utf-8), </span>
+                 <span class="n">subject</span><span class="o">=</span><span class="n">subject</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s1">&#39;utf-8), </span>
+                 <span class="n">contents</span><span class="o">=</span><span class="p">[</span><span class="n">contents</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s1">&#39;utf-8)])</span>
+
+<span class="k">class</span> <span class="nc">Compute</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;compute&quot;</span>
+    <span class="n">mail</span> <span class="o">=</span> <span class="n">RpcProxy</span><span class="p">(</span><span class="s1">&#39;mail&#39;</span><span class="p">)</span>    
+
+    <span class="nd">@rpc</span>
+    <span class="k">def</span> <span class="nf">compute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">operation</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">other</span><span class="p">,</span> <span class="n">email</span><span class="p">):</span>
+        <span class="n">operations</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;sum&#39;</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">+</span> <span class="nb">int</span><span class="p">(</span><span class="n">y</span><span class="p">),</span>
+                      <span class="s1">&#39;mul&#39;</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">*</span> <span class="nb">int</span><span class="p">(</span><span class="n">y</span><span class="p">),</span>
+                      <span class="s1">&#39;div&#39;</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">/</span> <span class="nb">int</span><span class="p">(</span><span class="n">y</span><span class="p">),</span>
+                      <span class="s1">&#39;sub&#39;</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">-</span> <span class="nb">int</span><span class="p">(</span><span class="n">y</span><span class="p">)}</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">operations</span><span class="p">[</span><span class="n">operation</span><span class="p">](</span><span class="n">value</span><span class="p">,</span> <span class="n">other</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">mail</span><span class="o">.</span><span class="n">send</span><span class="o">.</span><span class="k">async</span><span class="p">(</span><span class="n">email</span><span class="p">,</span> <span class="s2">&quot;An error occurred&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">))</span>
+            <span class="k">raise</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">mail</span><span class="o">.</span><span class="n">send</span><span class="o">.</span><span class="k">async</span><span class="p">(</span>
+                <span class="n">email</span><span class="p">,</span> 
+                <span class="s2">&quot;Your operation is complete!&quot;</span><span class="p">,</span> 
+                <span class="s2">&quot;The result is: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">result</span>
+            <span class="p">)</span>
+            <span class="k">return</span> <span class="n">result</span>
+</code></pre></div>
+
+<p>现在我们已经用以上代码定义好了两个服务，下面让我们将 Nameko RPC service 运行起来。</p>
+<blockquote>
+<p>注意：我们会在控制台中启动并运行它。但在生产环境中，建议大家使用 supervisord 替代控制台命令。</p>
+</blockquote>
+<p>在 Shell 中启动并运行服务</p>
+<div class="highlight"><pre><span></span><code><span class="p">(</span><span class="n">service_env</span><span class="p">)</span><span class="n">$</span><span class="w"> </span><span class="n">nameko</span><span class="w"> </span><span class="n">run</span><span class="w"> </span><span class="n">service</span><span class="w"> </span><span class="o">--</span><span class="n">broker</span><span class="w"> </span><span class="n">amqp</span><span class="o">:</span><span class="c1">//guest:guest@localhost</span>
+<span class="n">starting</span><span class="w"> </span><span class="n">services</span><span class="o">:</span><span class="w"> </span><span class="n">mail</span><span class="p">,</span><span class="w"> </span><span class="n">compute</span>
+<span class="n">Connected</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">amqp</span><span class="o">:</span><span class="c1">//guest:**@127.0.0.1:5672//</span>
+<span class="n">Connected</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">amqp</span><span class="o">:</span><span class="c1">//guest:**@127.0.0.1:5672//</span>
+</code></pre></div>
+
+<h4>测试</h4>
+<p>在另外一个 Shell 中（使用相同的虚拟环境），用 nameko shell 进行测试：</p>
+<div class="highlight"><pre><span></span><code><span class="p">(</span><span class="n">service_env</span><span class="p">)</span><span class="err">$</span><span class="w"> </span><span class="n">nameko</span><span class="w"> </span><span class="n">shell</span><span class="w"> </span><span class="o">--</span><span class="n">broker</span><span class="w"> </span><span class="nl">amqp</span><span class="p">:</span><span class="o">//</span><span class="nl">guest</span><span class="p">:</span><span class="n">guest</span><span class="nv">@localhost</span>
+<span class="n">Nameko</span><span class="w"> </span><span class="n">Python</span><span class="w"> </span><span class="mf">2.7.9</span><span class="w"> </span><span class="p">(</span><span class="k">default</span><span class="p">,</span><span class="w"> </span><span class="n">Apr</span><span class="w">  </span><span class="mi">2</span><span class="w"> </span><span class="mi">2015</span><span class="p">,</span><span class="w"> </span><span class="mi">15</span><span class="err">:</span><span class="mi">33</span><span class="err">:</span><span class="mi">21</span><span class="p">)</span><span class="w"> </span>
+<span class="o">[</span><span class="n">GCC 4.9.2</span><span class="o">]</span><span class="w"> </span><span class="n">shell</span><span class="w"> </span><span class="k">on</span><span class="w"> </span><span class="n">linux2</span>
+<span class="nl">Broker</span><span class="p">:</span><span class="w"> </span><span class="nl">amqp</span><span class="p">:</span><span class="o">//</span><span class="nl">guest</span><span class="p">:</span><span class="n">guest</span><span class="nv">@localhost</span>
+<span class="o">&gt;&gt;&gt;</span>
+</code></pre></div>
+
+<p>现在你已经处在 RPC 客户端中了，Shell 的测试工作是通过 n.rpc 对象来进行的，它的使用方法如下：</p>
+<div class="highlight"><pre><span></span><code><span class="o">&gt;&gt;&gt;</span><span class="w"> </span><span class="n">n</span><span class="p">.</span><span class="n">rpc</span><span class="p">.</span><span class="n">mail</span><span class="p">.</span><span class="n">send</span><span class="p">(</span><span class="ss">&quot;name@email.com&quot;</span><span class="p">,</span><span class="w"> </span><span class="ss">&quot;testing&quot;</span><span class="p">,</span><span class="w"> </span><span class="ss">&quot;Just testing&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>上边的代码会发送一封邮件，我们同样可以调用计算服务对其进行测试。需要注意的是，此测试还会附带进行异步的邮件发送。</p>
+<div class="highlight"><pre><span></span><code><span class="o">&gt;&gt;&gt;</span><span class="w"> </span><span class="n">n</span><span class="p">.</span><span class="n">rpc</span><span class="p">.</span><span class="k">compute</span><span class="p">.</span><span class="k">compute</span><span class="p">(</span><span class="s1">&#39;sum&#39;</span><span class="p">,</span><span class="w"> </span><span class="mi">30</span><span class="p">,</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="ss">&quot;name@email.com&quot;</span><span class="p">)</span>
+<span class="mi">40</span>
+<span class="o">&gt;&gt;&gt;</span><span class="w"> </span><span class="n">n</span><span class="p">.</span><span class="n">rpc</span><span class="p">.</span><span class="k">compute</span><span class="p">.</span><span class="k">compute</span><span class="p">(</span><span class="s1">&#39;sub&#39;</span><span class="p">,</span><span class="w"> </span><span class="mi">30</span><span class="p">,</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="ss">&quot;name@email.com&quot;</span><span class="p">)</span>
+<span class="mi">20</span>
+<span class="o">&gt;&gt;&gt;</span><span class="w"> </span><span class="n">n</span><span class="p">.</span><span class="n">rpc</span><span class="p">.</span><span class="k">compute</span><span class="p">.</span><span class="k">compute</span><span class="p">(</span><span class="s1">&#39;mul&#39;</span><span class="p">,</span><span class="w"> </span><span class="mi">30</span><span class="p">,</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="ss">&quot;name@email.com&quot;</span><span class="p">)</span>
+<span class="mi">300</span>
+<span class="o">&gt;&gt;&gt;</span><span class="w"> </span><span class="n">n</span><span class="p">.</span><span class="n">rpc</span><span class="p">.</span><span class="k">compute</span><span class="p">.</span><span class="k">compute</span><span class="p">(</span><span class="s1">&#39;div&#39;</span><span class="p">,</span><span class="w"> </span><span class="mi">30</span><span class="p">,</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="ss">&quot;name@email.com&quot;</span><span class="p">)</span>
+<span class="mi">3</span>
+</code></pre></div>
+
+<h3>在 API 中调用微服务</h3>
+<p>在另外一个 Shell 中（甚至可以是另外一台服务器上），准备好 API 环境。</p>
+<p>用 virtualenv 工具创建并且激活一个虚拟环境（你也可以使用 virtualenv-wrapper）</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>virtualenv<span class="w"> </span>api_env
+$<span class="w"> </span><span class="nb">source</span><span class="w"> </span>api_env/bin/activate
+</code></pre></div>
+
+<p>安装 Nameko、 Flask 和 Flasgger</p>
+<div class="highlight"><pre><span></span><code>(api_env)$ pip install nameko
+(api_env)$ pip install flask
+(api_env)$ pip install flasgger
+</code></pre></div>
+
+<blockquote>
+<p>注意： 在 API 中并不需要 yagmail ，因为在这里，处理邮件是服务的职责</p>
+</blockquote>
+<p>创建含有以下内容的 <code>api.py</code> 文件：</p>
+<p>```
+from flask import Flask, request
+from flasgger import Swagger
+from nameko.standalone.rpc import ClusterRpcProxy</p>
+<p>app = Flask(<strong>name</strong>)
+Swagger(app)
+CONFIG = {'AMQP_URI': "amqp://guest:guest@localhost"}</p>
+<p>@app.route('/compute', methods=['POST'])
+def compute():
+    """
+    Micro Service Based Compute and Mail API
+    This API is made with Flask, Flasgger and Nameko</p>
+<p>via: <a href="http://brunorocha.org/python/microservices-with-python-rabbitmq-and-nameko.html">http://brunorocha.org/python/microservices-with-python-rabbitmq-and-nameko.html</a></p>
+<p>作者: <a href="http://facebook.com/rochacbruno">Bruno Rocha</a> 译者: <a href="http://www.mr-ping.com">mr-ping</a> 校对: <a href="https://github.com/wxy">wxy</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创编译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

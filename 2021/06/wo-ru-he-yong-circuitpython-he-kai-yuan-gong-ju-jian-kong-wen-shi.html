@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>我如何用 CircuitPython 和开源工具监控温室</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Darin London 使用微控制器、传感器、Python 以及 MQTT 持续追踪温室的温度、湿度以及环境光。 CircuitPython 提供了一种和微控制器板进行交互的革 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2021/06/wo-ru-he-yong-circuitpython-he-kai-yuan-gong-ju-jian-kong-wen-shi.html" rel="bookmark"
+           title="Permalink to 我如何用 CircuitPython 和开源工具监控温室">我如何用 CircuitPython 和开源工具监控温室</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2021-06-20T15:20:28+02:00">
+                Published: Sun 20 June 2021
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Darin London</p>
+<blockquote>
+<p>使用微控制器、传感器、Python 以及 MQTT 持续追踪温室的温度、湿度以及环境光。</p>
+</blockquote>
+<p><img alt="种有西红柿的温室花园" src="/data/attachment/album/202106/20/152029a6w23woootb6ut5e.jpg" title="Greenhouse garden with tomatoes"></p>
+<p>CircuitPython 提供了一种和微控制器板进行交互的革命性方式。这篇文章介绍了如何使用 CircuitPython 来监测温室的温度、湿度以及环境光，并且使用 CircuitPython MQTT 客户端将结果发布到一个 <a href="https://mqtt.org/">MQTT</a> <ruby> 中介 <rt>  broker </rt></ruby>。你可以在若干个程序中订阅 MQTT 队列并进一步处理信息。</p>
+<p>这个项目使用一个简单的 Python 程序来运行 Web 服务器，它发布一个 Prometheus 格式的采集端点，拉取监控指标到 <a href="https://prometheus.io/">Prometheus</a> 进行不间断的监控。</p>
+<h3>关于 CircuitPython</h3>
+<p><a href="https://circuitpython.io/">CircuitPython</a> 是一个由 <a href="https://adafruit.com">Adafruit</a> 创建的开源 Python 发行版，用于运行在低成本微控制器开发板上。CircuitPython 为与 <a href="https://circuitpython.org/downloads">兼容的开发板</a> 的交互提供了简单的开发体验。你可以在连接你的开发板时挂载的 <code>CIRCUITPYTHON</code> 根驱动器上创建一个 <code>code.py</code> 文件来启动你的程序。CircuitPython 还为开发板提供了一个串行连接，包含一个交互式解释器（REPL）会话，你可以使用 Python 代码实时和开发板进行交互。</p>
+<p>Adafruit 的网站提供了大量的文档，可以帮助你开始使用 CircuitPython。首先，参考下《<a href="https://learn.adafruit.com/welcome-to-circuitpython">欢迎来到 CircuitPython</a>》指南。这份指南能够帮助你开始使用 CircuitPython 在开发板上运行代码以及和 REPL 交互。它还记录了如何安装 Adafruit 的 CircuitPython 库合集和范例，可以用在它出售的许多开发板和传感器上。接下来，阅读《<a href="https://learn.adafruit.com/circuitpython-essentials/circuitpython-essentials">CircuitPython 基础</a>》指南来学习更多关于其功能的信息，里面还有链接指向在特定及兼容的开发板上使用 CircuitPython 的相关信息。最后，就如所有开源软件一样，你可以深入 <a href="https://github.com/adafruit/circuitpython">CircuitPython 的源码</a>，发布议题，以及做出贡献。</p>
+<h3>微控制器设置</h3>
+<p>微控制器系统非常简单。要完成这个示例项目，你会需要：</p>
+<ul>
+<li><strong>树莓派 4</strong>：你需要一台电脑来给微控制器系统编程，我用的是树莓派 4。</li>
+<li><strong>CircuitPython 兼容的微控制器</strong>：我用的是 <a href="https://www.adafruit.com/product/4769">Adafruit Feather S2</a>，带有内置 WiFi，环境光传感器，Qwiic 线缆输入。</li>
+<li><strong>微控制器 WiFi</strong>：Feather S2 内置了 WiFi。如果你的微控制器没有，你需要给开发板找个 WiFi 扩展板。</li>
+<li><strong>传感器</strong>：Feather S2 有个内置的环境光传感器，所以我还需要一个温湿度传感器。有很多不同厂商的产品可以选择，包括 Adafruit、SparkFun、亚马逊。我用的是一个 <a href="https://www.adafruit.com/product/3251">Adafruit 传感器</a>，带有 Feather S2 输入兼容的 Qwiic 线缆。尽管多数 SparkFun 传感器可以在 Adafruit 库下工作，但如果你不是从 Adafruit 购买的传感器，你可能还是需要自己去找到它兼容 CircuitPython 的 Python 库。</li>
+<li><strong>跳线和线缆</strong>：为了避免使用面包板或焊接，我使用 <a href="https://www.adafruit.com/product/4399">Adafruit Qwiic 线缆</a>。SparkFun 销售的包含不同长度的<a href="https://www.sparkfun.com/products/15081">线缆套装</a>中也有它。</li>
+</ul>
+<p>在将微控制器连接到你的电脑之前，将传感器连接到微控制器上。</p>
+<p><img alt="将传感器连接到微控制器上" src="/data/attachment/album/202106/20/152030vahlagmaaytgsr7l.jpg" title="Connecting sensors to microcontroller"></p>
+<p>现在你可以将微控制器用 USB 数据线连接到你的电脑。</p>
+<h3>MQTT 中介</h3>
+<p>你可以使用 <a href="https://pimylifeup.com/raspberry-pi-mosquitto-mqtt-server/">这份说明</a> 来在树莓派的系统上安装 <a href="https://mosquitto.org/">Mosquitto MQTT 中介</a> 和 Mosquitto 客户端。如果你想把树莓派做为长期服务器使用，在你的网络上给树莓派 4 设置一个静态 IP 地址。Mosquitto 中介运行起来之后，创建一份 <a href="https://mosquitto.org/documentation/authentication-methods/">用户名/密码文件</a>，设置客户端向中介发布和订阅消息时用的认证信息。</p>
+<p>你可以用树莓派上的 Mosquitto 客户端来测试 MQTT 中介。打开两个终端（如果你是无界面运行的话打开两个 SSH 会话）：</p>
+<p>在终端一输入：</p>
+<div class="highlight"><pre><span></span><code>mosquitto_sub -h localhost -u $user -P $pass -t &quot;mqtt/test&quot;
+</code></pre></div>
+
+<p>这条命令会启动一个持续运行的进程，监听发布到 <code>mqtt/test</code> 队列的消息。</p>
+<p>在终端二输入：</p>
+<div class="highlight"><pre><span></span><code>mosquitto_pub -h localhost -u $user -P $pass -t &quot;mqtt/test&quot; -m hello`
+</code></pre></div>
+
+<p>这条命令会向 <code>mqtt/test</code> 队列发布一条消息，它应该会显示在终端一的输出里。</p>
+<p>现在你可以中止终端一运行的 <code>sub</code> 命令了。</p>
+<p>Mosquitto 中介允许客户端发布消息到任何队列，甚至没有任何订阅的队列也可以。这些消息会永久丢失，但这不会阻止客户端继续发布消息。</p>
+<p>打开第三个终端，订阅下列队列（你的控制器会发布消息到这些队列上）：</p>
+<ul>
+<li>greenhouse/temperature</li>
+<li>greenhouse/light</li>
+<li>greenhouse/humidity</li>
+</ul>
+<h3>给微控制器编码</h3>
+<p>现在你已经准备好给微控制器编码，发布它的监测指标到树莓派 4 上运行的 MQTT 中介上了。</p>
+<p>Adafruit 有 <a href="https://learn.adafruit.com/mqtt-in-circuitpython">出色的文档</a>，指导你使用 <a href="https://circuitpython.org/libraries">CircuitPython 库合集</a> 的库来将你的微控制器连接到 WiFi 路由器，并发布监测指标到 MQTT 中介上。</p>
+<p>安装下列库到 <code>CIRCUITPYTHON/lib</code> 目录，温室监控会用到它们。这些库在 Adafruit 的 CircuitPython 库合集中都有提供：</p>
+<ul>
+<li><code>adafruit_bus_device</code>：一个带有多个 .mpy 文件的 Python 包文件夹（.mpy 是经过压缩的 Python 文件，用以节省空间）</li>
+<li><code>adafruit_requests</code>：单个 .mpy 文件</li>
+<li><code>adafruit_register</code>：一个包文件夹</li>
+<li><code>adafruit_minimqtt</code>：一个包文件夹</li>
+<li><code>adafruit_si7021</code>：单个 .mpy 文件，用来支持温湿度传感器</li>
+</ul>
+<p>库装好了之后，将以下代码写入 <code>CIRCUITPYTHON</code> 文件夹的 <code>code.py</code> 文件中：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">import</span> <span class="nn">ssl</span>
+<span class="kn">import</span> <span class="nn">socketpool</span>
+<span class="kn">import</span> <span class="nn">wifi</span>
+<span class="kn">import</span> <span class="nn">adafruit_minimqtt.adafruit_minimqtt</span> <span class="k">as</span> <span class="nn">MQTT</span>
+<span class="kn">import</span> <span class="nn">board</span>
+<span class="kn">from</span> <span class="nn">digitalio</span> <span class="kn">import</span> <span class="n">DigitalInOut</span><span class="p">,</span> <span class="n">Direction</span><span class="p">,</span> <span class="n">Pull</span>
+<span class="kn">from</span> <span class="nn">analogio</span> <span class="kn">import</span> <span class="n">AnalogIn</span>
+<span class="kn">import</span> <span class="nn">adafruit_si7021</span>
+
+<span class="c1"># Add a secrets.py to your filesystem that has a dictionary called secrets with &quot;ssid&quot; and</span>
+<span class="c1"># &quot;password&quot; keys with your WiFi credentials. DO NOT share that file or commit it into Git or other</span>
+<span class="c1"># source control.</span>
+<span class="c1"># pylint: disable=no-name-in-module,wrong-import-order</span>
+<span class="k">try</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">secrets</span> <span class="kn">import</span> <span class="n">secrets</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;WiFi secrets are kept in secrets.py, please add them there!&quot;</span><span class="p">)</span>
+        <span class="k">raise</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Connecting to </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">secrets</span><span class="p">[</span><span class="s2">&quot;ssid&quot;</span><span class="p">])</span>
+<span class="n">wifi</span><span class="o">.</span><span class="n">radio</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">secrets</span><span class="p">[</span><span class="s2">&quot;ssid&quot;</span><span class="p">],</span> <span class="n">secrets</span><span class="p">[</span><span class="s2">&quot;password&quot;</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Connected to </span><span class="si">%s</span><span class="s2">!&quot;</span> <span class="o">%</span> <span class="n">secrets</span><span class="p">[</span><span class="s2">&quot;ssid&quot;</span><span class="p">])</span>
+<span class="c1">### Feeds ###</span>
+<span class="n">light_feed</span> <span class="o">=</span> <span class="s2">&quot;greenhouse/light&quot;</span>
+<span class="n">temp_feed</span> <span class="o">=</span> <span class="s2">&quot;greenhouse/temperature&quot;</span>
+<span class="n">humidity_feed</span> <span class="o">=</span> <span class="s2">&quot;greenhouse/humidity&quot;</span>
+
+<span class="c1"># Define callback methods which are called when events occur</span>
+<span class="c1"># pylint: disable=unused-argument, redefined-outer-name</span>
+<span class="k">def</span> <span class="nf">connected</span><span class="p">(</span><span class="n">client</span><span class="p">,</span> <span class="n">userdata</span><span class="p">,</span> <span class="n">flags</span><span class="p">,</span> <span class="n">rc</span><span class="p">):</span>
+        <span class="c1"># This function will be called when the client is connected</span>
+        <span class="c1"># successfully to the broker.</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Connected to MQTT!&quot;</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">disconnected</span><span class="p">(</span><span class="n">client</span><span class="p">,</span> <span class="n">userdata</span><span class="p">,</span> <span class="n">rc</span><span class="p">):</span>
+        <span class="c1"># This method is called when the client is disconnected</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Disconnected from MQTT!&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">get_voltage</span><span class="p">(</span><span class="n">pin</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">pin</span><span class="o">.</span><span class="n">value</span> <span class="o">*</span> <span class="mf">3.3</span><span class="p">)</span> <span class="o">/</span> <span class="mi">65536</span>
+
+<span class="c1"># Create a socket pool</span>
+<span class="n">pool</span> <span class="o">=</span> <span class="n">socketpool</span><span class="o">.</span><span class="n">SocketPool</span><span class="p">(</span><span class="n">wifi</span><span class="o">.</span><span class="n">radio</span><span class="p">)</span>
+
+<span class="c1"># Set up a MiniMQTT Client</span>
+<span class="n">mqtt_client</span> <span class="o">=</span> <span class="n">MQTT</span><span class="o">.</span><span class="n">MQTT</span><span class="p">(</span>
+        <span class="n">broker</span><span class="o">=</span><span class="n">secrets</span><span class="p">[</span><span class="s2">&quot;broker&quot;</span><span class="p">],</span>
+        <span class="n">port</span><span class="o">=</span><span class="n">secrets</span><span class="p">[</span><span class="s2">&quot;port&quot;</span><span class="p">],</span>
+        <span class="n">username</span><span class="o">=</span><span class="n">secrets</span><span class="p">[</span><span class="s2">&quot;aio_username&quot;</span><span class="p">],</span>
+        <span class="n">password</span><span class="o">=</span><span class="n">secrets</span><span class="p">[</span><span class="s2">&quot;aio_key&quot;</span><span class="p">],</span>
+        <span class="n">socket_pool</span><span class="o">=</span><span class="n">pool</span><span class="p">,</span>
+        <span class="n">ssl_context</span><span class="o">=</span><span class="n">ssl</span><span class="o">.</span><span class="n">create_default_context</span><span class="p">(),</span>
+<span class="p">)</span>
+
+<span class="c1"># Setup the callback methods above</span>
+<span class="n">mqtt_client</span><span class="o">.</span><span class="n">on_connect</span> <span class="o">=</span> <span class="n">connected</span>
+<span class="n">mqtt_client</span><span class="o">.</span><span class="n">on_disconnect</span> <span class="o">=</span> <span class="n">disconnected</span>
+
+<span class="c1"># Connect the client to the MQTT broker.</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Connecting to MQTT...&quot;</span><span class="p">)</span>
+<span class="n">mqtt_client</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
+
+<span class="c1"># Create library object using our Bus I2C port</span>
+<span class="n">sensor</span> <span class="o">=</span> <span class="n">adafruit_si7021</span><span class="o">.</span><span class="n">SI7021</span><span class="p">(</span><span class="n">board</span><span class="o">.</span><span class="n">I2C</span><span class="p">())</span>
+<span class="n">light_pin</span> <span class="o">=</span> <span class="n">AnalogIn</span><span class="p">(</span><span class="n">board</span><span class="o">.</span><span class="n">IO4</span><span class="p">)</span>
+
+<span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="c1"># Poll the message queue</span>
+        <span class="n">mqtt_client</span><span class="o">.</span><span class="n">loop</span><span class="p">()</span>
+
+        <span class="c1"># get the current temperature</span>
+        <span class="n">light_val</span> <span class="o">=</span> <span class="n">get_voltage</span><span class="p">(</span><span class="n">light_pin</span><span class="p">)</span>
+        <span class="n">temp_val</span> <span class="o">=</span> <span class="p">((</span><span class="n">sensor</span><span class="o">.</span><span class="n">temperature</span> <span class="o">*</span> <span class="mi">9</span><span class="p">)</span><span class="o">/</span><span class="mi">5</span><span class="p">)</span> <span class="o">+</span> <span class="mi">32</span>
+        <span class="n">humidity_val</span> <span class="o">=</span> <span class="n">sensor</span><span class="o">.</span><span class="n">relative_humidity</span>
+
+        <span class="c1"># Send a new messages</span>
+        <span class="n">mqtt_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="n">light_feed</span><span class="p">,</span> <span class="n">light_val</span><span class="p">)</span>
+        <span class="n">mqtt_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="n">temp_feed</span><span class="p">,</span> <span class="n">temp_val</span><span class="p">)</span>
+        <span class="n">mqtt_client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="n">humidity_feed</span><span class="p">,</span> <span class="n">humidity_val</span><span class="p">)</span>
+        <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.5</span><span class="p">)</span>
+</code></pre></div>
+
+<p>保存你的代码。然后连接到串行监视器，看程序连接到你的 MQTT 中介。你还可以将树莓派 4 上的终端切换到订阅了它的发布队列的终端来查看输出。</p>
+<h3>处理监测指标</h3>
+<p>像 MQTT 这样的发布/订阅工作流给微控制器系统提供了诸多好处。你可以有多个微控制器 + 传感器来回报同一个系统的不同指标或并行回报相同指标的若干读数。你还可以有多个不同进程订阅各个队列，并行地对这些消息进行回应。甚至还可以有多个进程订阅相同的队列，对消息做出不同的动作，比如数值过高时发送通知邮件或将消息发送到另一个 MQTT 队列上去。</p>
+<p>另一个选项是让一个微控制器订阅一个外部队列，可以发送信号告诉微控制器做出动作，比如关闭或开始一个新会话。最后，发布/订阅工作流对低功耗微控制器系统更佳（比如那些使用电池或太阳能的系统），因为这些设备可以在更长的延迟周期后批量发布监测指标，并在回报的间隔期间关闭大量消耗电量的 WiFi 广播。</p>
+<p>要处理这些监测指标，我创建了一个 Python 客户端，使用 <a href="https://pypi.org/project/paho-mqtt/">Paho Python MQTT 客户端</a> 订阅监测指标队列。我还使用官方的 <a href="https://pypi.org/project/prometheus-client">Prometheus Python 客户端</a> 创建了一个 Web 服务器，它产生一个符合 Prometheus 标准的采集端点，使用这些监测指标作为面板信息。<a href="https://opensource.com/article/21/3/iot-measure-raspberry-pi">Prometheus 服务器</a>和 Mosquitto MQTT 中介我都是运行在同一个树莓派 4 上的。</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">prometheus_client</span> <span class="kn">import</span> <span class="n">start_http_server</span><span class="p">,</span> <span class="n">Gauge</span>
+<span class="kn">import</span> <span class="nn">random</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">import</span> <span class="nn">paho.mqtt.client</span> <span class="k">as</span> <span class="nn">mqtt</span>
+
+<span class="n">gauge</span> <span class="o">=</span> <span class="p">{</span>
+  <span class="s2">&quot;greenhouse/light&quot;</span><span class="p">:</span> <span class="n">Gauge</span><span class="p">(</span><span class="s1">&#39;light&#39;</span><span class="p">,</span><span class="s1">&#39;light in lumens&#39;</span><span class="p">),</span>
+  <span class="s2">&quot;greenhouse/temperature&quot;</span><span class="p">:</span> <span class="n">Gauge</span><span class="p">(</span><span class="s1">&#39;temperature&#39;</span><span class="p">,</span> <span class="s1">&#39;temperature in fahrenheit&#39;</span><span class="p">),</span>
+  <span class="s2">&quot;greenhouse/humidity&quot;</span><span class="p">:</span> <span class="n">Gauge</span><span class="p">(</span><span class="s1">&#39;humidity&#39;</span><span class="p">,</span><span class="s1">&#39;relative </span><span class="si">% hu</span><span class="s1">midity&#39;</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="k">try</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">mqtt_secrets</span> <span class="kn">import</span> <span class="n">mqtt_secrets</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;WiFi secrets are kept in secrets.py, please add them there!&quot;</span><span class="p">)</span>
+        <span class="k">raise</span>
+
+<span class="k">def</span> <span class="nf">on_connect</span><span class="p">(</span><span class="n">client</span><span class="p">,</span> <span class="n">userdata</span><span class="p">,</span> <span class="n">flags</span><span class="p">,</span> <span class="n">rc</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Connected with result code &quot;</span><span class="o">+</span><span class="nb">str</span><span class="p">(</span><span class="n">rc</span><span class="p">))</span>
+        <span class="c1"># Subscribing in on_connect() means that if we lose the connection and</span>
+        <span class="c1"># reconnect then subscriptions will be renewed.</span>
+        <span class="n">client</span><span class="o">.</span><span class="n">subscribe</span><span class="p">(</span><span class="s2">&quot;greenhouse/light&quot;</span><span class="p">)</span>
+        <span class="n">client</span><span class="o">.</span><span class="n">subscribe</span><span class="p">(</span><span class="s1">&#39;greenhouse/temperature&#39;</span><span class="p">)</span>
+        <span class="n">client</span><span class="o">.</span><span class="n">subscribe</span><span class="p">(</span><span class="s1">&#39;greenhouse/humidity&#39;</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">on_message</span><span class="p">(</span><span class="n">client</span><span class="p">,</span> <span class="n">userdata</span><span class="p">,</span> <span class="n">msg</span><span class="p">):</span>
+        <span class="n">topic</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">topic</span>
+        <span class="n">payload</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">payload</span>
+        <span class="n">gauge</span><span class="p">[</span><span class="n">topic</span><span class="p">]</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+
+<span class="n">client</span> <span class="o">=</span> <span class="n">mqtt</span><span class="o">.</span><span class="n">Client</span><span class="p">()</span>
+<span class="n">client</span><span class="o">.</span><span class="n">username_pw_set</span><span class="p">(</span><span class="n">mqtt_secrets</span><span class="p">[</span><span class="s2">&quot;mqtt_user&quot;</span><span class="p">],</span><span class="n">mqtt_secrets</span><span class="p">[</span><span class="s1">&#39;mqtt_password&#39;</span><span class="p">])</span>
+<span class="n">client</span><span class="o">.</span><span class="n">on_connect</span> <span class="o">=</span> <span class="n">on_connect</span>
+<span class="n">client</span><span class="o">.</span><span class="n">on_message</span> <span class="o">=</span> <span class="n">on_message</span>
+<span class="n">client</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="s1">&#39;localhost&#39;</span><span class="p">,</span><span class="mi">1883</span><span class="p">,</span><span class="mi">60</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+        <span class="c1"># Start up the server to expose the metrics.</span>
+
+        <span class="n">client</span> <span class="o">=</span> <span class="n">mqtt</span><span class="o">.</span><span class="n">Client</span><span class="p">()</span>
+        <span class="n">client</span><span class="o">.</span><span class="n">username_pw_set</span><span class="p">(</span><span class="s1">&#39;london&#39;</span><span class="p">,</span><span class="s1">&#39;abc123&#39;</span><span class="p">)</span>
+        <span class="n">client</span><span class="o">.</span><span class="n">on_connect</span> <span class="o">=</span> <span class="n">on_connect</span>
+        <span class="n">client</span><span class="o">.</span><span class="n">on_message</span> <span class="o">=</span> <span class="n">on_message</span>
+        <span class="n">client</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="s1">&#39;localhost&#39;</span><span class="p">,</span><span class="mi">1883</span><span class="p">,</span><span class="mi">60</span><span class="p">)</span>
+
+        <span class="n">start_http_server</span><span class="p">(</span><span class="mi">8000</span><span class="p">)</span>
+        <span class="n">client</span><span class="o">.</span><span class="n">loop_forever</span><span class="p">()</span>
+</code></pre></div>
+
+<p>然后我配置 Prometheus 服务器采集端点数据到 <code>localhost:8000</code>。</p>
+<p>你可以在 Github 上访问 <a href="https://github.com/dmlond/greenhouse_mqtt_microcontroller">温室 MQTT 微控制器</a> 这个项目的代码，项目采用 MIT 许可证授权。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

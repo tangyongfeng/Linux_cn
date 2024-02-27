@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>GDB 的 7 个单步调试命令</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Alexandra 即使是复杂的函数，也有几种方法可以单步调试，所以下次在排除代码故障时，可以尝试一下这些 GDB 技术。 调试器 是一 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2022/12/gdb-de-7-ge-dan-bu-diao-shi-ming-ling.html" rel="bookmark"
+           title="Permalink to GDB 的 7 个单步调试命令">GDB 的 7 个单步调试命令</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2022-12-19T09:38:32+01:00">
+                Published: Mon 19 December 2022
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Alexandra</p>
+<p><img alt="" src="/data/attachment/album/202212/19/093831nrjrmozx1mixmgii.jpg"></p>
+<blockquote>
+<p>即使是复杂的函数，也有几种方法可以单步调试，所以下次在排除代码故障时，可以尝试一下这些 GDB 技术。</p>
+</blockquote>
+<p><strong>调试器</strong> 是一个可以运行你的代码并检查问题的软件。<a href="https://opensource.com/article/21/3/debug-code-gdb">GNU Debugger</a>（GBD）是最流行的调试器之一，在这篇文章中，我研究了 GDB 的 <code>step</code> 命令和其他几种常见情况的相关命令。<code>step</code> 是一个被广泛使用的命令，但它有一些人们不太了解的地方，可能会使得他们十分困惑。此外，还有一些方法可以<strong>在不使用 <code>step</code> 命令的情况下进入一个函数</strong>，比如使用不太知名的 <code>advance</code> 命令。</p>
+<h3>1、无调试符号</h3>
+<p>考虑以下这个简单的示例程序：</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;stdio.h&gt;</span>
+
+
+<span class="kt">int</span><span class="w"> </span><span class="nf">num</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">void</span><span class="w"> </span><span class="nf">bar</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;i = %d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">i</span><span class="p">);</span>
+<span class="p">}</span>
+
+
+<span class="kt">int</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">bar</span><span class="p">(</span><span class="n">num</span><span class="p">());</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>如果你在没有 <ruby> 调试符号 <rt>  debugging sysbols </rt></ruby> 的情况下进行编译（LCTT 译注：即在使用 <code>gcc</code> 编译程序时没有写 <code>-g</code> 选项），然后在 <code>bar</code> 上设置一个断点，然后尝试在这个函数内使用 <code>step</code> 来单步执行语句。GDB 会给出一个 <ruby> 没有行号信息 <rt>  no line number information </rt></ruby> 的错误信息。</p>
+<div class="highlight"><pre><span></span><code><span class="nv">gcc</span><span class="w"> </span><span class="nv">exmp</span>.<span class="nv">c</span><span class="w"> </span><span class="o">-</span><span class="nv">o</span><span class="w"> </span><span class="nv">exmp</span>
+<span class="nv">gdb</span><span class="w"> </span>.<span class="o">/</span><span class="nv">exmp</span>
+<span class="ss">(</span><span class="nv">gdb</span><span class="ss">)</span><span class="w"> </span><span class="nv">b</span><span class="w"> </span><span class="nv">bar</span>
+<span class="nv">Breakpoint</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="nv">at</span><span class="w"> </span><span class="mi">0</span><span class="nv">x401135</span>
+<span class="ss">(</span><span class="nv">gdb</span><span class="ss">)</span><span class="w"> </span><span class="nv">r</span>
+<span class="nv">Starting</span><span class="w"> </span><span class="nv">program</span>:<span class="w"> </span><span class="o">/</span><span class="nv">home</span><span class="o">/</span><span class="nv">ahajkova</span><span class="o">/</span><span class="nv">exmp</span>
+<span class="nv">Breakpoint</span><span class="w"> </span><span class="mi">1</span>,<span class="w"> </span><span class="mi">0</span><span class="nv">x0000000000401135</span><span class="w"> </span><span class="nv">in</span><span class="w"> </span><span class="nv">bar</span><span class="w"> </span><span class="ss">()</span>
+<span class="ss">(</span><span class="nv">gdb</span><span class="ss">)</span><span class="w"> </span><span class="nv">step</span>
+<span class="nv">Single</span><span class="w"> </span><span class="nv">stepping</span><span class="w"> </span><span class="k">until</span><span class="w"> </span><span class="k">exit</span><span class="w"> </span><span class="nv">from</span><span class="w"> </span><span class="nv">function</span><span class="w"> </span><span class="nv">bar</span>,
+<span class="nv">which</span><span class="w"> </span><span class="nv">has</span><span class="w"> </span><span class="nv">no</span><span class="w"> </span><span class="nv">line</span><span class="w"> </span><span class="nv">number</span><span class="w"> </span><span class="nv">information</span>.
+<span class="nv">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span>
+<span class="mi">0</span><span class="nv">x0000000000401168</span><span class="w"> </span><span class="nv">in</span><span class="w"> </span><span class="nv">main</span><span class="w"> </span><span class="ss">()</span>
+</code></pre></div>
+
+<h3>2、stepi 命令</h3>
+<p>但是你仍然可以在没有行号信息的函数内部单步执行语句，但要使用 <code>stepi</code> 命令来代替 <code>step</code>。<code>stepi</code> 一次只执行一条指令。当使用 GDB 的 <code>stepi</code> 命令时，先做 <code>display/i $pc</code> 通常很有用，这会在每一步之后<strong>显示</strong> <ruby> 程序计数器 <rt>  program counter </rt></ruby> 的值和<strong>相应的</strong> <ruby> 机器指令 <rt>  machine instruction </rt></ruby>：</p>
+<div class="highlight"><pre><span></span><code>(gdb) b bar
+Breakpoint 1 at 0x401135
+(gdb) r
+Starting program: /home/ahajkova/exmp
+Breakpoint 1, 0x0000000000401135 in bar ()
+(gdb) display/i $pc
+1: x/i $pc
+=&gt; 0x401135 &lt;bar+4&gt;: sub $0x10,%rsp
+</code></pre></div>
+
+<p>在上述的 <code>display</code> 命令中，<code>i</code> 代表机器指令，<code>$pc</code> 表示程序计数器寄存器（即 PC 寄存器）。</p>
+<p>使用 <code>info registers</code> 命令，来<strong>打印寄存器的内容</strong>，也是十分有用的。</p>
+<div class="highlight"><pre><span></span><code><span class="p">(</span><span class="n">gdb</span><span class="p">)</span><span class="w"> </span><span class="n">info</span><span class="w"> </span><span class="n">registers</span>
+<span class="n">rax</span><span class="w"> </span><span class="mh">0</span><span class="n">x2</span><span class="w"> </span><span class="mh">2</span>
+<span class="n">rbx</span><span class="w"> </span><span class="mh">0</span><span class="n">x7fffffffdbc8</span><span class="w"> </span><span class="mh">140737488346056</span>
+<span class="n">rcx</span><span class="w"> </span><span class="mh">0</span><span class="n">x403e18</span><span class="w"> </span><span class="mh">4210200</span>
+<span class="p">(</span><span class="n">gdb</span><span class="p">)</span><span class="w"> </span><span class="n">print</span><span class="w"> </span><span class="n">$rax</span>
+<span class="err">$</span><span class="mh">1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">2</span>
+<span class="p">(</span><span class="n">gdb</span><span class="p">)</span><span class="w"> </span><span class="n">stepi</span>
+<span class="mh">0</span><span class="n">x0000000000401139</span><span class="w"> </span><span class="n">in</span><span class="w"> </span><span class="n">bar</span><span class="w"> </span><span class="p">()</span>
+<span class="mh">1</span><span class="o">:</span><span class="w"> </span><span class="n">x</span><span class="o">/</span><span class="n">i</span><span class="w"> </span><span class="n">$pc</span>
+<span class="o">=&gt;</span><span class="w"> </span><span class="mh">0</span><span class="n">x401139</span><span class="w"> </span><span class="o">&lt;</span><span class="n">bar</span><span class="o">+</span><span class="mh">8</span><span class="o">&gt;:</span><span class="w"> </span><span class="n">mov</span><span class="w"> </span><span class="o">%</span><span class="n">edi</span><span class="p">,</span><span class="o">-</span><span class="mh">0</span><span class="n">x4</span><span class="p">(</span><span class="o">%</span><span class="n">rbp</span><span class="p">)</span>
+</code></pre></div>
+
+<h3>3、复杂的函数调用</h3>
+<p>在带调试符号的 <code>-g</code> 选项，重新编译示例程序后，你可以使用行号在 <code>main</code> 中 <code>bar</code> 调用上设置断点，然后再单步执行 <code>bar</code> 函数的语句：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">gcc</span><span class="w"> </span><span class="nt">-g</span><span class="w"> </span><span class="nt">exmp</span><span class="p">.</span><span class="nc">c</span><span class="w"> </span><span class="nt">-o</span><span class="w"> </span><span class="nt">exmp</span>
+<span class="nt">gdb</span><span class="w"> </span><span class="o">./</span><span class="nt">exmp</span>
+<span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">b</span><span class="w"> </span><span class="nt">exmp</span><span class="p">.</span><span class="nc">c</span><span class="p">:</span><span class="nd">14</span>
+<span class="nt">Breakpoint</span><span class="w"> </span><span class="nt">1</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">0x401157</span><span class="o">:</span><span class="w"> </span><span class="nt">file</span><span class="w"> </span><span class="nt">exmp</span><span class="p">.</span><span class="nc">c</span><span class="o">,</span><span class="w"> </span><span class="nt">line</span><span class="w"> </span><span class="nt">14</span><span class="o">.</span>
+<span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">r</span>
+<span class="nt">Starting</span><span class="w"> </span><span class="nt">program</span><span class="o">:</span><span class="w"> </span><span class="o">/</span><span class="nt">home</span><span class="o">/</span><span class="nt">ahajkova</span><span class="o">/</span><span class="nt">exmp</span>
+<span class="nt">Breakpoint</span><span class="w"> </span><span class="nt">1</span><span class="o">,</span><span class="w"> </span><span class="nt">main</span><span class="w"> </span><span class="o">()</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">exmp</span><span class="p">.</span><span class="nc">c</span><span class="p">:</span><span class="nd">14</span>
+<span class="nt">14</span><span class="w"> </span><span class="nt">bar</span><span class="o">(</span><span class="nt">num</span><span class="o">());</span>
+</code></pre></div>
+
+<p>接下来，用 <code>step</code>，来单步执行 <code>bar()</code> 函数的语句：</p>
+<div class="highlight"><pre><span></span><code><span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">step</span>
+<span class="nt">num</span><span class="w"> </span><span class="o">()</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">exmp</span><span class="p">.</span><span class="nc">c</span><span class="p">:</span><span class="nd">4</span>
+<span class="nt">4</span><span class="w"> </span><span class="nt">return</span><span class="w"> </span><span class="nt">2</span><span class="o">;</span>
+</code></pre></div>
+
+<p>函数调用的参数需要在实际的函数调用之前进行处理，<code>bar()</code> 函数的参数是 <code>num()</code> 函数，所以 <code>num()</code> 会在 <code>bar()</code> 被调用之前执行。但是，通过 GDB 调试，你怎么才能如愿以偿地进入 <code>bar()</code> 函数呢？你可以使用 <code>finish</code> 命令，并再次使用 <code>step</code> 命令。</p>
+<div class="highlight"><pre><span></span><code><span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">finish</span>
+<span class="nt">Run</span><span class="w"> </span><span class="nt">till</span><span class="w"> </span><span class="nt">exit</span><span class="w"> </span><span class="nt">from</span><span class="w"> </span><span class="p">#</span><span class="nn">0</span><span class="w"> </span><span class="nt">num</span><span class="w"> </span><span class="o">()</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">exmp</span><span class="p">.</span><span class="nc">c</span><span class="p">:</span><span class="nd">4</span>
+<span class="nt">0x0000000000401161</span><span class="w"> </span><span class="nt">in</span><span class="w"> </span><span class="nt">main</span><span class="w"> </span><span class="o">()</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">exmp</span><span class="p">.</span><span class="nc">c</span><span class="p">:</span><span class="nd">14</span>
+<span class="nt">14</span><span class="w"> </span><span class="nt">bar</span><span class="o">(</span><span class="nt">num</span><span class="o">());</span>
+<span class="nt">Value</span><span class="w"> </span><span class="nt">returned</span><span class="w"> </span><span class="nt">is</span><span class="w"> </span><span class="o">$</span><span class="nt">1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nt">2</span>
+<span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">step</span>
+<span class="nt">bar</span><span class="w"> </span><span class="o">(</span><span class="nt">i</span><span class="o">=</span><span class="nt">2</span><span class="o">)</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">exmp</span><span class="p">.</span><span class="nc">c</span><span class="p">:</span><span class="nd">9</span>
+<span class="nt">9</span><span class="w"> </span><span class="nt">printf</span><span class="o">(</span><span class="s2">&quot;i = %d\n&quot;</span><span class="o">,</span><span class="w"> </span><span class="nt">i</span><span class="o">);</span>
+</code></pre></div>
+
+<h3>4、tbreak 命令</h3>
+<p><code>tbreak</code> 命令会设置一个<strong>临时断点</strong>。如果你不想设置永久断点，那么这个命令是很有用的。举个例子?，你想进入一个复杂的函数调用，例如 <code>f(g(h()), i(j()), ...)</code>，在这种情况下，你需要一个很长的 <code>step/finish/step</code> 序列，才能到达 <code>f</code> 函数。如果你设置一个临时断点，然后再使用 <code>continue</code> 命令，这样就不需要以上的序列了。为了证明这一点，你需要像以前一样将断点设置在 <code>main</code> 的 <code>bar</code> 调用上。然后在 <code>bar</code> 上设置临时断点。当到达该临时断点后，临时断点会被自动删除。</p>
+<div class="highlight"><pre><span></span><code><span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">r</span>
+<span class="nt">Starting</span><span class="w"> </span><span class="nt">program</span><span class="o">:</span><span class="w"> </span><span class="o">/</span><span class="nt">home</span><span class="o">/</span><span class="nt">ahajkova</span><span class="o">/</span><span class="nt">exmp</span>
+<span class="nt">Breakpoint</span><span class="w"> </span><span class="nt">1</span><span class="o">,</span><span class="w"> </span><span class="nt">main</span><span class="w"> </span><span class="o">()</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">exmp</span><span class="p">.</span><span class="nc">c</span><span class="p">:</span><span class="nd">14</span>
+<span class="nt">14</span><span class="w"> </span><span class="nt">bar</span><span class="o">(</span><span class="nt">num</span><span class="o">());</span>
+<span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">tbreak</span><span class="w"> </span><span class="nt">bar</span>
+<span class="nt">Temporary</span><span class="w"> </span><span class="nt">breakpoint</span><span class="w"> </span><span class="nt">2</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">0x40113c</span><span class="o">:</span><span class="w"> </span><span class="nt">file</span><span class="w"> </span><span class="nt">exmp</span><span class="p">.</span><span class="nc">c</span><span class="o">,</span><span class="w"> </span><span class="nt">line</span><span class="w"> </span><span class="nt">9</span><span class="o">.</span>
+</code></pre></div>
+
+<p>在调用 <code>bar</code> 的时候遇到断点，并在 <code>bar</code> 上设置临时断点后，你只需要使用 <code>continue</code> 继续运行直到 <code>bar</code> 结束。</p>
+<div class="highlight"><pre><span></span><code><span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">continue</span>
+<span class="nt">Continuing</span><span class="o">.</span>
+<span class="nt">Temporary</span><span class="w"> </span><span class="nt">breakpoint</span><span class="w"> </span><span class="nt">2</span><span class="o">,</span><span class="w"> </span><span class="nt">bar</span><span class="w"> </span><span class="o">(</span><span class="nt">i</span><span class="o">=</span><span class="nt">2</span><span class="o">)</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">exmp</span><span class="p">.</span><span class="nc">c</span><span class="p">:</span><span class="nd">9</span>
+<span class="nt">9</span><span class="w"> </span><span class="nt">printf</span><span class="o">(</span><span class="s2">&quot;i = %d\n&quot;</span><span class="o">,</span><span class="w"> </span><span class="nt">i</span><span class="o">);</span>
+</code></pre></div>
+
+<h3>5、disable 命令</h3>
+<p>类似地，你也可以在 <code>bar</code> 上设置一个正常的断点，然后执行 <code>continue</code>，然后在不再需要第二个断点时，使用 <code>disable</code> 命令禁用这个断点，这样也能达到与 <code>tbreak</code> 相同的效果。</p>
+<div class="highlight"><pre><span></span><code><span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">b</span><span class="w"> </span><span class="nt">exmp</span><span class="p">.</span><span class="nc">c</span><span class="p">:</span><span class="nd">14</span>
+<span class="nt">Breakpoint</span><span class="w"> </span><span class="nt">1</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">0x401157</span><span class="o">:</span><span class="w"> </span><span class="nt">file</span><span class="w"> </span><span class="nt">exmp</span><span class="p">.</span><span class="nc">c</span><span class="o">,</span><span class="w"> </span><span class="nt">line</span><span class="w"> </span><span class="nt">14</span><span class="o">.</span>
+<span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">r</span>
+<span class="nt">Starting</span><span class="w"> </span><span class="nt">program</span><span class="o">:</span><span class="w"> </span><span class="o">/</span><span class="nt">home</span><span class="o">/</span><span class="nt">ahajkova</span><span class="o">/</span><span class="nt">exmp</span>
+<span class="nt">Breakpoint</span><span class="w"> </span><span class="nt">1</span><span class="o">,</span><span class="w"> </span><span class="nt">main</span><span class="w"> </span><span class="o">()</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">exmp</span><span class="p">.</span><span class="nc">c</span><span class="p">:</span><span class="nd">14</span>
+<span class="nt">14</span><span class="w"> </span><span class="nt">bar</span><span class="o">(</span><span class="nt">num</span><span class="o">());</span>
+<span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">b</span><span class="w"> </span><span class="nt">bar</span>
+<span class="nt">Breakpoint</span><span class="w"> </span><span class="nt">2</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">0x40113c</span><span class="o">:</span><span class="w"> </span><span class="nt">file</span><span class="w"> </span><span class="nt">exmp</span><span class="p">.</span><span class="nc">c</span><span class="o">,</span><span class="w"> </span><span class="nt">line</span><span class="w"> </span><span class="nt">9</span><span class="o">.</span>
+<span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">c</span>
+<span class="nt">Continuing</span><span class="o">.</span>
+<span class="nt">Breakpoint</span><span class="w"> </span><span class="nt">2</span><span class="o">,</span><span class="w"> </span><span class="nt">bar</span><span class="w"> </span><span class="o">(</span><span class="nt">i</span><span class="o">=</span><span class="nt">2</span><span class="o">)</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">exmp</span><span class="p">.</span><span class="nc">c</span><span class="p">:</span><span class="nd">9</span>
+<span class="nt">9</span><span class="w"> </span><span class="nt">printf</span><span class="o">(</span><span class="s2">&quot;i = %d\n&quot;</span><span class="o">,</span><span class="w"> </span><span class="nt">i</span><span class="o">);</span>
+<span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">disable</span><span class="w"> </span><span class="nt">2</span>
+</code></pre></div>
+
+<p>正如你所看到的，<code>info breakpoints</code> 命令在 <code>Enb</code> 列下显示为 <code>n</code>，这意味着这个断点已被禁用。但你也能在再次需要这个断点时，再启用它。</p>
+<div class="highlight"><pre><span></span><code>(gdb) info breakpoints
+Num Type Disp Enb Address What
+1 breakpoint keep y 0x0000000000401157 in main at exmp.c:14
+breakpoint already hit 1 time
+2 breakpoint keep n 0x000000000040113c in bar at exmp.c:9
+breakpoint already hit 1 time
+(gdb) enable 2
+(gdb) info breakpoints
+Num Type Disp Enb Address What
+1 breakpoint keep y 0x000000000040116a in main at exmp.c:19
+breakpoint already hit 1 time
+2 breakpoint keep y 0x0000000000401158 in bar at exmp.c:14
+breakpoint already hit 1 time
+</code></pre></div>
+
+<h3>6、advance 命令运行程序到指定的位置</h3>
+<p>另一个进入函数内部的方法是 <code>advance</code> 命令。你可以简单地用 <code>advance bar</code>，来代替 <code>tbreak bar ; continue</code>。这一命令会将程序继续运行到指定的位置。</p>
+<p><code>advance</code> 命令的一个很棒的地方在于：如果程序并没有到达你试图进入的位置，那么 GDB 将在当前函数运行完成后停止。因此，程序的执行会受到限制：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">Breakpoint</span><span class="w"> </span><span class="nt">1</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">0x401157</span><span class="o">:</span><span class="w"> </span><span class="nt">file</span><span class="w"> </span><span class="nt">exmp</span><span class="p">.</span><span class="nc">c</span><span class="o">,</span><span class="w"> </span><span class="nt">line</span><span class="w"> </span><span class="nt">14</span><span class="o">.</span>
+<span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">r</span>
+<span class="nt">Starting</span><span class="w"> </span><span class="nt">program</span><span class="o">:</span><span class="w"> </span><span class="o">/</span><span class="nt">home</span><span class="o">/</span><span class="nt">ahajkova</span><span class="o">/</span><span class="nt">exmp</span>
+<span class="nt">Breakpoint</span><span class="w"> </span><span class="nt">1</span><span class="o">,</span><span class="w"> </span><span class="nt">main</span><span class="w"> </span><span class="o">()</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">exmp</span><span class="p">.</span><span class="nc">c</span><span class="p">:</span><span class="nd">14</span>
+<span class="nt">14</span><span class="w"> </span><span class="nt">bar</span><span class="o">(</span><span class="nt">num</span><span class="o">());</span>
+<span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">advance</span><span class="w"> </span><span class="nt">bar</span>
+<span class="nt">bar</span><span class="w"> </span><span class="o">(</span><span class="nt">i</span><span class="o">=</span><span class="nt">2</span><span class="o">)</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">exmp</span><span class="p">.</span><span class="nc">c</span><span class="p">:</span><span class="nd">9</span>
+<span class="nt">9</span><span class="w"> </span><span class="nt">printf</span><span class="o">(</span><span class="s2">&quot;i = %d\n&quot;</span><span class="o">,</span><span class="w"> </span><span class="nt">i</span><span class="o">);</span>
+</code></pre></div>
+
+<h3>7、skip 命令</h3>
+<p>进入 <code>bar</code> 函数的另一种方式是使用 <code>skip num</code> 命令：</p>
+<div class="highlight"><pre><span></span><code><span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">b</span><span class="w"> </span><span class="nt">exmp</span><span class="p">.</span><span class="nc">c</span><span class="p">:</span><span class="nd">14</span>
+<span class="nt">Breakpoint</span><span class="w"> </span><span class="nt">1</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">0x401157</span><span class="o">:</span><span class="w"> </span><span class="nt">file</span><span class="w"> </span><span class="nt">exmp</span><span class="p">.</span><span class="nc">c</span><span class="o">,</span><span class="w"> </span><span class="nt">line</span><span class="w"> </span><span class="nt">14</span><span class="o">.</span>
+<span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">skip</span><span class="w"> </span><span class="nt">num</span>
+<span class="nt">Function</span><span class="w"> </span><span class="nt">num</span><span class="w"> </span><span class="nt">will</span><span class="w"> </span><span class="nt">be</span><span class="w"> </span><span class="nt">skipped</span><span class="w"> </span><span class="nt">when</span><span class="w"> </span><span class="nt">stepping</span><span class="o">.</span>
+<span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">r</span>
+<span class="nt">Starting</span><span class="w"> </span><span class="nt">program</span><span class="o">:</span><span class="w"> </span><span class="o">/</span><span class="nt">home</span><span class="o">/</span><span class="nt">ahajkova</span><span class="o">/</span><span class="nt">exmp</span>
+<span class="nt">Breakpoint</span><span class="w"> </span><span class="nt">1</span><span class="o">,</span><span class="w"> </span><span class="nt">main</span><span class="w"> </span><span class="o">()</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">exmp</span><span class="p">.</span><span class="nc">c</span><span class="p">:</span><span class="nd">14</span>
+<span class="nt">14</span><span class="w"> </span><span class="nt">bar</span><span class="o">(</span><span class="nt">num</span><span class="o">());</span>
+<span class="o">(</span><span class="nt">gdb</span><span class="o">)</span><span class="w"> </span><span class="nt">step</span>
+<span class="nt">bar</span><span class="w"> </span><span class="o">(</span><span class="nt">i</span><span class="o">=</span><span class="nt">2</span><span class="o">)</span><span class="w"> </span><span class="nt">at</span><span class="w"> </span><span class="nt">exmp</span><span class="p">.</span><span class="nc">c</span><span class="p">:</span><span class="nd">9</span>
+<span class="nt">9</span><span class="w"> </span><span class="nt">printf</span><span class="o">(</span><span class="s2">&quot;i = %d\n&quot;</span><span class="o">,</span><span class="w"> </span><span class="nt">i</span><span class="o">);</span>
+</code></pre></div>
+
+<p>请使用 <code>info skip</code> 命令，来了解 GDB 跳过了哪些函数。<code>num()</code> 函数被标记为 <code>y</code>，表示跳过了 <code>num()</code> 函数：</p>
+<div class="highlight"><pre><span></span><code>(gdb) info skip
+Num Enb Glob File RE Function
+1 y n &lt;none&gt; n num
+</code></pre></div>
+
+<p>如果不再需要 <code>skip</code>，可以禁用（并稍后重新启用）或完全删除它。你可以添加另一个 <code>skip</code>，并禁用第一个 <code>skip</code>，然后全部删除。要禁用某个 <code>skip</code>，必须指定其编号（例如，<code>skip disable 1</code>），如果没有指定，则会禁用所有的 <code>skip</code>。启用或删除 <code>skip</code> 的工作原理相同：</p>
+<div class="highlight"><pre><span></span><code>(gdb) skip bar
+(gdb) skip disable 1
+(gdb) info skip
+Num Enb Glob File RE Function
+1 n n &lt;none&gt; n num
+2 y n &lt;none&gt; n bar
+(gdb) skip delete
+(gdb) info skip
+Not skipping any files or functions.
+</code></pre></div>
+
+<h3>GDB 的 step 命令</h3>
+<p>使用 GDB 的 <code>step</code> 命令是调试程序的一个有用工具。即使是复杂的函数，也有几种方法可以单步调试这些函数，所以下次你在排除代码问题的时候，可以尝试一下这些 GDB 技术。</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

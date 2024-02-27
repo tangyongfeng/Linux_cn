@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>从零开始学习 Go 语言的切片</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Dave Cheney 这篇文章受到了我与同事讨论使用 切片 slice 作为 栈 stack 的一次聊天的启发。后来话题聊到了 Go 语言中的切片是如何 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li class="active"><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/08/cong-ling-kai-shi-xue-xi-go-yu-yan-de-qie-pian.html" rel="bookmark"
+           title="Permalink to 从零开始学习 Go 语言的切片">从零开始学习 Go 语言的切片</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-08-19T21:59:00+02:00">
+                Published: Sun 19 August 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/ruan-jian-kai-fa">软件开发</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Dave Cheney</p>
+<p><img alt="" src="/data/attachment/album/201808/19/215935hm6cc01zr0ickppc.jpg"></p>
+<p>这篇文章受到了我与同事讨论使用<ruby> 切片 <rt>  slice </rt></ruby>作为<ruby> 栈 <rt>  stack </rt></ruby>的一次聊天的启发。后来话题聊到了 Go 语言中的切片是如何工作的。我认为这些信息对别人也有用，所以就把它记录了下来。</p>
+<h3>数组</h3>
+<p>任何关于 Go 语言切片的讨论都要从另一个数据结构也就是<ruby> 数组 <rt>  array </rt></ruby>开始。Go 的数组有两个特性：</p>
+<ol>
+<li>数组的长度是固定的；<code>[5]int</code> 是由 5 个 <code>int</code> 构成的数组，和 <code>[3]int</code> 不同。</li>
+<li>数组是值类型。看下面这个示例：</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="n">package</span> <span class="n">main</span>
+
+<span class="kn">import</span> <span class="s2">&quot;fmt&quot;</span>
+
+<span class="n">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+        <span class="n">var</span> <span class="n">a</span> <span class="p">[</span><span class="mi">5</span><span class="p">]</span><span class="nb">int</span>
+        <span class="n">b</span> <span class="o">:=</span> <span class="n">a</span>
+        <span class="n">b</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mi">7</span>
+        <span class="n">fmt</span><span class="o">.</span><span class="n">Println</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span> <span class="o">//</span> <span class="n">prints</span> <span class="p">[</span><span class="mi">0</span> <span class="mi">0</span> <span class="mi">0</span> <span class="mi">0</span> <span class="mi">0</span><span class="p">]</span> <span class="p">[</span><span class="mi">0</span> <span class="mi">0</span> <span class="mi">7</span> <span class="mi">0</span> <span class="mi">0</span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>语句 <code>b := a</code> 定义了一个类型是 <code>[5]int</code> 的新变量 <code>b</code>，然后把 <code>a</code> 中的内容 <em>复制</em> 到 <code>b</code> 中。改变 <code>b</code> 对 <code>a</code> 中的内容没有影响，因为 <code>a</code> 和 <code>b</code> 是相互独立的值。<sup id="fnref1"> <a href="#fn1" rel="footnote">  1 </a></sup></p>
+<h3>切片</h3>
+<p>Go 语言的切片和数组的主要有如下两个区别：</p>
+<ol>
+<li>切片没有一个固定的长度。切片的长度不是它类型定义的一部分，而是由切片内部自己维护的。我们可以使用内置的 <code>len</code> 函数知道它的长度。<sup id="fnref2"> <a href="#fn2" rel="footnote">  2 </a></sup></li>
+<li>将一个切片赋值给另一个切片时 <em>不会</em> 对切片内容进行复制操作。这是因为切片没有直接持有其内部数据，而是保留了一个指向 <em>底层数组</em> <sup id="fnref3"> <a href="#fn3" rel="footnote">  3 </a></sup> 的指针。数据都保留在底层数组里。</li>
+</ol>
+<p>基于第二个特性，两个切片可以享有共同的底层数组。看下面的示例：</p>
+<ol>
+<li>对切片取切片</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="n">package</span> <span class="n">main</span>
+
+<span class="kn">import</span> <span class="s2">&quot;fmt&quot;</span>
+
+<span class="n">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+        <span class="n">var</span> <span class="n">a</span> <span class="o">=</span> <span class="p">[]</span><span class="nb">int</span><span class="p">{</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">4</span><span class="p">,</span><span class="mi">5</span><span class="p">}</span>
+        <span class="n">b</span> <span class="o">:=</span> <span class="n">a</span><span class="p">[</span><span class="mi">2</span><span class="p">:]</span>
+        <span class="n">b</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">fmt</span><span class="o">.</span><span class="n">Println</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span> <span class="o">//</span> <span class="n">prints</span> <span class="p">[</span><span class="mi">1</span> <span class="mi">2</span> <span class="mi">0</span> <span class="mi">4</span> <span class="mi">5</span><span class="p">]</span> <span class="p">[</span><span class="mi">0</span> <span class="mi">4</span> <span class="mi">5</span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>在这个例子里，<code>a</code> 和 <code>b</code> 享有共同的底层数组 —— 尽管 <code>b</code> 在数组里的起始偏移量不同，两者的长度也不同。通过 <code>b</code> 修改底层数组的值也会导致 <code>a</code> 里的值的改变。
+2. 将切片传进函数</p>
+<div class="highlight"><pre><span></span><code><span class="n">package</span> <span class="n">main</span>
+
+<span class="kn">import</span> <span class="s2">&quot;fmt&quot;</span>
+
+<span class="n">func</span> <span class="n">negate</span><span class="p">(</span><span class="n">s</span> <span class="p">[]</span><span class="nb">int</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="o">:=</span> <span class="nb">range</span> <span class="n">s</span> <span class="p">{</span>
+                <span class="n">s</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">s</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="n">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+        <span class="n">var</span> <span class="n">a</span> <span class="o">=</span> <span class="p">[]</span><span class="nb">int</span><span class="p">{</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">}</span>
+        <span class="n">negate</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+        <span class="n">fmt</span><span class="o">.</span><span class="n">Println</span><span class="p">(</span><span class="n">a</span><span class="p">)</span> <span class="o">//</span> <span class="n">prints</span> <span class="p">[</span><span class="o">-</span><span class="mi">1</span> <span class="o">-</span><span class="mi">2</span> <span class="o">-</span><span class="mi">3</span> <span class="o">-</span><span class="mi">4</span> <span class="o">-</span><span class="mi">5</span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>在这个例子里，<code>a</code> 作为形参 <code>s</code> 的实参传进了 <code>negate</code> 函数，这个函数遍历 <code>s</code> 内的元素并改变其符号。尽管 <code>nagate</code> 没有返回值，且没有访问到 <code>main</code> 函数里的 <code>a</code>。但是当将之传进 <code>negate</code> 函数内时，<code>a</code> 里面的值却被改变了。</p>
+<p>大多数程序员都能直观地了解 Go 语言切片的底层数组是如何工作的，因为它与其它语言中类似数组的工作方式类似。比如下面就是使用 Python 重写的这一小节的第一个示例：</p>
+<div class="highlight"><pre><span></span><code><span class="nv">Python</span><span class="w"> </span><span class="mi">2</span>.<span class="mi">7</span>.<span class="mi">10</span><span class="w"> </span><span class="ss">(</span><span class="nv">default</span>,<span class="w"> </span><span class="nv">Feb</span><span class="w">  </span><span class="mi">7</span><span class="w"> </span><span class="mi">2017</span>,<span class="w"> </span><span class="mi">00</span>:<span class="mi">08</span>:<span class="mi">15</span><span class="ss">)</span>
+[<span class="nv">GCC</span><span class="w"> </span><span class="mi">4</span>.<span class="mi">2</span>.<span class="mi">1</span><span class="w"> </span><span class="nv">Compatible</span><span class="w"> </span><span class="nv">Apple</span><span class="w"> </span><span class="nv">LLVM</span><span class="w"> </span><span class="mi">8</span>.<span class="mi">0</span>.<span class="mi">0</span><span class="w"> </span><span class="ss">(</span><span class="nv">clang</span><span class="o">-</span><span class="mi">800</span>.<span class="mi">0</span>.<span class="mi">34</span><span class="ss">)</span>]<span class="w"> </span><span class="nv">on</span><span class="w"> </span><span class="nv">darwin</span>
+<span class="nv">Type</span><span class="w"> </span><span class="s2">&quot;help&quot;</span>,<span class="w"> </span><span class="s2">&quot;copyright&quot;</span>,<span class="w"> </span><span class="s2">&quot;credits&quot;</span><span class="w"> </span><span class="nv">or</span><span class="w"> </span><span class="s2">&quot;license&quot;</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nv">more</span><span class="w"> </span><span class="nv">information</span>.
+<span class="o">&gt;&gt;&gt;</span><span class="w"> </span><span class="nv">a</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>[<span class="mi">1</span>,<span class="mi">2</span>,<span class="mi">3</span>,<span class="mi">4</span>,<span class="mi">5</span>]
+<span class="o">&gt;&gt;&gt;</span><span class="w"> </span><span class="nv">b</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">a</span>
+<span class="o">&gt;&gt;&gt;</span><span class="w"> </span><span class="nv">b</span>[<span class="mi">2</span>]<span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span>
+<span class="o">&gt;&gt;&gt;</span><span class="w"> </span><span class="nv">a</span>
+[<span class="mi">1</span>,<span class="w"> </span><span class="mi">2</span>,<span class="w"> </span><span class="mi">0</span>,<span class="w"> </span><span class="mi">4</span>,<span class="w"> </span><span class="mi">5</span>]
+</code></pre></div>
+
+<p>以及使用 Ruby 重写的版本:</p>
+<div class="highlight"><pre><span></span><code>irb(main):001:0&gt; a = [1,2,3,4,5]
+=&gt; [1, 2, 3, 4, 5]
+irb(main):002:0&gt; b = a
+=&gt; [1, 2, 3, 4, 5]
+irb(main):003:0&gt; b[2] = 0
+=&gt; 0
+irb(main):004:0&gt; a
+=&gt; [1, 2, 0, 4, 5]
+</code></pre></div>
+
+<p>在大多数将数组视为对象或者是引用类型的语言也是如此。<sup id="fnref4"> <a href="#fn4" rel="footnote">  4 </a></sup></p>
+<h3>切片头</h3>
+<p>切片同时拥有值和指针特性的神奇之处在于理解切片实际上是一个<ruby> 结构体 <rt>  struct </rt></ruby>类型。通常在<a href="https://golang.org/pkg/reflect/#SliceHeader"><ruby> 反射 <rt>  reflect </rt></ruby>包内相应部分之后</a>的这个结构体被称作<ruby> 切片头 <rt>  slice header </rt></ruby>。切片头的定义大致如下：</p>
+<p><img alt="" src="/data/attachment/album/201808/19/215957yqhveimh59ro9mz9.png"></p>
+<div class="highlight"><pre><span></span><code><span class="kn">package</span><span class="w"> </span><span class="nx">runtime</span>
+
+<span class="k">type</span><span class="w"> </span><span class="nx">slice</span><span class="w"> </span><span class="nx">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">ptr</span><span class="w">   </span><span class="nx">unsafe</span><span class="p">.</span><span class="nx">Pointer</span>
+<span class="w">        </span><span class="nx">len</span><span class="w">   </span><span class="nx">int</span>
+<span class="w">        </span><span class="nx">cap</span><span class="w">   </span><span class="nx">int</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>这很重要，因为和 <a href="https://golang.org/pkg/reflect/#SliceHeader"><code>map</code> 以及 <code>chan</code> 这两个类型不同</a>，切片是值类型，当被赋值或者被作为参数传入函数时候会被复制过去。</p>
+<p>程序员们都能理解 <code>square</code> 的形参 <code>v</code> 和 <code>main</code> 中声明的 <code>v</code> 的是相互独立的。请看下面的例子：</p>
+<div class="highlight"><pre><span></span><code><span class="n">package</span> <span class="n">main</span>
+
+<span class="kn">import</span> <span class="s2">&quot;fmt&quot;</span>
+
+<span class="n">func</span> <span class="n">square</span><span class="p">(</span><span class="n">v</span> <span class="nb">int</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">v</span> <span class="o">=</span> <span class="n">v</span> <span class="o">*</span> <span class="n">v</span>
+<span class="p">}</span>
+
+<span class="n">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+        <span class="n">v</span> <span class="o">:=</span> <span class="mi">3</span>
+        <span class="n">square</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
+        <span class="n">fmt</span><span class="o">.</span><span class="n">Println</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="o">//</span> <span class="n">prints</span> <span class="mi">3</span><span class="p">,</span> <span class="ow">not</span> <span class="mi">9</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>因此 <code>square</code> 对自己的形参 <code>v</code> 的操作没有影响到 <code>main</code> 中的 <code>v</code>。下面这个示例中的 <code>s</code> 也是 <code>main</code> 中声明的切片 <code>s</code> 的独立副本， <em>而不是</em> 指向 <code>main</code> 的 <code>s</code> 的指针。</p>
+<div class="highlight"><pre><span></span><code><span class="n">package</span> <span class="n">main</span>
+
+<span class="kn">import</span> <span class="s2">&quot;fmt&quot;</span>
+
+<span class="n">func</span> <span class="n">double</span><span class="p">(</span><span class="n">s</span> <span class="p">[]</span><span class="nb">int</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">append</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">s</span><span class="o">...</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="n">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+        <span class="n">s</span> <span class="o">:=</span> <span class="p">[]</span><span class="nb">int</span><span class="p">{</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">}</span>
+        <span class="n">double</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+        <span class="n">fmt</span><span class="o">.</span><span class="n">Println</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">s</span><span class="p">))</span> <span class="o">//</span> <span class="n">prints</span> <span class="p">[</span><span class="mi">1</span> <span class="mi">2</span> <span class="mi">3</span><span class="p">]</span> <span class="mi">3</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>Go 的切片是作为值传递而不是指针这一点不太寻常。当你在 Go 内定义一个结构体时，90% 的时间里传递的都是这个结构体的指针<sup id="fnref5"> <a href="#fn5" rel="footnote">  5 </a></sup> 。切片的传递方式真的很不寻常，我能想到的唯一与之相同的例子只有 <code>time.Time</code>。</p>
+<p>切片作为值传递而不是作为指针传递这一特殊行为会让很多想要理解切片的工作原理的 Go 程序员感到困惑。你只需要记住，当你对切片进行赋值、取切片、传参或者作为返回值等操作时，你是在复制切片头结构的三个字段：指向底层数组的指针、长度，以及容量。</p>
+<h3>总结</h3>
+<p>我们来用引出这一话题的切片作为栈的例子来总结下本文的内容：</p>
+<div class="highlight"><pre><span></span><code><span class="n">package</span> <span class="n">main</span>
+
+<span class="kn">import</span> <span class="s2">&quot;fmt&quot;</span>
+
+<span class="n">func</span> <span class="n">f</span><span class="p">(</span><span class="n">s</span> <span class="p">[]</span><span class="n">string</span><span class="p">,</span> <span class="n">level</span> <span class="nb">int</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">if</span> <span class="n">level</span> <span class="o">&gt;</span> <span class="mi">5</span> <span class="p">{</span>
+               <span class="k">return</span>
+        <span class="p">}</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">append</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">fmt</span><span class="o">.</span><span class="n">Sprint</span><span class="p">(</span><span class="n">level</span><span class="p">))</span>
+        <span class="n">f</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">level</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">fmt</span><span class="o">.</span><span class="n">Println</span><span class="p">(</span><span class="s2">&quot;level:&quot;</span><span class="p">,</span> <span class="n">level</span><span class="p">,</span> <span class="s2">&quot;slice:&quot;</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="n">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+        <span class="n">f</span><span class="p">(</span><span class="n">nil</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>在 <code>main</code> 函数的最开始我们把一个 <code>nil</code> 切片传给了函数 <code>f</code> 作为 <code>level</code> 0 。在函数 <code>f</code> 里我们把当前的 <code>level</code> 添加到切片的后面，之后增加 <code>level</code> 的值并进行递归。一旦 <code>level</code> 大于 5，函数返回，打印出当前的 <code>level</code> 以及它们复制到的 <code>s</code> 的内容。</p>
+<div class="highlight"><pre><span></span><code><span class="n">level</span><span class="o">:</span><span class="w"> </span><span class="mi">5</span><span class="w"> </span><span class="n">slice</span><span class="o">:</span><span class="w"> </span><span class="o">[</span><span class="mi">0</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="mi">5</span><span class="o">]</span>
+<span class="n">level</span><span class="o">:</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="n">slice</span><span class="o">:</span><span class="w"> </span><span class="o">[</span><span class="mi">0</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="mi">4</span><span class="o">]</span>
+<span class="n">level</span><span class="o">:</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="n">slice</span><span class="o">:</span><span class="w"> </span><span class="o">[</span><span class="mi">0</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="o">]</span>
+<span class="n">level</span><span class="o">:</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="n">slice</span><span class="o">:</span><span class="w"> </span><span class="o">[</span><span class="mi">0</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="o">]</span>
+<span class="n">level</span><span class="o">:</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">slice</span><span class="o">:</span><span class="w"> </span><span class="o">[</span><span class="mi">0</span><span class="w"> </span><span class="mi">1</span><span class="o">]</span>
+<span class="n">level</span><span class="o">:</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="n">slice</span><span class="o">:</span><span class="w"> </span><span class="o">[</span><span class="mi">0</span><span class="o">]</span>
+</code></pre></div>
+
+<p>你可以注意到在每一个 <code>level</code> 内 <code>s</code> 的值没有被别的 <code>f</code> 的调用影响，尽管当计算更高的 <code>level</code> 时作为 <code>append</code> 的副产品，调用栈内的四个 <code>f</code> 函数创建了四个底层数组<sup id="fnref6"> <a href="#fn6" rel="footnote">  6 </a></sup> ，但是没有影响到当前各自的切片。</p>
+<h3>扩展阅读</h3>
+<p>如果你想要了解更多 Go 语言内切片运行的原理，我建议看看 Go 博客里的这些文章：</p>
+<ul>
+<li><a href="https://blog.golang.org/go-slices-usage-and-internals">Go Slices: usage and internals</a> (blog.golang.org)</li>
+<li><a href="https://blog.golang.org/slices">Arrays, slices (and strings): The mechanics of 'append'</a> (blog.golang.org)</li>
+</ul>
+<h3>相关文章：</h3>
+<ol>
+<li><a href="https://dave.cheney.net/2017/04/30/if-a-map-isnt-a-reference-variable-what-is-it">If a map isn't a reference variable, what is it?</a></li>
+<li><a href="https://dave.cheney.net/2013/01/19/what-is-the-zero-value-and-why-is-it-useful">What is the zero value, and why is it useful?</a></li>
+<li><a href="https://dave.cheney.net/2014/03/25/the-empty-struct">The empty struct</a></li>
+<li><a href="https://dave.cheney.net/2016/03/19/should-methods-be-declared-on-t-or-t">Should methods be declared on T or *T</a></li>
+</ol>
+<p>via: <a href="https://dave.cheney.net/2018/07/12/slices-from-the-ground-up">https://dave.cheney.net/2018/07/12/slices-from-the-ground-up</a> </p>
+<p>作者：<a href="https://dave.cheney.net/">Dave Cheney</a> 译者：<a href="https://github.com/name1e5s">name1e5s</a> 校对：<a href="https://github.com/pityonline">pityonline</a></p>
+<p>本文由 <a href="https://github.com/LCTT/TranslateProject">LCTT</a> 原创编译，<a href="https://linux.cn/">Linux中国</a> 荣誉推出</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>

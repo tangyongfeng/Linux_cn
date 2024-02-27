@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="Pelican" />
+        <title>如何 Docker 化编译的软件</title>
+        <link rel="stylesheet" href="/theme/css/main.css" />
+        <meta name="description" content="Author: Tianon Gravi 我最近在 docker-library/php 仓库中关闭了大量问题，最老的（并且是最长的）讨论之一是关于安装编译扩展的依赖关系，我写了一 …" />
+</head>
+
+<body id="index" class="home">
+        <header id="banner" class="body">
+                <h1><a href="/">linux_cn</a></h1>
+                <nav><ul>
+                    <li><a href="/category/chuan-shan-jia-zhuan-fang">穿山甲专访</a></li>
+                    <li><a href="/category/dai-ma-ying-xiong">代码英雄</a></li>
+                    <li><a href="/category/fen-xiang">分享</a></li>
+                    <li><a href="/category/guan-dian">观点</a></li>
+                    <li><a href="/category/huo-dong">活动</a></li>
+                    <li><a href="/category/ji-ke-man-hua">极客漫画</a></li>
+                    <li><a href="/category/ji-zhu">技术</a></li>
+                    <li><a href="/category/kai-yuan-zhi-hui">开源智慧</a></li>
+                    <li><a href="/category/linux-fa-xing-ban">Linux 发行版</a></li>
+                    <li><a href="/category/mei-ri-an-quan-zi-xun">每日安全资讯</a></li>
+                    <li><a href="/category/misc">Misc</a></li>
+                    <li><a href="/category/qu-kuai-lian">区块链</a></li>
+                    <li class="active"><a href="/category/rong-qi-yu-yun">容器与云</a></li>
+                    <li><a href="/category/ruan-jian-kai-fa">软件开发</a></li>
+                    <li><a href="/category/shu-mei-pai">树莓派</a></li>
+                    <li><a href="/category/xi-tong-yun-wei">系统运维</a></li>
+                    <li><a href="/category/xin-wen">新闻</a></li>
+                    <li><a href="/category/ying-he-guan-cha">硬核观察</a></li>
+                    <li><a href="/category/zhi-ye-sheng-ya">职业生涯</a></li>
+                    <li><a href="/category/zhong-jiang-ming-dan">中奖名单</a></li>
+                    <li><a href="/category/zhuo-mian-ying-yong">桌面应用</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+<section id="content" class="body">
+  <article>
+    <header>
+      <h1 class="entry-title">
+        <a href="/2018/02/ru-he-docker-hua-bian-yi-de-ruan-jian.html" rel="bookmark"
+           title="Permalink to 如何 Docker 化编译的软件">如何 Docker 化编译的软件</a></h1>
+    </header>
+
+    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2018-02-21T12:12:36+01:00">
+                Published: Wed 21 February 2018
+        </abbr>
+
+        <address class="vcard author">
+                By                         <a class="url fn" href="/author/linux-fans-from-china.html">linux fans from china</a>
+        </address>
+<p>In <a href="/category/rong-qi-yu-yun">容器与云</a>.</p>
+
+</footer><!-- /.post-info -->      <p>Author: Tianon Gravi</p>
+<p><img alt="" src="/data/attachment/album/201802/21/121232xxx3wsf642xwv62m.jpg"></p>
+<p>我最近在 <a href="https://github.com/docker-library/php">docker-library/php</a> 仓库中关闭了大量问题，最老的（并且是最长的）讨论之一是关于安装编译扩展的依赖关系，我写了一个<a href="https://github.com/docker-library/php/issues/75#issuecomment-353673374">中等篇幅的评论</a>解释了我如何用常规的方式为我想要的软件进行 Docker 化的。</p>
+<p>我要在这里复制大部分的评论内容，或许扩展一点点，以便有一个更好的/更干净的链接！</p>
+<p>我第一步是编写 <code>Dockerfile</code> 的原始版本：下载源码，运行 <code>./configure &amp;&amp; make</code> 等，清理。然后我尝试构建我的原始版本，并希望在这过程中看到错误消息。（对，真的！）</p>
+<p>错误信息通常以 <code>error: could not find "xyz.h"</code> 或 <code>error: libxyz development headers not found</code> 的形式出现。</p>
+<p>如果我在 Debian 中构建，我会输入 <code>https://packages.debian.org/file:xyz.h</code>（用错误信息中头文件的名称替换 “xyz.h”），或者在谷歌中搜索像 “xyz.h debian” 这样的东西，找出我需要的包的名称。</p>
+<p>如果我在 Alpine 中构建，我将使用 <a href="https://pkgs.alpinelinux.org/contents">https://pkgs.alpinelinux.org/contents</a> 进行类似的搜索。</p>
+<p>“libxyz development headers” 在某种程度上也是一样的，但是根据我的经验，对于这些用 Google 对开发者来说效果更好，因为不同的发行版和项目会以不同的名字来调用这些开发包，所以有时候更难确切的知道哪一个是“正确”的。</p>
+<p>当我得到包名后，我将这个包名称添加到我的 <code>Dockerfile</code> 中，清理之后，然后重复操作。最终通常会构建成功。偶尔我发现某些库不在 Debian 或 Alpine 中，或者是不够新的，由此我必须从源码构建它，但这些情况在我的经验中很少见 —— 因人而异。</p>
+<p>我还会经常查看 Debian（通过 <a href="https://sources.debian.org">https://sources.debian.org</a>）或 Alpine（通过 <a href="https://git.alpinelinux.org/cgit/aports/tree">https://git.alpinelinux.org/cgit/aports/tree</a>）我要编译的软件包源码，特别关注 <code>Build-Depends</code>（如 <a href="https://sources.debian.org/src/php7.0/7.0.26-1/debian/control/"><code>php7.0=7.0.26-1</code> 的 <code>debian/control</code> 文件</a>）以及/或者 <code>makedepends</code> （如 <a href="https://git.alpinelinux.org/cgit/aports/tree/community/php7/APKBUILD?id=d0ca197f031f96d4664cafaa618aeccf94640a1e"><code>php7</code> 的 <code>APKBUILD</code> 文件</a>）用于包名线索。</p>
+<p>就我个人而言，我觉得这种侦探工作很有趣，也很有收获，但我意识到我可能是一个独特的生物。我偶尔使用的另一个技术是看是否有人已经 Docker 化了我想要的东西，这样我可以直接从他们的 <code>Dockerfile</code> 中知道我需要安装的东西。</p>
+<p>对于特定的 PHP 扩展，几乎总是有人已经想出对于这个或那个模块需要的依赖，而我所要做的就是做一些轻量的工作找出它们。</p>
+<p>不管怎样，这就是我的方法！希望这个有帮助，玩得愉快！</p>
+    </div><!-- /.entry-content -->
+
+  </article>
+</section>
+        <section id="extras" class="body">
+                <div class="blogroll">
+                        <h2>links</h2>
+                        <ul>
+                            <li><a href="https://getpelican.com/">Pelican</a></li>
+                            <li><a href="https://www.python.org/">Python.org</a></li>
+                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                            <li><a href="#">You can modify those links in your config file</a></li>
+                        </ul>
+                </div><!-- /.blogroll -->
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+
+                            <li><a href="#">You can add links in your config file</a></li>
+                            <li><a href="#">Another social link</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+</body>
+</html>
